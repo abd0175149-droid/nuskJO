@@ -1,12 +1,12 @@
 import axios from 'axios';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAxjH7hHTj5TbTfT5WUyLFV0Jsc6nQx8_o",
-  authDomain: "nusuk-930f3.firebaseapp.com",
-  projectId: "nusuk-930f3",
-  storageBucket: "nusuk-930f3.firebasestorage.app",
-  messagingSenderId: "982933275772",
-  appId: "1:982933275772:web:b7ec5412c43e63f21f35f9"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 let firebaseApp = null;

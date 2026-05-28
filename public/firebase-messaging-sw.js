@@ -2,12 +2,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-compat.js');
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAxjH7hHTj5TbTfT5WUyLFV0Jsc6nQx8_o",
-    authDomain: "nusuk-930f3.firebaseapp.com",
-    projectId: "nusuk-930f3",
-    storageBucket: "nusuk-930f3.firebasestorage.app",
-    messagingSenderId: "982933275772",
-    appId: "1:982933275772:web:b7ec5412c43e63f21f35f9"
+    apiKey: "AIzaSyDm_Auuyq1McWdd3bYkCWGD27R-8H2vDoQ",
+    authDomain: "how-diploma-app.firebaseapp.com",
+    projectId: "how-diploma-app",
+    storageBucket: "how-diploma-app.firebasestorage.app",
+    messagingSenderId: "260387617106",
+    appId: "1:260387617106:web:12b5dcea1b82c0de68628b"
 };
 
 // Initialize Firebase
