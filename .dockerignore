@@ -1,0 +1,41 @@
+# Context & docs
+context/
+*.md
+
+# Development
+.env
+.env.backup
+.env.example
+.vscode/
+.idea/
+.cursor/
+.gemini/
+.codex/
+.zed/
+.nova/
+.phpactor.json
+.phpunit.result.cache
+.phpunit.cache
+_ide_helper.php
+
+# Node
+node_modules/
+
+# Tests
+tests/
+phpunit.xml
+
+# Git
+.git/
+.gitattributes
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.png
+auth.json
+Homestead.json
+Homestead.yaml

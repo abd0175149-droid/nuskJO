@@ -1,0 +1,237 @@
+<template>
+    <div class="print-wrapper" dir="rtl">
+        <div class="no-print toolbar">
+            <button @click="doPrint" class="print-btn">🖨️ طباعة</button>
+            <a href="/accounting/chart-of-accounts" class="back-btn">← العودة</a>
+        </div>
+
+        <!-- صفحات A4 Landscape -->
+        <div v-for="(page, pi) in pages" :key="pi" class="a4-landscape">
+            <canvas v-if="templateUrl" :ref="el => setCanvas(el, pi)" class="pdf-bg"></canvas>
+            <div v-else class="fallback-bg"></div>
+
+            <div class="overlay">
+                <!-- العناصر الثابتة - الصفحة الأولى فقط -->
+                <template v-if="pi === 0">
+                    <div v-if="!isHidden('title')" class="field" :style="elPos('title')">
+                        <span :style="elFont('title')">كشف حساب</span>
+                    </div>
+                    <div v-if="!isHidden('entity_name')" class="field" :style="elPos('entity_name')">
+                        <span class="label">الحساب:</span>
+                        <span class="value" :style="elFont('entity_name')">{{ account.name }}</span>
+                    </div>
+                    <div v-if="!isHidden('entity_code')" class="field" :style="elPos('entity_code')">
+                        <span class="label">الكود:</span>
+                        <span class="value gold" :style="elFont('entity_code')">{{ account.code }}</span>
+                    </div>
+                    <div v-if="!isHidden('period')" class="field" :style="elPos('period')">
+                        <span class="label">الفترة:</span>
+                        <span class="value" :style="elFont('period')">{{ filters.from }} → {{ filters.to }}</span>
+                    </div>
+                    <div v-if="!isHidden('currency')" class="field" :style="elPos('currency')">
+                        <span class="label">العملة:</span>
+                        <span class="value" :style="elFont('currency')">{{ account.currency || 'JOD' }}</span>
+                    </div>
+                    <div v-if="!isHidden('summary_box')" class="summary-row" :style="elPos('summary_box')">
+                        <div class="sum-card"><p class="sum-label">رصيد افتتاحي</p><p class="sum-val mono">{{ fmt(openingBalance) }}</p></div>
+                        <div class="sum-card debit"><p class="sum-label">مدين</p><p class="sum-val mono red">{{ fmt(totalDebit) }}</p></div>
+                        <div class="sum-card credit"><p class="sum-label">دائن</p><p class="sum-val mono green">{{ fmt(totalCredit) }}</p></div>
+                        <div class="sum-card closing"><p class="sum-label">الرصيد الختامي</p><p class="sum-val mono gold">{{ fmt(closingBal) }}</p></div>
+                    </div>
+                </template>
+
+                <!-- رقم الصفحة في الصفحات اللاحقة -->
+                <div v-if="pi > 0" class="page-num">
+                    <span>كشف حساب: {{ account.name }}</span>
+                    <span class="mono">صفحة {{ pi + 1 }} / {{ pages.length }}</span>
+                </div>
+
+                <!-- جدول الحركات -->
+                <div v-if="!isHidden('data_table')" :style="pi === 0 ? elPos('data_table') : contTablePos">
+                    <table class="print-tbl" :style="{ fontSize: (el('data_table').fontSize||8)+'pt', width: el('data_table').w ? el('data_table').w+'mm':'100%' }">
+                        <thead><tr>
+                            <th style="width:25px">#</th><th style="width:65px">التاريخ</th><th>الوصف</th><th style="width:55px">النوع</th><th style="width:65px">مدين</th><th style="width:65px">دائن</th><th style="width:70px">الرصيد</th>
+                        </tr></thead>
+                        <tbody>
+                            <tr v-for="(e, i) in page.items" :key="i">
+                                <td class="center">{{ page.startIdx + i + 1 }}</td>
+                                <td class="mono center">{{ e.entry_date?.split('T')[0] }}</td>
+                                <td>{{ e.description }}</td>
+                                <td class="center"><span class="ref-tag">{{ refLabel(e.reference_type) }}</span></td>
+                                <td class="mono right" :class="Number(e.debit)>0?'red bold':''">{{ Number(e.debit)>0?fmt(e.debit):'—' }}</td>
+                                <td class="mono right" :class="Number(e.credit)>0?'green bold':''">{{ Number(e.credit)>0?fmt(e.credit):'—' }}</td>
+                                <td class="mono right bold">{{ fmt(runBal(page.startIdx + i)) }}</td>
+                            </tr>
+                            <tr v-if="!page.items?.length"><td colspan="7" class="empty">لا يوجد حركات</td></tr>
+                        </tbody>
+                        <tfoot v-if="page.isLast && entries?.length"><tr class="total-row">
+                            <td colspan="4" class="right bold">المجموع</td>
+                            <td class="mono right red bold">{{ fmt(totalDebit) }}</td>
+                            <td class="mono right green bold">{{ fmt(totalCredit) }}</td>
+                            <td class="mono right bold gold">{{ fmt(closingBal) }}</td>
+                        </tr></tfoot>
+                    </table>
+                </div>
+
+                <!-- التوقيعات (آخر صفحة فقط) -->
+                <template v-if="page.isLast">
+                    <div v-if="!isHidden('signatures')" class="signatures" :style="sigPos(page, pi)">
+                        <div class="sig-box"><div class="sig-label">المحاسب</div><div class="sig-line"></div></div>
+                        <div class="sig-box"><div class="sig-label">المدير المالي</div><div class="sig-line"></div></div>
+                    </div>
+                    <template v-for="(pos, id) in customFields" :key="id">
+                        <div v-if="!pos.hidden" class="field" :style="elPos(id)">
+                            <span :style="elFont(id)" style="white-space: pre-wrap;">{{ replaceVars(pos.text || '') }}</span>
+                        </div>
+                    </template>
+                </template>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, nextTick } from 'vue';
+
+const props = defineProps({ account: Object, entries: Array, openingBalance: Number, filters: Object, templateUrl: String, layout: Object });
+
+const fmt = (v) => Number(v || 0).toLocaleString('en', { minimumFractionDigits: 3 });
+const refLabel = (t) => ({transfer:'حوالة',invoice:'فاتورة',receipt:'سند قبض',expense:'مصروف',manual:'يدوي',reversal:'عكس'}[t]||t);
+
+const defaults = {
+    title: { x: 10, y: 15, fontSize: 14 }, entity_name: { x: 10, y: 28, fontSize: 12 },
+    entity_code: { x: 120, y: 28, fontSize: 10 }, period: { x: 200, y: 28, fontSize: 10 },
+    currency: { x: 200, y: 15, fontSize: 10 }, summary_box: { x: 10, y: 40, fontSize: 9, w: 277 },
+    data_table: { x: 10, y: 58, fontSize: 8, w: 277 }, signatures: { x: 10, y: 180, fontSize: 9, w: 277 },
+};
+
+const el = (id) => props.layout?.elements?.[id] || defaults[id] || { x: 10, y: 10, fontSize: 10 };
+const isHidden = (id) => !!(props.layout?.elements?.[id]?.hidden);
+const elPos = (id) => { const p = el(id); return { position: 'absolute', right: p.x+'mm', top: p.y+'mm', width: p.w ? p.w+'mm':'auto' }; };
+const elFont = (id) => { const p = el(id); return { fontSize: (p.fontSize||10)+'pt', color: p.color||undefined }; };
+
+const rowsPerPage = computed(() => props.layout?.rowsPerPage || 15);
+
+// تقسيم الحركات على صفحات
+const pages = computed(() => {
+    const items = props.entries || [];
+    const rpp = rowsPerPage.value;
+    if (items.length <= rpp) {
+        return [{ items, startIdx: 0, isLast: true }];
+    }
+    const result = [];
+    for (let i = 0; i < items.length; i += rpp) {
+        const chunk = items.slice(i, i + rpp);
+        result.push({ items: chunk, startIdx: i, isLast: i + rpp >= items.length });
+    }
+    return result;
+});
+
+// موقع الجدول في الصفحات اللاحقة
+const contY = computed(() => props.layout?.contTableY || 20);
+const contTablePos = computed(() => {
+    const p = el('data_table');
+    return { position: 'absolute', right: p.x+'mm', top: contY.value+'mm', width: p.w ? p.w+'mm':'100%' };
+});
+
+// موقع التوقيعات (أسفل الجدول ديناميكياً)
+const sigPos = (page, pi) => {
+    const p = el('data_table');
+    const baseY = pi === 0 ? p.y : contY.value;
+    const rowH = 5.5;
+    const headerH = 7;
+    const y = baseY + headerH + (page.items.length * rowH) + 10;
+    const sp = el('signatures');
+    return { position: 'absolute', right: sp.x + 'mm', top: y + 'mm', width: (sp.w || 277) + 'mm' };
+};
+
+const totalDebit = computed(() => (props.entries||[]).reduce((s,e) => s + Number(e.debit||0), 0));
+const totalCredit = computed(() => (props.entries||[]).reduce((s,e) => s + Number(e.credit||0), 0));
+const isDebitNature = computed(() => ['asset','expense'].includes(props.account?.type));
+const runBal = (idx) => {
+    let bal = props.openingBalance || 0;
+    for (let i = 0; i <= idx; i++) {
+        const d = Number(props.entries[i].debit||0), c = Number(props.entries[i].credit||0);
+        bal += isDebitNature.value ? (d - c) : (c - d);
+    }
+    return bal;
+};
+const closingBal = computed(() => props.entries?.length ? runBal(props.entries.length - 1) : props.openingBalance);
+
+const customFields = computed(() => {
+    if (!props.layout?.elements) return {};
+    const r = {}; for (const [id, p] of Object.entries(props.layout.elements)) { if (id.startsWith('custom_')) r[id] = p; } return r;
+});
+const replaceVars = (text) => {
+    const a = props.account;
+    const map = { '{{اسم_الحساب}}': a?.name||'', '{{كود_الحساب}}': a?.code||'', '{{الفترة}}': `${props.filters?.from} → ${props.filters?.to}` };
+    let r = text; for (const [k,v] of Object.entries(map)) r = r.replaceAll(k, v); return r;
+};
+
+// PDF rendering for multiple pages
+const canvasRefs = {};
+const setCanvas = (el, idx) => { if (el) canvasRefs[idx] = el; };
+const renderPdf = async () => {
+    if (!props.templateUrl) return;
+    try {
+        const pdfjsLib = await loadPdfJs();
+        const pdf = await pdfjsLib.getDocument(props.templateUrl).promise;
+        const pdfPage = await pdf.getPage(1);
+        const scale = 2;
+        const viewport = pdfPage.getViewport({ scale });
+        for (const [idx, canvas] of Object.entries(canvasRefs)) {
+            canvas.width = viewport.width; canvas.height = viewport.height;
+            await pdfPage.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        }
+    } catch (e) { console.error('PDF:', e); }
+};
+const loadPdfJs = () => new Promise((resolve, reject) => {
+    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; resolve(window.pdfjsLib); };
+    s.onerror = reject; document.head.appendChild(s);
+});
+onMounted(async () => { await nextTick(); setTimeout(renderPdf, 400); });
+const doPrint = () => window.print();
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+.a4-landscape { width: 297mm; height: 210mm; position: relative; margin: 0 auto; overflow: hidden; background: white; font-family: 'Cairo', sans-serif; page-break-after: always; }
+.a4-landscape:last-child { page-break-after: auto; }
+.pdf-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.fallback-bg { position: absolute; inset: 0; background: white; z-index: 0; }
+.overlay { position: absolute; inset: 0; z-index: 1; direction: rtl; }
+.field { font-family: 'Cairo', sans-serif; }
+.label { color: #8b8680; font-size: 8pt; font-weight: 600; margin-left: 3px; }
+.value { font-weight: 700; color: #1a1715; }
+.value.gold, .gold { color: #96722a; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+.red { color: #dc2626; } .green { color: #16a34a; } .bold { font-weight: 700; }
+.page-num { position: absolute; top: 8mm; right: 10mm; left: 10mm; display: flex; justify-content: space-between; font-size: 8pt; color: #8b8680; border-bottom: 1px solid #e8e4de; padding-bottom: 4px; }
+.summary-row { display: flex; gap: 8px; }
+.sum-card { flex: 1; background: #f9f9f9; padding: 6px 10px; border-radius: 6px; text-align: center; border: 1px solid #eee; }
+.sum-card.debit { background: #fef2f2; border-color: #fecaca; }
+.sum-card.credit { background: #f0fdf4; border-color: #bbf7d0; }
+.sum-card.closing { background: #fffbeb; border-color: #fde68a; }
+.sum-label { font-size: 7pt; color: #999; margin: 0 0 2px; }
+.sum-val { margin: 0; font-weight: 700; font-size: 9pt; }
+.print-tbl { width: 100%; border-collapse: collapse; font-family: 'Cairo', sans-serif; }
+.print-tbl th { background: #2c2417; color: #dbb84d; padding: 4px 6px; text-align: center; font-size: 7.5pt; font-weight: 700; }
+.print-tbl td { padding: 3px 6px; border-bottom: 0.5px solid #e8e4de; font-size: 7.5pt; }
+.print-tbl .center { text-align: center; } .print-tbl .right { text-align: left; direction: ltr; }
+.print-tbl .total-row td { border-top: 2px solid #2c2417; background: #f8f6f3; }
+.print-tbl .empty { text-align: center; color: #999; padding: 16px; }
+.ref-tag { font-size: 6.5pt; padding: 1px 5px; border-radius: 8px; background: #f3f4f6; }
+.signatures { display: flex; justify-content: space-around; }
+.sig-box { text-align: center; width: 25%; }
+.sig-label { font-size: 7.5pt; color: #8b8680; font-weight: 600; margin-bottom: 24px; }
+.sig-line { border-top: 1.5px solid #2c2417; padding-top: 3px; font-size: 6pt; color: #b0a89e; }
+.sig-line::after { content: 'التوقيع والختم'; }
+.toolbar { display: flex; gap: 12px; justify-content: center; padding: 12px; background: #f8f6f3; border-bottom: 1px solid #e0dbd3; }
+.print-btn { padding: 8px 24px; background: linear-gradient(135deg,#2c2417,#4a3c2e); color: #dbb84d; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; font-family: 'Cairo'; }
+.back-btn { padding: 8px 20px; color: #5a5046; text-decoration: none; border: 1.5px solid #d4cec4; border-radius: 10px; font-family: 'Cairo'; }
+@media screen { body { background: #e8e4de; margin: 0; } .a4-landscape { box-shadow: 0 8px 30px rgba(0,0,0,.12); margin: 20px auto; border-radius: 4px; } }
+@media print { .no-print { display: none !important; } body { margin: 0; padding: 0; } .a4-landscape { margin: 0; box-shadow: none; border-radius: 0; } @page { size: A4 landscape; margin: 0; } }
+</style>
