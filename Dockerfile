@@ -41,6 +41,7 @@ RUN apk add --no-cache \
         intl \
         bcmath \
         opcache \
+        pcntl \
     && rm -rf /var/cache/apk/*
 
 # Install Composer
