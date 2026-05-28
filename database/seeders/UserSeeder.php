@@ -14,7 +14,7 @@ class UserSeeder extends Seeder
 
         User::create([
             'name' => 'المدير العام',
-            'email' => 'admin@nusuk.com',
+            'email' => 'admin@nusuk-jo.com',
             'password' => bcrypt('password'),
             'role_id' => $adminRole?->id,
             'locale' => 'ar',

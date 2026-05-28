@@ -31,7 +31,7 @@
                             autofocus
                             dir="ltr"
                             class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
-                            placeholder="admin@nusuk.com"
+                            placeholder="admin@nusuk-jo.com"
                         />
                         <p v-if="form.errors.email" class="mt-1 text-sm text-red-400">{{ form.errors.email }}</p>
                     </div>

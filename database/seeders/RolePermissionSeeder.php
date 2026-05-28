@@ -114,7 +114,7 @@ class RolePermissionSeeder extends Seeder
         $admin->permissions()->syncWithoutDetaching(array_values($allPermissions));
 
         // ضمان ربط حساب المدير العام بدور الأدمن في قاعدة البيانات
-        $adminUser = \App\Models\User::where('email', 'admin@nusuk.com')->orWhere('id', 1)->first();
+        $adminUser = \App\Models\User::where('email', 'admin@nusuk-jo.com')->orWhere('id', 1)->first();
         if ($adminUser) {
             $adminUser->role_id = $admin->id;
             $adminUser->save();
