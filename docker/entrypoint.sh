@@ -1,15 +1,28 @@
 #!/bin/bash
 set -e
 
-echo "🚀 NUSUK — Starting Production Setup..."
+echo "🚀 NUSKJO — Starting Production Setup..."
 
 cd /var/www/html
 
-# Generate app key if not set
-if [ -z "$APP_KEY" ]; then
+# Ensure .env file exists (needed for key:generate and config:cache)
+if [ ! -f .env ]; then
+    if [ -f .env.production ]; then
+        cp .env.production .env
+    else
+        touch .env
+    fi
+fi
+
+# Generate app key if not set or empty
+if [ -z "$APP_KEY" ] || ! grep -q '^APP_KEY=base64:' .env; then
     echo "🔑 Generating application key..."
     php artisan key:generate --force --no-interaction
 fi
+
+# Export APP_KEY from .env file so it overrides the empty env var from docker-compose
+export APP_KEY=$(grep '^APP_KEY=' .env | cut -d'=' -f2-)
+echo "🔑 APP_KEY loaded: ${APP_KEY:0:20}..."
 
 # Ensure SQLite database exists
 if [ ! -f database/database.sqlite ]; then
