@@ -13,8 +13,10 @@ services:
     ports:
       - "4020:4020"
     volumes:
-      # Persist storage (uploads, logs, and sqlite database)
+      # Persist storage (uploads, logs)
       - nuskjo-storage:/var/www/html/storage
+      # Persist SQLite database
+      - nuskjo-database:/var/www/html/database
     environment:
       - APP_NAME=NUSKJO
       - APP_ENV=production
@@ -39,4 +41,6 @@ services:
 
 volumes:
   nuskjo-storage:
+    driver: local
+  nuskjo-database:
     driver: local
