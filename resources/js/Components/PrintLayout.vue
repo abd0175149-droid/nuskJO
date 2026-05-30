@@ -20,7 +20,7 @@
 
 <script setup>
 import { onMounted } from 'vue';
-const companyName = 'شركة صهيب الشاقدلي';
+const companyName = 'شركة نسك للسياحة والسفر';
 const companySubtitle = 'للسياحة والسفر والحج والعمرة';
 const printDate = new Date().toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' });
 onMounted(() => { setTimeout(() => window.print(), 500); });

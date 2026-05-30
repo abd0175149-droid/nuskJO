@@ -21,7 +21,7 @@
             <div class="flex items-center justify-between border-b py-4 px-4"
                  :class="isDark ? 'border-gold-900/30' : 'border-gray-200'">
                 <div class="w-40 overflow-hidden mx-auto">
-                    <img src="/images/logo-company.png" alt="شركة صهيب الشاقدلي" class="w-full object-contain"/>
+                    <img src="/images/logo-company.png" alt="شركة نسك للسياحة والسفر" class="w-full object-contain"/>
                 </div>
                 <button v-if="isMobile" @click="sidebarOpen = false"
                         class="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-gray-100 transition-colors">
@@ -98,7 +98,7 @@
                     </button>
                     <h2 class="text-base sm:text-lg font-bold truncate"
                         :class="isDark ? 'text-gold-400' : 'text-gray-800'">
-                        <slot name="header">{{ $page.props.title || 'شركة صهيب الشاقدلي' }}</slot>
+                        <slot name="header">{{ $page.props.title || 'شركة نسك للسياحة والسفر' }}</slot>
                     </h2>
                 </div>
 
@@ -305,12 +305,6 @@ onMounted(() => {
             });
     }
     
-    // Restore sidebar groups state
-    const savedGroups = localStorage.getItem('nusuk-sidebar-groups');
-    if (savedGroups) {
-        try { openGroups.value = JSON.parse(savedGroups); } catch(e) {}
-    }
-    
     // Restore scroll position after DOM is ready
     nextTick(() => {
         const saved = sessionStorage.getItem('nusuk-sidebar-scroll');
@@ -389,10 +383,28 @@ const menuGroups = [
     ]},
 ];
 
-const openGroups = ref({ '💼 العمليات': true, '📂 عمليات أخرى': true, '👨‍💼 الموارد البشرية': true, '🏛️ المحاسبة': true, '⚙️ الإعدادات': true });
+// تحديد القائمة المفتوحة بناءً على الصفحة النشطة
+const getActiveGroup = () => {
+    const path = page.url?.split('?')[0] || '/';
+    for (const group of menuGroups) {
+        for (const item of group.items) {
+            if (path === item.route || path.startsWith(item.route + '/')) {
+                return group.label;
+            }
+        }
+    }
+    return null;
+};
+
+const activeGroupLabel = getActiveGroup();
+const openGroups = ref(
+    menuGroups.reduce((acc, group) => {
+        acc[group.label] = group.label === activeGroupLabel;
+        return acc;
+    }, {})
+);
 const toggleGroup = (label) => { 
     openGroups.value[label] = !openGroups.value[label]; 
-    localStorage.setItem('nusuk-sidebar-groups', JSON.stringify(openGroups.value));
 };
 </script>
 

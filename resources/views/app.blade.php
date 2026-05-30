@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="description" content="شركة صهيب الشاقدلي - نظام إدارة العمليات المالية والتشغيلية">
+    <meta name="description" content="شركة نسك للسياحة والسفر - نظام إدارة العمليات المالية والتشغيلية">
 
     {{-- منع وميض الثيم: يُطبّق قبل أي رسم --}}
     <script>
@@ -15,7 +15,7 @@
         })();
     </script>
 
-    <title inertia>شركة صهيب الشاقدلي</title>
+    <title inertia>شركة نسك للسياحة والسفر</title>
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json">

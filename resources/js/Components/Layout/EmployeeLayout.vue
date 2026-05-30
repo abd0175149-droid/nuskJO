@@ -23,7 +23,7 @@
             <!-- Center: Logo -->
             <div class="w-1/3 flex justify-center">
                 <div class="w-32 sm:w-40 cursor-pointer" @click="goHome">
-                    <img src="/images/logo-company.png" alt="شركة صهيب الشاقدلي" class="w-full h-12 object-contain"/>
+                    <img src="/images/logo-company.png" alt="شركة نسك للسياحة والسفر" class="w-full h-12 object-contain"/>
                 </div>
             </div>
 
