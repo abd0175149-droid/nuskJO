@@ -11,7 +11,7 @@
                 <!-- Logo -->
                 <div class="text-center mb-8">
                     <div class="w-56 mx-auto mb-4">
-                        <img src="/images/logo-company.png"
+                        <img src="/images/logo-company.png?v=2"
                              alt="شركة نسك للسياحة والسفر"
                              class="w-full object-contain" />
                     </div>
