@@ -360,6 +360,15 @@ const menuGroups = [
         { icon: '👥', label: 'العملاء', route: '/clients', permission: 'clients.view' },
         { icon: '📊', label: 'قائمة الدخل', route: '/accounting/profit-loss', permission: 'reports.view' },
     ]},
+    { label: '👨‍💼 الموارد البشرية', items: [
+        { icon: '👤', label: 'الموظفين', route: '/employees', permission: 'employees.view' },
+        { icon: '⏰', label: 'الحضور والانصراف', route: '/attendance', permission: 'attendance.view' },
+        { icon: '🏖️', label: 'الإجازات', route: '/leaves', permission: 'leaves.view' },
+        { icon: '💵', label: 'السلف', route: '/advances', permission: 'advances.view' },
+        { icon: '⚠️', label: 'الجزاءات', route: '/penalties', permission: 'penalties.view' },
+        { icon: '💰', label: 'الرواتب', route: '/payrolls', permission: 'payroll.view' },
+        { icon: '📊', label: 'تقارير HR', route: '/hr/reports', permission: 'hr_reports.view' },
+    ]},
     { label: '🏛️ المحاسبة', items: [
         { icon: '🌳', label: 'شجرة الحسابات', route: '/accounting/chart-of-accounts', permission: 'reports.view' },
         { icon: '⚖️', label: 'ميزان المراجعة', route: '/accounting/trial-balance', permission: 'reports.view' },
@@ -369,16 +378,18 @@ const menuGroups = [
         { icon: '📅', label: 'الفترات والإقفال', route: '/accounting/periods', permission: 'reports.view' },
     ]},
     { label: '⚙️ الإعدادات', items: [
-        { icon: '👥', label: 'الموظفين', route: '/users', permission: 'settings.view' },
+        { icon: '👥', label: 'المستخدمين', route: '/users', permission: 'settings.view' },
         { icon: '🛡️', label: 'الصلاحيات', route: '/roles', permission: 'settings.view' },
         { icon: '🔧', label: 'الخدمات', route: '/services', permission: 'settings.view' },
         { icon: '📋', label: 'أنواع المخالفات', route: '/violation-types', permission: 'settings.view' },
         { icon: '🏷️', label: 'تصنيفات المصاريف', route: '/expense-categories', permission: 'settings.view' },
+        { icon: '🗓️', label: 'أنواع الإجازات', route: '/leave-types', permission: 'settings.view' },
+        { icon: '📍', label: 'مواقع الحضور', route: '/attendance-locations', permission: 'settings.view' },
         { icon: '⚙️', label: 'إعدادات النظام', route: '/settings', permission: 'settings.view' },
     ]},
 ];
 
-const openGroups = ref({ '💼 العمليات': true, '📂 عمليات أخرى': true, '🏛️ المحاسبة': true, '⚙️ الإعدادات': true });
+const openGroups = ref({ '💼 العمليات': true, '📂 عمليات أخرى': true, '👨‍💼 الموارد البشرية': true, '🏛️ المحاسبة': true, '⚙️ الإعدادات': true });
 const toggleGroup = (label) => { 
     openGroups.value[label] = !openGroups.value[label]; 
     localStorage.setItem('nusuk-sidebar-groups', JSON.stringify(openGroups.value));
