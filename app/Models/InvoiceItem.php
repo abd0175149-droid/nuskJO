@@ -11,14 +11,19 @@ class InvoiceItem extends Model
 
     protected $fillable = [
         'invoice_id', 'agent_id', 'item_type', 'service_id',
-        'description', 'quantity', 'unit_price_sar', 'sell_price_jod',
-        'total_cost_sar', 'total_sell_jod', 'sort_order', 'created_at',
+        'description', 'statement', 'quantity',
+        'unit_price_sar', 'unit_price_jod',
+        'sell_price_jod',
+        'total_cost_sar', 'total_cost_jod', 'total_sell_jod',
+        'sort_order', 'created_at',
     ];
 
     protected $casts = [
         'unit_price_sar' => 'decimal:2',
+        'unit_price_jod' => 'decimal:3',
         'sell_price_jod' => 'decimal:3',
         'total_cost_sar' => 'decimal:2',
+        'total_cost_jod' => 'decimal:3',
         'total_sell_jod' => 'decimal:3',
     ];
 

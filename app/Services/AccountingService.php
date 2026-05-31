@@ -457,12 +457,12 @@ class AccountingService
 
         $rate = $invoice->exchange_rate_snapshot ?? self::getExchangeRate();
 
-        // حساب إجمالي البيع والتكاليف لكل وكيل
+        // حساب إجمالي البيع والتكاليف لكل وكيل (بالدينار مباشرة)
         $totalSellJod = (float) $invoice->total_sell_jod;
         $agentCosts = []; // [agent_id => cost_jod]
 
         foreach ($invoice->items as $item) {
-            $costJod = round($item->total_cost_sar * $rate, 3);
+            $costJod = (float) ($item->total_cost_jod ?: round($item->total_cost_sar * $rate, 3));
             $agentId = $item->agent_id;
             if ($agentId) {
                 $agentCosts[$agentId] = ($agentCosts[$agentId] ?? 0) + $costJod;

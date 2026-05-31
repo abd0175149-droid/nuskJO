@@ -64,32 +64,31 @@ class InvoiceController extends Controller
             'client_id' => 'required|exists:clients,id',
             'client_phone' => 'nullable|string|max:20',
             'trip_date' => 'nullable|date',
+            'sell_price_jod' => 'required|numeric|min:0',
             'discount_jod' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.agent_id' => 'required|exists:agents,id',
             'items.*.description' => 'required|string',
+            'items.*.statement' => 'nullable|string|max:1000',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price_sar' => 'required|numeric|min:0',
-            'items.*.sell_price_jod' => 'required|numeric|min:0',
+            'items.*.unit_price_jod' => 'required|numeric|min:0',
             'items.*.service_id' => 'nullable|integer',
         ]);
 
         DB::transaction(function () use ($validated) {
             $rate = self::EXCHANGE_RATE;
             $discountJod = $validated['discount_jod'] ?? 0;
+            $sellPriceJod = $validated['sell_price_jod'];
 
             // حساب الإجماليات
-            $totalCostSar = 0;
-            $totalSellJod = 0;
-
+            $totalCostJod = 0;
             foreach ($validated['items'] as $item) {
-                $totalCostSar += $item['quantity'] * $item['unit_price_sar'];
-                $totalSellJod += $item['quantity'] * $item['sell_price_jod'];
+                $totalCostJod += $item['quantity'] * $item['unit_price_jod'];
             }
 
-            $totalCostJod = round($totalCostSar * $rate, 3);
-            $profitJod = round($totalSellJod - $totalCostJod - $discountJod, 3);
+            $totalCostSar = round($totalCostJod / $rate, 2); // للتوافق
+            $profitJod = round($sellPriceJod - $totalCostJod - $discountJod, 3);
 
             $invoice = Invoice::create([
                 'invoice_number' => NumberingService::generate('INV'),
@@ -97,16 +96,16 @@ class InvoiceController extends Controller
                 'client_phone' => $validated['client_phone'] ?? null,
                 'trip_date' => $validated['trip_date'] ?? null,
                 'exchange_rate_snapshot' => $rate,
-                'total_cost_sar' => $totalCostSar,
                 'total_cost_jod' => $totalCostJod,
-                'total_sell_jod' => $totalSellJod,
+                'total_cost_sar' => $totalCostSar,
+                'total_sell_jod' => $sellPriceJod,
                 'discount_jod' => $discountJod,
                 'profit_jod' => $profitJod,
                 // legacy fields
                 'subtotal_sar' => $totalCostSar,
                 'discount_sar' => 0,
                 'total_sar' => $totalCostSar,
-                'total_jod' => $totalSellJod,
+                'total_jod' => $sellPriceJod,
                 'services_cost_sar' => $totalCostSar,
                 'profit_sar' => $rate > 0 ? round($profitJod / $rate, 2) : 0,
                 'invoice_date' => now()->toDateString(),
@@ -117,17 +116,22 @@ class InvoiceController extends Controller
 
             // حفظ البنود
             foreach ($validated['items'] as $i => $item) {
+                $costJod = $item['quantity'] * $item['unit_price_jod'];
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'agent_id' => $item['agent_id'],
                     'item_type' => 'service',
                     'service_id' => $item['service_id'] ?? null,
                     'description' => $item['description'],
+                    'statement' => $item['statement'] ?? null,
                     'quantity' => $item['quantity'],
-                    'unit_price_sar' => $item['unit_price_sar'],
-                    'sell_price_jod' => $item['sell_price_jod'],
-                    'total_cost_sar' => $item['quantity'] * $item['unit_price_sar'],
-                    'total_sell_jod' => $item['quantity'] * $item['sell_price_jod'],
+                    'unit_price_jod' => $item['unit_price_jod'],
+                    'total_cost_jod' => $costJod,
+                    // legacy SAR fields
+                    'unit_price_sar' => round($item['unit_price_jod'] / $rate, 2),
+                    'total_cost_sar' => round($costJod / $rate, 2),
+                    'sell_price_jod' => 0,
+                    'total_sell_jod' => 0,
                     'sort_order' => $i + 1,
                 ]);
             }
@@ -154,17 +158,19 @@ class InvoiceController extends Controller
             $invoice->load('items');
             $rate = self::EXCHANGE_RATE;
 
-            // تجميع تكاليف كل وكيل وخصمها
+            // تجميع تكاليف كل وكيل وخصمها (تحويل JOD → SAR)
             $agentCosts = [];
             foreach ($invoice->items as $item) {
                 if ($item->agent_id) {
-                    $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $item->total_cost_sar;
+                    $costJod = (float) ($item->total_cost_jod ?: $item->total_cost_sar * $rate);
+                    $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $costJod;
                 }
             }
 
-            foreach ($agentCosts as $agentId => $costSar) {
+            foreach ($agentCosts as $agentId => $costJod) {
                 $agent = Agent::find($agentId);
-                if ($agent && $costSar > 0) {
+                if ($agent && $costJod > 0) {
+                    $costSar = round($costJod / $rate, 2);
                     BalanceService::debitAgent($agent, $costSar, 'invoice', $invoice->id);
                 }
             }
@@ -210,9 +216,6 @@ class InvoiceController extends Controller
         return back()->with('success', 'تم رفض الفاتورة');
     }
 
-    /**
-     * بدء تعديل فاتورة معتمدة
-     */
     public function startEdit(Invoice $invoice)
     {
         if (!$invoice->isApproved()) {
@@ -221,17 +224,20 @@ class InvoiceController extends Controller
 
         DB::transaction(function () use ($invoice) {
             $invoice->load('items');
+            $rate = self::EXCHANGE_RATE;
 
             // عكس خصم كل وكيل
             $agentCosts = [];
             foreach ($invoice->items as $item) {
                 if ($item->agent_id) {
-                    $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $item->total_cost_sar;
+                    $costJod = (float) ($item->total_cost_jod ?: $item->total_cost_sar * $rate);
+                    $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $costJod;
                 }
             }
-            foreach ($agentCosts as $agentId => $costSar) {
+            foreach ($agentCosts as $agentId => $costJod) {
                 $agent = Agent::find($agentId);
-                if ($agent && $costSar > 0) {
+                if ($agent && $costJod > 0) {
+                    $costSar = round($costJod / $rate, 2);
                     BalanceService::reverseAgentDebit($agent, $costSar, 'invoice', $invoice->id);
                 }
             }
@@ -254,9 +260,6 @@ class InvoiceController extends Controller
         return back()->with('success', "تم فتح الفاتورة {$invoice->invoice_number} للتعديل");
     }
 
-    /**
-     * تحديث فاتورة في حالة التعديل
-     */
     public function update(Request $request, Invoice $invoice)
     {
         if ($invoice->status !== 'editing' && $invoice->status !== 'pending') {
@@ -267,45 +270,44 @@ class InvoiceController extends Controller
             'client_id' => 'required|exists:clients,id',
             'client_phone' => 'nullable|string|max:20',
             'trip_date' => 'nullable|date',
+            'sell_price_jod' => 'required|numeric|min:0',
             'discount_jod' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.agent_id' => 'required|exists:agents,id',
             'items.*.description' => 'required|string',
+            'items.*.statement' => 'nullable|string|max:1000',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price_sar' => 'required|numeric|min:0',
-            'items.*.sell_price_jod' => 'required|numeric|min:0',
+            'items.*.unit_price_jod' => 'required|numeric|min:0',
             'items.*.service_id' => 'nullable|integer',
         ]);
 
         DB::transaction(function () use ($invoice, $validated) {
             $rate = self::EXCHANGE_RATE;
             $discountJod = $validated['discount_jod'] ?? 0;
+            $sellPriceJod = $validated['sell_price_jod'];
 
-            $totalCostSar = 0;
-            $totalSellJod = 0;
-
+            $totalCostJod = 0;
             foreach ($validated['items'] as $item) {
-                $totalCostSar += $item['quantity'] * $item['unit_price_sar'];
-                $totalSellJod += $item['quantity'] * $item['sell_price_jod'];
+                $totalCostJod += $item['quantity'] * $item['unit_price_jod'];
             }
 
-            $totalCostJod = round($totalCostSar * $rate, 3);
-            $profitJod = round($totalSellJod - $totalCostJod - $discountJod, 3);
+            $totalCostSar = round($totalCostJod / $rate, 2);
+            $profitJod = round($sellPriceJod - $totalCostJod - $discountJod, 3);
 
             $invoice->update([
                 'client_id' => $validated['client_id'],
                 'client_phone' => $validated['client_phone'] ?? null,
                 'trip_date' => $validated['trip_date'] ?? null,
                 'exchange_rate_snapshot' => $rate,
-                'total_cost_sar' => $totalCostSar,
                 'total_cost_jod' => $totalCostJod,
-                'total_sell_jod' => $totalSellJod,
+                'total_cost_sar' => $totalCostSar,
+                'total_sell_jod' => $sellPriceJod,
                 'discount_jod' => $discountJod,
                 'profit_jod' => $profitJod,
                 'subtotal_sar' => $totalCostSar,
                 'total_sar' => $totalCostSar,
-                'total_jod' => $totalSellJod,
+                'total_jod' => $sellPriceJod,
                 'services_cost_sar' => $totalCostSar,
                 'profit_sar' => $rate > 0 ? round($profitJod / $rate, 2) : 0,
                 'notes' => $validated['notes'] ?? null,
@@ -314,20 +316,23 @@ class InvoiceController extends Controller
                 'approved_at' => null,
             ]);
 
-            // حذف البنود القديمة وإعادة إنشائها
             $invoice->items()->delete();
             foreach ($validated['items'] as $i => $item) {
+                $costJod = $item['quantity'] * $item['unit_price_jod'];
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'agent_id' => $item['agent_id'],
                     'item_type' => 'service',
                     'service_id' => $item['service_id'] ?? null,
                     'description' => $item['description'],
+                    'statement' => $item['statement'] ?? null,
                     'quantity' => $item['quantity'],
-                    'unit_price_sar' => $item['unit_price_sar'],
-                    'sell_price_jod' => $item['sell_price_jod'],
-                    'total_cost_sar' => $item['quantity'] * $item['unit_price_sar'],
-                    'total_sell_jod' => $item['quantity'] * $item['sell_price_jod'],
+                    'unit_price_jod' => $item['unit_price_jod'],
+                    'total_cost_jod' => $costJod,
+                    'unit_price_sar' => round($item['unit_price_jod'] / $rate, 2),
+                    'total_cost_sar' => round($costJod / $rate, 2),
+                    'sell_price_jod' => 0,
+                    'total_sell_jod' => 0,
                     'sort_order' => $i + 1,
                 ]);
             }

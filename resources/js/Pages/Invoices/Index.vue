@@ -24,7 +24,7 @@
                         <th class="px-4 py-3 text-right font-bold">الرقم</th>
                         <th class="px-4 py-3 text-right font-bold">العميل</th>
                         <th class="px-4 py-3 text-right font-bold hide-mobile">تاريخ الرحلة</th>
-                        <th class="px-4 py-3 text-right font-bold hide-mobile">التكلفة SAR</th>
+                        <th class="px-4 py-3 text-right font-bold">التكلفة JOD</th>
                         <th class="px-4 py-3 text-right font-bold">البيع JOD</th>
                         <th class="px-4 py-3 text-right font-bold hide-mobile">الربح JOD</th>
                         <th class="px-4 py-3 text-right font-bold">الحالة</th>
@@ -38,7 +38,7 @@
                             <td data-label="الرقم" class="px-4 py-3 text-right font-mono text-xs text-gold-700">{{ inv.invoice_number }}</td>
                             <td data-label="العميل" class="px-4 py-3 text-right text-xs font-medium">{{ inv.client?.name||'—' }}</td>
                             <td data-label="الرحلة" class="px-4 py-3 text-right font-mono text-xs text-gray-500 hide-mobile" dir="ltr">{{ inv.trip_date?.split('T')[0] || '—' }}</td>
-                            <td data-label="التكلفة" class="px-4 py-3 text-right font-bold font-mono text-xs hide-mobile" dir="ltr">{{ Number(inv.total_cost_sar||inv.total_sar||0).toLocaleString('en',{minimumFractionDigits:2}) }}</td>
+                            <td data-label="التكلفة" class="px-4 py-3 text-right font-bold font-mono text-xs" dir="ltr">{{ Number(inv.total_cost_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
                             <td data-label="البيع" class="px-4 py-3 text-right font-bold font-mono text-xs text-blue-600" dir="ltr">{{ Number(inv.total_sell_jod||inv.total_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
                             <td data-label="الربح" class="px-4 py-3 text-right font-bold font-mono text-xs hide-mobile" :class="Number(inv.profit_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Number(inv.profit_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
                             <td data-label="الحالة" class="px-4 py-3 text-right"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="{'bg-yellow-100 text-yellow-700':inv.status==='pending','bg-green-100 text-green-700':inv.status==='approved','bg-red-100 text-red-700':inv.status==='rejected','bg-blue-100 text-blue-700':inv.status==='editing'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة',editing:'تحت التعديل'}[inv.status] }}</span></td>
@@ -95,26 +95,22 @@
                         <div v-if="pos.items.length" style="overflow: visible;">
                             <table class="w-full text-xs">
                                 <thead><tr class="bg-gray-50 text-gray-500">
-                                    <th class="px-3 py-2 text-right w-40">الوكيل *</th>
-                                    <th class="px-3 py-2 text-right">الخدمة/الوصف</th>
+                                    <th class="px-3 py-2 text-right w-36">الوكيل *</th>
+                                    <th class="px-3 py-2 text-right">الخدمة</th>
                                     <th class="px-3 py-2 text-right w-16">العدد</th>
-                                    <th class="px-3 py-2 text-right w-24">التكلفة SAR</th>
-                                    <th class="px-3 py-2 text-right w-24">البيع JOD</th>
-                                    <th class="px-3 py-2 text-right w-24">إجمالي SAR</th>
+                                    <th class="px-3 py-2 text-right w-24">التكلفة JOD</th>
+                                    <th class="px-3 py-2 text-right">البيان</th>
                                     <th class="px-3 py-2 text-right w-24">إجمالي JOD</th>
                                     <th class="px-3 py-2 w-10"></th>
                                 </tr></thead>
                                 <tbody>
                                     <tr v-for="(item, idx) in pos.items" :key="idx" class="border-t border-gray-100">
                                         <td class="px-3 py-2"><SearchableSelect v-model="item.agent_id" :options="agentOptions" placeholder="الوكيل" search-placeholder="ابحث..." :drop-up="idx > 2" /></td>
-                                        <td class="px-3 py-2">
-                                            <SearchableSelect v-model="item.service_id" :options="serviceOptions" placeholder="اختر خدمة" search-placeholder="ابحث..." :drop-up="idx > 2" @change="onServiceSelect(idx)" />
-                                        </td>
+                                        <td class="px-3 py-2"><SearchableSelect v-model="item.service_id" :options="serviceOptions" placeholder="اختر خدمة" search-placeholder="ابحث..." :drop-up="idx > 2" @change="onServiceSelect(idx)" /></td>
                                         <td class="px-3 py-2"><input v-model.number="item.quantity" type="number" min="1" class="w-full px-2 py-1 rounded border border-gray-200 text-xs text-center" dir="ltr"/></td>
-                                        <td class="px-3 py-2"><input v-model.number="item.unit_price_sar" type="number" step="0.01" class="w-full px-2 py-1 rounded border border-gray-200 text-xs font-mono" dir="ltr"/></td>
-                                        <td class="px-3 py-2"><input v-model.number="item.sell_price_jod" type="number" step="0.001" class="w-full px-2 py-1 rounded border border-gray-200 text-xs font-mono" dir="ltr"/></td>
-                                        <td class="px-3 py-2 font-mono font-bold text-gray-700" dir="ltr">{{ (item.quantity * item.unit_price_sar).toFixed(2) }}</td>
-                                        <td class="px-3 py-2 font-mono font-bold text-blue-600" dir="ltr">{{ (item.quantity * item.sell_price_jod).toFixed(3) }}</td>
+                                        <td class="px-3 py-2"><input v-model.number="item.unit_price_jod" type="number" step="0.001" class="w-full px-2 py-1 rounded border border-gray-200 text-xs font-mono" dir="ltr"/></td>
+                                        <td class="px-3 py-2"><input v-model="item.statement" type="text" placeholder="بيان..." class="w-full px-2 py-1 rounded border border-gray-200 text-xs"/></td>
+                                        <td class="px-3 py-2 font-mono font-bold text-blue-600" dir="ltr">{{ (item.quantity * item.unit_price_jod).toFixed(3) }}</td>
                                         <td class="px-3 py-2"><button @click="pos.items.splice(idx,1)" class="text-red-400 hover:text-red-600">✕</button></td>
                                     </tr>
                                 </tbody>
@@ -123,24 +119,20 @@
                         <p v-else class="text-center text-gray-400 text-xs py-6">أضف بنوداً للفاتورة</p>
                     </div>
 
-                    <!-- Totals -->
+                    <!-- Sell Price + Totals -->
                     <div v-if="pos.items.length" class="bg-gray-50 rounded-xl p-4">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div><span class="text-gray-500">إجمالي التكاليف SAR:</span><p class="font-bold font-mono" dir="ltr">{{ totalCostSar.toFixed(2) }} SAR</p></div>
-                            <div><span class="text-gray-500">إجمالي التكاليف JOD:</span><p class="font-bold font-mono text-gray-600" dir="ltr">{{ totalCostJod.toFixed(3) }} JOD</p></div>
-                            <div><span class="text-gray-500">إجمالي البيع JOD:</span><p class="font-bold font-mono text-lg text-blue-600" dir="ltr">{{ totalSellJod.toFixed(3) }} JOD</p></div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                             <div>
-                                <label class="text-gray-500">الخصم JOD:</label>
-                                <input v-model.number="pos.discount_jod" type="number" step="0.001" min="0" dir="ltr" class="w-full px-2 py-1 rounded border border-gray-200 text-xs font-mono mt-1"/>
+                                <span class="text-gray-500">إجمالي التكلفة:</span>
+                                <p class="font-bold font-mono text-lg" dir="ltr">{{ totalCostJod.toFixed(3) }} JOD</p>
                             </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 text-sm mt-3 pt-3 border-t border-gray-200">
-                            <div><span class="text-gray-400 text-xs">الربح JOD:</span><p class="font-mono text-lg font-bold" :class="profitJod >= 0 ? 'text-green-600' : 'text-red-600'" dir="ltr">{{ profitJod.toFixed(3) }} JOD {{ profitJod >= 0 ? '✅' : '⚠️' }}</p></div>
                             <div>
-                                <span class="text-gray-400 text-xs">تفاصيل الوكلاء:</span>
-                                <div v-for="(cost, agentId) in agentCostBreakdown" :key="agentId" class="text-xs font-mono text-gray-600" dir="ltr">
-                                    {{ agentName(agentId) }}: {{ cost.toFixed(2) }} SAR
-                                </div>
+                                <label class="text-gray-500">سعر البيع (JOD) *</label>
+                                <input v-model.number="pos.sell_price_jod" type="number" step="0.001" min="0" dir="ltr" class="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm font-mono font-bold text-blue-600 mt-1 focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">الربح:</span>
+                                <p class="font-mono text-lg font-bold" :class="profitJod >= 0 ? 'text-green-600' : 'text-red-600'" dir="ltr">{{ profitJod.toFixed(3) }} JOD {{ profitJod >= 0 ? '✅' : '⚠️' }}</p>
                             </div>
                         </div>
                     </div>
@@ -165,7 +157,7 @@
                     <div><span class="text-gray-400">العميل:</span><p>{{ viewTarget.client?.name }}</p></div>
                     <div><span class="text-gray-400">هاتف:</span><p dir="ltr">{{ viewTarget.client_phone || '—' }}</p></div>
                     <div><span class="text-gray-400">تاريخ الرحلة:</span><p>{{ viewTarget.trip_date?.split('T')[0] || '—' }}</p></div>
-                    <div><span class="text-gray-400">التكلفة SAR:</span><p class="font-bold font-mono" dir="ltr">{{ Number(viewTarget.total_cost_sar||viewTarget.total_sar||0).toFixed(2) }}</p></div>
+                    <div><span class="text-gray-400">التكلفة JOD:</span><p class="font-bold font-mono" dir="ltr">{{ Number(viewTarget.total_cost_jod||0).toFixed(3) }}</p></div>
                     <div><span class="text-gray-400">البيع JOD:</span><p class="font-bold font-mono text-blue-600" dir="ltr">{{ Number(viewTarget.total_sell_jod||viewTarget.total_jod||0).toFixed(3) }}</p></div>
                     <div><span class="text-gray-400">الربح JOD:</span><p class="font-bold font-mono" :class="Number(viewTarget.profit_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Number(viewTarget.profit_jod||0).toFixed(3) }}</p></div>
                 </div>
@@ -173,8 +165,8 @@
                 <div v-if="viewDetails?.items?.length" class="mt-4">
                     <h4 class="text-sm font-bold mb-2">البنود:</h4>
                     <table class="w-full text-xs">
-                        <thead><tr class="bg-gray-50"><th class="px-3 py-2 text-right">الوكيل</th><th class="px-3 py-2 text-right">الوصف</th><th class="px-3 py-2 text-right">العدد</th><th class="px-3 py-2 text-right">التكلفة SAR</th><th class="px-3 py-2 text-right">البيع JOD</th></tr></thead>
-                        <tbody><tr v-for="item in viewDetails.items" :key="item.id" class="border-t"><td class="px-3 py-2">{{ item.agent?.name || '—' }}</td><td class="px-3 py-2">{{ item.description }}</td><td class="px-3 py-2 text-center">{{ item.quantity }}</td><td class="px-3 py-2 font-mono" dir="ltr">{{ Number(item.total_cost_sar).toFixed(2) }}</td><td class="px-3 py-2 font-mono text-blue-600" dir="ltr">{{ Number(item.total_sell_jod).toFixed(3) }}</td></tr></tbody>
+                        <thead><tr class="bg-gray-50"><th class="px-3 py-2 text-right">الوكيل</th><th class="px-3 py-2 text-right">الوصف</th><th class="px-3 py-2 text-right">العدد</th><th class="px-3 py-2 text-right">التكلفة JOD</th><th class="px-3 py-2 text-right">البيان</th></tr></thead>
+                        <tbody><tr v-for="item in viewDetails.items" :key="item.id" class="border-t"><td class="px-3 py-2">{{ item.agent?.name || '—' }}</td><td class="px-3 py-2">{{ item.description }}</td><td class="px-3 py-2 text-center">{{ item.quantity }}</td><td class="px-3 py-2 font-mono" dir="ltr">{{ Number(item.total_cost_jod||0).toFixed(3) }}</td><td class="px-3 py-2 text-gray-500">{{ item.statement || '—' }}</td></tr></tbody>
                     </table>
                 </div>
                 <div v-if="viewTarget.notes" class="text-sm mt-4"><span class="text-gray-400">ملاحظات:</span><p>{{ viewTarget.notes }}</p></div>
@@ -216,12 +208,11 @@ const deleteTarget = ref(null);
 const submitting = ref(false);
 let t = null;
 
-const RATE = 0.19;
-
 const pos = reactive({
     client_id: '',
     client_phone: '',
     trip_date: '',
+    sell_price_jod: 0,
     discount_jod: 0,
     notes: '',
     items: [],
@@ -233,36 +224,16 @@ const clientOptions = computed(() => props.clients.map(c => ({ value: c.id, labe
 const serviceOptions = computed(() => props.services.map(s => ({ value: s.id, label: s.name })));
 
 // حسابات الإجماليات
-const totalCostSar = computed(() => pos.items.reduce((s, i) => s + (i.quantity||0) * (i.unit_price_sar||0), 0));
-const totalCostJod = computed(() => Math.round(totalCostSar.value * RATE * 1000) / 1000);
-const totalSellJod = computed(() => pos.items.reduce((s, i) => s + (i.quantity||0) * (i.sell_price_jod||0), 0));
-const profitJod = computed(() => totalSellJod.value - totalCostJod.value - (pos.discount_jod || 0));
-
-// تجميع تكاليف كل وكيل
-const agentCostBreakdown = computed(() => {
-    const costs = {};
-    pos.items.forEach(i => {
-        if (i.agent_id) {
-            costs[i.agent_id] = (costs[i.agent_id] || 0) + (i.quantity||0) * (i.unit_price_sar||0);
-        }
-    });
-    return costs;
-});
+const totalCostJod = computed(() => pos.items.reduce((s, i) => s + (i.quantity||0) * (i.unit_price_jod||0), 0));
+const profitJod = computed(() => (pos.sell_price_jod || 0) - totalCostJod.value);
 
 const allItemsHaveAgent = computed(() => pos.items.every(i => i.agent_id));
-
-const agentName = (id) => {
-    const a = props.agents.find(x => x.id == id);
-    return a ? a.name : '—';
-};
 
 const editingInvoiceId = ref(null);
 
 const onClientSelect = () => {
     const client = props.clients.find(c => c.id == pos.client_id);
-    if (client && client.phone) {
-        pos.client_phone = client.phone;
-    }
+    if (client && client.phone) pos.client_phone = client.phone;
 };
 
 const openPOS = async (inv = null) => {
@@ -274,21 +245,23 @@ const openPOS = async (inv = null) => {
             pos.client_id = data.client_id;
             pos.client_phone = data.client_phone || '';
             pos.trip_date = data.trip_date?.split('T')[0] || '';
+            pos.sell_price_jod = parseFloat(data.total_sell_jod) || 0;
             pos.discount_jod = parseFloat(data.discount_jod) || 0;
             pos.notes = data.notes || '';
             pos.items = (data.items || []).map(item => ({
                 agent_id: item.agent_id || '',
                 service_id: item.service_id || '',
                 description: item.description,
+                statement: item.statement || '',
                 quantity: item.quantity,
-                unit_price_sar: parseFloat(item.unit_price_sar),
-                sell_price_jod: parseFloat(item.sell_price_jod),
+                unit_price_jod: parseFloat(item.unit_price_jod) || parseFloat(item.unit_price_sar) * 0.19 || 0,
             }));
         } catch (e) {
             console.error('Error loading invoice:', e);
             pos.client_id = inv.client_id || '';
             pos.client_phone = '';
             pos.trip_date = '';
+            pos.sell_price_jod = 0;
             pos.discount_jod = 0;
             pos.notes = '';
             pos.items = [];
@@ -298,6 +271,7 @@ const openPOS = async (inv = null) => {
         pos.client_id = '';
         pos.client_phone = '';
         pos.trip_date = '';
+        pos.sell_price_jod = 0;
         pos.discount_jod = 0;
         pos.notes = '';
         pos.items = [];
@@ -306,15 +280,14 @@ const openPOS = async (inv = null) => {
 };
 
 const addItem = () => {
-    pos.items.push({ agent_id: '', service_id: '', description: '', quantity: 1, unit_price_sar: 0, sell_price_jod: 0 });
+    pos.items.push({ agent_id: '', service_id: '', description: '', statement: '', quantity: 1, unit_price_jod: 0 });
 };
 
 const onServiceSelect = (idx) => {
     const s = props.services.find(x => x.id == pos.items[idx].service_id);
     if (s) {
         pos.items[idx].description = s.name;
-        pos.items[idx].unit_price_sar = parseFloat(s.default_price_sar) || 0;
-        pos.items[idx].sell_price_jod = parseFloat(s.default_price_jod) || 0;
+        pos.items[idx].unit_price_jod = parseFloat(s.default_price_jod) || 0;
     }
 };
 
@@ -324,14 +297,15 @@ const submitPOS = () => {
         client_id: pos.client_id,
         client_phone: pos.client_phone || null,
         trip_date: pos.trip_date || null,
+        sell_price_jod: pos.sell_price_jod || 0,
         discount_jod: pos.discount_jod || 0,
         notes: pos.notes,
         items: pos.items.map(i => ({
             agent_id: i.agent_id,
             description: i.description,
+            statement: i.statement || null,
             quantity: i.quantity,
-            unit_price_sar: i.unit_price_sar,
-            sell_price_jod: i.sell_price_jod,
+            unit_price_jod: i.unit_price_jod,
             service_id: i.service_id || null,
         })),
     };
