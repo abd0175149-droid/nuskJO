@@ -80,7 +80,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">سعر الصرف (SAR→JOD)</label>
-                            <input v-model="pos.exchange_rate" type="number" step="0.000001" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                            <input :value="0.19" type="number" readonly dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-mono bg-gray-100 text-gray-500 cursor-not-allowed"/>
                         </div>
                     </div>
 
@@ -207,7 +207,7 @@ let t = null;
 const pos = reactive({
     agent_id: '',
     client_id: '',
-    exchange_rate: props.exchangeRate || 0.19,
+    exchange_rate: 0.19, // سعر صرف ثابت
     discount: 0,
     notes: '',
     items: [],
@@ -239,7 +239,7 @@ const openPOS = async (inv = null) => {
             const data = await res.json();
             pos.agent_id = data.agent_id;
             pos.client_id = data.client_id;
-            pos.exchange_rate = parseFloat(data.exchange_rate_snapshot) || props.exchangeRate || 0.19;
+            pos.exchange_rate = 0.19; // سعر صرف ثابت
             pos.discount = parseFloat(data.discount_sar) || 0;
             pos.notes = data.notes || '';
             pos.items = (data.items || []).map(item => ({
@@ -257,7 +257,7 @@ const openPOS = async (inv = null) => {
             console.error('Error loading invoice:', e);
             pos.agent_id = inv.agent_id || '';
             pos.client_id = inv.client_id || '';
-            pos.exchange_rate = props.exchangeRate || 0.19;
+            pos.exchange_rate = 0.19; // سعر صرف ثابت
             pos.discount = 0;
             pos.notes = '';
             pos.items = [];
@@ -267,7 +267,7 @@ const openPOS = async (inv = null) => {
         editingInvoiceId.value = null;
         pos.agent_id = '';
         pos.client_id = '';
-        pos.exchange_rate = props.exchangeRate || 0.19;
+        pos.exchange_rate = 0.19; // سعر صرف ثابت
         pos.discount = 0;
         pos.notes = '';
         pos.items = [];

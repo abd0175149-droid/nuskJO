@@ -13,8 +13,6 @@ class SettingController extends Controller
     public function index()
     {
         $settings = Setting::all()->groupBy('group_name');
-        $todayRate = ExchangeRate::where('rate_date', today()->toDateString())->first();
-        $lastRate = ExchangeRate::orderByDesc('rate_date')->first();
 
         // قوالب الطباعة
         $financialTemplate = Setting::where('key', 'print_template_financial')->first();
@@ -23,9 +21,6 @@ class SettingController extends Controller
         return Inertia::render('Settings/Index', [
             'title' => 'الإعدادات',
             'settings' => $settings,
-            'todayRate' => $todayRate,
-            'lastRate' => $lastRate,
-            'recentRates' => ExchangeRate::orderByDesc('rate_date')->limit(10)->get(),
             'templates' => [
                 'financial' => $financialTemplate?->value ? Storage::url($financialTemplate->value) : null,
                 'accounting' => $accountingTemplate?->value ? Storage::url($accountingTemplate->value) : null,
