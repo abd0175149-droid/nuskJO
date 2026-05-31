@@ -49,37 +49,25 @@ class DisbursementController extends Controller
     {
         $validated = $request->validate([
             'account_id' => 'required|exists:accounts,id',
-            'agent_id' => 'nullable|exists:agents,id',
             'amount' => 'required|numeric|min:0.001',
             'currency' => 'required|in:SAR,JOD',
             'payment_method' => 'required|in:cash,bank,check',
-            'reference_number' => 'nullable|string|max:100',
-            'disbursement_date' => 'nullable|date',
             'description' => 'required|string|max:500',
             'notes' => 'nullable|string|max:1000',
         ]);
 
         $validated['disbursement_number'] = NumberingService::generate('DIS');
-        $validated['disbursement_date'] = $validated['disbursement_date'] ?? now()->toDateString();
+        $validated['disbursement_date'] = now()->toDateString();
+        $validated['reference_number'] = 'DIS-' . now()->format('ymd') . '-' . rand(100, 999);
         $validated['exchange_rate'] = self::EXCHANGE_RATE;
         $validated['status'] = 'pending';
         $validated['created_by'] = auth()->id();
-
-        // حساب المبلغ بالريال إذا كان وكيل
-        if ($validated['agent_id']) {
-            if ($validated['currency'] === 'JOD') {
-                $validated['amount_sar'] = round($validated['amount'] / self::EXCHANGE_RATE, 2);
-            } else {
-                $validated['amount_sar'] = $validated['amount'];
-            }
-        }
 
         $disbursement = Disbursement::create($validated);
 
         try { \App\Services\NotificationService::send(null, '📤 سند صرف جديد', "تم إنشاء سند صرف {$disbursement->disbursement_number} بانتظار الاعتماد", ['type' => 'disbursement', 'icon' => '📤', 'action_url' => '/disbursements']); } catch (\Exception $e) {}
 
-        return redirect()->route('disbursements.index')
-            ->with('success', "تم إنشاء سند الصرف {$disbursement->disbursement_number} بنجاح");
+        return redirect()->back()->with('success', "تم إنشاء سند الصرف {$disbursement->disbursement_number} بنجاح");
     }
 
     public function approve(Disbursement $disbursement)
@@ -90,17 +78,6 @@ class DisbursementController extends Controller
 
         DB::transaction(function () use ($disbursement) {
             $disbursement->approve(auth()->user());
-
-            // إذا كان صرف لوكيل: تحديث رصيد الوكيل
-            if ($disbursement->agent_id) {
-                $amountSar = $disbursement->amount_sar ?? round($disbursement->amount / self::EXCHANGE_RATE, 2);
-                BalanceService::creditAgent(
-                    $disbursement->agent,
-                    $amountSar,
-                    'disbursement',
-                    $disbursement->id
-                );
-            }
 
             AuditLog::log('approve', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
 
@@ -138,17 +115,6 @@ class DisbursementController extends Controller
         }
 
         DB::transaction(function () use ($disbursement) {
-            // عكس رصيد الوكيل
-            if ($disbursement->agent_id) {
-                $amountSar = $disbursement->amount_sar ?? round($disbursement->amount / self::EXCHANGE_RATE, 2);
-                BalanceService::reverseAgentCredit(
-                    $disbursement->agent,
-                    $amountSar,
-                    'disbursement',
-                    $disbursement->id
-                );
-            }
-
             // عكس القيد المحاسبي
             $entry = \App\Models\JournalEntry::where('reference_type', 'disbursement')
                 ->where('reference_id', $disbursement->id)
@@ -170,23 +136,14 @@ class DisbursementController extends Controller
 
         $validated = $request->validate([
             'account_id' => 'required|exists:accounts,id',
-            'agent_id' => 'nullable|exists:agents,id',
             'amount' => 'required|numeric|min:0.001',
             'currency' => 'required|in:SAR,JOD',
             'payment_method' => 'required|in:cash,bank,check',
-            'reference_number' => 'nullable|string|max:100',
             'description' => 'required|string|max:500',
             'notes' => 'nullable|string|max:1000',
         ]);
 
         $validated['exchange_rate'] = self::EXCHANGE_RATE;
-        if ($validated['agent_id']) {
-            $validated['amount_sar'] = $validated['currency'] === 'JOD'
-                ? round($validated['amount'] / self::EXCHANGE_RATE, 2)
-                : $validated['amount'];
-        } else {
-            $validated['amount_sar'] = null;
-        }
 
         $disbursement->update($validated);
         $disbursement->resubmitForApproval();

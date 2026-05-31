@@ -9,7 +9,7 @@
                 <button v-if="can('disbursements.create')" @click="openForm()" class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md w-full sm:w-auto">+ سند صرف</button>
             </div>
             <div class="rounded-xl border overflow-hidden shadow-sm bg-white"><table class="w-full text-sm responsive-table">
-                <thead><tr class="bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400"><th class="px-5 py-3 text-right font-bold">الرقم</th><th class="px-5 py-3 text-right font-bold">الحساب</th><th class="px-5 py-3 text-right font-bold hide-mobile">الوكيل</th><th class="px-5 py-3 text-right font-bold">المبلغ</th><th class="px-5 py-3 text-right font-bold hide-mobile">الدفع</th><th class="px-5 py-3 text-right font-bold">الحالة</th><th class="px-5 py-3 text-right font-bold hide-mobile">بواسطة</th><th class="px-5 py-3 text-center font-bold">إجراءات</th></tr></thead>
+                <thead><tr class="bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400"><th class="px-5 py-3 text-right font-bold">الرقم</th><th class="px-5 py-3 text-right font-bold">الحساب</th><th class="px-5 py-3 text-right font-bold">المبلغ</th><th class="px-5 py-3 text-right font-bold hide-mobile">الدفع</th><th class="px-5 py-3 text-right font-bold hide-mobile">التاريخ</th><th class="px-5 py-3 text-right font-bold">الحالة</th><th class="px-5 py-3 text-right font-bold hide-mobile">بواسطة</th><th class="px-5 py-3 text-center font-bold">إجراءات</th></tr></thead>
                 <tbody><tr v-for="d in disbursements.data" :key="d.id" :data-row-id="d.id"
                             class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30"
                             :class="{ 'row-glow': isHighlighted(d.id) }">
@@ -18,9 +18,9 @@
                         <div class="text-xs font-medium">{{ d.account?.name }}</div>
                         <div class="text-[10px] text-gray-400 font-mono">{{ d.account?.code }}</div>
                     </td>
-                    <td data-label="الوكيل" class="px-5 py-3 text-right text-xs hide-mobile">{{ d.agent?.name || '—' }}</td>
                     <td data-label="المبلغ" class="px-5 py-3 text-right font-bold font-mono text-xs" :class="d.currency==='SAR'?'text-blue-600':'text-green-600'" dir="ltr">{{ Number(d.amount).toLocaleString('en',{minimumFractionDigits:d.currency==='SAR'?2:3}) }} {{ d.currency }}</td>
                     <td data-label="الدفع" class="px-5 py-3 text-right text-xs hide-mobile">{{ {cash:'نقدي',bank:'بنكي',check:'شيك'}[d.payment_method] }}</td>
+                    <td data-label="التاريخ" class="px-5 py-3 text-right font-mono text-xs text-gray-500 hide-mobile" dir="ltr">{{ d.disbursement_date }}</td>
                     <td data-label="الحالة" class="px-5 py-3 text-right"><span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="{pending:'bg-yellow-100 text-yellow-700',approved:'bg-green-100 text-green-700',rejected:'bg-red-100 text-red-700',editing:'bg-blue-100 text-blue-700'}[d.status]">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة',editing:'تحت التعديل'}[d.status] }}</span></td>
                     <td data-label="بواسطة" class="px-5 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ d.creator?.name || '—' }}</div><div v-if="d.status !== 'pending'" class="mt-0.5">{{ d.status === 'approved' ? '✅' : '❌' }} {{ d.approver?.name || '—' }}</div></td>
                     <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
@@ -40,19 +40,11 @@
                 <form @submit.prevent="form.post('/disbursements',{onSuccess:()=>{showForm=false; form.reset(); form.clearErrors();},preserveState:false})" class="space-y-4">
                     <div class="grid grid-cols-2 gap-4 mobile-form-grid">
                         <div class="col-span-2"><label class="block text-sm font-medium mb-1">الحساب (من شجرة الحسابات) *</label><SearchableSelect v-model="form.account_id" :options="accountOptions" placeholder="اختر الحساب" search-placeholder="ابحث بالاسم أو الكود..." /></div>
-                        <div><label class="block text-sm font-medium mb-1">الوكيل (اختياري)</label><SearchableSelect v-model="form.agent_id" :options="agentOptions" placeholder="بدون وكيل" search-placeholder="ابحث عن وكيل..." :clearable="true" /></div>
                         <div><label class="block text-sm font-medium mb-1">المبلغ *</label><input v-model="form.amount" type="number" :step="form.currency==='SAR'?'0.01':'0.001'" required dir="ltr" class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
                         <div><label class="block text-sm font-medium mb-1">العملة *</label><select v-model="form.currency" class="w-full px-4 py-2.5 rounded-xl border text-sm"><option value="JOD">دينار أردني JOD</option><option value="SAR">ريال سعودي SAR</option></select></div>
                         <div><label class="block text-sm font-medium mb-1">طريقة الدفع *</label><select v-model="form.payment_method" class="w-full px-4 py-2.5 rounded-xl border text-sm"><option value="cash">نقدي</option><option value="bank">بنكي</option><option value="check">شيك</option></select></div>
-                        <div><label class="block text-sm font-medium mb-1">رقم مرجعي</label><input v-model="form.reference_number" type="text" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
-                        <div><label class="block text-sm font-medium mb-1">تاريخ الصرف</label><input v-model="form.disbursement_date" type="date" class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
                     </div>
-                    <div class="col-span-2"><label class="block text-sm font-medium mb-1">الوصف *</label><input v-model="form.description" type="text" required class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
-                    <!-- ملخص مالي -->
-                    <div v-if="form.agent_id && form.amount" class="p-3 bg-blue-50 rounded-xl text-xs space-y-1">
-                        <div class="flex justify-between"><span class="text-gray-600">المبلغ بالريال (SAR):</span><span class="font-bold text-blue-700 font-mono" dir="ltr">{{ sarAmount.toLocaleString('en',{minimumFractionDigits:2}) }}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-600">المبلغ بالدينار (JOD):</span><span class="font-bold text-green-700 font-mono" dir="ltr">{{ jodAmount.toLocaleString('en',{minimumFractionDigits:3}) }}</span></div>
-                    </div>
+                    <div><label class="block text-sm font-medium mb-1">الوصف *</label><input v-model="form.description" type="text" required class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
                     <div><label class="block text-sm font-medium mb-1">ملاحظات</label><textarea v-model="form.notes" rows="2" class="w-full px-4 py-2.5 rounded-xl border text-sm resize-none"></textarea></div>
                     <div class="flex gap-3"><button type="submit" :disabled="form.processing" class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 disabled:opacity-50">✅ إنشاء</button><button type="button" @click="showForm=false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button></div>
                 </form>
@@ -66,7 +58,6 @@
                 <form @submit.prevent="submitEdit" class="space-y-4">
                     <div class="grid grid-cols-2 gap-4 mobile-form-grid">
                         <div class="col-span-2"><label class="block text-sm font-medium mb-1">الحساب *</label><SearchableSelect v-model="editForm.account_id" :options="accountOptions" placeholder="اختر الحساب" search-placeholder="ابحث..." /></div>
-                        <div><label class="block text-sm font-medium mb-1">الوكيل</label><SearchableSelect v-model="editForm.agent_id" :options="agentOptions" placeholder="بدون وكيل" :clearable="true" /></div>
                         <div><label class="block text-sm font-medium mb-1">المبلغ *</label><input v-model="editForm.amount" type="number" step="0.001" required dir="ltr" class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
                         <div><label class="block text-sm font-medium mb-1">العملة *</label><select v-model="editForm.currency" class="w-full px-4 py-2.5 rounded-xl border text-sm"><option value="JOD">JOD</option><option value="SAR">SAR</option></select></div>
                         <div><label class="block text-sm font-medium mb-1">طريقة الدفع *</label><select v-model="editForm.payment_method" class="w-full px-4 py-2.5 rounded-xl border text-sm"><option value="cash">نقدي</option><option value="bank">بنكي</option><option value="check">شيك</option></select></div>
@@ -89,27 +80,16 @@ import { usePermissions } from '@/composables/usePermissions';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
 const { isHighlighted } = useHighlight();
-const props = defineProps({ disbursements: Object, filters: Object, agents: Array, accounts: Array });
+const props = defineProps({ disbursements: Object, filters: Object, accounts: Array });
 
 const accountOptions = computed(() => props.accounts.map(a => ({
     value: a.id,
     label: `${a.code} — ${a.name} (${({asset:'أصول',liability:'التزامات',equity:'ملكية',revenue:'إيرادات',expense:'مصروفات'})[a.type] || a.type})`,
 })));
-const agentOptions = computed(() => props.agents.map(a => ({ value: a.id, label: a.name })));
-
-const RATE = 0.19;
-const sarAmount = computed(() => {
-    const amt = Number(form.amount) || 0;
-    return form.currency === 'SAR' ? amt : Math.round(amt / RATE * 100) / 100;
-});
-const jodAmount = computed(() => {
-    const amt = Number(form.amount) || 0;
-    return form.currency === 'JOD' ? amt : Math.round(amt * RATE * 1000) / 1000;
-});
 
 const search = ref(''); const showForm = ref(false); const showEditForm = ref(false); let t=null;
-const form = useForm({ account_id:'', agent_id:'', amount:'', currency:'JOD', payment_method:'cash', reference_number:'', disbursement_date:'', description:'', notes:'' });
-const editForm = useForm({ _editId: null, disbursement_number:'', account_id:'', agent_id:'', amount:'', currency:'JOD', payment_method:'cash', reference_number:'', description:'', notes:'' });
+const form = useForm({ account_id:'', amount:'', currency:'JOD', payment_method:'cash', description:'', notes:'' });
+const editForm = useForm({ _editId: null, disbursement_number:'', account_id:'', amount:'', currency:'JOD', payment_method:'cash', description:'', notes:'' });
 
 const openForm=()=>{form.reset();showForm.value=true;};
 
@@ -123,11 +103,9 @@ const openEditForm = (d) => {
     editForm._editId = d.id;
     editForm.disbursement_number = d.disbursement_number;
     editForm.account_id = d.account_id;
-    editForm.agent_id = d.agent_id || '';
     editForm.amount = d.amount;
     editForm.currency = d.currency;
     editForm.payment_method = d.payment_method;
-    editForm.reference_number = d.reference_number || '';
     editForm.description = d.description;
     editForm.notes = d.notes || '';
     showEditForm.value = true;
