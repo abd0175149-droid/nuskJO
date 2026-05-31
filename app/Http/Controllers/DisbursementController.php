@@ -65,7 +65,7 @@ class DisbursementController extends Controller
 
         $disbursement = Disbursement::create($validated);
 
-        try { \App\Services\NotificationService::send(null, '📤 سند صرف جديد', "تم إنشاء سند صرف {$disbursement->disbursement_number} بانتظار الاعتماد", ['type' => 'disbursement', 'icon' => '📤', 'action_url' => '/disbursements']); } catch (\Exception $e) {}
+        // إشعار (يتم عند الاعتماد)
 
         return redirect()->back()->with('success', "تم إنشاء سند الصرف {$disbursement->disbursement_number} بنجاح");
     }
@@ -86,7 +86,7 @@ class DisbursementController extends Controller
 
             // إشعار
             if ($disbursement->created_by && $disbursement->created_by !== auth()->id()) {
-                try { \App\Services\NotificationService::send($disbursement->created_by, '✅ تم اعتماد سند الصرف', "تم اعتماد سند الصرف {$disbursement->disbursement_number}", ['type' => 'disbursement', 'icon' => '✅', 'action_url' => '/disbursements']); } catch (\Exception $e) {}
+                try { \App\Services\NotificationService::send($disbursement->created_by, '✅ تم اعتماد سند الصرف', "تم اعتماد سند الصرف {$disbursement->disbursement_number}", ['type' => 'disbursement', 'icon' => '✅', 'action_url' => '/disbursements']); } catch (\Throwable $e) {}
             }
         });
 
@@ -103,7 +103,7 @@ class DisbursementController extends Controller
         $disbursement->reject(auth()->user(), $request->rejection_reason);
         AuditLog::log('reject', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
 
-        try { \App\Services\NotificationService::operationRejected($disbursement, 'سند صرف', $disbursement->disbursement_number); } catch (\Exception $e) {}
+        try { \App\Services\NotificationService::operationRejected($disbursement, 'سند صرف', $disbursement->disbursement_number); } catch (\Throwable $e) {}
 
         return back()->with('success', "تم رفض سند الصرف {$disbursement->disbursement_number}");
     }

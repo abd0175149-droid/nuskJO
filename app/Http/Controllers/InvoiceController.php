@@ -136,7 +136,7 @@ class InvoiceController extends Controller
                 ]);
             }
 
-            try { \App\Services\NotificationService::invoiceCreated($invoice); } catch (\Exception $e) {}
+            // إشعار (يتم عند الاعتماد)
         });
 
         return redirect()->back()->with('success', 'تم إنشاء الفاتورة بنجاح');
@@ -191,7 +191,7 @@ class InvoiceController extends Controller
 
             // إشعار
             if ($invoice->created_by && $invoice->created_by !== auth()->id()) {
-                try { \App\Services\NotificationService::send($invoice->created_by, '✅ تم اعتماد فاتورتك', "تم اعتماد الفاتورة {$invoice->invoice_number}", ['type' => 'invoice', 'icon' => '✅', 'action_url' => '/invoices']); } catch (\Exception $e) {}
+                try { \App\Services\NotificationService::send($invoice->created_by, '✅ تم اعتماد فاتورتك', "تم اعتماد الفاتورة {$invoice->invoice_number}", ['type' => 'invoice', 'icon' => '✅', 'action_url' => '/invoices']); } catch (\Throwable $e) {}
             }
         });
 
@@ -211,7 +211,7 @@ class InvoiceController extends Controller
             'approved_at' => now(),
         ]);
 
-        try { \App\Services\NotificationService::operationRejected($invoice, 'فاتورة', $invoice->invoice_number); } catch (\Exception $e) {}
+        try { \App\Services\NotificationService::operationRejected($invoice, 'فاتورة', $invoice->invoice_number); } catch (\Throwable $e) {}
 
         return back()->with('success', 'تم رفض الفاتورة');
     }
