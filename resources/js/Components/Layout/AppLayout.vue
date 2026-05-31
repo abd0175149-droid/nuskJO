@@ -345,13 +345,13 @@ const menuGroups = [
     { label: '💼 العمليات', items: [
         { icon: '🧾', label: 'المطالبات', route: '/invoices', permission: 'invoices.view' },
         { icon: '📄', label: 'سندات القبض', route: '/receipts', permission: 'receipts.view' },
-        { icon: '💱', label: 'الحوالات', route: '/transfers', permission: 'transfers.view' },
-        { icon: '💰', label: 'المصاريف', route: '/expenses', permission: 'expenses.view' },
-        { icon: '⚠️', label: 'المخالفات', route: '/violations', permission: 'violations.view' },
+        { icon: '📤', label: 'سندات الصرف', route: '/disbursements', permission: 'disbursements.view' },
     ]},
     { label: '📂 عمليات أخرى', items: [
         { icon: '🏢', label: 'الوكلاء', route: '/agents', permission: 'agents.view' },
         { icon: '👥', label: 'العملاء', route: '/clients', permission: 'clients.view' },
+        { icon: '🔧', label: 'الخدمات', route: '/services', permission: 'settings.view' },
+        { icon: '🏷️', label: 'تصنيفات المصاريف', route: '/expense-categories', permission: 'settings.view' },
         { icon: '📊', label: 'قائمة الدخل', route: '/accounting/profit-loss', permission: 'reports.view' },
     ]},
     { label: '👨‍💼 الموارد البشرية', items: [
@@ -374,9 +374,6 @@ const menuGroups = [
     { label: '⚙️ الإعدادات', items: [
         { icon: '👥', label: 'المستخدمين', route: '/users', permission: 'settings.view' },
         { icon: '🛡️', label: 'الصلاحيات', route: '/roles', permission: 'settings.view' },
-        { icon: '🔧', label: 'الخدمات', route: '/services', permission: 'settings.view' },
-        { icon: '📋', label: 'أنواع المخالفات', route: '/violation-types', permission: 'settings.view' },
-        { icon: '🏷️', label: 'تصنيفات المصاريف', route: '/expense-categories', permission: 'settings.view' },
         { icon: '🗓️', label: 'أنواع الإجازات', route: '/leave-types', permission: 'settings.view' },
         { icon: '📍', label: 'مواقع الحضور', route: '/attendance-locations', permission: 'settings.view' },
         { icon: '⚙️', label: 'إعدادات النظام', route: '/settings', permission: 'settings.view' },

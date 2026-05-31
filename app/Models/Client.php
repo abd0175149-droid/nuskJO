@@ -38,22 +38,7 @@ class Client extends Model
         return $this->hasMany(Receipt::class);
     }
 
-    public function violations(): HasMany
-    {
-        return $this->hasMany(Violation::class);
-    }
 
-    public function invoices(): HasMany
-    {
-        return $this->hasMany(Invoice::class);
-    }
-
-    public function unbilledViolations(): HasMany
-    {
-        return $this->violations()
-            ->where('status', 'approved')
-            ->where('billing_status', 'unbilled');
-    }
 
     public function account(): BelongsTo
     {

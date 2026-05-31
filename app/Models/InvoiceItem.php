@@ -10,7 +10,7 @@ class InvoiceItem extends Model
     const UPDATED_AT = null;
 
     protected $fillable = [
-        'invoice_id', 'item_type', 'service_id', 'violation_id',
+        'invoice_id', 'agent_id', 'item_type', 'service_id',
         'description', 'quantity', 'unit_price_sar', 'sell_price_jod',
         'total_cost_sar', 'total_sell_jod', 'sort_order', 'created_at',
     ];
@@ -23,9 +23,6 @@ class InvoiceItem extends Model
     ];
 
     public function invoice(): BelongsTo { return $this->belongsTo(Invoice::class); }
+    public function agent(): BelongsTo { return $this->belongsTo(Agent::class); }
     public function service(): BelongsTo { return $this->belongsTo(Service::class); }
-    public function violation(): BelongsTo { return $this->belongsTo(Violation::class); }
-
-    public function isService(): bool { return $this->item_type === 'service'; }
-    public function isViolation(): bool { return $this->item_type === 'violation'; }
 }

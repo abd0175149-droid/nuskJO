@@ -9,7 +9,6 @@ use App\Models\Receipt;
 use App\Models\Expense;
 use App\Models\Transfer;
 use App\Models\Invoice;
-use App\Models\Violation;
 use App\Models\Advance;
 use App\Models\Payroll;
 use Illuminate\Support\Facades\DB;
@@ -437,48 +436,70 @@ class AccountingService
     }
 
     /**
-     * قيد اعتماد فاتورة
-     * مدين: حساب العميل (total_jod)
-     * دائن: حساب الوكيل (تكلفة الخدمات محولة بالدينار)
+     * قيد اعتماد فاتورة (وكلاء متعددون)
+     * مدين: حساب العميل (إجمالي البيع)
+     * دائن: حساب كل وكيل (تكلفته محولة بالدينار)
      * دائن: إيرادات الخدمات (الربح)
      */
     public static function recordInvoice(Invoice $invoice): JournalEntry
     {
+        $invoice->load('items');
+
         $clientAccount = $invoice->client->account_id
             ? Account::find($invoice->client->account_id)
             : self::account('1200');
-        $agentAccount = $invoice->agent->account_id
-            ? Account::find($invoice->agent->account_id)
-            : self::account('2110');
-        // إيرادات الخدمات - نسجل على الحساب الورقي (الفرعي) وليس الأب
+
+        // إيرادات الخدمات
         $revenueParent = self::account('4001');
         $revenueAccount = Account::where('parent_id', $revenueParent->id)
             ->whereDoesntHave('children')
             ->first() ?? $revenueParent;
 
-        $lines = [
-            [
-                'account_id' => $clientAccount->id,
-                'debit' => $invoice->total_jod,
-                'credit' => 0,
-                'description' => "فاتورة {$invoice->invoice_number} على {$invoice->client->name}",
-            ],
-        ];
-
-        // تكلفة الخدمات بالدينار (محولة من الريال)
         $rate = $invoice->exchange_rate_snapshot ?? self::getExchangeRate();
-        $servicesCostJod = round($invoice->services_cost_sar * $rate, 3);
-        if ($servicesCostJod > 0) {
-            $lines[] = [
-                'account_id' => $agentAccount->id,
-                'debit' => 0,
-                'credit' => $servicesCostJod,
-                'description' => "تكلفة خدمات من {$invoice->agent->name}",
-            ];
+
+        // حساب إجمالي البيع والتكاليف لكل وكيل
+        $totalSellJod = (float) $invoice->total_sell_jod;
+        $agentCosts = []; // [agent_id => cost_jod]
+
+        foreach ($invoice->items as $item) {
+            $costJod = round($item->total_cost_sar * $rate, 3);
+            $agentId = $item->agent_id;
+            if ($agentId) {
+                $agentCosts[$agentId] = ($agentCosts[$agentId] ?? 0) + $costJod;
+            }
         }
 
-        // الربح
-        $profit = round($invoice->total_jod - $servicesCostJod, 3);
+        $totalCostJod = array_sum($agentCosts);
+        $profit = round($totalSellJod - $totalCostJod, 3);
+
+        $lines = [];
+
+        // مدين: حساب العميل ← إجمالي البيع
+        $lines[] = [
+            'account_id' => $clientAccount->id,
+            'debit' => $totalSellJod,
+            'credit' => 0,
+            'description' => "فاتورة {$invoice->invoice_number} على {$invoice->client->name}",
+        ];
+
+        // دائن: كل وكيل بحصته
+        foreach ($agentCosts as $agentId => $costJod) {
+            $agent = \App\Models\Agent::find($agentId);
+            $agentAccount = ($agent && $agent->account_id)
+                ? Account::find($agent->account_id)
+                : self::account('2110');
+
+            if ($costJod > 0) {
+                $lines[] = [
+                    'account_id' => $agentAccount->id,
+                    'debit' => 0,
+                    'credit' => $costJod,
+                    'description' => "تكلفة خدمات من {$agent->name}",
+                ];
+            }
+        }
+
+        // دائن: الربح → إيرادات
         if ($profit > 0) {
             $lines[] = [
                 'account_id' => $revenueAccount->id,
@@ -488,7 +509,7 @@ class AccountingService
             ];
         }
 
-        // ضمان التوازن (فرق التقريب يُضاف للإيرادات)
+        // ضمان التوازن (فرق التقريب)
         $totalDebit = array_sum(array_column($lines, 'debit'));
         $totalCredit = array_sum(array_column($lines, 'credit'));
         $diff = round($totalDebit - $totalCredit, 3);
@@ -497,7 +518,6 @@ class AccountingService
             if ($diff > 0) {
                 $lines[$lastIdx]['credit'] = round($lines[$lastIdx]['credit'] + $diff, 3);
             } else {
-                // التأكد من وجود سطر ثانٍ قبل التعديل
                 $adjustIdx = isset($lines[1]) ? 1 : $lastIdx;
                 $lines[$adjustIdx]['credit'] = round($lines[$adjustIdx]['credit'] - $diff, 3);
             }
@@ -596,22 +616,43 @@ class AccountingService
     }
 
     /**
-     * عكس قيد مصاريف المخالفة عند فوترتها
-     * (المخالفة أصبحت جزء من الفاتورة وليست مصروف مستقل)
+     * قيد اعتماد سند صرف
+     * مدين: الحساب المختار من شجرة الحسابات (حسب طبيعته)
+     * دائن: الصندوق/البنك/الشيك
      */
-    public static function reverseViolationExpense(Violation $violation): ?JournalEntry
+    public static function recordDisbursement(\App\Models\Disbursement $disbursement): JournalEntry
     {
-        // البحث عن القيد الأصلي للمخالفة
-        $originalEntry = JournalEntry::where('reference_type', 'violation')
-            ->where('reference_id', $violation->id)
-            ->where('is_reversed', false)
-            ->first();
+        $paymentAccount = self::paymentAccount($disbursement->payment_method);
+        $targetAccount = Account::findOrFail($disbursement->account_id);
 
-        if (!$originalEntry) {
-            return null; // لا يوجد قيد لعكسه
-        }
+        // تحويل المبلغ للدينار إذا كانت العملة ريال
+        $amountJod = ($disbursement->currency === 'SAR')
+            ? self::sarToJod($disbursement->amount)
+            : (float) $disbursement->amount;
 
-        return self::reverseEntry($originalEntry, "إلغاء مصروف المخالفة بسبب فوترتها في فاتورة");
+        // تحديد طبيعة الحساب: الأصول والمصروفات طبيعتهم مدينة
+        // الالتزامات وحقوق الملكية والإيرادات طبيعتهم دائنة
+        // سند الصرف دائماً: مدين الحساب المستهدف / دائن مصدر الدفع
+        return self::createEntry(
+            "سند صرف {$disbursement->disbursement_number} — {$disbursement->description}",
+            'disbursement',
+            $disbursement->id,
+            [
+                [
+                    'account_id' => $targetAccount->id,
+                    'debit' => $amountJod,
+                    'credit' => 0,
+                    'description' => $disbursement->description,
+                ],
+                [
+                    'account_id' => $paymentAccount->id,
+                    'debit' => 0,
+                    'credit' => $amountJod,
+                    'description' => "دفع سند صرف {$disbursement->disbursement_number}",
+                ],
+            ],
+            $disbursement->disbursement_date?->toDateString()
+        );
     }
 
     /**

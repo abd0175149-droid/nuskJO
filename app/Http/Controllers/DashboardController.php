@@ -4,12 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Agent;
 use App\Models\Client;
-use App\Models\Transfer;
+use App\Models\Disbursement;
 use App\Models\Receipt;
-use App\Models\Expense;
 use App\Models\Invoice;
-use App\Models\Violation;
-use App\Models\ExchangeRate;
 use App\Models\Employee;
 use App\Models\Attendance;
 use App\Models\Payroll;
@@ -45,28 +42,26 @@ class DashboardController extends Controller
 
         // عمليات معلقة
         $pending = [
-            'transfers' => Transfer::where('status', 'pending')->count(),
+            'disbursements' => Disbursement::where('status', 'pending')->count(),
             'receipts' => Receipt::where('status', 'pending')->count(),
-            'violations' => Violation::where('status', 'pending')->count(),
             'invoices' => Invoice::where('status', 'pending')->count(),
-            'expenses' => Expense::where('status', 'pending')->count(),
         ];
         $pending['total'] = array_sum($pending);
 
         // آخر العمليات
-        $recentTransfers = Transfer::with('agent:id,name,code')
-            ->orderByDesc('created_at')->limit(5)->get(['id','transfer_number','agent_id','amount_sar','status','created_at']);
+        $recentTransfers = Disbursement::with('agent:id,name,code')
+            ->orderByDesc('created_at')->limit(5)->get(['id','disbursement_number','agent_id','amount','currency','status','created_at']);
         $recentInvoices = Invoice::with('client:id,name,code')
-            ->orderByDesc('created_at')->limit(5)->get(['id','invoice_number','client_id','total_jod','status','created_at']);
+            ->orderByDesc('created_at')->limit(5)->get(['id','invoice_number','client_id','total_sell_jod','status','created_at']);
 
         // إحصائيات الشهر الحالي
         $monthStart = now()->startOfMonth()->toDateString();
         $monthly = [
-            'transfers_sar' => Transfer::where('status', 'approved')->where('transfer_date', '>=', $monthStart)->sum('amount_sar'),
+            'transfers_sar' => Disbursement::where('status', 'approved')->where('disbursement_date', '>=', $monthStart)->sum('amount'),
             'receipts_jod' => Receipt::where('status', 'approved')->where('receipt_date', '>=', $monthStart)->sum('amount_jod'),
-            'invoices_jod' => Invoice::where('status', 'approved')->where('invoice_date', '>=', $monthStart)->sum('total_jod'),
-            'expenses_total' => Expense::where('status', 'approved')->where('expense_date', '>=', $monthStart)->sum('amount'),
-            'violations_sar' => Violation::where('status', 'approved')->where('violation_date', '>=', $monthStart)->sum('cost_sar'),
+            'invoices_jod' => Invoice::where('status', 'approved')->where('invoice_date', '>=', $monthStart)->sum('total_sell_jod'),
+            'expenses_total' => 0,
+            'violations_sar' => 0,
         ];
 
         // رسم بياني - آخر 6 أشهر
@@ -78,9 +73,9 @@ class DashboardController extends Controller
             $label = $date->format('Y-m');
             $chartData[] = [
                 'month' => $label,
-                'invoices' => (float) Invoice::where('status', 'approved')->whereBetween('invoice_date', [$start, $end])->sum('total_jod'),
-                'expenses' => (float) Expense::where('status', 'approved')->whereBetween('expense_date', [$start, $end])->sum('amount'),
-                'transfers' => (float) Transfer::where('status', 'approved')->whereBetween('transfer_date', [$start, $end])->sum('amount_sar'),
+                'invoices' => (float) Invoice::where('status', 'approved')->whereBetween('invoice_date', [$start, $end])->sum('total_sell_jod'),
+                'expenses' => (float) Disbursement::where('status', 'approved')->whereBetween('disbursement_date', [$start, $end])->sum('amount'),
+                'transfers' => 0,
             ];
         }
 

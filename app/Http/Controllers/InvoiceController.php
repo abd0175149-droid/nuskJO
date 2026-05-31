@@ -7,11 +7,9 @@ use App\Models\InvoiceItem;
 use App\Models\Agent;
 use App\Models\Client;
 use App\Models\Service;
-use App\Models\Violation;
-use App\Models\ExchangeRate;
 use App\Models\AuditLog;
-use App\Services\BalanceService;
 use App\Services\NumberingService;
+use App\Services\BalanceService;
 use App\Services\AccountingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,12 +17,13 @@ use Inertia\Inertia;
 
 class InvoiceController extends Controller
 {
+    private const EXCHANGE_RATE = 0.19;
+
     public function index(Request $request)
     {
         $invoices = Invoice::query()
-            ->with(['agent:id,name,code', 'client:id,name,code', 'creator:id,name', 'approver:id,name'])
+            ->with(['client:id,name,code', 'creator:id,name', 'approver:id,name'])
             ->when($request->search, fn ($q, $s) => $q->where('invoice_number', 'like', "%{$s}%")
-                ->orWhereHas('agent', fn ($q2) => $q2->where('name', 'like', "%{$s}%"))
                 ->orWhereHas('client', fn ($q2) => $q2->where('name', 'like', "%{$s}%")))
             ->when($request->status, fn ($q, $s) => $q->where('status', $s))
             ->orderByDesc('created_at')
@@ -32,19 +31,19 @@ class InvoiceController extends Controller
             ->withQueryString();
 
         return Inertia::render('Invoices/Index', [
-            'title' => 'الفواتير',
+            'title' => 'المطالبات',
             'invoices' => $invoices,
             'filters' => $request->only(['search', 'status']),
             'agents' => Agent::where('is_active', true)->select('id', 'name', 'code', 'currency')->get(),
-            'clients' => Client::where('is_active', true)->select('id', 'name', 'code')->get(),
+            'clients' => Client::where('is_active', true)->select('id', 'name', 'code', 'phone')->get(),
             'services' => Service::where('is_active', true)->get(),
-            'exchangeRate' => 0.19, // سعر صرف ثابت SAR→JOD
+            'exchangeRate' => self::EXCHANGE_RATE,
         ]);
     }
 
     public function print(Invoice $invoice)
     {
-        $invoice->load(['agent:id,name,code', 'client:id,name,code', 'items']);
+        $invoice->load(['client:id,name,code', 'items.agent:id,name,code', 'creator:id,name', 'approver:id,name']);
 
         $template = \App\Models\Setting::where('key', 'print_template_financial')->first();
         $templateUrl = $template?->value ? \Storage::url($template->value) : null;
@@ -62,65 +61,54 @@ class InvoiceController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'agent_id' => 'required|exists:agents,id',
             'client_id' => 'required|exists:clients,id',
-            'exchange_rate_snapshot' => 'required|numeric|min:0.001',
-            'discount_sar' => 'nullable|numeric|min:0',
+            'client_phone' => 'nullable|string|max:20',
+            'trip_date' => 'nullable|date',
+            'discount_jod' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
-            'items.*.item_type' => 'required|in:service,violation',
+            'items.*.agent_id' => 'required|exists:agents,id',
             'items.*.description' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price_sar' => 'required|numeric|min:0',
             'items.*.sell_price_jod' => 'required|numeric|min:0',
             'items.*.service_id' => 'nullable|integer',
-            'items.*.violation_id' => 'nullable|integer',
         ]);
 
         DB::transaction(function () use ($validated) {
-            $rate = $validated['exchange_rate_snapshot'];
-            $discount = $validated['discount_sar'] ?? 0;
+            $rate = self::EXCHANGE_RATE;
+            $discountJod = $validated['discount_jod'] ?? 0;
 
             // حساب الإجماليات
-            $servicesCost = 0;
-            $violationsCost = 0;
-            $subtotal = 0;
+            $totalCostSar = 0;
             $totalSellJod = 0;
 
             foreach ($validated['items'] as $item) {
-                $lineTotal = $item['quantity'] * $item['unit_price_sar'];
-                $lineSellJod = $item['quantity'] * $item['sell_price_jod'];
-                $subtotal += $lineTotal;
-                $totalSellJod += $lineSellJod;
-                if ($item['item_type'] === 'service') {
-                    $servicesCost += $lineTotal;
-                } else {
-                    $violationsCost += $lineTotal;
-                }
+                $totalCostSar += $item['quantity'] * $item['unit_price_sar'];
+                $totalSellJod += $item['quantity'] * $item['sell_price_jod'];
             }
 
-            $totalSar = $subtotal - $discount;
-            // إجمالي العميل بالدينار (مجموع سعر البيع × الكمية)
-            $totalJod = round($totalSellJod, 3);
-            // تكلفة الوكيل بالدينار
-            $agentCostJod = round($totalSar * $rate, 3);
-            // الربح = إجمالي العميل - تكلفة الوكيل
-            $profitJod = round($totalJod - $agentCostJod, 3);
-            $profitSar = $rate > 0 ? round($profitJod / $rate, 2) : 0;
+            $totalCostJod = round($totalCostSar * $rate, 3);
+            $profitJod = round($totalSellJod - $totalCostJod - $discountJod, 3);
 
             $invoice = Invoice::create([
                 'invoice_number' => NumberingService::generate('INV'),
-                'agent_id' => $validated['agent_id'],
                 'client_id' => $validated['client_id'],
+                'client_phone' => $validated['client_phone'] ?? null,
+                'trip_date' => $validated['trip_date'] ?? null,
                 'exchange_rate_snapshot' => $rate,
-                'subtotal_sar' => $subtotal,
-                'discount_sar' => $discount,
-                'total_sar' => $totalSar,
-                'total_jod' => $totalJod,
-                'services_cost_sar' => $servicesCost,
-                'violations_cost_sar' => $violationsCost,
-                'profit_sar' => $profitSar,
+                'total_cost_sar' => $totalCostSar,
+                'total_cost_jod' => $totalCostJod,
+                'total_sell_jod' => $totalSellJod,
+                'discount_jod' => $discountJod,
                 'profit_jod' => $profitJod,
+                // legacy fields
+                'subtotal_sar' => $totalCostSar,
+                'discount_sar' => 0,
+                'total_sar' => $totalCostSar,
+                'total_jod' => $totalSellJod,
+                'services_cost_sar' => $totalCostSar,
+                'profit_sar' => $rate > 0 ? round($profitJod / $rate, 2) : 0,
                 'invoice_date' => now()->toDateString(),
                 'status' => 'pending',
                 'notes' => $validated['notes'] ?? null,
@@ -131,9 +119,9 @@ class InvoiceController extends Controller
             foreach ($validated['items'] as $i => $item) {
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
-                    'item_type' => $item['item_type'],
+                    'agent_id' => $item['agent_id'],
+                    'item_type' => 'service',
                     'service_id' => $item['service_id'] ?? null,
-                    'violation_id' => $item['violation_id'] ?? null,
                     'description' => $item['description'],
                     'quantity' => $item['quantity'],
                     'unit_price_sar' => $item['unit_price_sar'],
@@ -163,49 +151,39 @@ class InvoiceController extends Controller
                 'approved_at' => now(),
             ]);
 
-            // خصم تكلفة الخدمات من الوكيل (المخالفات خُصمت سابقاً)
-            if ($invoice->services_cost_sar > 0) {
-                BalanceService::debitAgent(
-                    $invoice->agent,
-                    $invoice->services_cost_sar,
-                    'invoice',
-                    $invoice->id
-                );
+            $invoice->load('items');
+            $rate = self::EXCHANGE_RATE;
+
+            // تجميع تكاليف كل وكيل وخصمها
+            $agentCosts = [];
+            foreach ($invoice->items as $item) {
+                if ($item->agent_id) {
+                    $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $item->total_cost_sar;
+                }
             }
 
-            // إضافة الإجمالي على العميل بالدينار
-            if ($invoice->total_jod > 0) {
+            foreach ($agentCosts as $agentId => $costSar) {
+                $agent = Agent::find($agentId);
+                if ($agent && $costSar > 0) {
+                    BalanceService::debitAgent($agent, $costSar, 'invoice', $invoice->id);
+                }
+            }
+
+            // إضافة إجمالي البيع على ذمة العميل
+            $sellJod = (float) $invoice->total_sell_jod;
+            if ($sellJod > 0) {
                 BalanceService::debitClient(
                     $invoice->client,
-                    $invoice->total_jod,
+                    $sellJod,
                     'invoice',
                     $invoice->id
                 );
-            }
-
-            // إغلاق المخالفات المضمنة + عكس قيودها المحاسبية
-            $violationIds = $invoice->violationItems()->pluck('violation_id')->filter();
-            if ($violationIds->count()) {
-                Violation::whereIn('id', $violationIds)->update([
-                    'billing_status' => 'billed',
-                    'invoice_id' => $invoice->id,
-                ]);
-
-                // عكس قيود مصاريف المخالفات (لم تعد مصاريف مستقلة)
-                $violations = Violation::whereIn('id', $violationIds)->get();
-                foreach ($violations as $violation) {
-                    try {
-                        AccountingService::reverseViolationExpense($violation);
-                    } catch (\Exception $e) {
-                        \Log::error("Reverse Violation Expense #{$violation->id}: " . $e->getMessage());
-                    }
-                }
             }
 
             // قيد محاسبي
             try { AccountingService::recordInvoice($invoice); } catch (\Exception $e) { \Log::error('Accounting Invoice: ' . $e->getMessage()); }
 
-            // إشعار لصانع الفاتورة أنه تم الاعتماد
+            // إشعار
             if ($invoice->created_by && $invoice->created_by !== auth()->id()) {
                 try { \App\Services\NotificationService::send($invoice->created_by, '✅ تم اعتماد فاتورتك', "تم اعتماد الفاتورة {$invoice->invoice_number}", ['type' => 'invoice', 'icon' => '✅', 'action_url' => '/invoices']); } catch (\Exception $e) {}
             }
@@ -242,23 +220,32 @@ class InvoiceController extends Controller
         }
 
         DB::transaction(function () use ($invoice) {
-            // عكس خصم الوكيل (الخدمات)
-            if ($invoice->services_cost_sar > 0) {
-                BalanceService::reverseAgentDebit($invoice->agent, $invoice->services_cost_sar, 'invoice', $invoice->id);
+            $invoice->load('items');
+
+            // عكس خصم كل وكيل
+            $agentCosts = [];
+            foreach ($invoice->items as $item) {
+                if ($item->agent_id) {
+                    $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $item->total_cost_sar;
+                }
             }
+            foreach ($agentCosts as $agentId => $costSar) {
+                $agent = Agent::find($agentId);
+                if ($agent && $costSar > 0) {
+                    BalanceService::reverseAgentDebit($agent, $costSar, 'invoice', $invoice->id);
+                }
+            }
+
             // عكس ذمة العميل
-            if ($invoice->total_jod > 0) {
-                BalanceService::reverseClientDebit($invoice->client, $invoice->total_jod, 'invoice', $invoice->id);
+            $sellJod = (float) $invoice->total_sell_jod;
+            if ($sellJod > 0) {
+                BalanceService::reverseClientDebit($invoice->client, $sellJod, 'invoice', $invoice->id);
             }
+
             // عكس القيد المحاسبي
             $entry = \App\Models\JournalEntry::where('reference_type', 'invoice')
                 ->where('reference_id', $invoice->id)->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل الفاتورة'); } catch (\Exception $e) {}
-
-            // إعادة المخالفات لحالة unbilled
-            Violation::where('invoice_id', $invoice->id)->update([
-                'billing_status' => 'unbilled', 'invoice_id' => null
-            ]);
 
             $invoice->startEditing(auth()->user());
             AuditLog::log('start_edit', 'invoice', $invoice->id, $invoice->invoice_number);
@@ -277,61 +264,50 @@ class InvoiceController extends Controller
         }
 
         $validated = $request->validate([
-            'agent_id' => 'required|exists:agents,id',
             'client_id' => 'required|exists:clients,id',
-            'exchange_rate_snapshot' => 'required|numeric|min:0.001',
-            'discount_sar' => 'nullable|numeric|min:0',
+            'client_phone' => 'nullable|string|max:20',
+            'trip_date' => 'nullable|date',
+            'discount_jod' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
-            'items.*.item_type' => 'required|in:service,violation',
+            'items.*.agent_id' => 'required|exists:agents,id',
             'items.*.description' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price_sar' => 'required|numeric|min:0',
             'items.*.sell_price_jod' => 'required|numeric|min:0',
             'items.*.service_id' => 'nullable|integer',
-            'items.*.violation_id' => 'nullable|integer',
         ]);
 
         DB::transaction(function () use ($invoice, $validated) {
-            $rate = $validated['exchange_rate_snapshot'];
-            $discount = $validated['discount_sar'] ?? 0;
+            $rate = self::EXCHANGE_RATE;
+            $discountJod = $validated['discount_jod'] ?? 0;
 
-            $servicesCost = 0;
-            $violationsCost = 0;
-            $subtotal = 0;
+            $totalCostSar = 0;
             $totalSellJod = 0;
 
             foreach ($validated['items'] as $item) {
-                $lineTotal = $item['quantity'] * $item['unit_price_sar'];
-                $lineSellJod = $item['quantity'] * $item['sell_price_jod'];
-                $subtotal += $lineTotal;
-                $totalSellJod += $lineSellJod;
-                if ($item['item_type'] === 'service') {
-                    $servicesCost += $lineTotal;
-                } else {
-                    $violationsCost += $lineTotal;
-                }
+                $totalCostSar += $item['quantity'] * $item['unit_price_sar'];
+                $totalSellJod += $item['quantity'] * $item['sell_price_jod'];
             }
 
-            $totalSar = $subtotal - $discount;
-            $totalJod = round($totalSellJod, 3);
-            $agentCostJod = round($totalSar * $rate, 3);
-            $profitJod = round($totalJod - $agentCostJod, 3);
-            $profitSar = $rate > 0 ? round($profitJod / $rate, 2) : 0;
+            $totalCostJod = round($totalCostSar * $rate, 3);
+            $profitJod = round($totalSellJod - $totalCostJod - $discountJod, 3);
 
-            // تحديث بيانات الفاتورة
             $invoice->update([
-                'agent_id' => $validated['agent_id'],
                 'client_id' => $validated['client_id'],
+                'client_phone' => $validated['client_phone'] ?? null,
+                'trip_date' => $validated['trip_date'] ?? null,
                 'exchange_rate_snapshot' => $rate,
-                'subtotal_sar' => $subtotal,
-                'discount_sar' => $discount,
-                'total_sar' => $totalSar,
-                'total_jod' => $totalJod,
-                'services_cost_sar' => $servicesCost,
-                'violations_cost_sar' => $violationsCost,
-                'profit_sar' => $profitSar,
+                'total_cost_sar' => $totalCostSar,
+                'total_cost_jod' => $totalCostJod,
+                'total_sell_jod' => $totalSellJod,
+                'discount_jod' => $discountJod,
                 'profit_jod' => $profitJod,
+                'subtotal_sar' => $totalCostSar,
+                'total_sar' => $totalCostSar,
+                'total_jod' => $totalSellJod,
+                'services_cost_sar' => $totalCostSar,
+                'profit_sar' => $rate > 0 ? round($profitJod / $rate, 2) : 0,
                 'notes' => $validated['notes'] ?? null,
                 'status' => 'pending',
                 'approved_by' => null,
@@ -343,9 +319,9 @@ class InvoiceController extends Controller
             foreach ($validated['items'] as $i => $item) {
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
-                    'item_type' => $item['item_type'],
+                    'agent_id' => $item['agent_id'],
+                    'item_type' => 'service',
                     'service_id' => $item['service_id'] ?? null,
-                    'violation_id' => $item['violation_id'] ?? null,
                     'description' => $item['description'],
                     'quantity' => $item['quantity'],
                     'unit_price_sar' => $item['unit_price_sar'],
@@ -370,15 +346,5 @@ class InvoiceController extends Controller
         $invoice->items()->delete();
         $invoice->delete();
         return back()->with('success', 'تم حذف الفاتورة');
-    }
-
-    // API: مخالفات العميل غير المفوترة
-    public function unbilledViolations(Client $client)
-    {
-        return Violation::where('client_id', $client->id)
-            ->where('status', 'approved')
-            ->where('billing_status', 'unbilled')
-            ->select('id', 'violation_number', 'passport_name', 'cost_sar', 'violation_date')
-            ->get();
     }
 }

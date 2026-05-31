@@ -4,11 +4,9 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\ClientController;
-use App\Http\Controllers\TransferController;
+use App\Http\Controllers\DisbursementController;
 use App\Http\Controllers\ReceiptController;
-use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ServiceController;
-use App\Http\Controllers\ViolationTypeController;
 use App\Http\Controllers\SettingController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,33 +30,23 @@ Route::middleware('auth')->group(function () {
     Route::resource('agents', AgentController::class);
     Route::resource('clients', ClientController::class);
 
-    // Transfers
-    Route::resource('transfers', TransferController::class)->only(['index', 'store', 'destroy']);
-    Route::post('transfers/{transfer}/approve', [TransferController::class, 'approve'])->name('transfers.approve');
-    Route::post('transfers/{transfer}/reject', [TransferController::class, 'reject'])->name('transfers.reject');
-    Route::post('transfers/{transfer}/start-edit', [TransferController::class, 'startEdit'])->name('transfers.start-edit');
-    Route::put('transfers/{transfer}/update-approved', [TransferController::class, 'updateApproved'])->name('transfers.update-approved');
-    Route::get('transfers/{transfer}/print', [TransferController::class, 'print'])->name('transfers.print');
+    // سندات الصرف (بديل الحوالات والمصاريف)
+    Route::resource('disbursements', DisbursementController::class)->only(['index', 'store', 'destroy']);
+    Route::post('disbursements/{disbursement}/approve', [DisbursementController::class, 'approve'])->name('disbursements.approve');
+    Route::post('disbursements/{disbursement}/reject', [DisbursementController::class, 'reject'])->name('disbursements.reject');
+    Route::post('disbursements/{disbursement}/start-edit', [DisbursementController::class, 'startEdit'])->name('disbursements.start-edit');
+    Route::put('disbursements/{disbursement}/update-approved', [DisbursementController::class, 'updateApproved'])->name('disbursements.update-approved');
+    Route::get('disbursements/{disbursement}/print', [DisbursementController::class, 'print'])->name('disbursements.print');
 
-    // Receipts
+    // سندات القبض
     Route::resource('receipts', ReceiptController::class)->only(['index', 'store', 'destroy']);
     Route::post('receipts/{receipt}/approve', [ReceiptController::class, 'approve'])->name('receipts.approve');
     Route::post('receipts/{receipt}/reject', [ReceiptController::class, 'reject'])->name('receipts.reject');
     Route::post('receipts/{receipt}/start-edit', [ReceiptController::class, 'startEdit'])->name('receipts.start-edit');
     Route::put('receipts/{receipt}/update-approved', [ReceiptController::class, 'updateApproved'])->name('receipts.update-approved');
 
-    // Expenses
-    Route::resource('expenses', ExpenseController::class)->only(['index', 'store', 'destroy']);
-    Route::post('expenses/{expense}/approve', [ExpenseController::class, 'approve'])->name('expenses.approve');
-    Route::post('expenses/{expense}/reject', [ExpenseController::class, 'reject'])->name('expenses.reject');
-    Route::post('expenses/{expense}/start-edit', [ExpenseController::class, 'startEdit'])->name('expenses.start-edit');
-    Route::put('expenses/{expense}/update-approved', [ExpenseController::class, 'updateApproved'])->name('expenses.update-approved');
-
-    // Services
+    // الخدمات
     Route::resource('services', ServiceController::class)->only(['index', 'store', 'update', 'destroy']);
-
-    // Violation Types
-    Route::resource('violation-types', ViolationTypeController::class)->only(['index', 'store', 'update', 'destroy']);
 
     // Settings
     Route::get('settings', [SettingController::class, 'index'])->name('settings.index');
@@ -69,23 +57,15 @@ Route::middleware('auth')->group(function () {
     Route::post('settings/print-layout', [SettingController::class, 'savePrintLayout'])->name('settings.save-print-layout');
     Route::resource('attendance-locations', \App\Http\Controllers\AttendanceLocationController::class)->only(['index', 'store', 'update', 'destroy']);
 
-    // Violations
-    Route::resource('violations', \App\Http\Controllers\ViolationController::class)->only(['index', 'store', 'destroy']);
-    Route::post('violations/{violation}/approve', [\App\Http\Controllers\ViolationController::class, 'approve'])->name('violations.approve');
-    Route::post('violations/{violation}/reject', [\App\Http\Controllers\ViolationController::class, 'reject'])->name('violations.reject');
-    Route::post('violations/{violation}/start-edit', [\App\Http\Controllers\ViolationController::class, 'startEdit'])->name('violations.start-edit');
-    Route::put('violations/{violation}/update-approved', [\App\Http\Controllers\ViolationController::class, 'updateApproved'])->name('violations.update-approved');
-
     // Invoices
     Route::resource('invoices', \App\Http\Controllers\InvoiceController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::post('invoices/{invoice}/approve', [\App\Http\Controllers\InvoiceController::class, 'approve'])->name('invoices.approve');
     Route::post('invoices/{invoice}/reject', [\App\Http\Controllers\InvoiceController::class, 'reject'])->name('invoices.reject');
     Route::post('invoices/{invoice}/start-edit', [\App\Http\Controllers\InvoiceController::class, 'startEdit'])->name('invoices.start-edit');
 
-    // API: Unbilled violations for client
-    Route::get('api/clients/{client}/violations/unbilled', [\App\Http\Controllers\InvoiceController::class, 'unbilledViolations']);
+    // API: تفاصيل فاتورة
     Route::get('api/invoices/{invoice}/details', function(\App\Models\Invoice $invoice) {
-        $invoice->load('items');
+        $invoice->load('items.agent:id,name,code');
         return response()->json($invoice);
     });
 
@@ -133,7 +113,7 @@ Route::middleware('auth')->group(function () {
     Route::get('agents/{agent}/print-statement', [AgentController::class, 'printStatement'])->name('agents.print-statement');
     Route::get('clients/{client}/print-statement', [ClientController::class, 'printStatement'])->name('clients.print-statement');
     Route::get('receipts/{receipt}/print', [ReceiptController::class, 'print'])->name('receipts.print');
-    Route::get('expenses/{expense}/print', [ExpenseController::class, 'print'])->name('expenses.print');
+    Route::get('disbursements/{disbursement}/print', [DisbursementController::class, 'print'])->name('disbursements.print.page');
     Route::get('accounting/accounts/{account}/print', [\App\Http\Controllers\AccountingController::class, 'printAccountDetails'])->name('accounting.accounts.print');
     Route::get('accounting/trial-balance/print', [\App\Http\Controllers\AccountingController::class, 'printTrialBalance'])->name('accounting.trial-balance.print');
     Route::get('accounting/profit-loss/print', [\App\Http\Controllers\AccountingController::class, 'printProfitLoss'])->name('accounting.profit-loss.print');

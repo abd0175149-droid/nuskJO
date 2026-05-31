@@ -13,9 +13,13 @@ class Invoice extends Model
     use SoftDeletes, HasApproval;
 
     protected $fillable = [
-        'invoice_number', 'agent_id', 'client_id', 'exchange_rate_snapshot',
+        'invoice_number', 'client_id', 'client_phone', 'trip_date',
+        'agent_id', // legacy — الآن الوكلاء في البنود
+        'exchange_rate_snapshot',
         'subtotal_sar', 'discount_sar', 'total_sar', 'total_jod',
-        'services_cost_sar', 'violations_cost_sar', 'profit_sar', 'profit_jod',
+        'total_sell_jod', 'total_cost_sar', 'total_cost_jod', 'discount_jod',
+        'services_cost_sar', 'violations_cost_sar',
+        'profit_sar', 'profit_jod',
         'invoice_date', 'due_date', 'notes', 'status', 'rejection_reason',
         'created_by', 'approved_by', 'approved_at',
         'modified_by', 'modified_at', 'original_values',
@@ -27,33 +31,42 @@ class Invoice extends Model
         'discount_sar' => 'decimal:2',
         'total_sar' => 'decimal:2',
         'total_jod' => 'decimal:3',
+        'total_sell_jod' => 'decimal:3',
+        'total_cost_sar' => 'decimal:2',
+        'total_cost_jod' => 'decimal:3',
+        'discount_jod' => 'decimal:3',
         'services_cost_sar' => 'decimal:2',
         'violations_cost_sar' => 'decimal:2',
         'profit_sar' => 'decimal:2',
         'profit_jod' => 'decimal:3',
         'invoice_date' => 'date',
+        'trip_date' => 'date',
         'due_date' => 'date',
         'approved_at' => 'datetime',
         'modified_at' => 'datetime',
         'original_values' => 'array',
     ];
 
-    public function agent(): BelongsTo { return $this->belongsTo(Agent::class); }
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
     public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
 
+    // legacy — للتوافق مع الكود القديم
+    public function agent(): BelongsTo { return $this->belongsTo(Agent::class); }
+
     public function items(): HasMany { return $this->hasMany(InvoiceItem::class)->orderBy('sort_order'); }
-    public function violations(): HasMany { return $this->hasMany(Violation::class); }
+
+    /**
+     * جلب كل الوكلاء المشاركين في الفاتورة
+     */
+    public function getAgentsAttribute()
+    {
+        return Agent::whereIn('id', $this->items()->pluck('agent_id')->unique()->filter())->get();
+    }
 
     public function serviceItems(): HasMany
     {
         return $this->items()->where('item_type', 'service');
-    }
-
-    public function violationItems(): HasMany
-    {
-        return $this->items()->where('item_type', 'violation');
     }
 
     public function scopeDraft($query) { return $query->where('status', 'draft'); }
