@@ -8,7 +8,7 @@ use App\Models\Payroll;
 use App\Models\PayrollItem;
 use App\Models\Advance;
 use App\Models\AdvanceInstallment;
-use App\Models\Advance;
+
 use App\Models\LeaveRequest;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
