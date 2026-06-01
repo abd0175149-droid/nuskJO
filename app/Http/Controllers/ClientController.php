@@ -82,17 +82,6 @@ class ClientController extends Controller
         ]);
     }
 
-    public function printStatement(Request $request, Client $client)
-    {
-        if ($client->account_id) {
-            return redirect()->route('accounting.account.print', [
-                'account' => $client->account_id,
-                'from' => $request->from,
-                'to' => $request->to,
-            ]);
-        }
-        return back()->with('error', 'لا يوجد حساب مالي مرتبط بهذا العميل.');
-    }
 
     public function store(Request $request)
     {

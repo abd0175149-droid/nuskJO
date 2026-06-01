@@ -146,17 +146,6 @@ class AgentController extends Controller
         ]);
     }
 
-    public function printStatement(Request $request, Agent $agent)
-    {
-        if ($agent->account_id) {
-            return redirect()->route('accounting.account.print', [
-                'account' => $agent->account_id,
-                'from' => $request->from,
-                'to' => $request->to,
-            ]);
-        }
-        return back()->with('error', 'لا يوجد حساب مالي مرتبط بهذا الوكيل.');
-    }
 
     public function edit(Agent $agent)
     {
