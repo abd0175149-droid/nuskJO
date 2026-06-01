@@ -11,7 +11,7 @@
                     <select v-model="docType" class="px-4 py-2 rounded-xl border text-sm font-bold" @change="loadLayout">
                         <optgroup label="مالي (Portrait)">
                             <option value="invoice">🧾 فاتورة</option>
-                            <option value="transfer">💸 حوالة</option>
+                            <option value="transfer">💸 سند صرف</option>
                             <option value="receipt">📄 سند قبض</option>
                         </optgroup>
                         <optgroup label="محاسبي (Landscape)">
@@ -227,8 +227,8 @@ const elementsByType = {
         { id: 'signatures', label: 'التوقيعات', icon: '✍️', preview: 'المحاسب | المدير | العميل', defaultFontSize: 9, hasWidth: true },
     ],
     transfer: [
-        { id: 'title', label: 'عنوان الحوالة', icon: '📌', preview: 'حوالة مالية', defaultFontSize: 16 },
-        { id: 'transfer_number', label: 'رقم الحوالة', icon: '#️⃣', preview: 'TRF-20260523-0001', defaultFontSize: 11 },
+        { id: 'title', label: 'عنوان سند الصرف', icon: '📌', preview: 'سند صرف', defaultFontSize: 16 },
+        { id: 'transfer_number', label: 'رقم السند', icon: '#️⃣', preview: 'TRF-20260523-0001', defaultFontSize: 11 },
         { id: 'transfer_date', label: 'التاريخ', icon: '📅', preview: '2026/05/23', defaultFontSize: 10 },
         { id: 'status', label: 'الحالة', icon: '🏷️', preview: 'معتمدة', defaultFontSize: 10 },
         { id: 'client_name', label: 'اسم العميل', icon: '👤', preview: 'اسم العميل', defaultFontSize: 12 },
@@ -392,11 +392,11 @@ const varsByType = {
         { key: '{{اسم_الوكيل}}', label: 'اسم الوكيل', desc: 'اسم الوكيل' },
         { key: '{{كود_الوكيل}}', label: 'كود الوكيل', desc: 'كود الوكيل' },
         { key: '{{هاتف_الوكيل}}', label: 'هاتف الوكيل', desc: 'رقم هاتف الوكيل' },
-        { key: '{{رقم_الحوالة}}', label: 'رقم الحوالة', desc: 'رقم الحوالة' },
-        { key: '{{التاريخ}}', label: 'التاريخ', desc: 'تاريخ الحوالة' },
+        { key: '{{رقم_السند}}', label: 'رقم السند', desc: 'رقم السند' },
+        { key: '{{التاريخ}}', label: 'التاريخ', desc: 'تاريخ السند' },
         { key: '{{المبلغ}}', label: 'المبلغ SAR', desc: 'المبلغ بالريال' },
         { key: '{{التكلفة}}', label: 'التكلفة JOD', desc: 'التكلفة بالدينار' },
-        { key: '{{الحالة}}', label: 'الحالة', desc: 'حالة الحوالة' },
+        { key: '{{الحالة}}', label: 'الحالة', desc: 'حالة السند' },
     ],
     receipt: [
         { key: '{{اسم_العميل}}', label: 'اسم العميل', desc: 'اسم العميل' },

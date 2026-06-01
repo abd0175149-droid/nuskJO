@@ -11,11 +11,11 @@
 
             <div class="overlay">
                 <div v-if="!isHidden('title')" class="field" :style="elPos('title')">
-                    <span :style="elFont('title')">حوالة مالية</span>
+                    <span :style="elFont('title')">سند صرف</span>
                 </div>
 
                 <div v-if="!isHidden('transfer_number')" class="field" :style="elPos('transfer_number')">
-                    <span class="label">رقم الحوالة:</span>
+                    <span class="label">رقم السند:</span>
                     <span class="value gold" :style="elFont('transfer_number')">{{ transfer.transfer_number }}</span>
                 </div>
 
@@ -116,6 +116,7 @@ const replaceVars = (text) => {
         '{{كود_الوكيل}}': t.agent?.code || '',
         '{{هاتف_الوكيل}}': t.agent?.phone || '',
         '{{رقم_الحوالة}}': t.transfer_number || '',
+        '{{رقم_السند}}': t.transfer_number || '',
         '{{التاريخ}}': formatDate(t.transfer_date),
         '{{المبلغ}}': fmtSar(t.amount_sar) + ' SAR',
         '{{التكلفة}}': fmt(t.cost_jod) + ' JOD',
