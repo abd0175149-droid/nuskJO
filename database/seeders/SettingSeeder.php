@@ -21,7 +21,7 @@ class SettingSeeder extends Seeder
             ['key' => 'invoice_prefix', 'value' => 'INV', 'group_name' => 'general', 'type' => 'string', 'description' => 'بادئة رقم الفاتورة'],
             ['key' => 'receipt_prefix', 'value' => 'RCP', 'group_name' => 'general', 'type' => 'string', 'description' => 'بادئة رقم سند القبض'],
             ['key' => 'transfer_prefix', 'value' => 'TRF', 'group_name' => 'general', 'type' => 'string', 'description' => 'بادئة رقم الحوالة'],
-            ['key' => 'violation_prefix', 'value' => 'VIO', 'group_name' => 'general', 'type' => 'string', 'description' => 'بادئة رقم المخالفة'],
+
             ['key' => 'expense_prefix', 'value' => 'EXP', 'group_name' => 'general', 'type' => 'string', 'description' => 'بادئة رقم المصروف'],
         ];
 

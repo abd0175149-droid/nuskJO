@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Attendance;
 use App\Models\AdvanceInstallment;
 use App\Models\Employee;
-use App\Models\EmployeePenalty;
 use App\Models\LeaveRequest;
 use App\Models\Payroll;
 use App\Models\PayrollItem;
@@ -223,14 +222,7 @@ class PayrollService
      */
     private static function calculatePenaltyDeduction(Employee $employee, int $month, int $year): float
     {
-        $startDate = Carbon::create($year, $month, 1);
-        $endDate = $startDate->copy()->endOfMonth();
-
-        return (float) EmployeePenalty::where('employee_id', $employee->id)
-            ->where('penalty_type', 'deduction')
-            ->where('is_deducted', false)
-            ->whereBetween('penalty_date', [$startDate, $endDate])
-            ->sum('deduction_amount');
+        return 0;
     }
 
     /**
@@ -279,18 +271,6 @@ class PayrollService
                         $advance->update(['remaining_amount' => $advance->amount - $totalPaid]);
                     }
                 }
-            }
-
-            // تعليم المخالفات كمخصومة
-            if ($item->penalty_deduction > 0) {
-                $startDate = Carbon::create($payroll->year, $payroll->month, 1);
-                $endDate = $startDate->copy()->endOfMonth();
-
-                EmployeePenalty::where('employee_id', $item->employee_id)
-                    ->where('penalty_type', 'deduction')
-                    ->where('is_deducted', false)
-                    ->whereBetween('penalty_date', [$startDate, $endDate])
-                    ->update(['is_deducted' => true]);
             }
         }
     }

@@ -5,10 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Agent;
 use App\Models\Client;
 use App\Models\Invoice;
-use App\Models\Transfer;
+use App\Models\Disbursement;
 use App\Models\Receipt;
-use App\Models\Expense;
-use App\Models\Violation;
 use App\Models\LedgerEntry;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -55,23 +53,15 @@ class ReportController extends Controller
         $to = $request->to ?? now()->toDateString();
 
         $invoicesJod = Invoice::where('status', 'approved')->whereBetween('invoice_date', [$from, $to])->sum('total_jod');
-        $invoicesSar = Invoice::where('status', 'approved')->whereBetween('invoice_date', [$from, $to])->sum('total_sar');
-        $transfersSar = Transfer::where('status', 'approved')->whereBetween('transfer_date', [$from, $to])->sum('amount_sar');
-        $violationsSar = Violation::where('status', 'approved')->whereBetween('violation_date', [$from, $to])->sum('cost_sar');
+        $disbursementsJod = Disbursement::where('status', 'approved')->whereBetween('disbursement_date', [$from, $to])->sum('amount_jod');
         $receiptsJod = Receipt::where('status', 'approved')->whereBetween('receipt_date', [$from, $to])->sum('amount_jod');
-        $expensesSar = Expense::where('status', 'approved')->where('currency', 'SAR')->whereBetween('expense_date', [$from, $to])->sum('amount');
-        $expensesJod = Expense::where('status', 'approved')->where('currency', 'JOD')->whereBetween('expense_date', [$from, $to])->sum('amount');
 
         return Inertia::render('Reports/ProfitLoss', [
             'title' => 'الأرباح والخسائر',
             'data' => [
                 'invoices_jod' => (float)$invoicesJod,
-                'invoices_sar' => (float)$invoicesSar,
-                'transfers_sar' => (float)$transfersSar,
-                'violations_sar' => (float)$violationsSar,
+                'disbursements_jod' => (float)$disbursementsJod,
                 'receipts_jod' => (float)$receiptsJod,
-                'expenses_sar' => (float)$expensesSar,
-                'expenses_jod' => (float)$expensesJod,
             ],
             'filters' => ['from' => $from, 'to' => $to],
         ]);
@@ -81,21 +71,21 @@ class ReportController extends Controller
     {
         $date = $request->date ?? now()->toDateString();
         $user = auth()->user();
-        $isAdmin = $user->role && $user->role->slug === 'admin';
 
-        $disbursementsQuery = \App\Models\Disbursement::with('account:id,name')->whereDate('disbursement_date', $date);
-        $receiptsQuery = Receipt::with('client:id,name')->whereDate('receipt_date', $date);
-        $invoicesQuery = Invoice::with(['agent:id,name', 'client:id,name'])->whereDate('invoice_date', $date);
+        $disbQuery = Disbursement::with('agent:id,name')->whereDate('disbursement_date', $date);
+        $rectQuery = Receipt::with('client:id,name')->whereDate('receipt_date', $date);
+        $invQuery = Invoice::with(['client:id,name'])->whereDate('invoice_date', $date);
 
-        if (!$isAdmin) {
-            $disbursementsQuery->where('created_by', $user->id);
-            $receiptsQuery->where('created_by', $user->id);
-            $invoicesQuery->where('created_by', $user->id);
+        // الموظف يرى الملخص الخاص به فقط
+        if (!$user->isAdmin()) {
+            $disbQuery->where('created_by', $user->id);
+            $rectQuery->where('created_by', $user->id);
+            $invQuery->where('created_by', $user->id);
         }
 
-        $disbursements = $disbursementsQuery->get();
-        $receipts = $receiptsQuery->get();
-        $invoices = $invoicesQuery->get();
+        $disbursements = $disbQuery->get();
+        $receipts = $rectQuery->get();
+        $invoices = $invQuery->get();
 
         return Inertia::render('Reports/DailySummary', [
             'title' => 'ملخص يومي',
@@ -104,9 +94,9 @@ class ReportController extends Controller
             'receipts' => $receipts,
             'invoices' => $invoices,
             'totals' => [
-                'disbursements' => $disbursements->where('status', 'approved')->sum('amount'),
+                'disbursements_jod' => $disbursements->where('status', 'approved')->sum('amount_jod'),
                 'receipts_jod' => $receipts->where('status', 'approved')->sum('amount_jod'),
-                'invoices_jod' => $invoices->where('status', 'approved')->sum('total_jod'),
+                'invoices_jod' => $invoices->where('status', 'approved')->sum('total_sell_jod'),
             ],
         ]);
     }

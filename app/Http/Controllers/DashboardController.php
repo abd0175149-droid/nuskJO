@@ -34,8 +34,8 @@ class DashboardController extends Controller
 
         // بطاقات الإحصائيات
         $stats = [
-            'agents_balance_jod' => abs((float) \App\Models\Agent::join('accounts', 'accounts.id', '=', 'agents.account_id')->sum('accounts.balance')),
-            'clients_balance_jod' => abs((float) \App\Models\Client::join('accounts', 'accounts.id', '=', 'clients.account_id')->sum('accounts.balance')),
+            'agents_balance_jod' => \App\Models\Account::where('code', 'like', '2110%')->where('code', '!=', '2110')->sum('balance'),
+            'clients_balance_jod' => \App\Models\Account::where('code', 'like', '1200%')->where('code', '!=', '1200')->sum('balance'),
             'total_agents' => Agent::where('is_active', true)->count(),
             'total_clients' => Client::where('is_active', true)->count(),
         ];
@@ -50,32 +50,49 @@ class DashboardController extends Controller
 
         // آخر العمليات
         $recentTransfers = Disbursement::with('agent:id,name,code')
-            ->orderByDesc('created_at')->limit(5)->get(['id','disbursement_number','agent_id','amount','currency','status','created_at']);
+            ->orderByDesc('created_at')->limit(5)->get(['id','disbursement_number','agent_id','beneficiary_name','amount','currency','status','created_at']);
         $recentInvoices = Invoice::with('client:id,name,code')
             ->orderByDesc('created_at')->limit(5)->get(['id','invoice_number','client_id','total_sell_jod','status','created_at']);
 
         // إحصائيات الشهر الحالي
+        // إحصائيات الشهر الحالي من شجرة الحسابات (JournalEntryLine)
         $monthStart = now()->startOfMonth()->toDateString();
+        
         $monthly = [
-            'transfers_sar' => Disbursement::where('status', 'approved')->where('disbursement_date', '>=', $monthStart)->sum('amount'),
-            'receipts_jod' => Receipt::where('status', 'approved')->where('receipt_date', '>=', $monthStart)->sum('amount_jod'),
-            'invoices_jod' => Invoice::where('status', 'approved')->where('invoice_date', '>=', $monthStart)->sum('total_sell_jod'),
-            'expenses_total' => 0,
-            'violations_sar' => 0,
+            'disbursements_jod' => \App\Models\JournalEntryLine::where('debit', '>', 0)
+                ->whereHas('journalEntry', function ($q) use ($monthStart) {
+                    $q->where('reference_type', 'disbursement')->where('entry_date', '>=', $monthStart);
+                })->sum('debit'),
+                
+            'receipts_jod' => \App\Models\JournalEntryLine::where('credit', '>', 0)
+                ->whereHas('journalEntry', function ($q) use ($monthStart) {
+                    $q->where('reference_type', 'receipt')->where('entry_date', '>=', $monthStart);
+                })->sum('credit'),
+                
+            'invoices_jod' => \App\Models\JournalEntryLine::where('debit', '>', 0)
+                ->whereHas('journalEntry', function ($q) use ($monthStart) {
+                    $q->where('reference_type', 'invoice')->where('entry_date', '>=', $monthStart);
+                })->sum('debit'),
         ];
 
-        // رسم بياني - آخر 6 أشهر
+        // رسم بياني - آخر 6 أشهر من شجرة الحسابات
         $chartData = [];
         for ($i = 5; $i >= 0; $i--) {
             $date = now()->subMonths($i);
             $start = $date->copy()->startOfMonth()->toDateString();
             $end = $date->copy()->endOfMonth()->toDateString();
             $label = $date->format('Y-m');
+            
             $chartData[] = [
                 'month' => $label,
-                'invoices' => (float) Invoice::where('status', 'approved')->whereBetween('invoice_date', [$start, $end])->sum('total_sell_jod'),
-                'expenses' => (float) Disbursement::where('status', 'approved')->whereBetween('disbursement_date', [$start, $end])->sum('amount'),
-                'transfers' => 0,
+                'invoices' => (float) \App\Models\JournalEntryLine::where('debit', '>', 0)
+                    ->whereHas('journalEntry', function ($q) use ($start, $end) {
+                        $q->where('reference_type', 'invoice')->whereBetween('entry_date', [$start, $end]);
+                    })->sum('debit'),
+                'disbursements' => (float) \App\Models\JournalEntryLine::where('debit', '>', 0)
+                    ->whereHas('journalEntry', function ($q) use ($start, $end) {
+                        $q->where('reference_type', 'disbursement')->whereBetween('entry_date', [$start, $end]);
+                    })->sum('debit'),
             ];
         }
 

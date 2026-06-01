@@ -88,7 +88,7 @@ const allCards = [
     { icon: '📊', label: 'الملخص اليومي', route: '/reports/daily-summary', module: 'reports' },
     { icon: '⏰', label: 'سجل حضوري', route: '/hr/my-attendance', module: 'attendance' },
     { icon: '🏖️', label: 'طلباتي', route: '/hr/my-requests', module: 'leaves' },
-    { icon: '📃', label: 'قسيمة الراتب', route: '/payrolls/my', module: 'attendance' },
+    { icon: '📃', label: 'قسيمة الراتب', route: '/hr/my-requests', module: 'attendance' },
 ];
 
 const availableCards = computed(() => allCards.filter(c => canAny(c.module)));

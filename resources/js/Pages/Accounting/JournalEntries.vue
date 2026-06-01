@@ -151,14 +151,18 @@ let t = null;
 
 const fmt = (v) => Number(v || 0).toLocaleString('en', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 const refLabel = (type) => ({
-    transfer: 'حوالة', receipt: 'سند قبض', invoice: 'فاتورة',
+    receipt: 'سند قبض', disbursement: 'سند صرف', transfer: 'حوالة', invoice: 'فاتورة', 
     violation: 'مخالفة', expense: 'مصروف', manual: 'يدوي',
+    advance: 'سلفة', payroll: 'رواتب', reversal: 'عكس قيد', year_closing: 'إقفال'
 }[type] || type);
 const refColor = (type) => ({
     transfer: 'bg-blue-100 text-blue-700', receipt: 'bg-green-100 text-green-700',
+    disbursement: 'bg-green-100 text-green-700',
     invoice: 'bg-purple-100 text-purple-700', violation: 'bg-red-100 text-red-700',
-    expense: 'bg-orange-100 text-orange-700', manual: 'bg-gray-200 text-gray-700',
-}[type] || 'bg-gray-100 text-gray-600');
+    expense: 'bg-amber-100 text-amber-700', manual: 'bg-gray-100 text-gray-700',
+    advance: 'bg-teal-100 text-teal-700', payroll: 'bg-indigo-100 text-indigo-700',
+    reversal: 'bg-gray-200 text-gray-600', year_closing: 'bg-indigo-100 text-indigo-700'
+}[type] || 'bg-gray-100 text-gray-500');
 
 const debounceSearch = () => {
     clearTimeout(t);

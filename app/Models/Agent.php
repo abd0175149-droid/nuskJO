@@ -36,10 +36,6 @@ class Agent extends Model
         return $this->hasMany(Transfer::class);
     }
 
-    public function violations(): HasMany
-    {
-        return $this->hasMany(Violation::class);
-    }
 
     public function invoices(): HasMany
     {

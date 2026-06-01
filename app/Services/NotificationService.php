@@ -63,73 +63,19 @@ class NotificationService
     // ─── أحداث الإنشاء (بانتظار الاعتماد) ───
 
     /**
-     * إشعار عند إنشاء حوالة جديدة بانتظار الاعتماد
-     */
-    public static function transferCreated($transfer): void
-    {
-        $creatorName = auth()->user()->name ?? 'موظف';
-        self::notifyAdmins(
-            '💱 حوالة جديدة بانتظار الاعتماد',
-            "{$creatorName} أنشأ حوالة {$transfer->transfer_number} بمبلغ " . number_format($transfer->amount_sar, 2) . ' SAR',
-            [
-                'type' => 'transfer',
-                'icon' => '💱',
-                'action_url' => "/transfers?status=pending&highlight={$transfer->id}",
-                'data' => ['reference_type' => 'transfer', 'reference_id' => $transfer->id],
-            ]
-        );
-    }
-
-    /**
-     * إشعار عند إنشاء سند قبض بانتظار الاعتماد
-     */
-    public static function receiptCreated($receipt): void
-    {
-        $creatorName = auth()->user()->name ?? 'موظف';
-        self::notifyAdmins(
-            '📄 سند قبض جديد بانتظار الاعتماد',
-            "{$creatorName} أنشأ سند قبض {$receipt->receipt_number} بمبلغ " . number_format($receipt->amount_jod, 3) . ' JOD',
-            [
-                'type' => 'receipt',
-                'icon' => '📄',
-                'action_url' => "/receipts?highlight={$receipt->id}",
-                'data' => ['reference_type' => 'receipt', 'reference_id' => $receipt->id],
-            ]
-        );
-    }
-
-    /**
-     * إشعار عند إنشاء سند صرف بانتظار الاعتماد
+     * إشعار عند إنشاء سند صرف جديد بانتظار الاعتماد
      */
     public static function disbursementCreated($disbursement): void
     {
         $creatorName = auth()->user()->name ?? 'موظف';
         self::notifyAdmins(
             '📤 سند صرف جديد بانتظار الاعتماد',
-            "{$creatorName} أنشأ سند صرف {$disbursement->disbursement_number} بمبلغ " . number_format($disbursement->amount, 2) . " {$disbursement->currency}",
+            "{$creatorName} أنشأ سند صرف {$disbursement->disbursement_number} بمبلغ " . number_format($disbursement->amount, 3) . " {$disbursement->currency}",
             [
                 'type' => 'disbursement',
                 'icon' => '📤',
                 'action_url' => "/disbursements?status=pending&highlight={$disbursement->id}",
                 'data' => ['reference_type' => 'disbursement', 'reference_id' => $disbursement->id],
-            ]
-        );
-    }
-
-    /**
-     * إشعار عند إنشاء مخالفة بانتظار الاعتماد
-     */
-    public static function violationCreated($violation): void
-    {
-        $creatorName = auth()->user()->name ?? 'موظف';
-        self::notifyAdmins(
-            '⚠️ مخالفة جديدة بانتظار الاعتماد',
-            "{$creatorName} سجّل مخالفة {$violation->violation_number} بمبلغ " . number_format($violation->cost_sar, 2) . ' SAR',
-            [
-                'type' => 'violation',
-                'icon' => '⚠️',
-                'action_url' => "/violations?status=pending&highlight={$violation->id}",
-                'data' => ['reference_type' => 'violation', 'reference_id' => $violation->id],
             ]
         );
     }
@@ -155,39 +101,20 @@ class NotificationService
     // ─── أحداث الاعتماد ───
 
     /**
-     * إشعار عند اعتماد حوالة
+     * إشعار عند اعتماد سند صرف
      */
-    public static function transferApproved($transfer): void
+    public static function disbursementApproved($disbursement): void
     {
-        // إشعار لصانع الحوالة أن حوالته اعتمدت
-        if ($transfer->created_by && $transfer->created_by !== auth()->id()) {
-            self::send($transfer->created_by,
-                '✅ تم اعتماد حوالتك',
-                "تم اعتماد الحوالة {$transfer->transfer_number} بمبلغ " . number_format($transfer->amount_sar, 2) . ' SAR',
+        // إشعار لصانع السند أن سنده اعتمد
+        if ($disbursement->created_by && $disbursement->created_by !== auth()->id()) {
+            self::send($disbursement->created_by,
+                '✅ تم اعتماد سند الصرف',
+                "تم اعتماد سند الصرف {$disbursement->disbursement_number} بمبلغ " . number_format($disbursement->amount, 3) . " {$disbursement->currency}",
                 [
-                    'type' => 'transfer',
+                    'type' => 'disbursement',
                     'icon' => '✅',
-                    'action_url' => "/transfers?highlight={$transfer->id}",
-                    'data' => ['reference_type' => 'transfer', 'reference_id' => $transfer->id],
-                ]
-            );
-        }
-    }
-
-    /**
-     * إشعار عند اعتماد مصروف
-     */
-    public static function expenseApproved($expense): void
-    {
-        if ($expense->created_by && $expense->created_by !== auth()->id()) {
-            self::send($expense->created_by,
-                '✅ تم اعتماد المصروف',
-                "تم اعتماد المصروف {$expense->expense_number} بمبلغ " . number_format($expense->amount, 2) . " {$expense->currency}",
-                [
-                    'type' => 'expense',
-                    'icon' => '✅',
-                    'action_url' => "/expenses?highlight={$expense->id}",
-                    'data' => ['reference_type' => 'expense', 'reference_id' => $expense->id],
+                    'action_url' => "/disbursements?highlight={$disbursement->id}",
+                    'data' => ['reference_type' => 'disbursement', 'reference_id' => $disbursement->id],
                 ]
             );
         }

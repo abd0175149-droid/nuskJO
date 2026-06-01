@@ -72,9 +72,9 @@ class Employee extends Model
         return $this->hasMany(Advance::class);
     }
 
-    public function penalties(): HasMany
+    public function payrolls()
     {
-        return $this->hasMany(EmployeePenalty::class);
+        return $this->hasMany(Payroll::class);
     }
 
     public function shiftOverrides(): HasMany

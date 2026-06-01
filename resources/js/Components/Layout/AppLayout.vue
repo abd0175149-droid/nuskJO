@@ -359,6 +359,7 @@ const menuGroups = [
         { icon: '⏰', label: 'الحضور والانصراف', route: '/attendance', permission: 'attendance.view' },
         { icon: '🏖️', label: 'الإجازات', route: '/leaves', permission: 'leaves.view' },
         { icon: '💵', label: 'السلف', route: '/advances', permission: 'advances.view' },
+        { icon: '⚠️', label: 'الجزاءات', route: '/penalties', permission: 'penalties.view' },
         { icon: '💰', label: 'الرواتب', route: '/payrolls', permission: 'payroll.view' },
         { icon: '📊', label: 'تقارير HR', route: '/hr/reports', permission: 'hr_reports.view' },
     ]},

@@ -78,45 +78,64 @@ class AgentController extends Controller
         $to = $request->to ?? now()->toDateString();
 
         if (!$agent->account_id) {
-            return back()->with('error', 'الوكيل غير مربوط بحساب مالي');
-        }
+            $entries = collect([]);
+            $summary = ['total_debit' => 0, 'total_credit' => 0, 'opening_balance' => 0, 'current_balance' => 0];
+        } else {
+            $lines = \App\Models\JournalEntryLine::where('account_id', $agent->account_id)
+                ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+                ->whereBetween('journal_entries.entry_date', [$from, $to . ' 23:59:59'])
+                ->orderBy('journal_entries.entry_date')
+                ->orderBy('journal_entries.id')
+                ->select(
+                    'journal_entry_lines.id',
+                    'journal_entry_lines.debit',
+                    'journal_entry_lines.credit',
+                    'journal_entry_lines.description as line_description',
+                    'journal_entries.entry_number',
+                    'journal_entries.entry_date',
+                    'journal_entries.description as entry_description',
+                    'journal_entries.reference_type',
+                    'journal_entries.reference_id',
+                    'journal_entries.is_reversed'
+                )
+                ->get();
 
-        $account = Account::findOrFail($agent->account_id);
-
-        $entries = \App\Models\JournalEntryLine::where('account_id', $account->id)
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
-            ->whereBetween('journal_entries.entry_date', [$from, $to . ' 23:59:59'])
-            ->orderBy('journal_entries.entry_date')
-            ->orderBy('journal_entries.id')
-            ->select(
-                'journal_entry_lines.*',
-                'journal_entries.entry_number',
-                'journal_entries.entry_date',
-                'journal_entries.description as entry_description',
-                'journal_entries.reference_type',
-                'journal_entries.reference_id',
-                'journal_entries.is_reversed',
-            )
-            ->get();
-
-        $openingDebit = \App\Models\JournalEntryLine::where('account_id', $account->id)
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
-            ->where('journal_entries.entry_date', '<', $from)
-            ->sum('journal_entry_lines.debit');
+            $openingDebit = \App\Models\JournalEntryLine::where('account_id', $agent->account_id)
+                ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+                ->where('journal_entries.entry_date', '<', $from)
+                ->sum('journal_entry_lines.debit');
             
-        $openingCredit = \App\Models\JournalEntryLine::where('account_id', $account->id)
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
-            ->where('journal_entries.entry_date', '<', $from)
-            ->sum('journal_entry_lines.credit');
+            $openingCredit = \App\Models\JournalEntryLine::where('account_id', $agent->account_id)
+                ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+                ->where('journal_entries.entry_date', '<', $from)
+                ->sum('journal_entry_lines.credit');
 
-        // حساب الوكيل دائن طبيعته Liability
-        $openingBalance = $openingCredit - $openingDebit;
+            // Agent is liability (2110), so credit - debit.
+            $openingBalance = $openingCredit - $openingDebit;
+            
+            $runningBalance = $openingBalance;
+            $entries = $lines->map(function($line) use (&$runningBalance) {
+                $runningBalance += ($line->credit - $line->debit);
+                return [
+                    'id' => $line->id,
+                    'entry_date' => $line->entry_date,
+                    'description' => $line->line_description ?: $line->entry_description,
+                    'transaction_type' => $line->is_reversed ? 'reversal' : $line->reference_type,
+                    'transaction_id' => $line->reference_id,
+                    'debit' => $line->debit,
+                    'credit' => $line->credit,
+                    'balance_after' => $runningBalance
+                ];
+            });
 
-        $summary = [
-            'total_debit' => $entries->sum('debit'),
-            'total_credit' => $entries->sum('credit'),
-            'opening_balance' => round($openingBalance, 3),
-        ];
+            $account = \App\Models\Account::find($agent->account_id);
+            $summary = [
+                'total_debit' => round($lines->sum('debit'), 3),
+                'total_credit' => round($lines->sum('credit'), 3),
+                'opening_balance' => round($openingBalance, 3),
+                'current_balance' => round($account ? $account->balance : 0, 3)
+            ];
+        }
 
         return Inertia::render('Agents/Show', [
             'title' => 'كشف حساب: ' . $agent->name,
@@ -129,91 +148,14 @@ class AgentController extends Controller
 
     public function printStatement(Request $request, Agent $agent)
     {
-        $from = $request->from ?: null;
-        $to = $request->to ?: null;
-
-        // 1. الحوالات المعتمدة (ما دفعناه للوكيل)
-        $transfersQuery = \App\Models\Transfer::where('agent_id', $agent->id)
-            ->whereIn('status', ['approved', 'editing']);
-        if ($from && $to) {
-            $transfersQuery->whereBetween('transfer_date', [$from, $to . ' 23:59:59']);
+        if ($agent->account_id) {
+            return redirect()->route('accounting.account.print', [
+                'account' => $agent->account_id,
+                'from' => $request->from,
+                'to' => $request->to,
+            ]);
         }
-        $transfers = $transfersQuery->orderBy('transfer_date')->orderBy('id')->get()
-            ->map(function ($t) {
-                $isReversed = $t->status === 'editing';
-                $amount = $isReversed ? -1 * abs($t->amount_sar) : abs($t->amount_sar);
-                return [
-                    'id' => $t->id,
-                    'date' => $t->transfer_date->format('Y-m-d'),
-                    'transfer_number' => $t->transfer_number,
-                    'amount_sar' => round($amount, 2),
-                    'cost_jod' => round($isReversed ? -1 * abs($t->cost_jod) : abs($t->cost_jod), 3),
-                    'exchange_rate' => $t->exchange_rate,
-                    'payment_method' => match ($t->payment_method) {
-                        'cash' => 'نقداً',
-                        'bank' => 'بنك',
-                        'check' => 'شيك',
-                        default => $t->payment_method ?? '—',
-                    },
-                    'notes' => $t->notes ?: '—',
-                    'is_reversed' => $isReversed,
-                ];
-            });
-
-        // 2. الفواتير المعتمدة (خدمات طلبناها من الوكيل)
-        $invoicesQuery = \App\Models\Invoice::where('agent_id', $agent->id)
-            ->whereIn('status', ['approved', 'editing']);
-        if ($from && $to) {
-            $invoicesQuery->whereBetween('invoice_date', [$from, $to . ' 23:59:59']);
-        }
-        $invoices = $invoicesQuery->with(['items', 'client'])
-            ->orderBy('invoice_date')->orderBy('id')->get()
-            ->map(function ($inv) {
-                $details = $inv->items->map(function ($item) {
-                    return $item->description . ' (×' . $item->quantity . ')';
-                })->join(' | ');
-
-                $isReversed = $inv->status === 'editing';
-                $amount = $isReversed ? -1 * abs($inv->services_cost_sar) : abs($inv->services_cost_sar);
-                return [
-                    'id' => $inv->id,
-                    'date' => $inv->invoice_date->format('Y-m-d'),
-                    'invoice_number' => $inv->invoice_number,
-                    'client_name' => $inv->client?->name ?? '—',
-                    'details' => $details ?: 'بدون تفاصيل',
-                    'amount' => round($amount, 2),
-                    'is_reversed' => $isReversed,
-                ];
-            });
-
-        // 4. الملخص
-        $totalTransfers = $transfers->sum('amount_sar');
-        $totalInvoices = $invoices->sum('amount');
-        $balance = $totalTransfers - $totalInvoices;
-
-        $summary = [
-            'transfers_count' => $transfers->count(),
-            'transfers_total' => round($totalTransfers, 2),
-            'invoices_count' => $invoices->count(),
-            'invoices_total' => round($totalInvoices, 2),
-            'balance' => round($balance, 2),
-        ];
-
-        // Template & Layout
-        $template = \App\Models\Setting::where('key', 'print_template_accounting')->first();
-        $templateUrl = $template?->value ? \Illuminate\Support\Facades\Storage::url($template->value) : null;
-        $layoutSetting = \App\Models\Setting::where('key', 'print_layout_statement')->first();
-        $layout = $layoutSetting?->value ? json_decode($layoutSetting->value, true) : null;
-
-        return Inertia::render('Agents/PrintStatement', [
-            'agent' => $agent,
-            'transfers' => $transfers->values(),
-            'invoices' => $invoices->values(),
-            'summary' => $summary,
-            'filters' => ['from' => $from ?? 'الكل', 'to' => $to ?? 'الكل'],
-            'templateUrl' => $templateUrl,
-            'layout' => $layout,
-        ]);
+        return back()->with('error', 'لا يوجد حساب مالي مرتبط بهذا الوكيل.');
     }
 
     public function edit(Agent $agent)

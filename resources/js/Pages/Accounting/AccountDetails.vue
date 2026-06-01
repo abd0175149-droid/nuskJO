@@ -85,14 +85,14 @@ const props = defineProps({
 const fromDate = ref(props.filters?.from || '');
 const toDate = ref(props.filters?.to || '');
 
-const typeLabels = { asset:'أصول', liability:'التزامات', equity:'حقوق ملكية', revenue:'إيرادات', expense:'مصروفات' };
-const refLabels = { receipt:'سند قبض', transfer:'حوالة', invoice:'فاتورة', expense:'مصروف', violation:'مخالفة', advance:'سلفة', payroll:'رواتب', reversal:'عكس', manual:'يدوي', year_closing:'إقفال' };
+const typeLabels = { asset:'أصول', liability:'التزامات', equity:'حقوق ملكية', revenue:'إيرادات', expense:'مصروفات', disbursement:'سند صرف' };
+const refLabels = { receipt:'سند قبض', disbursement:'سند صرف', transfer:'حوالة', invoice:'فاتورة', expense:'مصروف', violation:'مخالفة', advance:'سلفة', payroll:'رواتب', reversal:'عكس', manual:'يدوي', year_closing:'إقفال' };
 
 const refClass = (type) => ({
-    receipt:'bg-green-100 text-green-700', transfer:'bg-blue-100 text-blue-700',
+    receipt:'bg-green-100 text-green-700', disbursement:'bg-green-100 text-green-700', transfer:'bg-blue-100 text-blue-700',
     invoice:'bg-purple-100 text-purple-700', expense:'bg-red-100 text-red-700',
     violation:'bg-orange-100 text-orange-700', reversal:'bg-gray-200 text-gray-600',
-    manual:'bg-yellow-100 text-yellow-700',
+    manual:'bg-yellow-100 text-yellow-700', year_closing:'bg-indigo-100 text-indigo-700'
 }[type] || 'bg-gray-100 text-gray-500');
 
 const fmt = (v) => Number(v || 0).toLocaleString('en', { minimumFractionDigits: 3 });

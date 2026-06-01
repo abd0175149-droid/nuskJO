@@ -7,7 +7,6 @@ use App\Models\Agent;
 use App\Models\Client;
 use App\Models\Service;
 use App\Models\ExpenseCategory;
-use App\Models\ViolationType;
 use App\Services\AccountingSync;
 use Illuminate\Support\Facades\Log;
 
@@ -89,16 +88,7 @@ class AccountObserver
                 } else {
                     $category->update(['name' => $account->name, 'is_active' => $account->is_active]);
                 }
-            } elseif ($parent->code === '5200') {
-                // Violation Type
-                $type = ViolationType::where('account_id', $account->id)->first();
-                if (!$type) {
-                    $entityData['code'] = 'VIO-' . rand(100, 999);
-                    ViolationType::create($entityData);
-                } else {
-                    $type->update(['name' => $account->name, 'is_active' => $account->is_active]);
                 }
-            }
         } catch (\Throwable $e) {
             Log::error("[AccountObserver] خطأ: {$e->getMessage()}");
         } finally {
@@ -116,7 +106,6 @@ class AccountObserver
             Client::where('account_id', $account->id)->delete();
             Service::where('account_id', $account->id)->delete();
             ExpenseCategory::where('account_id', $account->id)->delete();
-            ViolationType::where('account_id', $account->id)->delete();
         } finally {
             AccountingSync::$isSyncing = false;
         }

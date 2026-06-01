@@ -140,8 +140,6 @@ Route::middleware('auth')->group(function () {
     Route::resource('leaves', \App\Http\Controllers\LeaveController::class)->only(['index', 'store', 'destroy']);
     Route::post('leaves/{leave}/approve', [\App\Http\Controllers\LeaveController::class, 'approve'])->name('leaves.approve');
     Route::post('leaves/{leave}/reject', [\App\Http\Controllers\LeaveController::class, 'reject'])->name('leaves.reject');
-    Route::get('hr/my-requests', [\App\Http\Controllers\LeaveController::class, 'myRequests'])->name('hr.my-requests');
-
     // Leave Types (Settings)
     Route::resource('leave-types', \App\Http\Controllers\LeaveTypeController::class)->only(['index', 'store', 'update', 'destroy']);
 
@@ -150,7 +148,8 @@ Route::middleware('auth')->group(function () {
     Route::post('advances/{advance}/approve', [\App\Http\Controllers\AdvanceController::class, 'approve'])->name('advances.approve');
     Route::post('advances/{advance}/reject', [\App\Http\Controllers\AdvanceController::class, 'reject'])->name('advances.reject');
 
-    // Employee Penalties removed
+    // Employee Penalties
+    Route::resource('penalties', \App\Http\Controllers\EmployeePenaltyController::class)->only(['index', 'store', 'destroy']);
 
     // Payroll
     Route::get('payrolls', [\App\Http\Controllers\PayrollController::class, 'index'])->name('payrolls.index');
@@ -164,7 +163,6 @@ Route::middleware('auth')->group(function () {
     Route::get('payslip/{employee}/{month}/{year}', [\App\Http\Controllers\PayrollController::class, 'payslip'])->name('payslip');
 
     // ESS (Employee Self-Service)
-    Route::get('payrolls/my', [\App\Http\Controllers\HRReportController::class, 'myPayrolls'])->name('hr.my-payrolls');
     Route::get('hr/my-attendance', [\App\Http\Controllers\HRReportController::class, 'myAttendance'])->name('hr.my-attendance');
     Route::get('hr/my-requests', [\App\Http\Controllers\HRReportController::class, 'myRequests'])->name('hr.my-requests');
 

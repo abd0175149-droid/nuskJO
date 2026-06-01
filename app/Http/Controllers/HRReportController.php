@@ -8,7 +8,7 @@ use App\Models\Payroll;
 use App\Models\PayrollItem;
 use App\Models\Advance;
 use App\Models\AdvanceInstallment;
-use App\Models\EmployeePenalty;
+use App\Models\Advance;
 use App\Models\LeaveRequest;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -128,10 +128,7 @@ class HRReportController extends Controller
             ->with('installments')
             ->get();
 
-        // المخالفات
-        $penalties = EmployeePenalty::where('employee_id', $employee->id)
-            ->whereYear('penalty_date', $year)
-            ->get();
+        // المخالفات تمت إزالتها
 
         // الإجازات
         $leaves = LeaveRequest::where('employee_id', $employee->id)
@@ -143,7 +140,6 @@ class HRReportController extends Controller
             'employee' => $employee,
             'payrollItems' => $payrollItems,
             'advances' => $advances,
-            'penalties' => $penalties,
             'leaves' => $leaves,
             'filters' => ['year' => (int) $year],
         ]);
@@ -206,34 +202,18 @@ class HRReportController extends Controller
             ->limit(50)
             ->get();
 
+        $balances = \App\Models\LeaveBalance::with('leaveType')
+            ->where('employee_id', $employee->id)
+            ->where('year', now()->year)
+            ->get();
+
         $leaveTypes = \App\Models\LeaveType::active()->forCountry($employee->country)->get();
 
         return Inertia::render('HR/MyRequests', [
             'leaves' => $leaves,
             'advances' => $advances,
+            'balances' => $balances,
             'leaveTypes' => $leaveTypes,
-            'employee' => $employee->load('user'),
-        ]);
-    }
-
-    /**
-     * بيانات ESS - قسائم الراتب
-     */
-    public function myPayrolls()
-    {
-        $user = auth()->user();
-        $employee = $user->employee;
-        if (!$employee) abort(404, 'لا يوجد ملف موظف مرتبط بحسابك');
-
-        $payrollItems = PayrollItem::with('payroll')
-            ->where('employee_id', $employee->id)
-            ->whereHas('payroll', fn($q) => $q->where('status', 'approved'))
-            ->get()
-            ->sortByDesc(fn($i) => $i->payroll->year . str_pad($i->payroll->month, 2, '0', STR_PAD_LEFT))
-            ->values();
-
-        return Inertia::render('HR/MyPayrolls', [
-            'payrollItems' => $payrollItems,
             'employee' => $employee->load('user'),
         ]);
     }

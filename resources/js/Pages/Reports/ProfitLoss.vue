@@ -14,7 +14,6 @@
                     <h4 class="font-bold text-sm text-green-700 mb-4">📈 الإيرادات</h4>
                     <div class="space-y-3">
                         <div class="flex justify-between items-center"><span class="text-sm text-gray-600">الفواتير (JOD)</span><span class="font-bold font-mono text-green-600" dir="ltr">{{ fmt(data.invoices_jod,3) }}</span></div>
-                        <div class="flex justify-between items-center"><span class="text-sm text-gray-600">الفواتير (SAR)</span><span class="font-bold font-mono text-green-600" dir="ltr">{{ fmt(data.invoices_sar,2) }}</span></div>
                         <div class="flex justify-between items-center"><span class="text-sm text-gray-600">سندات القبض (JOD)</span><span class="font-bold font-mono text-blue-600" dir="ltr">{{ fmt(data.receipts_jod,3) }}</span></div>
                         <hr/>
                         <div class="flex justify-between items-center"><span class="text-sm font-bold text-gray-800 dark:text-gray-100">إجمالي الإيرادات</span><span class="font-bold font-mono text-green-700 text-lg" dir="ltr">{{ fmt(data.invoices_jod + data.receipts_jod,3) }} JOD</span></div>
@@ -24,12 +23,9 @@
                 <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
                     <h4 class="font-bold text-sm text-red-700 mb-4">📉 المصروفات</h4>
                     <div class="space-y-3">
-                        <div class="flex justify-between items-center"><span class="text-sm text-gray-600">الحوالات (SAR)</span><span class="font-bold font-mono text-red-600" dir="ltr">{{ fmt(data.transfers_sar,2) }}</span></div>
-                        <div class="flex justify-between items-center"><span class="text-sm text-gray-600">المخالفات (SAR)</span><span class="font-bold font-mono text-red-600" dir="ltr">{{ fmt(data.violations_sar,2) }}</span></div>
-                        <div class="flex justify-between items-center"><span class="text-sm text-gray-600">مصاريف (SAR)</span><span class="font-bold font-mono text-orange-600" dir="ltr">{{ fmt(data.expenses_sar,2) }}</span></div>
-                        <div class="flex justify-between items-center"><span class="text-sm text-gray-600">مصاريف (JOD)</span><span class="font-bold font-mono text-orange-600" dir="ltr">{{ fmt(data.expenses_jod,3) }}</span></div>
+                        <div class="flex justify-between items-center"><span class="text-sm text-gray-600">سندات الصرف (JOD)</span><span class="font-bold font-mono text-orange-600" dir="ltr">{{ fmt(data.disbursements_jod,3) }}</span></div>
                         <hr/>
-                        <div class="flex justify-between items-center"><span class="text-sm font-bold text-gray-800 dark:text-gray-100">إجمالي التكاليف (SAR)</span><span class="font-bold font-mono text-red-700 text-lg" dir="ltr">{{ fmt(data.transfers_sar + data.violations_sar + data.expenses_sar,2) }} SAR</span></div>
+                        <div class="flex justify-between items-center"><span class="text-sm font-bold text-gray-800 dark:text-gray-100">إجمالي التكاليف (JOD)</span><span class="font-bold font-mono text-red-700 text-lg" dir="ltr">{{ fmt(data.disbursements_jod,3) }} JOD</span></div>
                     </div>
                 </div>
             </div>

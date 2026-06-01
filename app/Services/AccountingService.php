@@ -443,45 +443,68 @@ class AccountingService
      */
     public static function recordInvoice(Invoice $invoice): JournalEntry
     {
-        $invoice->load('items');
+        $invoice->load(['items.service']);
 
+        $clientAccount = $invoice->client->account_id
+            ? Account::find($invoice->client->account_id)
+            : self::account('1200');
+
+        // إيرادات الخدمات
         $revenueParent = self::account('4001');
+        $revenueChildren = Account::where('parent_id', $revenueParent->id)->get();
 
         $rate = $invoice->exchange_rate_snapshot ?? self::getExchangeRate();
 
         $totalSellJod = (float) $invoice->total_sell_jod;
         $agentCosts = []; // [agent_id => cost_jod]
-        $serviceProfits = []; // [account_id => profit_jod]
+        $revenueProfits = []; // [account_id => profit_jod]
 
         foreach ($invoice->items as $item) {
             $costJod = (float) ($item->total_cost_jod ?: round($item->total_cost_sar * $rate, 3));
-            $sellJod = (float) ($item->total_sell_jod ?: round($item->sell_price_jod * $item->quantity, 3));
-            $profit = round($sellJod - $costJod, 3);
-
+            $sellJod = (float) $item->total_sell_jod;
             $agentId = $item->agent_id;
+
             if ($agentId) {
                 $agentCosts[$agentId] = ($agentCosts[$agentId] ?? 0) + $costJod;
             }
 
-            // تحديد حساب الإيراد الخاص بهذه الخدمة
-            $serviceAccountId = $revenueParent->id;
-            if ($item->service_id) {
-                $service = \App\Models\Service::find($item->service_id);
-                if ($service && $service->account_id) {
-                    $serviceAccountId = $service->account_id;
+            $itemProfit = round($sellJod - $costJod, 3);
+            
+            $matchedAccount = $revenueParent;
+            $serviceName = $item->service ? $item->service->name : '';
+            
+            if ($serviceName && $revenueChildren->count() > 0) {
+                $matchedChild = $revenueChildren->first(function($acc) use ($serviceName) {
+                    $accName = mb_strtolower($acc->name);
+                    $srvName = mb_strtolower($serviceName);
+                    // Match common words
+                    $keywords = ['تأشير', 'طيران', 'تذكر', 'سياح', 'فندق'];
+                    foreach ($keywords as $kw) {
+                        if (mb_strpos($srvName, $kw) !== false && mb_strpos($accName, $kw) !== false) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+                
+                if ($matchedChild) {
+                    $matchedAccount = $matchedChild;
+                } else {
+                    // Fallback to first child if no match, just like old behavior but safer
+                    // Actually, if no match, putting it in 4001 (Parent) or the first child is fine.
+                    // Let's use the first child if it exists, since 4001 might not accept direct entries in strict systems.
+                    $matchedAccount = $revenueChildren->first();
                 }
+            } elseif ($revenueChildren->count() > 0) {
+                $matchedAccount = $revenueChildren->first();
             }
 
-            $serviceProfits[$serviceAccountId] = ($serviceProfits[$serviceAccountId] ?? 0) + $profit;
+            $revenueProfits[$matchedAccount->id] = ($revenueProfits[$matchedAccount->id] ?? 0) + $itemProfit;
         }
 
         $lines = [];
 
         // مدين: حساب العميل ← إجمالي البيع
-        $clientAccount = $invoice->client->account_id
-            ? Account::find($invoice->client->account_id)
-            : self::account('1200');
-
         $lines[] = [
             'account_id' => $clientAccount->id,
             'debit' => $totalSellJod,
@@ -506,21 +529,15 @@ class AccountingService
             }
         }
 
-        // دائن: الربح → إيرادات (موزعة على الخدمات)
-        foreach ($serviceProfits as $accountId => $profit) {
+        // دائن: الربح موزّع على حسابات الإيرادات
+        foreach ($revenueProfits as $accId => $profit) {
             if ($profit > 0) {
+                $acc = Account::find($accId) ?? $revenueParent;
                 $lines[] = [
-                    'account_id' => $accountId,
+                    'account_id' => $acc->id,
                     'debit' => 0,
                     'credit' => $profit,
-                    'description' => "إيراد خدمة - فاتورة {$invoice->invoice_number}",
-                ];
-            } elseif ($profit < 0) {
-                $lines[] = [
-                    'account_id' => $accountId,
-                    'debit' => abs($profit),
-                    'credit' => 0,
-                    'description' => "خسارة خدمة - فاتورة {$invoice->invoice_number}",
+                    'description' => "ربح فاتورة {$invoice->invoice_number}",
                 ];
             }
         }
@@ -547,41 +564,7 @@ class AccountingService
         );
     }
 
-    /**
-     * قيد اعتماد مخالفة
-     * مدين: مصاريف المخالفات (بالدينار بعد التحويل)
-     * دائن: حساب الوكيل الفرعي (بالدينار بعد التحويل)
-     */
-    public static function recordViolation(Violation $violation): JournalEntry
-    {
-        $violationExpenseAccount = self::account('5200');
-        $agentAccount = $violation->agent->account_id
-            ? Account::find($violation->agent->account_id)
-            : self::account('2110');
 
-        // تحويل المبلغ من SAR إلى JOD
-        $amountJod = self::sarToJod($violation->cost_sar);
-
-        return self::createEntry(
-            "مخالفة {$violation->violation_number} — {$violation->agent->name} ({$violation->cost_sar} SAR = {$amountJod} JOD)",
-            'violation',
-            $violation->id,
-            [
-                [
-                    'account_id' => $violationExpenseAccount->id,
-                    'debit' => $amountJod,
-                    'credit' => 0,
-                    'description' => "مخالفة جواز {$violation->passport_number}",
-                ],
-                [
-                    'account_id' => $agentAccount->id,
-                    'debit' => 0,
-                    'credit' => $amountJod,
-                    'description' => "خصم من {$violation->agent->name}",
-                ],
-            ]
-        );
-    }
 
     /**
      * قيد اعتماد مصروف

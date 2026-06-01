@@ -65,7 +65,7 @@ class DisbursementController extends Controller
 
         $disbursement = Disbursement::create($validated);
 
-        \App\Services\NotificationService::disbursementCreated($disbursement);
+        try { \App\Services\NotificationService::disbursementCreated($disbursement); } catch (\Throwable $e) {}
 
         return redirect()->back()->with('success', "تم إنشاء سند الصرف {$disbursement->disbursement_number} بنجاح");
     }
@@ -85,9 +85,7 @@ class DisbursementController extends Controller
             try { AccountingService::recordDisbursement($disbursement); } catch (\Exception $e) { \Log::error('Accounting Disbursement: ' . $e->getMessage()); }
 
             // إشعار
-            if ($disbursement->created_by && $disbursement->created_by !== auth()->id()) {
-                try { \App\Services\NotificationService::send($disbursement->created_by, '✅ تم اعتماد سند الصرف', "تم اعتماد سند الصرف {$disbursement->disbursement_number}", ['type' => 'disbursement', 'icon' => '✅', 'action_url' => '/disbursements']); } catch (\Throwable $e) {}
-            }
+            try { \App\Services\NotificationService::disbursementApproved($disbursement); } catch (\Throwable $e) {}
         });
 
         return back()->with('success', "تم اعتماد سند الصرف {$disbursement->disbursement_number}");

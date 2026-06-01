@@ -79,33 +79,6 @@
                 </div>
             </div>
 
-            <!-- Penalties -->
-            <div>
-                <h3 class="text-md font-bold text-gray-800 dark:text-gray-200 mb-3">⚠️ المخالفات</h3>
-                <div class="rounded-xl border overflow-hidden shadow-sm bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
-                    <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                    <thead><tr class="bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                        <th class="px-4 py-2 text-right font-bold text-xs">التاريخ</th>
-                        <th class="px-4 py-2 text-right font-bold text-xs">النوع</th>
-                        <th class="px-4 py-2 text-right font-bold text-xs">المبلغ</th>
-                        <th class="px-4 py-2 text-right font-bold text-xs">السبب</th>
-                        <th class="px-4 py-2 text-right font-bold text-xs">مخصومة؟</th>
-                    </tr></thead>
-                    <tbody>
-                        <tr v-for="p in penalties" :key="p.id" class="border-t border-gray-100 hover:bg-gray-50">
-                            <td class="px-4 py-2 text-right text-xs" dir="ltr">{{ p.penalty_date }}</td>
-                            <td class="px-4 py-2 text-right text-xs">{{ p.penalty_type==='warning'?'لفت نظر':'خصم' }}</td>
-                            <td class="px-4 py-2 text-right font-mono text-xs text-red-600" dir="ltr">{{ p.deduction_amount ? fmt(p.deduction_amount) : '—' }}</td>
-                            <td class="px-4 py-2 text-right text-xs text-gray-500 max-w-[200px] truncate">{{ p.reason }}</td>
-                            <td class="px-4 py-2 text-right text-xs">{{ p.is_deducted ? '✅' : '❌' }}</td>
-                        </tr>
-                        <tr v-if="!penalties.length"><td colspan="5" class="px-5 py-6 text-center text-gray-400">لا يوجد مخالفات</td></tr>
-                    </tbody>
-                    </table>
-                    </div>
-                </div>
-            </div>
         </div>
     </AppLayout>
 </template>
@@ -114,7 +87,7 @@
 import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
-const props = defineProps({ employee: Object, payrollItems: Array, advances: Array, penalties: Array, leaves: Array, filters: Object });
+const props = defineProps({ employee: Object, payrollItems: Array, advances: Array, leaves: Array, filters: Object });
 const monthNames = {1:'يناير',2:'فبراير',3:'مارس',4:'أبريل',5:'مايو',6:'يونيو',7:'يوليو',8:'أغسطس',9:'سبتمبر',10:'أكتوبر',11:'نوفمبر',12:'ديسمبر'};
 const fmt = (v) => Number(v||0).toLocaleString('en',{minimumFractionDigits:2});
 const f = ref({ year: props.filters?.year });

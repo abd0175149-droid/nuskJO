@@ -37,13 +37,6 @@ export const requestFirebaseToken = async () => {
     
     try {
         const { getToken } = await import("firebase/messaging");
-        
-        if (Notification.permission === 'denied') return null;
-        if (localStorage.getItem('fcm_permission_asked') === 'true' && Notification.permission === 'default') {
-            return null;
-        }
-        localStorage.setItem('fcm_permission_asked', 'true');
-        
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
             const currentToken = await getToken(messaging, {});

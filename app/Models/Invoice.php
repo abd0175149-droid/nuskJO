@@ -18,7 +18,7 @@ class Invoice extends Model
         'exchange_rate_snapshot',
         'subtotal_sar', 'discount_sar', 'total_sar', 'total_jod',
         'total_sell_jod', 'total_cost_sar', 'total_cost_jod', 'discount_jod',
-        'services_cost_sar', 'violations_cost_sar',
+        'services_cost_sar',
         'profit_sar', 'profit_jod',
         'invoice_date', 'due_date', 'notes', 'status', 'rejection_reason',
         'created_by', 'approved_by', 'approved_at',
@@ -36,7 +36,7 @@ class Invoice extends Model
         'total_cost_jod' => 'decimal:3',
         'discount_jod' => 'decimal:3',
         'services_cost_sar' => 'decimal:2',
-        'violations_cost_sar' => 'decimal:2',
+
         'profit_sar' => 'decimal:2',
         'profit_jod' => 'decimal:3',
         'invoice_date' => 'date',

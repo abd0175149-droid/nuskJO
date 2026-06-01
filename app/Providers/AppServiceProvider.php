@@ -23,6 +23,7 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\Client::observe(\App\Observers\ClientObserver::class);
         \App\Models\Service::observe(\App\Observers\ServiceObserver::class);
         \App\Models\ExpenseCategory::observe(\App\Observers\ExpenseCategoryObserver::class);
+
         \App\Models\Account::observe(\App\Observers\AccountObserver::class);
 
         // HR Observers
