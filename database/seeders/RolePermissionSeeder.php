@@ -21,11 +21,8 @@ class RolePermissionSeeder extends Seeder
             'agents' => ['view', 'create', 'update', 'delete'],
             'clients' => ['view', 'create', 'update', 'delete'],
             'services' => ['view', 'create', 'update', 'delete'],
-            'violation_types' => ['view', 'create', 'update', 'delete'],
-            'transfers' => ['view', 'create', 'approve', 'reject'],
+            'disbursements' => ['view', 'create', 'approve', 'reject'],
             'receipts' => ['view', 'create', 'approve', 'reject'],
-            'expenses' => ['view', 'create', 'approve', 'reject'],
-            'violations' => ['view', 'create', 'approve', 'reject'],
             'invoices' => ['view', 'create', 'update', 'submit', 'approve', 'reject'],
             'reports' => ['view'],
             'settings' => ['view', 'update'],
@@ -58,20 +55,18 @@ class RolePermissionSeeder extends Seeder
 
         // صلاحيات موظف المبيعات
         $salesPerms = [
-            'agents.view', 'clients.view', 'services.view', 'violation_types.view',
-            'transfers.view', 'transfers.create',
+            'agents.view', 'clients.view', 'services.view',
+            'disbursements.view', 'disbursements.create',
             'receipts.view', 'receipts.create',
-            'violations.view', 'violations.create',
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.submit',
             'reports.view',
         ];
 
         // صلاحيات المحاسب
         $accountantPerms = [
-            'agents.view', 'clients.view', 'services.view', 'violation_types.view',
-            'transfers.view', 'transfers.create',
+            'agents.view', 'clients.view', 'services.view',
+            'disbursements.view', 'disbursements.create',
             'receipts.view', 'receipts.create',
-            'expenses.view', 'expenses.create',
             'reports.view',
         ];
 

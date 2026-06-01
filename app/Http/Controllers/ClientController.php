@@ -32,21 +32,45 @@ class ClientController extends Controller
         $from = $request->from ?? now()->startOfMonth()->toDateString();
         $to = $request->to ?? now()->toDateString();
 
-        $entries = LedgerEntry::where('entity_type', 'client')
-            ->where('entity_id', $client->id)
-            ->whereBetween('entry_date', [$from, $to . ' 23:59:59'])
-            ->orderBy('entry_date')
-            ->orderBy('id')
+        if (!$client->account_id) {
+            return back()->with('error', 'العميل غير مربوط بحساب مالي');
+        }
+
+        $account = \App\Models\Account::findOrFail($client->account_id);
+
+        $entries = \App\Models\JournalEntryLine::where('account_id', $account->id)
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->whereBetween('journal_entries.entry_date', [$from, $to . ' 23:59:59'])
+            ->orderBy('journal_entries.entry_date')
+            ->orderBy('journal_entries.id')
+            ->select(
+                'journal_entry_lines.*',
+                'journal_entries.entry_number',
+                'journal_entries.entry_date',
+                'journal_entries.description as entry_description',
+                'journal_entries.reference_type',
+                'journal_entries.reference_id',
+                'journal_entries.is_reversed',
+            )
             ->get();
+
+        $openingDebit = \App\Models\JournalEntryLine::where('account_id', $account->id)
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->where('journal_entries.entry_date', '<', $from)
+            ->sum('journal_entry_lines.debit');
+            
+        $openingCredit = \App\Models\JournalEntryLine::where('account_id', $account->id)
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->where('journal_entries.entry_date', '<', $from)
+            ->sum('journal_entry_lines.credit');
+
+        // حساب العميل مدين طبيعته Asset
+        $openingBalance = $openingDebit - $openingCredit;
 
         $summary = [
             'total_debit' => $entries->sum('debit'),
             'total_credit' => $entries->sum('credit'),
-            'opening_balance' => LedgerEntry::where('entity_type', 'client')
-                ->where('entity_id', $client->id)
-                ->where('entry_date', '<', $from)
-                ->orderByDesc('entry_date')->orderByDesc('id')
-                ->value('balance_after') ?? 0,
+            'opening_balance' => round($openingBalance, 3),
         ];
 
         return Inertia::render('Clients/Show', [
@@ -69,19 +93,13 @@ class ClientController extends Controller
         if ($from && $to) {
             $invoicesQuery->whereBetween('invoice_date', [$from, $to . ' 23:59:59']);
         }
-        $invoices = $invoicesQuery->with(['items.violation.violationType'])
+        $invoices = $invoicesQuery->with(['items'])
             ->orderBy('invoice_date')
             ->orderBy('id')
             ->get()
             ->map(function ($inv) {
-                // تجميع تفاصيل البنود مع معلومات المخالفات الأصلية
+                // تجميع تفاصيل البنود
                 $details = $inv->items->map(function ($item) {
-                    if ($item->item_type === 'violation' && $item->violation) {
-                        $v = $item->violation;
-                        $typeName = $v->violationType?->name ?? 'مخالفة';
-                        $passport = $v->passport_name ? " ({$v->passport_name})" : '';
-                        return "{$typeName}{$passport} - {$v->cost_sar} SAR";
-                    }
                     return $item->description . ' (×' . $item->quantity . ')';
                 })->join(' | ');
 
@@ -217,7 +235,7 @@ class ClientController extends Controller
             return back()->with('error', 'لا يمكن حذف عميل تم إجراء عمليات مالية عليه.');
         }
 
-        if ($client->receipts()->count() > 0 || $client->invoices()->count() > 0 || $client->violations()->count() > 0) {
+        if ($client->receipts()->count() > 0 || $client->invoices()->count() > 0) {
             return back()->with('error', 'لا يمكن حذف عميل لديه عمليات مسجلة.');
         }
 

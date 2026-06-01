@@ -7,7 +7,7 @@
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="dash-card p-5">
                     <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">إجمالي أرصدة الوكلاء</p>
-                    <p class="text-xl font-bold font-mono text-green-500" dir="ltr">{{ fmt(Math.abs(stats.agents_balance_sar), 2) }} <span class="text-xs text-gray-400">SAR</span></p>
+                    <p class="text-xl font-bold font-mono text-green-500" dir="ltr">{{ fmt(Math.abs(stats.agents_balance_jod), 3) }} <span class="text-xs text-gray-400">JOD</span></p>
                     <p class="text-xs text-gray-400 mt-1">{{ stats.total_agents }} وكيل نشط</p>
                 </div>
                 <div class="dash-card p-5">

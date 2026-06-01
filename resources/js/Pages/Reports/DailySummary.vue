@@ -10,19 +10,17 @@
             </div>
 
             <!-- Totals -->
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div class="bg-green-50 rounded-xl p-4 text-center"><p class="text-xs text-gray-500">حوالات</p><p class="font-bold font-mono text-green-600 mt-1" dir="ltr">{{ fmt(totals.transfers_sar,2) }} SAR</p></div>
-                <div class="bg-blue-50 rounded-xl p-4 text-center"><p class="text-xs text-gray-500">سندات قبض</p><p class="font-bold font-mono text-blue-600 mt-1" dir="ltr">{{ fmt(totals.receipts_jod,3) }} JOD</p></div>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-green-50 rounded-xl p-4 text-center"><p class="text-xs text-gray-500">سندات الصرف</p><p class="font-bold font-mono text-green-600 mt-1" dir="ltr">{{ fmt(totals.disbursements,2) }}</p></div>
+                <div class="bg-blue-50 rounded-xl p-4 text-center"><p class="text-xs text-gray-500">سندات القبض</p><p class="font-bold font-mono text-blue-600 mt-1" dir="ltr">{{ fmt(totals.receipts_jod,3) }} JOD</p></div>
                 <div class="bg-purple-50 rounded-xl p-4 text-center"><p class="text-xs text-gray-500">فواتير</p><p class="font-bold font-mono text-purple-600 mt-1" dir="ltr">{{ fmt(totals.invoices_jod,3) }} JOD</p></div>
-                <div class="bg-red-50 rounded-xl p-4 text-center"><p class="text-xs text-gray-500">مخالفات</p><p class="font-bold font-mono text-red-600 mt-1" dir="ltr">{{ fmt(totals.violations_sar,2) }} SAR</p></div>
-                <div class="bg-orange-50 rounded-xl p-4 text-center"><p class="text-xs text-gray-500">مصاريف</p><p class="font-bold font-mono text-orange-600 mt-1" dir="ltr">{{ fmt(totals.expenses,2) }}</p></div>
             </div>
 
-            <!-- Transfers -->
-            <section v-if="transfers.length" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-                <h4 class="font-bold text-sm text-gray-700 mb-3">💱 الحوالات ({{ transfers.length }})</h4>
-                <table class="w-full text-xs"><thead><tr class="bg-gray-50"><th class="px-3 py-2 text-right">الرقم</th><th class="px-3 py-2 text-right">الوكيل</th><th class="px-3 py-2 text-right">المبلغ</th><th class="px-3 py-2 text-right">الحالة</th></tr></thead>
-                <tbody><tr v-for="t in transfers" :key="t.id" class="border-t"><td class="px-3 py-2 font-mono text-right">{{ t.transfer_number }}</td><td class="px-3 py-2 text-right">{{ t.agent?.name }}</td><td class="px-3 py-2 font-mono text-right">{{ Number(t.amount_sar).toFixed(2) }} SAR</td><td class="px-3 py-2 text-right"><span class="px-1.5 py-0.5 rounded text-xs" :class="{'bg-yellow-100 text-yellow-700':t.status==='pending','bg-green-100 text-green-700':t.status==='approved','bg-red-100 text-red-700':t.status==='rejected'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة'}[t.status] }}</span></td></tr></tbody></table>
+            <!-- Disbursements -->
+            <section v-if="disbursements.length" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+                <h4 class="font-bold text-sm text-gray-700 mb-3">📤 سندات الصرف ({{ disbursements.length }})</h4>
+                <table class="w-full text-xs"><thead><tr class="bg-gray-50"><th class="px-3 py-2 text-right">الرقم</th><th class="px-3 py-2 text-right">الحساب</th><th class="px-3 py-2 text-right">المبلغ</th><th class="px-3 py-2 text-right">الحالة</th></tr></thead>
+                <tbody><tr v-for="d in disbursements" :key="d.id" class="border-t"><td class="px-3 py-2 font-mono text-right">{{ d.disbursement_number }}</td><td class="px-3 py-2 text-right">{{ d.account?.name }}</td><td class="px-3 py-2 font-mono text-right">{{ Number(d.amount).toFixed(2) }} {{ d.currency }}</td><td class="px-3 py-2 text-right"><span class="px-1.5 py-0.5 rounded text-xs" :class="{'bg-yellow-100 text-yellow-700':d.status==='pending','bg-green-100 text-green-700':d.status==='approved','bg-red-100 text-red-700':d.status==='rejected'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة'}[d.status] }}</span></td></tr></tbody></table>
             </section>
 
             <!-- Receipts -->
@@ -39,21 +37,7 @@
                 <tbody><tr v-for="i in invoices" :key="i.id" class="border-t"><td class="px-3 py-2 font-mono text-right">{{ i.invoice_number }}</td><td class="px-3 py-2 text-right">{{ i.agent?.name }}</td><td class="px-3 py-2 text-right">{{ i.client?.name }}</td><td class="px-3 py-2 font-mono text-right">{{ Number(i.total_jod).toFixed(3) }} JOD</td><td class="px-3 py-2 text-right"><span class="px-1.5 py-0.5 rounded text-xs" :class="{'bg-yellow-100 text-yellow-700':i.status==='pending','bg-green-100 text-green-700':i.status==='approved','bg-red-100 text-red-700':i.status==='rejected'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة'}[i.status] }}</span></td></tr></tbody></table>
             </section>
 
-            <!-- Violations -->
-            <section v-if="violations.length" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-                <h4 class="font-bold text-sm text-gray-700 mb-3">⚠️ المخالفات ({{ violations.length }})</h4>
-                <table class="w-full text-xs"><thead><tr class="bg-gray-50"><th class="px-3 py-2 text-right">الرقم</th><th class="px-3 py-2 text-right">الوكيل</th><th class="px-3 py-2 text-right">النوع</th><th class="px-3 py-2 text-right">التكلفة</th><th class="px-3 py-2 text-right">الحالة</th></tr></thead>
-                <tbody><tr v-for="v in violations" :key="v.id" class="border-t"><td class="px-3 py-2 font-mono text-right">{{ v.violation_number }}</td><td class="px-3 py-2 text-right">{{ v.agent?.name }}</td><td class="px-3 py-2 text-right">{{ v.violation_type?.name }}</td><td class="px-3 py-2 font-mono text-right">{{ Number(v.cost_sar).toFixed(2) }} SAR</td><td class="px-3 py-2 text-right"><span class="px-1.5 py-0.5 rounded text-xs" :class="{'bg-yellow-100 text-yellow-700':v.status==='pending','bg-green-100 text-green-700':v.status==='approved','bg-red-100 text-red-700':v.status==='rejected'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة'}[v.status] }}</span></td></tr></tbody></table>
-            </section>
-
-            <!-- Expenses -->
-            <section v-if="expenses.length" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-                <h4 class="font-bold text-sm text-gray-700 mb-3">💰 المصاريف ({{ expenses.length }})</h4>
-                <table class="w-full text-xs"><thead><tr class="bg-gray-50"><th class="px-3 py-2 text-right">الرقم</th><th class="px-3 py-2 text-right">التصنيف</th><th class="px-3 py-2 text-right">الوصف</th><th class="px-3 py-2 text-right">المبلغ</th><th class="px-3 py-2 text-right">الحالة</th></tr></thead>
-                <tbody><tr v-for="e in expenses" :key="e.id" class="border-t"><td class="px-3 py-2 font-mono text-right">{{ e.expense_number }}</td><td class="px-3 py-2 text-right">{{ e.category?.name }}</td><td class="px-3 py-2 text-right">{{ e.description }}</td><td class="px-3 py-2 font-mono text-right">{{ Number(e.amount).toFixed(2) }} {{ e.currency }}</td><td class="px-3 py-2 text-right"><span class="px-1.5 py-0.5 rounded text-xs" :class="{'bg-yellow-100 text-yellow-700':e.status==='pending','bg-green-100 text-green-700':e.status==='approved','bg-red-100 text-red-700':e.status==='rejected'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة'}[e.status] }}</span></td></tr></tbody></table>
-            </section>
-
-            <p v-if="!transfers.length && !receipts.length && !invoices.length && !violations.length && !expenses.length" class="text-center text-gray-400 py-12">لا يوجد عمليات في هذا اليوم</p>
+            <p v-if="!disbursements.length && !receipts.length && !invoices.length" class="text-center text-gray-400 py-12">لا يوجد عمليات في هذا اليوم</p>
         </div>
     </AppLayout>
 </template>
@@ -61,7 +45,7 @@
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
-const props = defineProps({ date: String, transfers: Array, receipts: Array, invoices: Array, violations: Array, expenses: Array, totals: Object });
+const props = defineProps({ date: String, disbursements: Array, receipts: Array, invoices: Array, totals: Object });
 const selectedDate = ref(props.date);
 const fmt = (v, d) => Number(v||0).toLocaleString('en',{minimumFractionDigits:d,maximumFractionDigits:d});
 const loadDate = () => { router.get('/reports/daily-summary',{date:selectedDate.value},{preserveState:true,replace:true}); };

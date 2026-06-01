@@ -77,21 +77,45 @@ class AgentController extends Controller
         $from = $request->from ?? now()->startOfMonth()->toDateString();
         $to = $request->to ?? now()->toDateString();
 
-        $entries = LedgerEntry::where('entity_type', 'agent')
-            ->where('entity_id', $agent->id)
-            ->whereBetween('entry_date', [$from, $to . ' 23:59:59'])
-            ->orderBy('entry_date')
-            ->orderBy('id')
+        if (!$agent->account_id) {
+            return back()->with('error', 'الوكيل غير مربوط بحساب مالي');
+        }
+
+        $account = Account::findOrFail($agent->account_id);
+
+        $entries = \App\Models\JournalEntryLine::where('account_id', $account->id)
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->whereBetween('journal_entries.entry_date', [$from, $to . ' 23:59:59'])
+            ->orderBy('journal_entries.entry_date')
+            ->orderBy('journal_entries.id')
+            ->select(
+                'journal_entry_lines.*',
+                'journal_entries.entry_number',
+                'journal_entries.entry_date',
+                'journal_entries.description as entry_description',
+                'journal_entries.reference_type',
+                'journal_entries.reference_id',
+                'journal_entries.is_reversed',
+            )
             ->get();
+
+        $openingDebit = \App\Models\JournalEntryLine::where('account_id', $account->id)
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->where('journal_entries.entry_date', '<', $from)
+            ->sum('journal_entry_lines.debit');
+            
+        $openingCredit = \App\Models\JournalEntryLine::where('account_id', $account->id)
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->where('journal_entries.entry_date', '<', $from)
+            ->sum('journal_entry_lines.credit');
+
+        // حساب الوكيل دائن طبيعته Liability
+        $openingBalance = $openingCredit - $openingDebit;
 
         $summary = [
             'total_debit' => $entries->sum('debit'),
             'total_credit' => $entries->sum('credit'),
-            'opening_balance' => LedgerEntry::where('entity_type', 'agent')
-                ->where('entity_id', $agent->id)
-                ->where('entry_date', '<', $from)
-                ->orderByDesc('entry_date')->orderByDesc('id')
-                ->value('balance_after') ?? 0,
+            'opening_balance' => round($openingBalance, 3),
         ];
 
         return Inertia::render('Agents/Show', [
@@ -142,16 +166,10 @@ class AgentController extends Controller
         if ($from && $to) {
             $invoicesQuery->whereBetween('invoice_date', [$from, $to . ' 23:59:59']);
         }
-        $invoices = $invoicesQuery->with(['items.violation.violationType', 'client'])
+        $invoices = $invoicesQuery->with(['items', 'client'])
             ->orderBy('invoice_date')->orderBy('id')->get()
             ->map(function ($inv) {
                 $details = $inv->items->map(function ($item) {
-                    if ($item->item_type === 'violation' && $item->violation) {
-                        $v = $item->violation;
-                        $typeName = $v->violationType?->name ?? 'مخالفة';
-                        $passport = $v->passport_name ? " ({$v->passport_name})" : '';
-                        return "{$typeName}{$passport}";
-                    }
                     return $item->description . ' (×' . $item->quantity . ')';
                 })->join(' | ');
 
@@ -168,42 +186,16 @@ class AgentController extends Controller
                 ];
             });
 
-        // 3. المخالفات المعتمدة (غرامات على الوكيل)
-        $violationsQuery = \App\Models\Violation::where('agent_id', $agent->id)
-            ->whereIn('status', ['approved', 'editing']);
-        if ($from && $to) {
-            $violationsQuery->whereBetween('violation_date', [$from, $to . ' 23:59:59']);
-        }
-        $violations = $violationsQuery->with('violationType')
-            ->orderBy('violation_date')->orderBy('id')->get()
-            ->map(function ($v) {
-                $isReversed = $v->status === 'editing';
-                $amount = $isReversed ? -1 * abs($v->cost_sar) : abs($v->cost_sar);
-                return [
-                    'id' => $v->id,
-                    'date' => $v->violation_date->format('Y-m-d'),
-                    'violation_number' => $v->violation_number,
-                    'type' => $v->violationType?->name ?? 'مخالفة',
-                    'passport_name' => $v->passport_name ?: '—',
-                    'description' => $v->description ?: '—',
-                    'amount' => round($amount, 2),
-                    'is_reversed' => $isReversed,
-                ];
-            });
-
         // 4. الملخص
         $totalTransfers = $transfers->sum('amount_sar');
         $totalInvoices = $invoices->sum('amount');
-        $totalViolations = $violations->sum('amount');
-        $balance = $totalTransfers - $totalInvoices - $totalViolations;
+        $balance = $totalTransfers - $totalInvoices;
 
         $summary = [
             'transfers_count' => $transfers->count(),
             'transfers_total' => round($totalTransfers, 2),
             'invoices_count' => $invoices->count(),
             'invoices_total' => round($totalInvoices, 2),
-            'violations_count' => $violations->count(),
-            'violations_total' => round($totalViolations, 2),
             'balance' => round($balance, 2),
         ];
 
@@ -217,7 +209,6 @@ class AgentController extends Controller
             'agent' => $agent,
             'transfers' => $transfers->values(),
             'invoices' => $invoices->values(),
-            'violations' => $violations->values(),
             'summary' => $summary,
             'filters' => ['from' => $from ?? 'الكل', 'to' => $to ?? 'الكل'],
             'templateUrl' => $templateUrl,

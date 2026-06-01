@@ -445,36 +445,43 @@ class AccountingService
     {
         $invoice->load('items');
 
-        $clientAccount = $invoice->client->account_id
-            ? Account::find($invoice->client->account_id)
-            : self::account('1200');
-
-        // إيرادات الخدمات
         $revenueParent = self::account('4001');
-        $revenueAccount = Account::where('parent_id', $revenueParent->id)
-            ->whereDoesntHave('children')
-            ->first() ?? $revenueParent;
 
         $rate = $invoice->exchange_rate_snapshot ?? self::getExchangeRate();
 
-        // حساب إجمالي البيع والتكاليف لكل وكيل (بالدينار مباشرة)
         $totalSellJod = (float) $invoice->total_sell_jod;
         $agentCosts = []; // [agent_id => cost_jod]
+        $serviceProfits = []; // [account_id => profit_jod]
 
         foreach ($invoice->items as $item) {
             $costJod = (float) ($item->total_cost_jod ?: round($item->total_cost_sar * $rate, 3));
+            $sellJod = (float) ($item->total_sell_jod ?: round($item->sell_price_jod * $item->quantity, 3));
+            $profit = round($sellJod - $costJod, 3);
+
             $agentId = $item->agent_id;
             if ($agentId) {
                 $agentCosts[$agentId] = ($agentCosts[$agentId] ?? 0) + $costJod;
             }
-        }
 
-        $totalCostJod = array_sum($agentCosts);
-        $profit = round($totalSellJod - $totalCostJod, 3);
+            // تحديد حساب الإيراد الخاص بهذه الخدمة
+            $serviceAccountId = $revenueParent->id;
+            if ($item->service_id) {
+                $service = \App\Models\Service::find($item->service_id);
+                if ($service && $service->account_id) {
+                    $serviceAccountId = $service->account_id;
+                }
+            }
+
+            $serviceProfits[$serviceAccountId] = ($serviceProfits[$serviceAccountId] ?? 0) + $profit;
+        }
 
         $lines = [];
 
         // مدين: حساب العميل ← إجمالي البيع
+        $clientAccount = $invoice->client->account_id
+            ? Account::find($invoice->client->account_id)
+            : self::account('1200');
+
         $lines[] = [
             'account_id' => $clientAccount->id,
             'debit' => $totalSellJod,
@@ -499,14 +506,23 @@ class AccountingService
             }
         }
 
-        // دائن: الربح → إيرادات
-        if ($profit > 0) {
-            $lines[] = [
-                'account_id' => $revenueAccount->id,
-                'debit' => 0,
-                'credit' => $profit,
-                'description' => "ربح فاتورة {$invoice->invoice_number}",
-            ];
+        // دائن: الربح → إيرادات (موزعة على الخدمات)
+        foreach ($serviceProfits as $accountId => $profit) {
+            if ($profit > 0) {
+                $lines[] = [
+                    'account_id' => $accountId,
+                    'debit' => 0,
+                    'credit' => $profit,
+                    'description' => "إيراد خدمة - فاتورة {$invoice->invoice_number}",
+                ];
+            } elseif ($profit < 0) {
+                $lines[] = [
+                    'account_id' => $accountId,
+                    'debit' => abs($profit),
+                    'credit' => 0,
+                    'description' => "خسارة خدمة - فاتورة {$invoice->invoice_number}",
+                ];
+            }
         }
 
         // ضمان التوازن (فرق التقريب)

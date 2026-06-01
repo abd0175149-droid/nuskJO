@@ -65,7 +65,7 @@ class DisbursementController extends Controller
 
         $disbursement = Disbursement::create($validated);
 
-        // إشعار (يتم عند الاعتماد)
+        \App\Services\NotificationService::disbursementCreated($disbursement);
 
         return redirect()->back()->with('success', "تم إنشاء سند الصرف {$disbursement->disbursement_number} بنجاح");
     }

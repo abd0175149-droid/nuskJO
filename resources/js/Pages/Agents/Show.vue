@@ -43,13 +43,16 @@
                         <th class="px-4 py-3 text-center font-bold hide-mobile">إجراءات</th>
                     </tr></thead>
                     <tbody>
-                        <tr v-for="e in entries" :key="e.id" class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                        <tr v-for="(e, index) in entriesWithBalance" :key="e.id" class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
                             <td data-label="التاريخ" class="px-4 py-3 text-right font-mono text-xs text-gray-500 dark:text-gray-400" dir="ltr">{{ e.entry_date?.split('T')[0] }}</td>
-                            <td data-label="الوصف" class="px-4 py-3 text-right text-xs text-gray-700 dark:text-gray-300">{{ e.description }}</td>
-                            <td data-label="النوع" class="px-4 py-3 text-right hide-mobile"><span class="px-2 py-0.5 rounded text-xs font-bold" :class="typeClass(e.transaction_type)">{{ typeLabel(e.transaction_type) }}</span></td>
-                            <td data-label="مدين" class="px-4 py-3 text-right font-mono text-xs" dir="ltr" :class="parseFloat(e.debit)>0?'text-red-500 font-bold':'text-gray-300 dark:text-gray-600'">{{ parseFloat(e.debit)>0?Number(e.debit).toFixed(2):'—' }}</td>
-                            <td data-label="دائن" class="px-4 py-3 text-right font-mono text-xs" dir="ltr" :class="parseFloat(e.credit)>0?'text-green-500 font-bold':'text-gray-300 dark:text-gray-600'">{{ parseFloat(e.credit)>0?Number(e.credit).toFixed(2):'—' }}</td>
-                            <td data-label="الرصيد" class="px-4 py-3 text-right font-mono text-xs font-bold" dir="ltr" :class="parseFloat(e.balance_after)>=0?'text-green-500':'text-red-500'">{{ Math.abs(Number(e.balance_after)).toFixed(2) }}</td>
+                            <td data-label="الوصف" class="px-4 py-3 text-right text-xs text-gray-700 dark:text-gray-300">
+                                {{ e.description || e.entry_description }}
+                                <span v-if="e.is_reversed" class="text-xs text-red-500 mr-2">(معكوس)</span>
+                            </td>
+                            <td data-label="النوع" class="px-4 py-3 text-right hide-mobile"><span class="px-2 py-0.5 rounded text-xs font-bold" :class="typeClass(e.reference_type)">{{ typeLabel(e.reference_type) }}</span></td>
+                            <td data-label="مدين" class="px-4 py-3 text-right font-mono text-xs" dir="ltr" :class="parseFloat(e.debit)>0?'text-red-500 font-bold':'text-gray-300 dark:text-gray-600'">{{ parseFloat(e.debit)>0?Number(e.debit).toFixed(3):'—' }}</td>
+                            <td data-label="دائن" class="px-4 py-3 text-right font-mono text-xs" dir="ltr" :class="parseFloat(e.credit)>0?'text-green-500 font-bold':'text-gray-300 dark:text-gray-600'">{{ parseFloat(e.credit)>0?Number(e.credit).toFixed(3):'—' }}</td>
+                            <td data-label="الرصيد" class="px-4 py-3 text-right font-mono text-xs font-bold" dir="ltr" :class="parseFloat(e.running_balance)>=0?'text-green-500':'text-red-500'">{{ Math.abs(Number(e.running_balance)).toFixed(3) }}</td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap hide-mobile actions-cell">
                                 <a v-if="printUrl(e)" :href="printUrl(e)" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
                                 <span v-else class="text-xs text-gray-300">—</span>
@@ -64,26 +67,40 @@
     </AppLayout>
 </template>
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 const props = defineProps({ agent: Object, entries: Array, summary: Object, filters: Object });
 const from = ref(props.filters?.from||'');
 const to = ref(props.filters?.to||'');
-const fmt = (v) => Number(v||0).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtAbs = (v) => Math.abs(Number(v||0)).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt = (v) => Number(v||0).toLocaleString('en',{minimumFractionDigits:3,maximumFractionDigits:3});
+const fmtAbs = (v) => Math.abs(Number(v||0)).toLocaleString('en',{minimumFractionDigits:3,maximumFractionDigits:3});
 const applyFilter = () => { router.get('/agents/'+props.agent.id,{from:from.value,to:to.value},{preserveState:true,replace:true}); };
-const typeLabel = (t) => ({transfer:'حوالة',violation:'مخالفة',invoice:'فاتورة',receipt:'سند قبض',expense:'مصروف'}[t]||t);
-const typeClass = (t) => ({transfer:'bg-green-500/20 text-green-400',violation:'bg-red-500/20 text-red-400',invoice:'bg-blue-500/20 text-blue-400',receipt:'bg-purple-500/20 text-purple-400',expense:'bg-amber-500/20 text-amber-400',reversal:'bg-gray-500/20 text-gray-400'}[t]||'bg-gray-500/20 text-gray-400');
+const typeLabel = (t) => ({transfer:'حوالة',disbursement:'سند صرف',violation:'مخالفة',invoice:'فاتورة',receipt:'سند قبض',expense:'مصروف',reversal:'عكس',manual:'يدوي'}[t]||t||'—');
+const typeClass = (t) => ({transfer:'bg-green-500/20 text-green-400',disbursement:'bg-green-500/20 text-green-400',violation:'bg-red-500/20 text-red-400',invoice:'bg-blue-500/20 text-blue-400',receipt:'bg-purple-500/20 text-purple-400',expense:'bg-amber-500/20 text-amber-400',reversal:'bg-gray-500/20 text-gray-400',manual:'bg-indigo-500/20 text-indigo-400'}[t]||'bg-gray-500/20 text-gray-400');
 const printUrl = (e) => {
     const urls = {
-        transfer: `/transfers/${e.transaction_id}/print`,
-        invoice: `/invoices/${e.transaction_id}/print`,
-        receipt: `/receipts/${e.transaction_id}/print`,
-        expense: `/expenses/${e.transaction_id}/print`,
+        transfer: `/disbursements/${e.reference_id}/print`,
+        disbursement: `/disbursements/${e.reference_id}/print`,
+        invoice: `/invoices/${e.reference_id}/print`,
+        receipt: `/receipts/${e.reference_id}/print`,
+        expense: `/disbursements/${e.reference_id}/print`,
     };
-    return e.transaction_id ? (urls[e.transaction_type] || null) : null;
+    return e.reference_id ? (urls[e.reference_type] || null) : null;
 };
+
+// حساب الرصيد التراكمي
+const entriesWithBalance = computed(() => {
+    let currentBalance = props.summary.opening_balance || 0;
+    return (props.entries || []).map(e => {
+        // الوكيل دائن (Credit يزيده، Debit ينقصه)
+        currentBalance += (parseFloat(e.credit || 0) - parseFloat(e.debit || 0));
+        return {
+            ...e,
+            running_balance: currentBalance
+        };
+    });
+});
 </script>
 <style scoped>
 .dash-card { background:white; border:1px solid #e5e7eb; border-radius:1rem; box-shadow:0 1px 2px 0 rgb(0 0 0/0.05); }

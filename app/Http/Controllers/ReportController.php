@@ -80,27 +80,33 @@ class ReportController extends Controller
     public function dailySummary(Request $request)
     {
         $date = $request->date ?? now()->toDateString();
+        $user = auth()->user();
+        $isAdmin = $user->role && $user->role->slug === 'admin';
 
-        $transfers = Transfer::with('agent:id,name')->whereDate('transfer_date', $date)->get();
-        $receipts = Receipt::with('client:id,name')->whereDate('receipt_date', $date)->get();
-        $invoices = Invoice::with(['agent:id,name', 'client:id,name'])->whereDate('invoice_date', $date)->get();
-        $violations = Violation::with(['agent:id,name', 'violationType:id,name'])->whereDate('violation_date', $date)->get();
-        $expenses = Expense::with('category:id,name')->whereDate('expense_date', $date)->get();
+        $disbursementsQuery = \App\Models\Disbursement::with('account:id,name')->whereDate('disbursement_date', $date);
+        $receiptsQuery = Receipt::with('client:id,name')->whereDate('receipt_date', $date);
+        $invoicesQuery = Invoice::with(['agent:id,name', 'client:id,name'])->whereDate('invoice_date', $date);
+
+        if (!$isAdmin) {
+            $disbursementsQuery->where('created_by', $user->id);
+            $receiptsQuery->where('created_by', $user->id);
+            $invoicesQuery->where('created_by', $user->id);
+        }
+
+        $disbursements = $disbursementsQuery->get();
+        $receipts = $receiptsQuery->get();
+        $invoices = $invoicesQuery->get();
 
         return Inertia::render('Reports/DailySummary', [
             'title' => 'ملخص يومي',
             'date' => $date,
-            'transfers' => $transfers,
+            'disbursements' => $disbursements,
             'receipts' => $receipts,
             'invoices' => $invoices,
-            'violations' => $violations,
-            'expenses' => $expenses,
             'totals' => [
-                'transfers_sar' => $transfers->where('status', 'approved')->sum('amount_sar'),
+                'disbursements' => $disbursements->where('status', 'approved')->sum('amount'),
                 'receipts_jod' => $receipts->where('status', 'approved')->sum('amount_jod'),
                 'invoices_jod' => $invoices->where('status', 'approved')->sum('total_jod'),
-                'violations_sar' => $violations->where('status', 'approved')->sum('cost_sar'),
-                'expenses' => $expenses->where('status', 'approved')->sum('amount'),
             ],
         ]);
     }

@@ -113,39 +113,6 @@
                         </table>
                     </template>
 
-                    <!-- === جدول المخالفات === -->
-                    <template v-if="page.section === 'violations'">
-                        <h4 class="section-title violation-bg">⚠️ المخالفات</h4>
-                        <table class="print-tbl" :style="tblStyle">
-                            <thead><tr>
-                                <th style="width:22px">#</th>
-                                <th style="width:60px">التاريخ</th>
-                                <th style="width:80px">رقم المخالفة</th>
-                                <th style="width:70px">النوع</th>
-                                <th style="width:80px">صاحب الجواز</th>
-                                <th>الوصف</th>
-                                <th style="width:75px">التكلفة SAR</th>
-                            </tr></thead>
-                            <tbody>
-                                <tr v-for="(v, i) in page.items" :key="v.id" :class="v.is_reversed ? 'reversed-row' : ''">
-                                    <td class="center">{{ page.startIdx + i + 1 }}</td>
-                                    <td class="mono center">{{ v.date }}</td>
-                                    <td class="mono center gold bold">{{ v.violation_number }}</td>
-                                    <td class="center">{{ v.type }}</td>
-                                    <td class="center">{{ v.passport_name }}</td>
-                                    <td class="details-cell">{{ v.description }}</td>
-                                    <td class="mono right bold red">{{ fmtSar(v.amount) }}</td>
-                                </tr>
-                                <tr v-if="!page.items.length"><td colspan="7" class="empty">لا يوجد مخالفات</td></tr>
-                            </tbody>
-                            <tfoot v-if="page.showTotal">
-                                <tr class="total-row">
-                                    <td colspan="6" class="right bold">إجمالي المخالفات ({{ summary.violations_count }})</td>
-                                    <td class="mono right bold red">{{ fmtSar(summary.violations_total) }}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </template>
 
                     <!-- === جدول الملخص === -->
                     <template v-if="page.hasSummary">
@@ -168,11 +135,7 @@
                                     <td class="mono center bold">{{ summary.invoices_count }}</td>
                                     <td class="mono right bold">{{ fmtSar(summary.invoices_total) }}</td>
                                 </tr>
-                                <tr>
-                                    <td class="bold">⚠️ إجمالي المخالفات</td>
-                                    <td class="mono center bold">{{ summary.violations_count }}</td>
-                                    <td class="mono right bold red">{{ fmtSar(summary.violations_total) }}</td>
-                                </tr>
+
                                 <tr class="balance-row">
                                     <td class="bold" style="font-size:10pt">
                                         {{ summary.balance > 0 ? '🟢 رصيد متبقي لدى الوكيل' : summary.balance < 0 ? '🔴 مستحق للوكيل' : '✅ الحساب مُسوّى' }}
@@ -210,7 +173,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue';
 
 const props = defineProps({
-    agent: Object, transfers: Array, invoices: Array, violations: Array,
+    agent: Object, transfers: Array, invoices: Array,
     summary: Object, filters: Object, templateUrl: String, layout: Object,
 });
 
@@ -257,7 +220,6 @@ const pages = computed(() => {
     const result = [
         ...buildSection(props.transfers, 'transfers', rpp),
         ...buildSection(props.invoices, 'invoices', rpp),
-        ...buildSection(props.violations, 'violations', rpp),
     ];
 
     const lastPage = result[result.length - 1];
@@ -348,7 +310,6 @@ const doPrint = () => window.print();
 .section-title { font-size: 9pt; font-weight: 700; margin: 0 0 4px; padding: 4px 10px; border-radius: 5px; font-family: 'Cairo'; }
 .transfer-bg { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
 .invoice-bg { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.violation-bg { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 .summary-bg { background: #faf5ff; color: #7c3aed; border: 1px solid #ddd6fe; }
 
 /* Tables */
@@ -388,7 +349,7 @@ const doPrint = () => window.print();
     @page { size: A4 landscape; margin: 0; }
     .reversed-row td { background: #fef2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .balance-row td { background: #fffbeb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .transfer-bg, .invoice-bg, .violation-bg, .summary-bg { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .transfer-bg, .invoice-bg, .summary-bg { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .print-tbl th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .total-row td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

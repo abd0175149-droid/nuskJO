@@ -81,17 +81,14 @@ const canAny = (module) => {
 const allCards = [
     { icon: '🏢', label: 'الوكلاء', route: '/agents', module: 'agents' },
     { icon: '👥', label: 'العملاء', route: '/clients', module: 'clients' },
-    { icon: '💱', label: 'الحوالات', route: '/transfers', module: 'transfers' },
+    { icon: '📤', label: 'سندات الصرف', route: '/disbursements', module: 'disbursements' },
     { icon: '📄', label: 'سندات القبض', route: '/receipts', module: 'receipts' },
-    { icon: '⚠️', label: 'المخالفات', route: '/violations', module: 'violations' },
     { icon: '🧾', label: 'الفواتير', route: '/invoices', module: 'invoices' },
-    { icon: '💰', label: 'المصاريف', route: '/expenses', module: 'expenses' },
     { icon: '🔧', label: 'الخدمات', route: '/services', module: 'services' },
-    { icon: '📋', label: 'أنواع المخالفات', route: '/violation-types', module: 'violation_types' },
     { icon: '📊', label: 'الملخص اليومي', route: '/reports/daily-summary', module: 'reports' },
     { icon: '⏰', label: 'سجل حضوري', route: '/hr/my-attendance', module: 'attendance' },
     { icon: '🏖️', label: 'طلباتي', route: '/hr/my-requests', module: 'leaves' },
-    { icon: '📃', label: 'قسيمة الراتب', route: '/hr/my-requests', module: 'attendance' },
+    { icon: '📃', label: 'قسيمة الراتب', route: '/payrolls/my', module: 'attendance' },
 ];
 
 const availableCards = computed(() => allCards.filter(c => canAny(c.module)));

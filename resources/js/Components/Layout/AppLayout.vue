@@ -343,7 +343,7 @@ const toggleTheme = () => {
 
 const menuGroups = [
     { label: '💼 العمليات', items: [
-        { icon: '🧾', label: 'المطالبات', route: '/invoices', permission: 'invoices.view' },
+        { icon: '🧾', label: 'الفواتير', route: '/invoices', permission: 'invoices.view' },
         { icon: '📄', label: 'سندات القبض', route: '/receipts', permission: 'receipts.view' },
         { icon: '📤', label: 'سندات الصرف', route: '/disbursements', permission: 'disbursements.view' },
     ]},
@@ -359,7 +359,6 @@ const menuGroups = [
         { icon: '⏰', label: 'الحضور والانصراف', route: '/attendance', permission: 'attendance.view' },
         { icon: '🏖️', label: 'الإجازات', route: '/leaves', permission: 'leaves.view' },
         { icon: '💵', label: 'السلف', route: '/advances', permission: 'advances.view' },
-        { icon: '⚠️', label: 'الجزاءات', route: '/penalties', permission: 'penalties.view' },
         { icon: '💰', label: 'الرواتب', route: '/payrolls', permission: 'payroll.view' },
         { icon: '📊', label: 'تقارير HR', route: '/hr/reports', permission: 'hr_reports.view' },
     ]},

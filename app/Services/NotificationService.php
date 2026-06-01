@@ -99,19 +99,19 @@ class NotificationService
     }
 
     /**
-     * إشعار عند إنشاء مصروف بانتظار الاعتماد
+     * إشعار عند إنشاء سند صرف بانتظار الاعتماد
      */
-    public static function expenseCreated($expense): void
+    public static function disbursementCreated($disbursement): void
     {
         $creatorName = auth()->user()->name ?? 'موظف';
         self::notifyAdmins(
-            '💰 مصروف جديد بانتظار الاعتماد',
-            "{$creatorName} أنشأ مصروف {$expense->expense_number} بمبلغ " . number_format($expense->amount, 2) . " {$expense->currency}",
+            '📤 سند صرف جديد بانتظار الاعتماد',
+            "{$creatorName} أنشأ سند صرف {$disbursement->disbursement_number} بمبلغ " . number_format($disbursement->amount, 2) . " {$disbursement->currency}",
             [
-                'type' => 'expense',
-                'icon' => '💰',
-                'action_url' => "/expenses?highlight={$expense->id}",
-                'data' => ['reference_type' => 'expense', 'reference_id' => $expense->id],
+                'type' => 'disbursement',
+                'icon' => '📤',
+                'action_url' => "/disbursements?status=pending&highlight={$disbursement->id}",
+                'data' => ['reference_type' => 'disbursement', 'reference_id' => $disbursement->id],
             ]
         );
     }

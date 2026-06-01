@@ -34,8 +34,8 @@ class DashboardController extends Controller
 
         // بطاقات الإحصائيات
         $stats = [
-            'agents_balance_sar' => Agent::sum('balance_sar'),
-            'clients_balance_jod' => Client::sum('balance_jod'),
+            'agents_balance_jod' => abs((float) \App\Models\Agent::join('accounts', 'accounts.id', '=', 'agents.account_id')->sum('accounts.balance')),
+            'clients_balance_jod' => abs((float) \App\Models\Client::join('accounts', 'accounts.id', '=', 'clients.account_id')->sum('accounts.balance')),
             'total_agents' => Agent::where('is_active', true)->count(),
             'total_clients' => Client::where('is_active', true)->count(),
         ];
