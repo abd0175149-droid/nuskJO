@@ -227,7 +227,7 @@ class HRReportController extends Controller
         $employee = $user->employee;
         if (!$employee) abort(404, 'لا يوجد ملف موظف مرتبط بحسابك');
 
-        $latestPayroll = \App\Models\Payroll::whereHas('details', function ($q) use ($employee) {
+        $latestPayroll = \App\Models\Payroll::whereHas('items', function ($q) use ($employee) {
             $q->where('employee_id', $employee->id);
         })->where('status', 'approved')->orderByDesc('year')->orderByDesc('month')->first();
 

@@ -44,9 +44,12 @@ class AttendanceLocationController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        AttendanceLocation::create($validated);
-
-        return redirect()->back()->with('success', 'تم إضافة موقع الحضور بنجاح');
+        try {
+            AttendanceLocation::create($validated);
+            return redirect()->back()->with('success', 'تم إضافة موقع الحضور بنجاح');
+        } catch (\Exception $e) {
+            return redirect()->back()->withErrors(['name' => 'حدث خطأ أثناء الإضافة: ' . $e->getMessage()]);
+        }
     }
 
     /**
@@ -68,9 +71,12 @@ class AttendanceLocationController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $location->update($validated);
-
-        return redirect()->back()->with('success', 'تم تحديث الموقع بنجاح');
+        try {
+            $location->update($validated);
+            return redirect()->back()->with('success', 'تم تحديث الموقع بنجاح');
+        } catch (\Exception $e) {
+            return redirect()->back()->withErrors(['name' => 'حدث خطأ أثناء التحديث: ' . $e->getMessage()]);
+        }
     }
 
     /**

@@ -159,6 +159,7 @@ const deleteLocation = (id) => {
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الموقع</label>
                                     <input type="text" v-model="form.name" required class="input-field" placeholder="مثال: الإدارة الرئيسية">
+                                    <p v-if="$page.props.errors.name" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $page.props.errors.name }}</p>
                                 </div>
                                 
                                 <div>
