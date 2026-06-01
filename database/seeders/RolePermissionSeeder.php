@@ -16,6 +16,12 @@ class RolePermissionSeeder extends Seeder
         $accountant = Role::firstOrCreate(['slug' => 'accountant'], ['name' => 'محاسب', 'description' => 'عمليات مالية محدودة']);
         $hrManager = Role::firstOrCreate(['slug' => 'hr_manager'], ['name' => 'مدير موارد بشرية', 'description' => 'إدارة الموظفين والحضور والرواتب']);
 
+        // تنظيف الصلاحيات القديمة
+        $obsoleteModules = ['penalties', 'violations', 'transfers', 'expenses'];
+        foreach ($obsoleteModules as $obs) {
+            Permission::where('slug', 'like', "{$obs}.%")->delete();
+        }
+
         // تعريف الصلاحيات لكل وحدة
         $modules = [
             'agents' => ['view', 'create', 'update', 'delete'],
@@ -33,19 +39,34 @@ class RolePermissionSeeder extends Seeder
             'attendance' => ['view', 'create', 'manual_edit'],
             'leaves' => ['view', 'create', 'approve', 'reject', 'delete'],
             'advances' => ['view', 'create', 'approve', 'reject', 'delete'],
-            'penalties' => ['view', 'create', 'delete'],
             'payroll' => ['view', 'generate', 'approve', 'reject'],
             'hr_reports' => ['view'],
+        ];
+
+        $moduleNames = [
+            'agents' => 'الوكلاء', 'clients' => 'العملاء', 'services' => 'الخدمات',
+            'disbursements' => 'سندات الصرف', 'receipts' => 'سندات القبض',
+            'invoices' => 'الفواتير', 'reports' => 'التقارير', 'settings' => 'الإعدادات',
+            'users' => 'المستخدمين', 'employees' => 'الموظفين', 'attendance' => 'الحضور',
+            'leaves' => 'الإجازات', 'advances' => 'السلف', 'payroll' => 'الرواتب',
+            'hr_reports' => 'تقارير HR',
+        ];
+
+        $actionNames = [
+            'view' => 'عرض', 'create' => 'إنشاء', 'update' => 'تعديل',
+            'delete' => 'حذف', 'approve' => 'اعتماد', 'reject' => 'رفض',
+            'submit' => 'إرسال', 'manual_edit' => 'تعديل يدوي', 'generate' => 'توليد',
         ];
 
         $allPermissions = [];
         foreach ($modules as $module => $actions) {
             foreach ($actions as $action) {
                 $slug = "{$module}.{$action}";
-                $perm = Permission::firstOrCreate(
+                $name = ($actionNames[$action] ?? $action) . ' ' . ($moduleNames[$module] ?? $module);
+                $perm = Permission::updateOrCreate(
                     ['slug' => $slug],
                     [
-                        'name' => ucfirst($action) . ' ' . str_replace('_', ' ', $module),
+                        'name' => $name,
                         'module' => $module,
                     ]
                 );
@@ -76,37 +97,30 @@ class RolePermissionSeeder extends Seeder
             'attendance.view', 'attendance.create', 'attendance.manual_edit',
             'leaves.view', 'leaves.create', 'leaves.approve', 'leaves.reject', 'leaves.delete',
             'advances.view', 'advances.create', 'advances.approve', 'advances.reject', 'advances.delete',
-            'penalties.view', 'penalties.create', 'penalties.delete',
             'payroll.view', 'payroll.generate', 'payroll.approve', 'payroll.reject',
             'hr_reports.view',
         ];
 
         $salesIds = [];
         foreach ($salesPerms as $slug) {
-            if (isset($allPermissions[$slug])) {
-                $salesIds[] = $allPermissions[$slug];
-            }
+            if (isset($allPermissions[$slug])) $salesIds[] = $allPermissions[$slug];
         }
-        $sales->permissions()->syncWithoutDetaching($salesIds);
+        $sales->permissions()->sync($salesIds);
 
         $accountantIds = [];
         foreach ($accountantPerms as $slug) {
-            if (isset($allPermissions[$slug])) {
-                $accountantIds[] = $allPermissions[$slug];
-            }
+            if (isset($allPermissions[$slug])) $accountantIds[] = $allPermissions[$slug];
         }
-        $accountant->permissions()->syncWithoutDetaching($accountantIds);
+        $accountant->permissions()->sync($accountantIds);
 
         $hrIds = [];
         foreach ($hrPerms as $slug) {
-            if (isset($allPermissions[$slug])) {
-                $hrIds[] = $allPermissions[$slug];
-            }
+            if (isset($allPermissions[$slug])) $hrIds[] = $allPermissions[$slug];
         }
-        $hrManager->permissions()->syncWithoutDetaching($hrIds);
+        $hrManager->permissions()->sync($hrIds);
 
         // ربط كافة الصلاحيات بـ دور المدير العام لضمان المزامنة الكاملة
-        $admin->permissions()->syncWithoutDetaching(array_values($allPermissions));
+        $admin->permissions()->sync(array_values($allPermissions));
 
         // ضمان ربط حساب المدير العام بدور الأدمن في قاعدة البيانات
         $adminUser = \App\Models\User::where('email', 'admin@nusuk-jo.com')->orWhere('id', 1)->first();

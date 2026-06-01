@@ -168,4 +168,17 @@ class ClientController extends Controller
         return redirect()->route('clients.index')
             ->with('success', 'تم حذف العميل بنجاح');
     }
+
+    public function printStatement(Request $request, Client $client)
+    {
+        if (!$client->account_id) {
+            return back()->with('error', 'العميل غير مربوط بحساب مالي');
+        }
+        
+        return redirect()->route('accounting.accounts.print', [
+            'account' => $client->account_id,
+            'from' => $request->from,
+            'to' => $request->to
+        ]);
+    }
 }

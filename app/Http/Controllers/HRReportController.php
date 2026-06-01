@@ -217,4 +217,28 @@ class HRReportController extends Controller
             'employee' => $employee->load('user'),
         ]);
     }
+
+    /**
+     * عرض آخر قسيمة راتب للموظف
+     */
+    public function myPayslip()
+    {
+        $user = auth()->user();
+        $employee = $user->employee;
+        if (!$employee) abort(404, 'لا يوجد ملف موظف مرتبط بحسابك');
+
+        $latestPayroll = \App\Models\Payroll::whereHas('details', function ($q) use ($employee) {
+            $q->where('employee_id', $employee->id);
+        })->where('status', 'approved')->orderByDesc('year')->orderByDesc('month')->first();
+
+        if (!$latestPayroll) {
+            return redirect()->back()->with('error', 'لا يوجد قسائم راتب معتمدة لك بعد.');
+        }
+
+        return redirect()->route('payslip', [
+            'employee' => $employee->id,
+            'month' => $latestPayroll->month,
+            'year' => $latestPayroll->year
+        ]);
+    }
 }

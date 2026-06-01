@@ -22,8 +22,13 @@ class DashboardController extends Controller
     {
         $user = auth()->user();
 
-        // الموظف (غير admin) → واجهة الاختصارات المبسطة
-        if (!$user->isAdmin()) {
+        // إظهار لوحة الاختصارات المبسطة فقط للموظفين الذين لا يملكون صلاحيات إدارية أو تشغيلية
+        if (!$user->isAdmin() && 
+            !$user->can('reports.view') && 
+            !$user->can('invoices.view') && 
+            !$user->can('employees.view') && 
+            !$user->can('disbursements.view') &&
+            !$user->can('settings.view')) {
             return Inertia::render('EmployeeDashboard', [
                 'title' => 'الرئيسية',
             ]);

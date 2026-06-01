@@ -148,9 +148,6 @@ Route::middleware('auth')->group(function () {
     Route::post('advances/{advance}/approve', [\App\Http\Controllers\AdvanceController::class, 'approve'])->name('advances.approve');
     Route::post('advances/{advance}/reject', [\App\Http\Controllers\AdvanceController::class, 'reject'])->name('advances.reject');
 
-    // Employee Penalties
-    Route::resource('penalties', \App\Http\Controllers\EmployeePenaltyController::class)->only(['index', 'store', 'destroy']);
-
     // Payroll
     Route::get('payrolls', [\App\Http\Controllers\PayrollController::class, 'index'])->name('payrolls.index');
     Route::post('payrolls/generate', [\App\Http\Controllers\PayrollController::class, 'generate'])->name('payrolls.generate');
@@ -165,6 +162,7 @@ Route::middleware('auth')->group(function () {
     // ESS (Employee Self-Service)
     Route::get('hr/my-attendance', [\App\Http\Controllers\HRReportController::class, 'myAttendance'])->name('hr.my-attendance');
     Route::get('hr/my-requests', [\App\Http\Controllers\HRReportController::class, 'myRequests'])->name('hr.my-requests');
+    Route::get('hr/my-payslip', [\App\Http\Controllers\HRReportController::class, 'myPayslip'])->name('hr.my-payslip');
 
     // HR Reports
     Route::get('hr/reports', [\App\Http\Controllers\HRReportController::class, 'attendance'])->name('hr.reports');

@@ -139,6 +139,24 @@ class NotificationService
         }
     }
 
+    /**
+     * إشعار عند إنشاء فاتورة
+     */
+    public static function invoiceCreated($invoice): void
+    {
+        $creatorName = auth()->user()->name ?? 'موظف';
+        self::notifyAdmins(
+            '🧾 فاتورة جديدة بانتظار الاعتماد',
+            "{$creatorName} أنشأ فاتورة {$invoice->invoice_number} للعميل {$invoice->client->name}",
+            [
+                'type' => 'invoice',
+                'icon' => '🧾',
+                'action_url' => "/invoices?status=pending&highlight={$invoice->id}",
+                'data' => ['reference_type' => 'invoice', 'reference_id' => $invoice->id],
+            ]
+        );
+    }
+
     // ─── أحداث الرفض ───
 
     /**
@@ -240,24 +258,21 @@ class NotificationService
     }
 
     /**
-     * إشعار عند إصدار مخالفة للموظف
+     * إشعار عند إنشاء سند قبض
      */
-    public static function penaltyIssued($penalty): void
+    public static function receiptCreated($receipt): void
     {
-        $employeeUserId = $penalty->employee?->user_id;
-        if ($employeeUserId) {
-            $typeLabel = $penalty->penalty_type === 'warning' ? 'لفت نظر' : 'خصم مالي';
-            self::send($employeeUserId,
-                "⚠️ مخالفة جديدة: {$typeLabel}",
-                "تم إصدار مخالفة {$penalty->penalty_number}: {$penalty->reason}",
-                [
-                    'type' => 'penalty',
-                    'icon' => '⚠️',
-                    'action_url' => '/penalties',
-                    'data' => ['reference_type' => 'employee_penalty', 'reference_id' => $penalty->id],
-                ]
-            );
-        }
+        $creatorName = auth()->user()->name ?? 'موظف';
+        self::notifyAdmins(
+            '📄 سند قبض جديد بانتظار الاعتماد',
+            "{$creatorName} أنشأ سند قبض {$receipt->receipt_number} بمبلغ " . number_format($receipt->amount_jod, 3) . ' JOD',
+            [
+                'type' => 'receipt',
+                'icon' => '📄',
+                'action_url' => "/receipts?status=pending&highlight={$receipt->id}",
+                'data' => ['reference_type' => 'receipt', 'reference_id' => $receipt->id],
+            ]
+        );
     }
 
     /**

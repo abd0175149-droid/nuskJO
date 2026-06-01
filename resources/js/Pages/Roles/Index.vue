@@ -103,7 +103,6 @@ const moduleTranslations = {
     attendance: 'الحضور والانصراف',
     leaves: 'الإجازات',
     advances: 'السلف',
-    penalties: 'الجزاءات والمخالفات',
     payroll: 'مسيرات الرواتب',
     hr_reports: 'تقارير الموارد البشرية'
 };

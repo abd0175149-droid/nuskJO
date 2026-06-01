@@ -136,7 +136,8 @@ class InvoiceController extends Controller
                 ]);
             }
 
-            // إشعار (يتم عند الاعتماد)
+            // إشعار بانتظار الاعتماد
+            try { \App\Services\NotificationService::invoiceCreated($invoice); } catch (\Exception $e) {}
         });
 
         return redirect()->back()->with('success', 'تم إنشاء الفاتورة بنجاح');

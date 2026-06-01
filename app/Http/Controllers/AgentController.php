@@ -264,4 +264,17 @@ class AgentController extends Controller
 
         $agent->update(['account_id' => $account->id]);
     }
+
+    public function printStatement(Request $request, Agent $agent)
+    {
+        if (!$agent->account_id) {
+            return back()->with('error', 'الوكيل غير مربوط بحساب مالي');
+        }
+        
+        return redirect()->route('accounting.accounts.print', [
+            'account' => $agent->account_id,
+            'from' => $request->from,
+            'to' => $request->to
+        ]);
+    }
 }
