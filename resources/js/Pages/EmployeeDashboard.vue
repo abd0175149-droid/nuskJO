@@ -12,7 +12,7 @@
             </div>
 
             <!-- Attendance Check-in Widget -->
-            <div v-if="page.props.auth.permissions.includes('attendance.view')" class="mb-8 max-w-lg mx-auto">
+            <div class="mb-8 max-w-lg mx-auto">
                 <CheckInWidget />
             </div>
 
@@ -86,10 +86,10 @@ const allCards = [
     { icon: '🧾', label: 'الفواتير', route: '/invoices', module: 'invoices' },
     { icon: '🔧', label: 'الخدمات', route: '/services', module: 'services' },
     { icon: '📊', label: 'الملخص اليومي', route: '/reports/daily-summary', module: 'reports' },
-    { icon: '⏰', label: 'سجل حضوري', route: '/hr/my-attendance', module: 'attendance' },
-    { icon: '🏖️', label: 'طلباتي', route: '/hr/my-requests', module: 'leaves' },
-    { icon: '📃', label: 'قسيمة الراتب', route: '/hr/my-payslip', module: 'attendance' },
+    { icon: '⏰', label: 'سجل حضوري', route: '/hr/my-attendance', module: 'self' },
+    { icon: '🏖️', label: 'طلباتي', route: '/hr/my-requests', module: 'self' },
+    { icon: '📃', label: 'قسيمة الراتب', route: '/hr/my-payslip', module: 'self' },
 ];
 
-const availableCards = computed(() => allCards.filter(c => canAny(c.module)));
+const availableCards = computed(() => allCards.filter(c => c.module === 'self' || canAny(c.module)));
 </script>

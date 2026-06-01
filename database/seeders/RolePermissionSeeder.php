@@ -16,11 +16,11 @@ class RolePermissionSeeder extends Seeder
         $accountant = Role::firstOrCreate(['slug' => 'accountant'], ['name' => 'محاسب', 'description' => 'عمليات مالية محدودة']);
         $hrManager = Role::firstOrCreate(['slug' => 'hr_manager'], ['name' => 'مدير موارد بشرية', 'description' => 'إدارة الموظفين والحضور والرواتب']);
 
-        // تنظيف الصلاحيات القديمة
-        $obsoleteModules = ['penalties', 'violations', 'transfers', 'expenses'];
-        foreach ($obsoleteModules as $obs) {
-            Permission::where('slug', 'like', "{$obs}.%")->delete();
-        }
+        // تنظيف الصلاحيات القديمة وغير المستخدمة
+        $obsoleteModules = ['penalties', 'violations', 'violation_types', 'transfers', 'expenses'];
+        Permission::whereIn('module', $obsoleteModules)->delete();
+        // مسح صلاحية التعديل بعد الاعتماد القديمة إن وجدت
+        Permission::where('slug', 'like', '%.edit_approved')->delete();
 
         // تعريف الصلاحيات لكل وحدة
         $modules = [
