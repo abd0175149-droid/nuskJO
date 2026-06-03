@@ -243,8 +243,8 @@ class AccountingController extends Controller
         if ($isAgentAccount) {
             $existing = \App\Models\Agent::where('account_id', $account->id)->first();
             if (!$existing) {
-                $lastCode = \App\Models\Agent::where('code', 'like', 'AGT-%')->orderByDesc('code')->value('code');
-                $nextNum = $lastCode ? (int)substr($lastCode, 4) + 1 : 1;
+                $codes = \App\Models\Agent::where('code', 'like', 'AGT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
+                $nextNum = $codes->max() ? $codes->max() + 1 : 1;
                 \App\Models\Agent::create([
                     'name' => $account->name,
                     'code' => 'AGT-' . str_pad($nextNum, 3, '0', STR_PAD_LEFT),
@@ -261,8 +261,8 @@ class AccountingController extends Controller
         if ($parent && $parent->code === '1200') {
             $existing = \App\Models\Client::where('account_id', $account->id)->first();
             if (!$existing) {
-                $lastCode = \App\Models\Client::withTrashed()->where('code', 'like', 'CLT-%')->orderByDesc('code')->value('code');
-                $nextNum = $lastCode ? (int)substr($lastCode, 4) + 1 : 1;
+                $codes = \App\Models\Client::withTrashed()->where('code', 'like', 'CLT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
+                $nextNum = $codes->max() ? $codes->max() + 1 : 1;
                 \App\Models\Client::create([
                     'name' => $account->name,
                     'code' => 'CLT-' . str_pad($nextNum, 3, '0', STR_PAD_LEFT),
