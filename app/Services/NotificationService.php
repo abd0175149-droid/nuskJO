@@ -86,9 +86,10 @@ class NotificationService
     public static function invoiceCreated($invoice): void
     {
         $creatorName = auth()->user()->name ?? 'موظف';
+        $clientName = $invoice->client->name ?? '—';
         self::notifyAdmins(
             '🧾 فاتورة جديدة بانتظار الاعتماد',
-            "{$creatorName} أنشأ فاتورة {$invoice->invoice_number} بمبلغ " . number_format($invoice->total_jod, 3) . ' JOD',
+            "{$creatorName} أنشأ فاتورة {$invoice->invoice_number} للعميل {$clientName} بمبلغ " . number_format($invoice->total_jod, 3) . ' JOD',
             [
                 'type' => 'invoice',
                 'icon' => '🧾',
@@ -139,23 +140,7 @@ class NotificationService
         }
     }
 
-    /**
-     * إشعار عند إنشاء فاتورة
-     */
-    public static function invoiceCreated($invoice): void
-    {
-        $creatorName = auth()->user()->name ?? 'موظف';
-        self::notifyAdmins(
-            '🧾 فاتورة جديدة بانتظار الاعتماد',
-            "{$creatorName} أنشأ فاتورة {$invoice->invoice_number} للعميل {$invoice->client->name}",
-            [
-                'type' => 'invoice',
-                'icon' => '🧾',
-                'action_url' => "/invoices?status=pending&highlight={$invoice->id}",
-                'data' => ['reference_type' => 'invoice', 'reference_id' => $invoice->id],
-            ]
-        );
-    }
+
 
     // ─── أحداث الرفض ───
 
