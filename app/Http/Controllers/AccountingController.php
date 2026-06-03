@@ -261,7 +261,7 @@ class AccountingController extends Controller
         if ($parent && $parent->code === '1200') {
             $existing = \App\Models\Client::where('account_id', $account->id)->first();
             if (!$existing) {
-                $lastCode = \App\Models\Client::where('code', 'like', 'CLT-%')->orderByDesc('code')->value('code');
+                $lastCode = \App\Models\Client::withTrashed()->where('code', 'like', 'CLT-%')->orderByDesc('code')->value('code');
                 $nextNum = $lastCode ? (int)substr($lastCode, 4) + 1 : 1;
                 \App\Models\Client::create([
                     'name' => $account->name,

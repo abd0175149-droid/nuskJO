@@ -98,7 +98,7 @@ class ClientController extends Controller
             'credit_limit_jod' => 'nullable|numeric|min:0',
         ]);
 
-        $lastCode = Client::where('code', 'like', 'CLT-%')->orderByDesc('code')->value('code');
+        $lastCode = Client::withTrashed()->where('code', 'like', 'CLT-%')->orderByDesc('code')->value('code');
         $nextNum = $lastCode ? (int)substr($lastCode, 4) + 1 : 1;
         $validated['code'] = 'CLT-' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
 
