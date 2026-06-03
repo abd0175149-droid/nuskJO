@@ -19,15 +19,15 @@ class AccountingSync
     {
         $parentLen = strlen($parentCode);
 
-        $lastChild = \App\Models\Account::where('code', 'like', $parentCode . '%')
+        $codes = \App\Models\Account::where('code', 'like', $parentCode . '%')
             ->where('code', '!=', $parentCode)
-            ->orderByDesc('code')
-            ->value('code');
+            ->pluck('code');
 
-        if ($lastChild) {
-            $suffix = substr($lastChild, $parentLen);
-            $nextSuffix = intval($suffix) + 1;
-            return $parentCode . str_pad($nextSuffix, strlen($suffix), '0', STR_PAD_LEFT);
+        if ($codes->isNotEmpty()) {
+            $suffixes = $codes->map(fn($c) => substr($c, $parentLen));
+            $nextSuffix = $suffixes->map(fn($s) => (int)$s)->max() + 1;
+            $maxLen = $suffixes->map(fn($s) => strlen($s))->max() ?: 1;
+            return $parentCode . str_pad($nextSuffix, $maxLen, '0', STR_PAD_LEFT);
         }
 
         // لا يوجد أطفال: ابدأ بـ 1
