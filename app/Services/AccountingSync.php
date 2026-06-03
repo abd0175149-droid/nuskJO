@@ -19,8 +19,8 @@ class AccountingSync
     {
         $parentLen = strlen($parentCode);
 
-        $lastChild = \App\Models\Account::where('parent_id', $parentId)
-            ->where('code', 'like', $parentCode . '%')
+        $lastChild = \App\Models\Account::where('code', 'like', $parentCode . '%')
+            ->where('code', '!=', $parentCode)
             ->orderByDesc('code')
             ->value('code');
 
