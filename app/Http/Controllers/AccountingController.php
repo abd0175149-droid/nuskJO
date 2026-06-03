@@ -243,7 +243,7 @@ class AccountingController extends Controller
         if ($isAgentAccount) {
             $existing = \App\Models\Agent::where('account_id', $account->id)->first();
             if (!$existing) {
-                $codes = \App\Models\Agent::where('code', 'like', 'AGT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
+                $codes = \App\Models\Agent::withTrashed()->where('code', 'like', 'AGT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
                 $nextNum = $codes->max() ? $codes->max() + 1 : 1;
                 \App\Models\Agent::create([
                     'name' => $account->name,

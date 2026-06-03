@@ -51,7 +51,7 @@ class AgentController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $codes = Agent::where('code', 'like', 'AGT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
+        $codes = Agent::withTrashed()->where('code', 'like', 'AGT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
         $nextNum = $codes->max() ? $codes->max() + 1 : 1;
         $validated['code'] = 'AGT-' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
 
