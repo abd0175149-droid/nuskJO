@@ -67,10 +67,18 @@ class ClientController extends Controller
         // حساب العميل مدين طبيعته Asset
         $openingBalance = $openingDebit - $openingCredit;
 
+        // حساب الرصيد التراكمي لكل حركة
+        $currentBalance = $openingBalance;
+        foreach ($entries as $entry) {
+            $currentBalance += ($entry->debit - $entry->credit);
+            $entry->balance_after = round($currentBalance, 3);
+        }
+
         $summary = [
             'total_debit' => $entries->sum('debit'),
             'total_credit' => $entries->sum('credit'),
             'opening_balance' => round($openingBalance, 3),
+            'current_balance' => round($currentBalance, 3),
         ];
 
         return Inertia::render('Clients/Show', [

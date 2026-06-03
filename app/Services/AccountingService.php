@@ -459,16 +459,24 @@ class AccountingService
         $agentCosts = []; // [agent_id => cost_jod]
         $revenueProfits = []; // [account_id => profit_jod]
 
+        $totalCostJod = (float) $invoice->total_cost_jod;
+        $netProfitJod = (float) $invoice->profit_jod;
+        $itemsCount = count($invoice->items);
+
         foreach ($invoice->items as $item) {
             $costJod = (float) ($item->total_cost_jod ?: round($item->total_cost_sar * $rate, 3));
-            $sellJod = (float) $item->total_sell_jod;
             $agentId = $item->agent_id;
 
             if ($agentId) {
                 $agentCosts[$agentId] = ($agentCosts[$agentId] ?? 0) + $costJod;
             }
 
-            $itemProfit = round($sellJod - $costJod, 3);
+            // توزيع أرباح الفاتورة الكلية على البنود نسبياً حسب التكلفة
+            if ($totalCostJod > 0) {
+                $itemProfit = round(($costJod / $totalCostJod) * $netProfitJod, 3);
+            } else {
+                $itemProfit = $itemsCount > 0 ? round($netProfitJod / $itemsCount, 3) : 0;
+            }
             
             $matchedAccount = $revenueParent;
             $serviceName = $item->service ? $item->service->name : '';
