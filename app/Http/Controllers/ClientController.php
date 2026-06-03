@@ -16,6 +16,7 @@ class ClientController extends Controller
                 ->orWhere('code', 'like', "%{$s}%")
                 ->orWhere('phone', 'like', "%{$s}%"))
             ->when($request->status !== null, fn ($q) => $q->where('is_active', $request->boolean('status')))
+            ->orderByRaw('abs(balance_jod) DESC')
             ->orderByDesc('created_at')
             ->paginate(15)
             ->withQueryString();
