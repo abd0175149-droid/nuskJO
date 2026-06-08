@@ -36,6 +36,14 @@
                 </table>
                 </div>
             </div>
+
+            <!-- Pagination -->
+            <div v-if="clients.last_page > 1" class="flex justify-center gap-1 mt-4">
+                <template v-for="link in clients.links" :key="link.label">
+                    <a v-if="link.url" :href="link.url" class="px-3 py-2 rounded-lg text-sm" :class="link.active?'bg-gold-500 text-black font-bold':'text-gray-600 hover:bg-gray-100'" v-html="link.label"/>
+                    <span v-else class="px-3 py-2 text-sm text-gray-400" v-html="link.label"/>
+                </template>
+            </div>
         </div>
 
         <!-- View Modal -->

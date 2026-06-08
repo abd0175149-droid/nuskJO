@@ -27,6 +27,7 @@
                         <th class="px-4 py-3 text-right font-bold">التكلفة JOD</th>
                         <th class="px-4 py-3 text-right font-bold">البيع JOD</th>
                         <th class="px-4 py-3 text-right font-bold hide-mobile">الربح JOD</th>
+                        <th class="px-4 py-3 text-right font-bold hide-mobile">الملاحظات</th>
                         <th class="px-4 py-3 text-right font-bold">الحالة</th>
                         <th class="px-4 py-3 text-right font-bold hide-mobile">بواسطة</th>
                         <th class="px-4 py-3 text-center font-bold">إجراءات</th>
@@ -41,6 +42,7 @@
                             <td data-label="التكلفة" class="px-4 py-3 text-right font-bold font-mono text-xs" dir="ltr">{{ Number(inv.total_cost_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
                             <td data-label="البيع" class="px-4 py-3 text-right font-bold font-mono text-xs text-blue-600" dir="ltr">{{ Number(inv.total_sell_jod||inv.total_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
                             <td data-label="الربح" class="px-4 py-3 text-right font-bold font-mono text-xs hide-mobile" :class="Number(inv.profit_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Number(inv.profit_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
+                            <td data-label="الملاحظات" class="px-4 py-3 text-right text-xs text-gray-500 hide-mobile max-w-xs truncate" :title="inv.notes">{{ inv.notes || '—' }}</td>
                             <td data-label="الحالة" class="px-4 py-3 text-right"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="{'bg-yellow-100 text-yellow-700':inv.status==='pending','bg-green-100 text-green-700':inv.status==='approved','bg-red-100 text-red-700':inv.status==='rejected','bg-blue-100 text-blue-700':inv.status==='editing'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة',editing:'تحت التعديل'}[inv.status] }}</span></td>
                             <td data-label="بواسطة" class="px-4 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ inv.creator?.name || '—' }}</div><div v-if="inv.status !== 'pending'" class="mt-0.5">{{ inv.status === 'approved' ? '✅' : '❌' }} {{ inv.approver?.name || '—' }}</div></td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap actions-cell">
@@ -53,10 +55,18 @@
                                 <button v-if="inv.status==='editing'" @click="openPOS(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل الفاتورة</button>
                             </td>
                         </tr>
-                        <tr v-if="!invoices.data?.length"><td colspan="9" class="px-5 py-12 text-center text-gray-400">لا يوجد فواتير</td></tr>
+                        <tr v-if="!invoices.data?.length"><td colspan="10" class="px-5 py-12 text-center text-gray-400">لا يوجد فواتير</td></tr>
                     </tbody>
                 </table>
                 </div>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="invoices.last_page > 1" class="flex justify-center gap-1">
+                <template v-for="link in invoices.links" :key="link.label">
+                    <a v-if="link.url" :href="link.url" class="px-3 py-2 rounded-lg text-sm" :class="link.active?'bg-gold-500 text-black font-bold':'text-gray-600 hover:bg-gray-100'" v-html="link.label"/>
+                    <span v-else class="px-3 py-2 text-sm text-gray-400" v-html="link.label"/>
+                </template>
             </div>
         </div>
 

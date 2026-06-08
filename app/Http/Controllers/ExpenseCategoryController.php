@@ -9,9 +9,12 @@ use Inertia\Inertia;
 
 class ExpenseCategoryController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $categories = ExpenseCategory::with('account:id,code,name')->orderBy('name')->get();
+        $categories = ExpenseCategory::with('account:id,code,name')
+            ->orderBy('name')
+            ->paginate(15)
+            ->withQueryString();
 
         // حسابات المصروفات من شجرة الحسابات (الورقية فقط — بدون الأب)
         $expenseAccounts = Account::where('type', 'expense')

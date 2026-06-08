@@ -28,6 +28,14 @@
                     <tr v-if="!services.data?.length"><td colspan="4" class="px-5 py-12 text-center text-gray-400">لا يوجد خدمات</td></tr>
                 </tbody>
             </table></div>
+
+            <!-- Pagination -->
+            <div v-if="services.last_page > 1" class="flex justify-center gap-1 mt-4">
+                <template v-for="link in services.links" :key="link.label">
+                    <a v-if="link.url" :href="link.url" class="px-3 py-2 rounded-lg text-sm" :class="link.active?'bg-gold-500 text-black font-bold':'text-gray-600 hover:bg-gray-100'" v-html="link.label"/>
+                    <span v-else class="px-3 py-2 text-sm text-gray-400" v-html="link.label"/>
+                </template>
+            </div>
         </div>
         <!-- Form Modal -->
         <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showForm=false">
