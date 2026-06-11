@@ -34,6 +34,7 @@
                         <th class="px-4 py-3 text-right font-bold">رقم القيد</th>
                         <th class="px-4 py-3 text-right font-bold">البيان</th>
                         <th class="px-4 py-3 text-right font-bold">المرجع</th>
+                        <th class="px-4 py-3 text-right font-bold">الملاحظات</th>
                         <th class="px-4 py-3 text-right font-bold">مدين</th>
                         <th class="px-4 py-3 text-right font-bold">دائن</th>
                         <th class="px-4 py-3 text-right font-bold">الرصيد</th>
@@ -41,7 +42,7 @@
                     <tbody>
                         <!-- الرصيد الافتتاحي -->
                         <tr class="bg-blue-50 dark:bg-blue-900/20 font-bold">
-                            <td class="px-4 py-3 text-right text-xs" colspan="4">الرصيد الافتتاحي</td>
+                            <td class="px-4 py-3 text-right text-xs" colspan="5">الرصيد الافتتاحي</td>
                             <td class="px-4 py-3 text-right font-mono text-xs" colspan="2"></td>
                             <td class="px-4 py-3 text-right font-mono text-xs font-bold" :class="opening_balance >= 0 ? 'text-green-600' : 'text-red-600'">{{ fmtAbs(opening_balance) }}</td>
                         </tr>
@@ -51,16 +52,17 @@
                             <td class="px-4 py-3 text-right text-xs font-mono text-gold-700">{{ line.entry_number }}</td>
                             <td class="px-4 py-3 text-right text-xs max-w-[250px]">{{ line.description || line.entry_description }}</td>
                             <td class="px-4 py-3 text-right text-xs"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold" :class="refClass(line.reference_type)">{{ refLabels[line.reference_type] || line.reference_type }}</span></td>
+                            <td class="px-4 py-3 text-right text-xs text-gray-500 max-w-[180px] truncate" :title="line.reference_notes">{{ line.reference_notes || '—' }}</td>
                             <td class="px-4 py-3 text-right font-mono text-xs" :class="Number(line.debit) > 0 ? 'text-red-600 font-bold' : 'text-gray-300'">{{ fmt(line.debit) }}</td>
                             <td class="px-4 py-3 text-right font-mono text-xs" :class="Number(line.credit) > 0 ? 'text-green-600 font-bold' : 'text-gray-300'">{{ fmt(line.credit) }}</td>
                             <td class="px-4 py-3 text-right font-mono text-xs font-bold" :class="runningBalance(i) >= 0 ? 'text-green-700' : 'text-red-700'">{{ fmtAbs(runningBalance(i)) }}</td>
                         </tr>
-                        <tr v-if="!lines.length"><td colspan="7" class="px-5 py-12 text-center text-gray-400">لا يوجد حركات في هذه الفترة</td></tr>
+                        <tr v-if="!lines.length"><td colspan="8" class="px-5 py-12 text-center text-gray-400">لا يوجد حركات في هذه الفترة</td></tr>
                     </tbody>
                     <!-- المجاميع -->
                     <tfoot v-if="lines.length">
                         <tr class="bg-gray-100 dark:bg-gray-800 font-bold border-t-2 border-gray-300">
-                            <td class="px-4 py-3 text-right" colspan="4">المجموع</td>
+                            <td class="px-4 py-3 text-right" colspan="5">المجموع</td>
                             <td class="px-4 py-3 text-right font-mono text-red-700">{{ fmt(totals.debit) }}</td>
                             <td class="px-4 py-3 text-right font-mono text-green-700">{{ fmt(totals.credit) }}</td>
                             <td class="px-4 py-3 text-right font-mono font-bold" :class="closingBalance >= 0 ? 'text-green-700' : 'text-red-700'">{{ fmtAbs(closingBalance) }}</td>

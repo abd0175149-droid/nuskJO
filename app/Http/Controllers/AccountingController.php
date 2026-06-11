@@ -606,6 +606,36 @@ class AccountingController extends Controller
             ? $openingDebit - $openingCredit
             : $openingCredit - $openingDebit;
 
+        // تحميل ملاحظات العمليات المرتبطة
+        $referenceGroups = $lines->groupBy('reference_type');
+        $notesMap = [];
+
+        foreach ($referenceGroups as $type => $group) {
+            $ids = $group->pluck('reference_id')->filter()->unique()->values()->toArray();
+            if (empty($ids)) continue;
+
+            $modelClass = match ($type) {
+                'invoice' => \App\Models\Invoice::class,
+                'receipt' => \App\Models\Receipt::class,
+                'transfer' => \App\Models\Transfer::class,
+                'expense' => \App\Models\Expense::class,
+                'disbursement' => \App\Models\Disbursement::class,
+                default => null,
+            };
+
+            if ($modelClass) {
+                $records = $modelClass::whereIn('id', $ids)->select('id', 'notes')->get();
+                foreach ($records as $record) {
+                    $notesMap["{$type}_{$record->id}"] = $record->notes;
+                }
+            }
+        }
+
+        foreach ($lines as $line) {
+            $key = "{$line->reference_type}_{$line->reference_id}";
+            $line->reference_notes = $notesMap[$key] ?? null;
+        }
+
         return Inertia::render('Accounting/AccountDetails', [
             'title' => "كشف حساب: {$account->code} - {$account->name}",
             'account' => [
@@ -643,10 +673,42 @@ class AccountingController extends Controller
                 'entry_number' => $l->journalEntry->entry_number,
                 'description' => $l->description ?: $l->journalEntry->description,
                 'reference_type' => $l->journalEntry->reference_type,
+                'reference_id' => $l->journalEntry->reference_id,
                 'debit' => $l->debit,
                 'credit' => $l->credit,
             ])
             ->sortBy('entry_date')->values();
+
+        // تحميل ملاحظات العمليات المرتبطة
+        $referenceGroups = $lines->groupBy('reference_type');
+        $notesMap = [];
+
+        foreach ($referenceGroups as $type => $group) {
+            $ids = $group->pluck('reference_id')->filter()->unique()->values()->toArray();
+            if (empty($ids)) continue;
+
+            $modelClass = match ($type) {
+                'invoice' => \App\Models\Invoice::class,
+                'receipt' => \App\Models\Receipt::class,
+                'transfer' => \App\Models\Transfer::class,
+                'expense' => \App\Models\Expense::class,
+                'disbursement' => \App\Models\Disbursement::class,
+                default => null,
+            };
+
+            if ($modelClass) {
+                $records = $modelClass::whereIn('id', $ids)->select('id', 'notes')->get();
+                foreach ($records as $record) {
+                    $notesMap["{$type}_{$record->id}"] = $record->notes;
+                }
+            }
+        }
+
+        $lines = $lines->map(function ($line) use ($notesMap) {
+            $key = "{$line['reference_type']}_{$line['reference_id']}";
+            $line['reference_notes'] = $notesMap[$key] ?? null;
+            return $line;
+        });
 
         $openingBalance = JournalEntryLine::where('account_id', $account->id)
             ->whereHas('journalEntry', fn ($q) => $q->where('entry_date', '<', $from))

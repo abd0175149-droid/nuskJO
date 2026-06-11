@@ -107,7 +107,7 @@
                                 <thead><tr class="bg-gray-50 text-gray-500">
                                     <th class="px-3 py-2 text-right w-1/5">الوكيل *</th>
                                     <th class="px-3 py-2 text-right w-1/5">الخدمة</th>
-                                    <th class="px-3 py-2 text-center w-16">العدد</th>
+                                    <th class="px-3 py-2 text-center w-24">العدد</th>
                                     <th class="px-3 py-2 text-center w-28">التكلفة JOD</th>
                                     <th class="px-3 py-2 text-right w-1/5">البيان</th>
                                     <th class="px-3 py-2 text-center w-24">إجمالي JOD</th>
@@ -117,7 +117,7 @@
                                     <tr v-for="(item, idx) in pos.items" :key="idx" class="border-t border-gray-100">
                                         <td class="px-3 py-2"><SearchableSelect v-model="item.agent_id" :options="agentOptions" placeholder="الوكيل" search-placeholder="ابحث..." :drop-up="idx > 2" /></td>
                                         <td class="px-3 py-2"><SearchableSelect v-model="item.service_id" :options="serviceOptions" placeholder="اختر خدمة" search-placeholder="ابحث..." :drop-up="idx > 2" @change="onServiceSelect(idx)" /></td>
-                                        <td class="px-3 py-2"><input v-model.number="item.quantity" type="number" min="1" class="w-full px-2 py-1.5 rounded border border-gray-200 text-xs text-center" dir="ltr"/></td>
+                                        <td class="px-3 py-2"><input v-model.number="item.quantity" type="number" min="1" class="w-24 px-2 py-1.5 rounded border border-gray-200 text-xs text-center" dir="ltr"/></td>
                                         <td class="px-3 py-2"><input v-model.number="item.unit_price_jod" type="number" step="0.001" class="w-full px-2 py-1.5 rounded border border-gray-200 text-xs font-mono text-center" dir="ltr"/></td>
                                         <td class="px-3 py-2"><input v-model="item.statement" type="text" placeholder="بيان..." class="w-full px-2 py-1.5 rounded border border-gray-200 text-xs"/></td>
                                         <td class="px-3 py-2 font-mono font-bold text-blue-600 text-center" dir="ltr">{{ (item.quantity * item.unit_price_jod).toFixed(3) }}</td>

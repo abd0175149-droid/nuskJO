@@ -75,6 +75,36 @@ class ClientController extends Controller
             $entry->balance_after = round($currentBalance, 3);
         }
 
+        // تحميل ملاحظات العمليات المرتبطة (فواتير، سندات قبض، إلخ)
+        $referenceGroups = $entries->groupBy('reference_type');
+        $notesMap = [];
+
+        foreach ($referenceGroups as $type => $group) {
+            $ids = $group->pluck('reference_id')->filter()->unique()->values()->toArray();
+            if (empty($ids)) continue;
+
+            $modelClass = match ($type) {
+                'invoice' => \App\Models\Invoice::class,
+                'receipt' => \App\Models\Receipt::class,
+                'transfer' => \App\Models\Transfer::class,
+                'expense' => \App\Models\Expense::class,
+                'disbursement' => \App\Models\Disbursement::class,
+                default => null,
+            };
+
+            if ($modelClass) {
+                $records = $modelClass::whereIn('id', $ids)->select('id', 'notes')->get();
+                foreach ($records as $record) {
+                    $notesMap["{$type}_{$record->id}"] = $record->notes;
+                }
+            }
+        }
+
+        foreach ($entries as $entry) {
+            $key = "{$entry->reference_type}_{$entry->reference_id}";
+            $entry->reference_notes = $notesMap[$key] ?? null;
+        }
+
         $summary = [
             'total_debit' => $entries->sum('debit'),
             'total_credit' => $entries->sum('credit'),

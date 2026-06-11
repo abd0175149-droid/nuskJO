@@ -1,8 +1,13 @@
 <template>
     <div class="print-wrapper" dir="rtl">
-        <div class="no-print toolbar">
-            <button @click="doPrint" class="print-btn">🖨️ طباعة</button>
-            <a href="/accounting/chart-of-accounts" class="back-btn">← العودة</a>
+        <div class="no-print toolbar flex flex-col items-center gap-2">
+            <div class="flex gap-3">
+                <button @click="doPrint" class="print-btn">🖨️ طباعة</button>
+                <a href="/accounting/chart-of-accounts" class="back-btn">← العودة</a>
+            </div>
+            <div class="text-xs text-orange-700 bg-orange-50 border border-orange-200 px-4 py-2 rounded-xl text-center font-semibold max-w-lg">
+                ⚠️ هام: يرجى التأكد من ضبط اتجاه الصفحة على <b>أفقي (Landscape)</b> وتفعيل خيار <b>الرسومات الخلفية (Background graphics)</b> في شاشة الطباعة لضمان ظهور التصميم بالشكل الصحيح.
+            </div>
         </div>
 
         <!-- صفحات A4 Landscape -->
@@ -50,7 +55,7 @@
                 <div v-if="!isHidden('data_table')" :style="pi === 0 ? elPos('data_table') : contTablePos">
                     <table class="print-tbl" :style="{ fontSize: (el('data_table').fontSize||8)+'pt', width: el('data_table').w ? el('data_table').w+'mm':'100%' }">
                         <thead><tr>
-                            <th style="width:25px">#</th><th style="width:65px">التاريخ</th><th>الوصف</th><th style="width:55px">النوع</th><th style="width:65px">مدين</th><th style="width:65px">دائن</th><th style="width:70px">الرصيد</th>
+                            <th style="width:25px">#</th><th style="width:65px">التاريخ</th><th>الوصف</th><th style="width:55px">النوع</th><th>الملاحظات</th><th style="width:65px">مدين</th><th style="width:65px">دائن</th><th style="width:70px">الرصيد</th>
                         </tr></thead>
                         <tbody>
                             <tr v-for="(e, i) in page.items" :key="i">
@@ -58,14 +63,15 @@
                                 <td class="mono center">{{ e.entry_date?.split('T')[0] }}</td>
                                 <td>{{ e.description }}</td>
                                 <td class="center"><span class="ref-tag">{{ refLabel(e.reference_type) }}</span></td>
+                                <td class="notes-cell" :title="e.reference_notes">{{ e.reference_notes || '—' }}</td>
                                 <td class="mono right" :class="Number(e.debit)>0?'red bold':''">{{ Number(e.debit)>0?fmt(e.debit):'—' }}</td>
                                 <td class="mono right" :class="Number(e.credit)>0?'green bold':''">{{ Number(e.credit)>0?fmt(e.credit):'—' }}</td>
                                 <td class="mono right bold">{{ fmt(runBal(page.startIdx + i)) }}</td>
                             </tr>
-                            <tr v-if="!page.items?.length"><td colspan="7" class="empty">لا يوجد حركات</td></tr>
+                            <tr v-if="!page.items?.length"><td colspan="8" class="empty">لا يوجد حركات</td></tr>
                         </tbody>
                         <tfoot v-if="page.isLast && entries?.length"><tr class="total-row">
-                            <td colspan="4" class="right bold">المجموع</td>
+                            <td colspan="5" class="right bold">المجموع</td>
                             <td class="mono right red bold">{{ fmt(totalDebit) }}</td>
                             <td class="mono right green bold">{{ fmt(totalCredit) }}</td>
                             <td class="mono right bold gold">{{ fmt(closingBal) }}</td>
@@ -224,6 +230,7 @@ const doPrint = () => window.print();
 .print-tbl .total-row td { border-top: 2px solid #2c2417; background: #f8f6f3; }
 .print-tbl .empty { text-align: center; color: #999; padding: 16px; }
 .ref-tag { font-size: 6.5pt; padding: 1px 5px; border-radius: 8px; background: #f3f4f6; }
+.notes-cell { font-size: 6.5pt; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6b7280; }
 .signatures { display: flex; justify-content: space-around; }
 .sig-box { text-align: center; width: 25%; }
 .sig-label { font-size: 7.5pt; color: #8b8680; font-weight: 600; margin-bottom: 24px; }
@@ -232,6 +239,11 @@ const doPrint = () => window.print();
 .toolbar { display: flex; gap: 12px; justify-content: center; padding: 12px; background: #f8f6f3; border-bottom: 1px solid #e0dbd3; }
 .print-btn { padding: 8px 24px; background: linear-gradient(135deg,#2c2417,#4a3c2e); color: #dbb84d; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; font-family: 'Cairo'; }
 .back-btn { padding: 8px 20px; color: #5a5046; text-decoration: none; border: 1.5px solid #d4cec4; border-radius: 10px; font-family: 'Cairo'; }
+@page { size: A4 landscape; margin: 0; }
 @media screen { body { background: #e8e4de; margin: 0; } .a4-landscape { box-shadow: 0 8px 30px rgba(0,0,0,.12); margin: 20px auto; border-radius: 4px; } }
-@media print { .no-print { display: none !important; } body { margin: 0; padding: 0; } .a4-landscape { margin: 0; box-shadow: none; border-radius: 0; } @page { size: A4 landscape; margin: 0; } }
+@media print { 
+  .no-print { display: none !important; } 
+  body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+  .a4-landscape { margin: 0; box-shadow: none; border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+}
 </style>

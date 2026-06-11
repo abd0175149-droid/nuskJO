@@ -37,6 +37,7 @@
                         <th class="px-4 py-3 text-right font-bold">التاريخ</th>
                         <th class="px-4 py-3 text-right font-bold">الوصف</th>
                         <th class="px-4 py-3 text-right font-bold hide-mobile">النوع</th>
+                        <th class="px-4 py-3 text-right font-bold hide-mobile">الملاحظات</th>
                         <th class="px-4 py-3 text-right font-bold">مدين (ذمة)</th>
                         <th class="px-4 py-3 text-right font-bold">دائن (تسديد)</th>
                         <th class="px-4 py-3 text-right font-bold">الرصيد</th>
@@ -45,8 +46,9 @@
                     <tbody>
                         <tr v-for="e in entries" :key="e.id" class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
                             <td data-label="التاريخ" class="px-4 py-3 text-right font-mono text-xs text-gray-500 dark:text-gray-400" dir="ltr">{{ e.entry_date?.split('T')[0] }}</td>
-                            <td data-label="الوصف" class="px-4 py-3 text-right text-xs text-gray-700 dark:text-gray-300">{{ e.description }}</td>
-                            <td data-label="النوع" class="px-4 py-3 text-right hide-mobile"><span class="px-2 py-0.5 rounded text-xs font-bold" :class="typeClass(e.transaction_type)">{{ typeLabel(e.transaction_type) }}</span></td>
+                            <td data-label="الوصف" class="px-4 py-3 text-right text-xs text-gray-700 dark:text-gray-300">{{ e.description || e.entry_description }}</td>
+                            <td data-label="النوع" class="px-4 py-3 text-right hide-mobile"><span class="px-2 py-0.5 rounded text-xs font-bold" :class="typeClass(e.transaction_type || e.reference_type)">{{ typeLabel(e.transaction_type || e.reference_type) }}</span></td>
+                            <td data-label="الملاحظات" class="px-4 py-3 text-right text-xs text-gray-500 dark:text-gray-400 hide-mobile max-w-[200px] truncate" :title="e.reference_notes">{{ e.reference_notes || '—' }}</td>
                             <td data-label="مدين" class="px-4 py-3 text-right font-mono text-xs" dir="ltr" :class="parseFloat(e.debit)>0?'text-red-500 font-bold':'text-gray-300 dark:text-gray-600'">{{ parseFloat(e.debit)>0?Number(e.debit).toFixed(3):'—' }}</td>
                             <td data-label="دائن" class="px-4 py-3 text-right font-mono text-xs" dir="ltr" :class="parseFloat(e.credit)>0?'text-green-500 font-bold':'text-gray-300 dark:text-gray-600'">{{ parseFloat(e.credit)>0?Number(e.credit).toFixed(3):'—' }}</td>
                             <td data-label="الرصيد" class="px-4 py-3 text-right font-mono text-xs font-bold" dir="ltr" :class="parseFloat(e.balance_after)>=0?'text-green-500':'text-red-500'">{{ Math.abs(Number(e.balance_after)).toFixed(3) }}</td>
@@ -55,7 +57,7 @@
                                 <span v-else class="text-xs text-gray-300">—</span>
                             </td>
                         </tr>
-                        <tr v-if="!entries?.length"><td colspan="7" class="px-5 py-12 text-center text-gray-400">لا يوجد حركات في هذه الفترة</td></tr>
+                        <tr v-if="!entries?.length"><td colspan="9" class="px-5 py-12 text-center text-gray-400">لا يوجد حركات في هذه الفترة</td></tr>
                     </tbody>
                 </table>
                 </div>

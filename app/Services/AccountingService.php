@@ -564,8 +564,13 @@ class AccountingService
             }
         }
 
+        $entryDescription = "فاتورة {$invoice->invoice_number} — {$invoice->client->name}";
+        if (!empty($invoice->notes)) {
+            $entryDescription .= " | {$invoice->notes}";
+        }
+
         return self::createEntry(
-            "فاتورة {$invoice->invoice_number} — {$invoice->client->name}",
+            $entryDescription,
             'invoice',
             $invoice->id,
             $lines

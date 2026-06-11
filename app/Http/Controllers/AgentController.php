@@ -123,6 +123,37 @@ class AgentController extends Controller
                 ];
             });
 
+            // تحميل ملاحظات العمليات المرتبطة
+            $referenceGroups = $entries->groupBy('transaction_type');
+            $notesMap = [];
+
+            foreach ($referenceGroups as $type => $group) {
+                $ids = $group->pluck('transaction_id')->filter()->unique()->values()->toArray();
+                if (empty($ids)) continue;
+
+                $modelClass = match ($type) {
+                    'invoice' => \App\Models\Invoice::class,
+                    'receipt' => \App\Models\Receipt::class,
+                    'transfer' => \App\Models\Transfer::class,
+                    'expense' => \App\Models\Expense::class,
+                    'disbursement' => \App\Models\Disbursement::class,
+                    default => null,
+                };
+
+                if ($modelClass) {
+                    $records = $modelClass::whereIn('id', $ids)->select('id', 'notes')->get();
+                    foreach ($records as $record) {
+                        $notesMap["{$type}_{$record->id}"] = $record->notes;
+                    }
+                }
+            }
+
+            $entries = $entries->map(function ($entry) use ($notesMap) {
+                $key = "{$entry['transaction_type']}_{$entry['transaction_id']}";
+                $entry['reference_notes'] = $notesMap[$key] ?? null;
+                return $entry;
+            });
+
             $account = \App\Models\Account::find($agent->account_id);
             $summary = [
                 'total_debit' => round($lines->sum('debit'), 3),

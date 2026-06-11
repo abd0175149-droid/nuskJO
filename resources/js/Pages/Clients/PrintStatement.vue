@@ -1,8 +1,13 @@
 <template>
     <div class="print-wrapper" dir="rtl">
-        <div class="no-print toolbar">
-            <button @click="doPrint" class="print-btn">🖨️ طباعة</button>
-            <a href="/clients" class="back-btn">← العودة</a>
+        <div class="no-print toolbar flex flex-col items-center gap-2">
+            <div class="flex gap-3">
+                <button @click="doPrint" class="print-btn">🖨️ طباعة</button>
+                <a href="/clients" class="back-btn">← العودة</a>
+            </div>
+            <div class="text-xs text-orange-700 bg-orange-50 border border-orange-200 px-4 py-2 rounded-xl text-center font-semibold max-w-lg">
+                ⚠️ هام: يرجى التأكد من ضبط اتجاه الصفحة على <b>أفقي (Landscape)</b> وتفعيل خيار <b>الرسومات الخلفية (Background graphics)</b> في شاشة الطباعة لضمان ظهور التصميم بالشكل الصحيح.
+            </div>
         </div>
 
         <div v-for="(page, pi) in pages" :key="pi" class="a4-landscape">
@@ -345,12 +350,12 @@ const doPrint = () => window.print();
 .print-btn { padding: 8px 24px; background: linear-gradient(135deg, #2c2417, #4a3c2e); color: #dbb84d; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; font-family: 'Cairo'; }
 .back-btn { padding: 8px 20px; color: #5a5046; text-decoration: none; border: 1.5px solid #d4cec4; border-radius: 10px; font-family: 'Cairo'; }
 
+@page { size: A4 landscape; margin: 0; }
 @media screen { body { background: #e8e4de; margin: 0; } .a4-landscape { box-shadow: 0 8px 30px rgba(0,0,0,.12); margin: 20px auto; border-radius: 4px; } }
 @media print {
     .no-print { display: none !important; }
-    body { margin: 0; padding: 0; }
-    .a4-landscape { margin: 0; box-shadow: none; border-radius: 0; }
-    @page { size: A4 landscape; margin: 0; }
+    body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .a4-landscape { margin: 0; box-shadow: none; border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .reversed-row td { background: #fef2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .balance-row td { background: #fffbeb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
