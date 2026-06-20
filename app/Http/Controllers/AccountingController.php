@@ -61,9 +61,13 @@ class AccountingController extends Controller
         $from = $request->from ?? now()->startOfMonth()->toDateString();
         $to = $request->to ?? now()->toDateString();
 
-        // حسابات الأوراق فقط (بدون الفروع الأم)
-        $accounts = Account::whereDoesntHave('children')
-            ->where('is_active', true)
+        // الحسابات الورقية النشطة + أي حساب عليه حركة فعلية (حتى لو صار أباً أو موقوفاً)
+        // ضمّ الحسابات ذات القيود المباشرة يجعل الميزان يعكس كل قيود اليومية فلا يختلّ التوازن
+        // بسبب إعادة هيكلة شجرة الحسابات؛ والقيود الشاذّة تُبرز في لوحة التحليل أدناه.
+        $accounts = Account::where(function ($q) {
+                $q->where('is_active', true)->whereDoesntHave('children');
+            })
+            ->orWhereHas('journalLines')
             ->orderBy('code')
             ->get()
             ->map(function ($account) use ($from, $to) {
@@ -93,12 +97,17 @@ class AccountingController extends Controller
                 $closingDebit = $openingDebit + $periodDebit;
                 $closingCredit = $openingCredit + $periodCredit;
 
+                $isParent = $account->children()->exists();
+
                 return [
                     'id' => $account->id,
                     'code' => $account->code,
                     'name' => $account->name,
                     'type' => $account->type,
                     'currency' => $account->currency,
+                    // أعلام التشخيص: صفّ شاذّ لو الحساب أب أو موقوف وعليه قيود مباشرة
+                    'is_anomaly' => $isParent || !$account->is_active,
+                    'anomaly_reason' => $isParent ? 'حساب أب عليه قيود مباشرة' : (!$account->is_active ? 'حساب موقوف عليه قيود' : null),
                     'opening_debit' => round($openingDebit, 3),
                     'opening_credit' => round($openingCredit, 3),
                     'period_debit' => round($periodDebit, 3),
@@ -126,7 +135,59 @@ class AccountingController extends Controller
             'accounts' => $accounts->values(),
             'filters' => ['from' => $from, 'to' => $to],
             'cashSummary' => $cashSummary,
+            // تحليل سلامة الميزان: القيود التي قد تكسر التوازن مع حلولها
+            'diagnostics' => \App\Services\TrialBalanceAuditor::audit(),
         ]);
+    }
+
+    /**
+     * نقل سطر قيد من حساب (أب/موقوف/محذوف) إلى حساب ورقي نشط — لإصلاح اختلال الميزان
+     */
+    public function relocateLine(Request $request)
+    {
+        $validated = $request->validate([
+            'line_id' => 'required|exists:journal_entry_lines,id',
+            'target_account_id' => 'required|exists:accounts,id',
+        ]);
+
+        $line = JournalEntryLine::findOrFail($validated['line_id']);
+        $target = Account::findOrFail($validated['target_account_id']);
+
+        // الوجهة يجب أن تكون حساباً ورقياً نشطاً (وإلا يتكرر نفس الخلل)
+        if ($target->children()->exists()) {
+            return back()->with('error', "الحساب «{$target->code} - {$target->name}» حساب أب — اختر حساباً فرعياً (ورقياً).");
+        }
+        if (!$target->is_active) {
+            return back()->with('error', "الحساب «{$target->code} - {$target->name}» موقوف — فعّله أولاً أو اختر غيره.");
+        }
+
+        $oldAccountId = $line->account_id;
+        if ((int) $oldAccountId === (int) $target->id) {
+            return back()->with('error', 'القيد موجود بالفعل على هذا الحساب.');
+        }
+
+        DB::transaction(function () use ($line, $target, $oldAccountId) {
+            $line->update(['account_id' => $target->id]);
+
+            // مزامنة المستند المصدر إن كان سند صرف (لئلا يُعاد الترحيل على الحساب القديم عند التعديل)
+            $entry = $line->journalEntry;
+            if ($entry && $entry->reference_type === 'disbursement' && $entry->reference_id) {
+                \App\Models\Disbursement::where('id', $entry->reference_id)
+                    ->where('account_id', $oldAccountId)
+                    ->update(['account_id' => $target->id]);
+            }
+
+            // إعادة احتساب الرصيد المخبأ للحسابين المتأثرين من واقع القيود
+            foreach ([$oldAccountId, $target->id] as $accId) {
+                $acc = Account::find($accId);
+                if ($acc) {
+                    $acc->balance = $acc->calculateBalance();
+                    $acc->save();
+                }
+            }
+        });
+
+        return back()->with('success', "تم نقل القيد إلى حساب «{$target->code} - {$target->name}» وإعادة احتساب الأرصدة بنجاح.");
     }
 
     /**
@@ -277,6 +338,15 @@ class AccountingController extends Controller
         }
 
         event(new DataUpdated('account', 'created', $account->id));
+
+        // تحذير وقائي: لو الأب عليه قيود مباشرة سابقة، صار الآن حساباً أباً
+        // فستظهر تلك القيود كحالات شاذّة في ميزان المراجعة حتى تُنقل إلى الفروع
+        $parentHasDirectEntries = JournalEntryLine::where('account_id', $validated['parent_id'])->exists();
+        if ($parentHasDirectEntries && $parent) {
+            return redirect()->back()->with('success',
+                "تم إضافة الحساب بنجاح. ⚠️ تنبيه: الحساب الأب «{$parent->code} - {$parent->name}» عليه قيود مباشرة سابقة؛ " .
+                "افتح «ميزان المراجعة ← تحليل سلامة الميزان» وانقل تلك القيود إلى الفروع المناسبة حتى يبقى الميزان متوازناً.");
+        }
 
         return redirect()->back()->with('success', 'تم إضافة الحساب بنجاح');
     }
