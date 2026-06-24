@@ -25,6 +25,35 @@ class LedgerReconciliationService
     /** الحد الأقصى لعدد العناصر المعروضة لكل فئة (تفادي قوائم ضخمة) */
     const MAX_PER_CATEGORY = 50;
 
+    /**
+     * مزامنة الرصيد المبسّط للعملاء (balance_jod) من دفتر القيود المرجعي.
+     * يُعالج التأخّر الحميد الناتج عن قيود يدوية/سندات صرف لا يتتبّعها BalanceService.
+     * يُرجع قائمة بالعملاء الذين صُحِّحوا.
+     */
+    public static function syncClientBalances(): array
+    {
+        $accountBalances = Account::pluck('balance', 'id');
+        $corrected = [];
+
+        $clients = Client::whereNotNull('account_id')
+            ->get(['id', 'name', 'code', 'balance_jod', 'account_id']);
+
+        foreach ($clients as $c) {
+            $journal = round((float) ($accountBalances[$c->account_id] ?? 0), 3);
+            $simple  = round((float) $c->balance_jod, 3);
+            if (abs($journal - $simple) > self::TOLERANCE) {
+                $c->balance_jod = $journal;
+                $c->saveQuietly(); // تصحيح كاش فقط — دون أحداث/مراقبين
+                $corrected[] = [
+                    'code' => $c->code, 'name' => $c->name,
+                    'from' => $simple, 'to' => $journal,
+                ];
+            }
+        }
+
+        return $corrected;
+    }
+
     public static function reconcile(): array
     {
         $issues = [];

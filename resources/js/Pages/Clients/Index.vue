@@ -22,7 +22,7 @@
                         <tr v-for="c in clients.data" :key="c.id" class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
                             <td data-label="الاسم" class="px-5 py-3 text-right font-medium text-gray-800 dark:text-gray-100">{{ c.name }}</td>
                             <td data-label="الكود" class="px-5 py-3 text-right font-mono text-xs text-gold-700 hide-mobile">{{ c.code }}</td>
-                            <td data-label="الرصيد" class="px-5 py-3 text-right font-bold font-mono text-xs" :class="parseFloat(c.balance_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Math.abs(Number(c.balance_jod)).toLocaleString('en',{minimumFractionDigits: c.currency==='SAR'?2:3}) }} {{ c.currency||'JOD' }}</td>
+                            <td data-label="الرصيد" class="px-5 py-3 text-right font-bold font-mono text-xs" :class="Number(c.account?.balance)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Math.abs(Number(c.account?.balance || 0)).toLocaleString('en',{minimumFractionDigits:3}) }} JOD</td>
                             <td data-label="الحالة" class="px-5 py-3 text-right"><span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="c.is_active?'bg-green-100 text-green-700':'bg-red-100 text-red-700'">{{ c.is_active?'نشط':'معطل' }}</span></td>
                             <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
                                 <a :href="'/clients/'+c.id" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">📊 كشف</a>
@@ -59,7 +59,7 @@
                     <div><span class="text-gray-400">البريد:</span><p><span dir="ltr" class="inline-block">{{ viewClient.email||'—' }}</span></p></div>
                     <div><span class="text-gray-400">جهة الاتصال:</span><p>{{ viewClient.contact_person||'—' }}</p></div>
                     <div><span class="text-gray-400">رقم السجل التجاري:</span><p>{{ viewClient.id_number||'—' }}</p></div>
-                    <div><span class="text-gray-400">الرصيد:</span><p class="font-bold font-mono" :class="parseFloat(viewClient.balance_jod)>=0?'text-green-600':'text-red-600'">{{ Math.abs(Number(viewClient.balance_jod)).toLocaleString('en',{minimumFractionDigits: viewClient.currency==='SAR'?2:3}) }} {{ viewClient.currency||'JOD' }}</p></div>
+                    <div><span class="text-gray-400">الرصيد:</span><p class="font-bold font-mono" :class="Number(viewClient.account?.balance)>=0?'text-green-600':'text-red-600'">{{ Math.abs(Number(viewClient.account?.balance || 0)).toLocaleString('en',{minimumFractionDigits:3}) }} JOD</p></div>
                     <div><span class="text-gray-400">الحالة:</span><p><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="viewClient.is_active?'bg-green-100 text-green-700':'bg-red-100 text-red-700'">{{ viewClient.is_active?'نشط':'معطل' }}</span></p></div>
                     <div class="col-span-2"><span class="text-gray-400">العنوان:</span><p>{{ viewClient.address||'—' }}</p></div>
                     <div class="col-span-2"><span class="text-gray-400">ملاحظات:</span><p>{{ viewClient.notes||'—' }}</p></div>

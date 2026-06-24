@@ -12,6 +12,7 @@ class ClientController extends Controller
     public function index(Request $request)
     {
         $clients = Client::query()
+            ->with('account:id,balance')
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%")
                 ->orWhere('code', 'like', "%{$s}%")
                 ->orWhere('phone', 'like', "%{$s}%"))

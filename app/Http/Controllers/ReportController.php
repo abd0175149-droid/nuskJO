@@ -40,12 +40,20 @@ class ReportController extends Controller
 
     public function clientsBalances(Request $request)
     {
+        // الرصيد بالدينار من الحساب المحاسبي (نفس مصدر كشف الحساب) — لا الرصيد المبسّط
         $clients = Client::query()
+            ->with('account:id,balance')
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%")->orWhere('code', 'like', "%{$s}%"))
-            ->orderByDesc('balance_jod')
-            ->get(['id', 'name', 'code', 'country', 'currency', 'balance_jod', 'credit_limit_jod', 'phone', 'is_active']);
+            ->get(['id', 'name', 'code', 'country', 'currency', 'credit_limit_jod', 'phone', 'is_active', 'account_id'])
+            ->map(function ($c) {
+                $c->balance_jod = round((float) ($c->account?->balance ?? 0), 3);
+                unset($c->account);
+                return $c;
+            })
+            ->sortByDesc('balance_jod')
+            ->values();
 
-        $total = $clients->sum('balance_jod');
+        $total = round($clients->sum('balance_jod'), 3);
 
         return Inertia::render('Reports/ClientsBalances', [
             'title' => 'ذمم العملاء',

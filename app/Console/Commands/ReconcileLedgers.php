@@ -20,9 +20,18 @@ class ReconcileLedgers extends Command
 
     public function handle(): int
     {
+        // مزامنة تلقائية لرصيد العملاء المبسّط من دفتر القيود (تأخّر حميد — لا تنبيه)
+        $healed = LedgerReconciliationService::syncClientBalances();
+        if (count($healed)) {
+            $this->info('🔄 تمت مزامنة ' . count($healed) . ' رصيد عميل من دفتر القيود:');
+            foreach ($healed as $h) {
+                $this->line("   {$h['code']} - {$h['name']}: {$h['from']} → {$h['to']}");
+            }
+        }
+
         $result = LedgerReconciliationService::reconcile();
 
-        $this->info("الانحرافات المكتشفة: {$result['count']}");
+        $this->info("الانحرافات الخطيرة المكتشفة: {$result['count']}");
 
         if (!$result['has_divergence']) {
             // مسح التوقيع السابق حتى يُرسَل إشعار جديد إن عاد الانحراف لاحقاً
