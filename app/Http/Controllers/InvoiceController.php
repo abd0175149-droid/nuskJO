@@ -149,52 +149,57 @@ class InvoiceController extends Controller
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
         }
 
-        DB::transaction(function () use ($invoice) {
-            $invoice->update([
-                'status' => 'approved',
-                'approved_by' => auth()->id(),
-                'approved_at' => now(),
-            ]);
+        try {
+            DB::transaction(function () use ($invoice) {
+                $invoice->update([
+                    'status' => 'approved',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                ]);
 
-            $invoice->load('items');
-            $rate = self::EXCHANGE_RATE;
+                $invoice->load('items');
+                $rate = self::EXCHANGE_RATE;
 
-            // تجميع تكاليف كل وكيل وخصمها (تحويل JOD → SAR)
-            $agentCosts = [];
-            foreach ($invoice->items as $item) {
-                if ($item->agent_id) {
-                    $costJod = (float) ($item->total_cost_jod ?: $item->total_cost_sar * $rate);
-                    $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $costJod;
+                // تجميع تكاليف كل وكيل وخصمها (تحويل JOD → SAR)
+                $agentCosts = [];
+                foreach ($invoice->items as $item) {
+                    if ($item->agent_id) {
+                        $costJod = (float) ($item->total_cost_jod ?: $item->total_cost_sar * $rate);
+                        $agentCosts[$item->agent_id] = ($agentCosts[$item->agent_id] ?? 0) + $costJod;
+                    }
                 }
-            }
 
-            foreach ($agentCosts as $agentId => $costJod) {
-                $agent = Agent::find($agentId);
-                if ($agent && $costJod > 0) {
-                    $costSar = round($costJod / $rate, 2);
-                    BalanceService::debitAgent($agent, $costSar, 'invoice', $invoice->id);
+                foreach ($agentCosts as $agentId => $costJod) {
+                    $agent = Agent::find($agentId);
+                    if ($agent && $costJod > 0) {
+                        $costSar = round($costJod / $rate, 2);
+                        BalanceService::debitAgent($agent, $costSar, 'invoice', $invoice->id);
+                    }
                 }
-            }
 
-            // إضافة إجمالي البيع على ذمة العميل
-            $sellJod = (float) $invoice->total_sell_jod;
-            if ($sellJod > 0) {
-                BalanceService::debitClient(
-                    $invoice->client,
-                    $sellJod,
-                    'invoice',
-                    $invoice->id
-                );
-            }
+                // إضافة إجمالي البيع على ذمة العميل
+                $sellJod = (float) $invoice->total_sell_jod;
+                if ($sellJod > 0) {
+                    BalanceService::debitClient(
+                        $invoice->client,
+                        $sellJod,
+                        'invoice',
+                        $invoice->id
+                    );
+                }
 
-            // قيد محاسبي
-            try { AccountingService::recordInvoice($invoice); } catch (\Exception $e) { \Log::error('Accounting Invoice: ' . $e->getMessage()); }
+                // قيد محاسبي — إلزامي: فشله يُلغي الاعتماد بالكامل (لا تباعد بين الدفترين)
+                AccountingService::recordInvoice($invoice);
 
-            // إشعار
-            if ($invoice->created_by && $invoice->created_by !== auth()->id()) {
-                try { \App\Services\NotificationService::send($invoice->created_by, '✅ تم اعتماد فاتورتك', "تم اعتماد الفاتورة {$invoice->invoice_number}", ['type' => 'invoice', 'icon' => '✅', 'action_url' => '/invoices']); } catch (\Throwable $e) {}
-            }
-        });
+                // إشعار
+                if ($invoice->created_by && $invoice->created_by !== auth()->id()) {
+                    try { \App\Services\NotificationService::send($invoice->created_by, '✅ تم اعتماد فاتورتك', "تم اعتماد الفاتورة {$invoice->invoice_number}", ['type' => 'invoice', 'icon' => '✅', 'action_url' => '/invoices']); } catch (\Throwable $e) {}
+                }
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Invoice approve failed: ' . $e->getMessage());
+            return back()->with('error', 'تعذّر اعتماد الفاتورة محاسبياً ولم يُحفظ أي تغيير: ' . $e->getMessage());
+        }
 
         AuditLog::log('approve', 'invoice', $invoice->id, $invoice->invoice_number);
         return back()->with('success', "تم اعتماد الفاتورة {$invoice->invoice_number}");

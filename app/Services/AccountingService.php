@@ -550,17 +550,25 @@ class AccountingService
             }
         }
 
-        // ضمان التوازن (فرق التقريب)
-        $totalDebit = array_sum(array_column($lines, 'debit'));
-        $totalCredit = array_sum(array_column($lines, 'credit'));
+        // ضمان التوازن: تصحيح فرق التقريب الناتج عن توزيع الأرباح نسبياً على البنود.
+        // نضبط الفرق على أكبر سطر دائن دائماً (credit += diff) — صحيح في الاتجاهين:
+        //   diff > 0 (الدائن ناقص) → نزيد الدائن، diff < 0 (الدائن زائد) → نُنقص الدائن.
+        // اختيار أكبر سطر دائن يمنع أن يصبح المبلغ سالباً بعد التعديل.
+        $totalDebit = round(array_sum(array_column($lines, 'debit')), 3);
+        $totalCredit = round(array_sum(array_column($lines, 'credit')), 3);
         $diff = round($totalDebit - $totalCredit, 3);
         if ($diff != 0) {
-            $lastIdx = count($lines) - 1;
-            if ($diff > 0) {
-                $lines[$lastIdx]['credit'] = round($lines[$lastIdx]['credit'] + $diff, 3);
-            } else {
-                $adjustIdx = isset($lines[1]) ? 1 : $lastIdx;
-                $lines[$adjustIdx]['credit'] = round($lines[$adjustIdx]['credit'] - $diff, 3);
+            $creditIdx = null;
+            $maxCredit = -1;
+            foreach ($lines as $idx => $ln) {
+                $c = (float) ($ln['credit'] ?? 0);
+                if ($c > $maxCredit) {
+                    $maxCredit = $c;
+                    $creditIdx = $idx;
+                }
+            }
+            if ($creditIdx !== null) {
+                $lines[$creditIdx]['credit'] = round((float) ($lines[$creditIdx]['credit'] ?? 0) + $diff, 3);
             }
         }
 
