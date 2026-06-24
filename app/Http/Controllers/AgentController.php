@@ -14,7 +14,7 @@ class AgentController extends Controller
     public function index(Request $request)
     {
         $agents = Agent::query()
-            ->with('clients:id,name,code,phone,balance_jod,agent_id')
+            ->with(['clients:id,name,code,phone,balance_jod,agent_id', 'account:id,balance'])
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%")
                 ->orWhere('code', 'like', "%{$s}%")
                 ->orWhere('phone', 'like', "%{$s}%"))

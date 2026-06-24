@@ -6,7 +6,7 @@
                 <input v-model="search" type="text" placeholder="بحث..." class="w-64 px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500" @input="debounceSearch"/>
                 <div class="bg-green-50 border border-green-200 rounded-xl px-5 py-3">
                     <span class="text-xs text-gray-500">الإجمالي:</span>
-                    <span class="font-bold font-mono text-green-700 mr-2" dir="ltr">{{ Number(total).toLocaleString('en',{minimumFractionDigits:2}) }} SAR</span>
+                    <span class="font-bold font-mono text-green-700 mr-2" dir="ltr">{{ Number(total).toLocaleString('en',{minimumFractionDigits:3}) }} JOD</span>
                 </div>
             </div>
             <div class="rounded-xl border overflow-hidden shadow-sm bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
@@ -24,7 +24,7 @@
                             <td class="px-5 py-3 font-medium text-gray-800 dark:text-gray-100">{{ a.name }}</td>
                             <td class="px-5 py-3 font-mono text-xs text-gold-700">{{ a.code }}</td>
                             <td class="px-5 py-3 text-xs">{{ {JO:'🇯🇴',SA:'🇸🇦'}[a.country]||'' }}</td>
-                            <td class="px-5 py-3 font-bold font-mono" dir="ltr" :class="parseFloat(a.balance_sar)>=0?'text-green-600':'text-red-600'">{{ Math.abs(Number(a.balance_sar)).toLocaleString('en',{minimumFractionDigits:2}) }} {{ a.currency||'SAR' }}</td>
+                            <td class="px-5 py-3 font-bold font-mono" dir="ltr" :class="Number(a.balance_jod)>=0?'text-green-600':'text-red-600'">{{ Math.abs(Number(a.balance_jod || 0)).toLocaleString('en',{minimumFractionDigits:3}) }} JOD</td>
                             <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="a.is_active?'bg-green-100 text-green-700':'bg-red-100 text-red-700'">{{ a.is_active?'نشط':'معطل' }}</span></td>
                         </tr>
                     </tbody>

@@ -15,12 +15,20 @@ class ReportController extends Controller
 {
     public function agentsBalances(Request $request)
     {
+        // الرصيد بالدينار من الحساب المحاسبي (نفس مصدر كشف حساب الوكيل) — لا الرصيد المبسّط بالريال
         $agents = Agent::query()
+            ->with('account:id,balance')
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%")->orWhere('code', 'like', "%{$s}%"))
-            ->orderByDesc('balance_sar')
-            ->get(['id', 'name', 'code', 'country', 'currency', 'balance_sar', 'phone', 'is_active']);
+            ->get(['id', 'name', 'code', 'country', 'currency', 'phone', 'is_active', 'account_id'])
+            ->map(function ($a) {
+                $a->balance_jod = round((float) ($a->account?->balance ?? 0), 3);
+                unset($a->account);
+                return $a;
+            })
+            ->sortByDesc('balance_jod')
+            ->values();
 
-        $total = $agents->sum('balance_sar');
+        $total = round($agents->sum('balance_jod'), 3);
 
         return Inertia::render('Reports/AgentsBalances', [
             'title' => 'أرصدة الوكلاء',
