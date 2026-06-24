@@ -197,8 +197,8 @@ class InvoiceController extends Controller
                 }
             });
         } catch (\Throwable $e) {
-            \Log::error('Invoice approve failed: ' . $e->getMessage());
-            return back()->with('error', 'تعذّر اعتماد الفاتورة محاسبياً ولم يُحفظ أي تغيير: ' . $e->getMessage());
+            AccountingService::notifyFailure("اعتماد الفاتورة {$invoice->invoice_number}", $e);
+            return back()->with('error', 'تعذّر اعتماد الفاتورة محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
         }
 
         AuditLog::log('approve', 'invoice', $invoice->id, $invoice->invoice_number);

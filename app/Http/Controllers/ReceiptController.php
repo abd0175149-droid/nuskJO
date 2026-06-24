@@ -70,18 +70,23 @@ class ReceiptController extends Controller
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
 
-        DB::transaction(function () use ($receipt) {
-            $receipt->approve(auth()->user());
-            BalanceService::creditClient(
-                $receipt->client,
-                $receipt->amount_jod,
-                'receipt',
-                $receipt->id
-            );
-            // قيد محاسبي
-            try { AccountingService::recordReceipt($receipt); } catch (\Exception $e) { \Log::error('Accounting Receipt: ' . $e->getMessage()); }
-            try { \App\Services\NotificationService::receiptApproved($receipt); } catch (\Exception $e) {}
-        });
+        try {
+            DB::transaction(function () use ($receipt) {
+                $receipt->approve(auth()->user());
+                BalanceService::creditClient(
+                    $receipt->client,
+                    $receipt->amount_jod,
+                    'receipt',
+                    $receipt->id
+                );
+                // قيد محاسبي إلزامي — فشله يُلغي الاعتماد بالكامل
+                AccountingService::recordReceipt($receipt);
+                try { \App\Services\NotificationService::receiptApproved($receipt); } catch (\Exception $e) {}
+            });
+        } catch (\Throwable $e) {
+            AccountingService::notifyFailure("اعتماد سند القبض {$receipt->receipt_number}", $e);
+            return back()->with('error', 'تعذّر اعتماد سند القبض محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
+        }
 
         return back()->with('success', 'تم اعتماد سند القبض');
     }

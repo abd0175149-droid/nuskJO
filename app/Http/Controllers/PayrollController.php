@@ -106,18 +106,23 @@ class PayrollController extends Controller
             return redirect()->back()->withErrors(['error' => 'المسير ليس في حالة انتظار']);
         }
 
-        DB::transaction(function () use ($payroll) {
-            $payroll->approve(auth()->user());
+        try {
+            DB::transaction(function () use ($payroll) {
+                $payroll->approve(auth()->user());
 
-            // تعليم الأقساط والمخالفات كمخصومة
-            PayrollService::markDeductionsAsPaid($payroll);
+                // تعليم الأقساط والمخالفات كمخصومة
+                PayrollService::markDeductionsAsPaid($payroll);
 
-            // تسجيل القيد المحاسبي للرواتب
-            \App\Services\AccountingService::recordPayroll($payroll);
+                // تسجيل القيد المحاسبي للرواتب — إلزامي: فشله يُلغي الاعتماد بالكامل
+                \App\Services\AccountingService::recordPayroll($payroll);
 
-            // إشعار الموظفين
-            NotificationService::payrollReady($payroll);
-        });
+                // إشعار الموظفين
+                NotificationService::payrollReady($payroll);
+            });
+        } catch (\Throwable $e) {
+            \App\Services\AccountingService::notifyFailure("اعتماد مسير الرواتب {$payroll->payroll_number}", $e);
+            return redirect()->back()->with('error', 'تعذّر اعتماد مسير الرواتب محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
+        }
 
         return redirect()->back()->with('success', 'تم اعتماد مسير الرواتب');
     }

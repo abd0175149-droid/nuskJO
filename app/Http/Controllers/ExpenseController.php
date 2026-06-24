@@ -58,14 +58,21 @@ class ExpenseController extends Controller
             return back()->with('error', 'هذا المصروف ليس معلقاً');
         }
 
-        $expense->update([
-            'status' => 'approved',
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($expense) {
+                $expense->update([
+                    'status' => 'approved',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                ]);
 
-        // قيد محاسبي
-        try { \App\Services\AccountingService::recordExpense($expense); } catch (\Exception $e) { \Log::error('Accounting Expense: ' . $e->getMessage()); }
+                // قيد محاسبي إلزامي — فشله يُلغي الاعتماد بالكامل
+                \App\Services\AccountingService::recordExpense($expense);
+            });
+        } catch (\Throwable $e) {
+            \App\Services\AccountingService::notifyFailure("اعتماد المصروف {$expense->expense_number}", $e);
+            return back()->with('error', 'تعذّر اعتماد المصروف محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
+        }
 
         // إشعار
         try { \App\Services\NotificationService::expenseApproved($expense); } catch (\Exception $e) {}

@@ -143,6 +143,33 @@ class AccountingService
         });
     }
 
+    /**
+     * إشعار واضح عند فشل تثبيت قيد محاسبي — يُرسل لكل المدراء والمستخدم الحالي.
+     * يجب استدعاؤه خارج أي transaction قد يُلغى (وإلا يُلغى الإشعار معه).
+     */
+    public static function notifyFailure(string $operation, \Throwable $e): void
+    {
+        \Log::error("فشل تثبيت قيد محاسبي [{$operation}]: " . $e->getMessage());
+
+        try {
+            $recipients = \App\Models\User::whereHas('role', fn ($q) => $q->where('slug', 'admin'))
+                ->pluck('id')->toArray();
+            if (auth()->id()) {
+                $recipients[] = auth()->id();
+            }
+            foreach (array_unique($recipients) as $uid) {
+                \App\Services\NotificationService::send(
+                    $uid,
+                    '⚠️ فشل تثبيت قيد محاسبي',
+                    "تعذّر إنشاء القيد المحاسبي لـ: {$operation}. السبب: {$e->getMessage()}",
+                    ['type' => 'error', 'icon' => '⚠️', 'action_url' => '/accounting/journal-entries']
+                );
+            }
+        } catch (\Throwable $ignore) {
+            \Log::error('فشل إرسال إشعار خطأ القيد: ' . $ignore->getMessage());
+        }
+    }
+
     // ============================================================
     // عكس القيود (Reversal Entries)
     // ============================================================

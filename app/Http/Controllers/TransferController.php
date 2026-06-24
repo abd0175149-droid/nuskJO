@@ -93,21 +93,25 @@ class TransferController extends Controller
             return back()->with('error', 'هذه الحوالة ليست معلقة');
         }
 
-        DB::transaction(function () use ($transfer) {
-            $transfer->approve(auth()->user());
-            BalanceService::creditAgent(
-                $transfer->agent,
-                $transfer->amount_sar,
-                'transfer',
-                $transfer->id
-            );
-            AuditLog::log('approve', 'transfer', $transfer->id, $transfer->transfer_number);
-            // قيد محاسبي
-            try { AccountingService::recordTransfer($transfer); } catch (\Exception $e) { \Log::error('Accounting Transfer: ' . $e->getMessage()); }
-            // قيد الفرق (مصروف/إيراد)
-            try { AccountingService::recordTransferDifference($transfer); } catch (\Exception $e) { \Log::error('Transfer Difference: ' . $e->getMessage()); }
-            try { \App\Services\NotificationService::transferApproved($transfer); } catch (\Exception $e) {}
-        });
+        try {
+            DB::transaction(function () use ($transfer) {
+                $transfer->approve(auth()->user());
+                BalanceService::creditAgent(
+                    $transfer->agent,
+                    $transfer->amount_sar,
+                    'transfer',
+                    $transfer->id
+                );
+                AuditLog::log('approve', 'transfer', $transfer->id, $transfer->transfer_number);
+                // قيود محاسبية إلزامية — فشلها يُلغي الاعتماد بالكامل
+                AccountingService::recordTransfer($transfer);
+                AccountingService::recordTransferDifference($transfer);
+                try { \App\Services\NotificationService::transferApproved($transfer); } catch (\Exception $e) {}
+            });
+        } catch (\Throwable $e) {
+            AccountingService::notifyFailure("اعتماد الحوالة {$transfer->transfer_number}", $e);
+            return back()->with('error', 'تعذّر اعتماد الحوالة محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
+        }
 
         return back()->with('success', "تم اعتماد الحوالة {$transfer->transfer_number}");
     }

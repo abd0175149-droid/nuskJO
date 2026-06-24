@@ -118,34 +118,39 @@ class AdvanceController extends Controller
             return redirect()->back()->withErrors(['error' => 'الطلب ليس في حالة انتظار']);
         }
 
-        DB::transaction(function () use ($advance) {
-            $advance->approve(auth()->user());
+        try {
+            DB::transaction(function () use ($advance) {
+                $advance->approve(auth()->user());
 
-            // جدولة الأقساط (تبدأ من الشهر التالي)
-            $startDate = Carbon::now()->addMonth()->startOfMonth();
-            for ($i = 0; $i < $advance->installments_count; $i++) {
-                $installmentDate = $startDate->copy()->addMonths($i);
+                // جدولة الأقساط (تبدأ من الشهر التالي)
+                $startDate = Carbon::now()->addMonth()->startOfMonth();
+                for ($i = 0; $i < $advance->installments_count; $i++) {
+                    $installmentDate = $startDate->copy()->addMonths($i);
 
-                // القسط الأخير يحتوي على باقي المبلغ لتجنب فروقات التقريب
-                $amount = ($i === $advance->installments_count - 1)
-                    ? $advance->amount - ($advance->installment_amount * ($advance->installments_count - 1))
-                    : $advance->installment_amount;
+                    // القسط الأخير يحتوي على باقي المبلغ لتجنب فروقات التقريب
+                    $amount = ($i === $advance->installments_count - 1)
+                        ? $advance->amount - ($advance->installment_amount * ($advance->installments_count - 1))
+                        : $advance->installment_amount;
 
-                AdvanceInstallment::create([
-                    'advance_id' => $advance->id,
-                    'employee_id' => $advance->employee_id,
-                    'month' => $installmentDate->month,
-                    'year' => $installmentDate->year,
-                    'amount' => $amount,
-                    'is_paid' => false,
-                ]);
-            }
+                    AdvanceInstallment::create([
+                        'advance_id' => $advance->id,
+                        'employee_id' => $advance->employee_id,
+                        'month' => $installmentDate->month,
+                        'year' => $installmentDate->year,
+                        'amount' => $amount,
+                        'is_paid' => false,
+                    ]);
+                }
 
-            // إثبات السلفة محاسبياً
-            \App\Services\AccountingService::recordAdvance($advance);
+                // إثبات السلفة محاسبياً — إلزامي: فشله يُلغي الاعتماد بالكامل
+                \App\Services\AccountingService::recordAdvance($advance);
 
-            NotificationService::advanceApproved($advance);
-        });
+                NotificationService::advanceApproved($advance);
+            });
+        } catch (\Throwable $e) {
+            \App\Services\AccountingService::notifyFailure("اعتماد سلفة الموظف ({$advance->advance_number})", $e);
+            return redirect()->back()->with('error', 'تعذّر اعتماد السلفة محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
+        }
 
         return redirect()->back()->with('success', 'تم اعتماد السلفة وجدولة الأقساط');
     }

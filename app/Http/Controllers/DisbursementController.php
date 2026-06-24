@@ -76,17 +76,22 @@ class DisbursementController extends Controller
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
 
-        DB::transaction(function () use ($disbursement) {
-            $disbursement->approve(auth()->user());
+        try {
+            DB::transaction(function () use ($disbursement) {
+                $disbursement->approve(auth()->user());
 
-            AuditLog::log('approve', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
+                AuditLog::log('approve', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
 
-            // قيد محاسبي
-            try { AccountingService::recordDisbursement($disbursement); } catch (\Exception $e) { \Log::error('Accounting Disbursement: ' . $e->getMessage()); }
+                // قيد محاسبي إلزامي — فشله يُلغي الاعتماد بالكامل
+                AccountingService::recordDisbursement($disbursement);
 
-            // إشعار
-            try { \App\Services\NotificationService::disbursementApproved($disbursement); } catch (\Throwable $e) {}
-        });
+                // إشعار
+                try { \App\Services\NotificationService::disbursementApproved($disbursement); } catch (\Throwable $e) {}
+            });
+        } catch (\Throwable $e) {
+            AccountingService::notifyFailure("اعتماد سند الصرف {$disbursement->disbursement_number}", $e);
+            return back()->with('error', 'تعذّر اعتماد سند الصرف محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
+        }
 
         return back()->with('success', "تم اعتماد سند الصرف {$disbursement->disbursement_number}");
     }
