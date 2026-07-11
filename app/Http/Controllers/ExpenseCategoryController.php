@@ -38,9 +38,18 @@ class ExpenseCategoryController extends Controller
             'description' => 'nullable|string|max:500',
             'account_id' => 'nullable|exists:accounts,id',
         ]);
-        $lastCode = ExpenseCategory::where('code', 'like', 'CAT-%')->orderByDesc('code')->value('code');
-        $nextNum = $lastCode ? (int)substr($lastCode, 4) + 1 : 1;
-        $validated['code'] = 'CAT-' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
+        // توليد كود فريد يشمل المحذوفة (soft-deleted) لتفادي تصادم قيد UNIQUE
+        $nextNum = (int) ExpenseCategory::withTrashed()
+            ->where('code', 'like', 'CAT-%')
+            ->pluck('code')
+            ->map(fn ($c) => (int) substr($c, 4))
+            ->max() + 1;
+
+        do {
+            $code = 'CAT-' . str_pad($nextNum++, 3, '0', STR_PAD_LEFT);
+        } while (ExpenseCategory::withTrashed()->where('code', $code)->exists());
+
+        $validated['code'] = $code;
         $validated['is_active'] = true;
         ExpenseCategory::create($validated);
         return back()->with('success', 'تم إضافة التصنيف');

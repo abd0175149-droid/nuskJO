@@ -31,9 +31,18 @@ class ServiceController extends Controller
             'description' => 'nullable|string|max:1000',
         ]);
 
-        $lastCode = Service::where('code', 'like', 'SRV-%')->orderByDesc('code')->value('code');
-        $nextNum = $lastCode ? (int)substr($lastCode, 4) + 1 : 1;
-        $validated['code'] = 'SRV-' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
+        // توليد كود فريد يشمل المحذوفة (soft-deleted) لتفادي تصادم قيد UNIQUE
+        $nextNum = (int) Service::withTrashed()
+            ->where('code', 'like', 'SRV-%')
+            ->pluck('code')
+            ->map(fn ($c) => (int) substr($c, 4))
+            ->max() + 1;
+
+        do {
+            $code = 'SRV-' . str_pad($nextNum++, 3, '0', STR_PAD_LEFT);
+        } while (Service::withTrashed()->where('code', $code)->exists());
+
+        $validated['code'] = $code;
         $validated['is_active'] = true;
         $validated['default_price_sar'] = 0;
         $validated['default_price_jod'] = 0;
