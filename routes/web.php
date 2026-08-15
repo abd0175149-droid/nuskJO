@@ -82,6 +82,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('expense-categories', \App\Http\Controllers\ExpenseCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
 
     // Reports
+    Route::get('reports/builder', [\App\Http\Controllers\ReportController::class, 'builder'])->name('reports.builder');
     Route::get('reports/agents-balances', [\App\Http\Controllers\ReportController::class, 'agentsBalances'])->name('reports.agents-balances');
     Route::get('reports/clients-balances', [\App\Http\Controllers\ReportController::class, 'clientsBalances'])->name('reports.clients-balances');
     Route::get('reports/profit-loss', fn () => redirect('/accounting/profit-loss'));

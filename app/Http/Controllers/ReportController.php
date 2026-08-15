@@ -63,6 +63,17 @@ class ReportController extends Controller
         ]);
     }
 
+    /**
+     * منشئ التقارير التفاعلي (تجميع الخدمات حسب الوكيل/العميل)
+     */
+    public function builder()
+    {
+        return Inertia::render('Reports/Builder', [
+            'title' => 'منشئ التقارير',
+            'data' => \App\Services\ReportBuilderService::dataset(),
+        ]);
+    }
+
     public function profitLoss(Request $request)
     {
         $from = $request->from ?? now()->startOfMonth()->toDateString();
