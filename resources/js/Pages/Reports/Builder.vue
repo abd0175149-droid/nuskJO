@@ -98,7 +98,8 @@
           </div>
 
           <div class="act">
-            <button type="button" class="primary" @click="printReport">🖨️ طباعة</button>
+            <button type="button" class="primary" @click="exportCsv">⬇️ تصدير Excel</button>
+            <button type="button" @click="printReport">🖨️ طباعة</button>
             <button type="button" @click="reset">إعادة تعيين</button>
           </div>
         </aside>
@@ -190,6 +191,80 @@ function toggle(set, v, ev) { ev.target.checked ? set.add(v) : set.delete(v); }
 function setAll(key, list) { S[key] = new Set(list.map(x => x.id)); }
 function applyPreset(p) { const [a, b] = p.fn(); S.from = a; S.to = b; S.preset = p.k; }
 function printReport() { window.print(); }
+
+// ---- تصدير CSV (يفتحه Excel) — يحترم المحور والأعمدة والفلاتر الحالية ----
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function exportCsv() {
+  const rows = filtered();
+  const agg = aggregate(rows);
+  const axisLbl = S.axis === 'agent' ? 'الوكيل' : 'العميل';
+  const otherLbl = S.axis === 'agent' ? 'العملاء' : 'الوكلاء';
+  const C = S.cols;
+  const tot = {
+    qty: rows.reduce((s, r) => s + r.q, 0), cost: rows.reduce((s, r) => s + r.co, 0),
+    sell: rows.reduce((s, r) => s + r.se, 0), inv: new Set(rows.map(r => r.ii)).size,
+  };
+
+  // ترتيب الأعمدة حسب المُفعّل (مطابق للجدول المعروض، بدون العمود المرئي "شريط الخدمات")
+  const cols = [['#', '#'], ['name', axisLbl], ['code', 'الكود']];
+  if (C.has('qty')) cols.push(['qty', 'الكمية']);
+  if (C.has('share')) cols.push(['share', 'النسبة %']);
+  if (C.has('inv')) cols.push(['inv', 'الفواتير']);
+  if (C.has('others')) cols.push(['others', otherLbl]);
+  if (C.has('cost')) cols.push(['cost', 'التكلفة (ر.س)']);
+  if (C.has('sell')) cols.push(['sell', 'المبيع (د.أ)']);
+  if (C.has('cpv')) cols.push(['cpv', 'تكلفة/وحدة']);
+  if (C.has('spv')) cols.push(['spv', 'مبيع/وحدة']);
+  if (C.has('margin')) cols.push(['margin', 'الهامش/وحدة']);
+  if (C.has('bal')) cols.push(['bal', 'الرصيد (د.أ)']);
+  const typeCols = TYPE_IDS.filter(ti => S.types.has(ti));
+
+  const cell = (e, i, k) => {
+    if (k === '#') return i + 1;
+    if (k === 'name') return e.name;
+    if (k === 'code') return e.code;
+    if (k === 'share') return tot.qty ? (e.qty / tot.qty * 100).toFixed(1) : '0';
+    if (k === 'qty' || k === 'inv' || k === 'others') return e[k];
+    if (k === 'cpv') return e.cpv.toFixed(1);
+    return (e[k] || 0).toFixed(2);
+  };
+
+  const lines = [];
+  lines.push([`تقرير الخدمات حسب ${axisLbl}`]);
+  lines.push([`الفترة: ${S.from} إلى ${S.to}`]);
+  lines.push([`الخدمات: ${typeCols.map(ti => TL[ti]).join(' · ')}`]);
+  lines.push([]);
+  lines.push([...cols.map(c => c[1]), ...typeCols.map(ti => TL[ti])]);
+  agg.forEach((e, i) => {
+    const row = cols.map(([k]) => cell(e, i, k));
+    typeCols.forEach(ti => row.push(e.t[ti] || 0));
+    lines.push(row);
+  });
+  // صف المجموع
+  const totRow = cols.map(([k]) => {
+    if (k === 'name') return 'المجموع';
+    if (k === 'qty') return tot.qty;
+    if (k === 'share') return '100';
+    if (k === 'inv') return tot.inv;
+    if (k === 'cost') return tot.cost.toFixed(2);
+    if (k === 'sell') return tot.sell.toFixed(2);
+    return '';
+  });
+  typeCols.forEach(() => totRow.push(''));
+  lines.push(totRow);
+
+  const csv = '﻿' + lines.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `report_${S.axis}_${S.from}_${S.to}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
 function reset() {
   S.axis = 'agent'; S.preset = 'all'; S.from = MIND; S.to = MAXD;
   S.agents = new Set(D.agents.map(a => a.id)); S.clients = new Set(D.clients.map(c => c.id));
@@ -471,8 +546,8 @@ const reportHtml = computed(() => buildReportHtml());
 .rb-tool .chk{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;cursor:pointer}
 .rb-tool .chk input{margin:0;accent-color:var(--focus)}
 .rb-tool select{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:3px;background:var(--card);color:var(--ink);font-family:var(--ar);font-size:12.5px}
-.rb-tool .act{display:flex;gap:7px;padding:14px 16px}
-.rb-tool .act button{flex:1;border:1px solid var(--rule);background:var(--card);color:var(--ink-2);font-family:var(--ar);font-size:12.5px;padding:8px;border-radius:3px;cursor:pointer}
+.rb-tool .act{display:flex;flex-wrap:wrap;gap:7px;padding:14px 16px}
+.rb-tool .act button{flex:1 1 40%;min-width:88px;border:1px solid var(--rule);background:var(--card);color:var(--ink-2);font-family:var(--ar);font-size:12.5px;padding:8px;border-radius:3px;cursor:pointer;white-space:nowrap}
 .rb-tool .act .primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:700}
 .rb-tool .report{display:flex;flex-direction:column;gap:24px;min-width:0}
 .rb-tool .rhead{border-bottom:1px solid var(--rule);padding-bottom:12px}
