@@ -44,19 +44,26 @@ class EmployeeController extends Controller
         $users = User::whereDoesntHave('employee')->whereIsActive(true)->select('id', 'name', 'email')->get();
         $departments = Department::select('id', 'name')->whereIsActive(true)->get();
         $shifts = Shift::select('id', 'name')->whereIsActive(true)->get();
+        $roles = \App\Models\Role::select('id', 'name')->get();
 
         return Inertia::render('HR/Employees/Create', [
             'title' => 'إضافة موظف جديد',
             'users' => $users,
             'departments' => $departments,
             'shifts' => $shifts,
+            'roles' => $roles,
         ]);
     }
 
     public function store(Request $request, NumberingService $numberingService)
     {
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id|unique:employees,user_id',
+            'user_mode' => 'required|in:existing,new',
+            'user_id' => 'required_if:user_mode,existing|nullable|exists:users,id|unique:employees,user_id',
+            'new_user_name' => 'required_if:user_mode,new|nullable|string|max:255',
+            'new_user_email' => 'required_if:user_mode,new|nullable|email|max:255|unique:users,email',
+            'new_user_password' => 'required_if:user_mode,new|nullable|string|min:6',
+            'new_user_role_id' => 'required_if:user_mode,new|nullable|exists:roles,id',
             'department_id' => 'nullable|exists:departments,id',
             'shift_id' => 'nullable|exists:shifts,id',
             'job_title' => 'nullable|string|max:150',
@@ -87,7 +94,24 @@ class EmployeeController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        DB::transaction(function () use ($validated, $numberingService) {
+        DB::transaction(function () use ($validated, $request, $numberingService) {
+            // إنشاء مستخدم جديد تلقائياً إن اختار المستخدم ذلك
+            if (($validated['user_mode'] ?? 'existing') === 'new') {
+                $user = User::create([
+                    'name' => $validated['new_user_name'],
+                    'email' => $validated['new_user_email'],
+                    'password' => \Illuminate\Support\Facades\Hash::make($validated['new_user_password']),
+                    'role_id' => $validated['new_user_role_id'],
+                    'phone' => $request->input('phone'),
+                    'is_active' => true,
+                ]);
+                $validated['user_id'] = $user->id;
+            }
+
+            // تنظيف الحقول غير الخاصة بجدول الموظفين
+            unset($validated['user_mode'], $validated['new_user_name'], $validated['new_user_email'],
+                  $validated['new_user_password'], $validated['new_user_role_id']);
+
             $validated['employee_number'] = $numberingService->generate('EMP');
             Employee::create($validated);
         });

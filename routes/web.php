@@ -83,6 +83,8 @@ Route::middleware('auth')->group(function () {
 
     // Reports
     Route::get('reports/builder', [\App\Http\Controllers\ReportController::class, 'builder'])->name('reports.builder');
+    Route::get('reports/trip-date', [\App\Http\Controllers\ReportController::class, 'tripDate'])->name('reports.trip-date');
+    Route::get('reports/employee-profit', [\App\Http\Controllers\ReportController::class, 'employeeProfit'])->name('reports.employee-profit');
     Route::get('reports/agents-balances', [\App\Http\Controllers\ReportController::class, 'agentsBalances'])->name('reports.agents-balances');
     Route::get('reports/clients-balances', [\App\Http\Controllers\ReportController::class, 'clientsBalances'])->name('reports.clients-balances');
     Route::get('reports/profit-loss', fn () => redirect('/accounting/profit-loss'));
@@ -99,6 +101,7 @@ Route::middleware('auth')->group(function () {
     Route::post('accounting/trial-balance/relocate-line', [\App\Http\Controllers\AccountingController::class, 'relocateLine'])->name('accounting.trial-balance.relocate-line');
     Route::get('accounting/journal-entries', [\App\Http\Controllers\AccountingController::class, 'journalEntries'])->name('accounting.journal-entries');
     Route::post('accounting/journal-entries', [\App\Http\Controllers\AccountingController::class, 'storeJournal'])->name('accounting.journal-entries.store');
+    Route::put('accounting/journal-entries/{entry}', [\App\Http\Controllers\AccountingController::class, 'updateJournal'])->name('accounting.journal-entries.update');
     Route::post('accounting/journal-entries/{entry}/reverse', [\App\Http\Controllers\AccountingController::class, 'reverseEntry'])->name('accounting.journal-entries.reverse');
     Route::get('accounting/periods', [\App\Http\Controllers\AccountingController::class, 'periods'])->name('accounting.periods');
     Route::post('accounting/periods/close', [\App\Http\Controllers\AccountingController::class, 'closePeriod'])->name('accounting.periods.close');
@@ -123,6 +126,7 @@ Route::middleware('auth')->group(function () {
 
     // Users & Roles
     Route::resource('users', \App\Http\Controllers\UserController::class)->except(['create', 'show', 'edit']);
+    Route::put('users/{user}/reset-password', [\App\Http\Controllers\UserController::class, 'resetPassword'])->name('users.reset-password');
     Route::resource('roles', \App\Http\Controllers\RoleController::class)->except(['create', 'show']);
 
     // HR Module

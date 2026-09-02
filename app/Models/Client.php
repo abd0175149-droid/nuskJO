@@ -13,7 +13,7 @@ class Client extends Model
     protected $fillable = [
         'name', 'code', 'phone', 'email', 'address',
         'city', 'country', 'currency', 'balance_jod', 'credit_limit_jod',
-        'notes', 'is_active', 'created_by', 'agent_id',
+        'notes', 'is_active', 'created_by', 'agent_id', 'employee_id',
         'nationality', 'id_number', 'contact_person', 'account_id',
     ];
 
@@ -26,6 +26,11 @@ class Client extends Model
     public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class);
+    }
+
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
     }
 
     public function creator(): BelongsTo

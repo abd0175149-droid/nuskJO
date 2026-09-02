@@ -25,6 +25,9 @@ class ClientController extends Controller
         return Inertia::render('Clients/Index', [
             'title' => 'العملاء',
             'clients' => $clients,
+            'employees' => \App\Models\Employee::with('user:id,name')->where('is_active', true)->get()
+                ->map(fn ($e) => ['id' => $e->id, 'name' => $e->user?->name ?? ('موظف #' . $e->id)])
+                ->values(),
             'filters' => $request->only(['search', 'status']),
         ]);
     }
@@ -136,6 +139,7 @@ class ClientController extends Controller
             'address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
             'credit_limit_jod' => 'nullable|numeric|min:0',
+            'employee_id' => 'nullable|exists:employees,id',
         ]);
 
         $codes = Client::withTrashed()->where('code', 'like', 'CLT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
@@ -146,6 +150,7 @@ class ClientController extends Controller
         $validated['balance_jod'] = 0;
         $validated['is_active'] = true;
         $validated['credit_limit_jod'] = $validated['credit_limit_jod'] ?? 0;
+        $validated['created_by'] = auth()->id();
 
         $client = Client::create($validated);
 
@@ -169,6 +174,7 @@ class ClientController extends Controller
             'notes' => 'nullable|string|max:1000',
             'is_active' => 'boolean',
             'credit_limit_jod' => 'nullable|numeric|min:0',
+            'employee_id' => 'nullable|exists:employees,id',
         ]);
 
         $validated['currency'] = $validated['country'] === 'JO' ? 'JOD' : 'SAR';

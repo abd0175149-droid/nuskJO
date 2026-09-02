@@ -15,14 +15,55 @@
                     <div>
                         <h4 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 pb-2 border-b">البيانات الأساسية</h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">المستخدم المربوط *</label>
-                                <select v-model="form.user_id" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
-                                    <option :value="null">-- اختر المستخدم --</option>
-                                    <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }} ({{ u.email }})</option>
-                                </select>
-                                <p v-if="form.errors.user_id" class="text-red-500 text-xs mt-1">{{ form.errors.user_id }}</p>
-                                <p class="text-xs text-gray-500 mt-1">تظهر فقط الحسابات التي ليس لها ملف موظف حالياً.</p>
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">حساب الدخول للموظف *</label>
+                                <div class="flex gap-6 mb-3">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="radio" v-model="form.user_mode" value="new" class="text-gold-500 focus:ring-gold-500"/>
+                                        <span class="text-sm">إنشاء مستخدم جديد للموظف</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="radio" v-model="form.user_mode" value="existing" class="text-gold-500 focus:ring-gold-500"/>
+                                        <span class="text-sm">ربط بمستخدم موجود</span>
+                                    </label>
+                                </div>
+
+                                <!-- إنشاء مستخدم جديد -->
+                                <div v-if="form.user_mode === 'new'" class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">اسم المستخدم *</label>
+                                        <input v-model="form.new_user_name" type="text" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                        <p v-if="form.errors.new_user_name" class="text-red-500 text-xs mt-1">{{ form.errors.new_user_name }}</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">البريد الإلكتروني *</label>
+                                        <input v-model="form.new_user_email" type="email" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                        <p v-if="form.errors.new_user_email" class="text-red-500 text-xs mt-1">{{ form.errors.new_user_email }}</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">كلمة المرور *</label>
+                                        <input v-model="form.new_user_password" type="text" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                        <p v-if="form.errors.new_user_password" class="text-red-500 text-xs mt-1">{{ form.errors.new_user_password }}</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">الدور (الصلاحية) *</label>
+                                        <select v-model="form.new_user_role_id" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
+                                            <option :value="null">-- اختر الدور --</option>
+                                            <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
+                                        </select>
+                                        <p v-if="form.errors.new_user_role_id" class="text-red-500 text-xs mt-1">{{ form.errors.new_user_role_id }}</p>
+                                    </div>
+                                </div>
+
+                                <!-- ربط بمستخدم موجود -->
+                                <div v-else>
+                                    <select v-model="form.user_id" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
+                                        <option :value="null">-- اختر المستخدم --</option>
+                                        <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }} ({{ u.email }})</option>
+                                    </select>
+                                    <p v-if="form.errors.user_id" class="text-red-500 text-xs mt-1">{{ form.errors.user_id }}</p>
+                                    <p class="text-xs text-gray-500 mt-1">تظهر فقط الحسابات التي ليس لها ملف موظف حالياً.</p>
+                                </div>
                             </div>
 
                             <div>
@@ -207,10 +248,16 @@ const props = defineProps({
     users: Array,
     departments: Array,
     shifts: Array,
+    roles: Array,
 });
 
 const form = useForm({
+    user_mode: 'new',
     user_id: null,
+    new_user_name: '',
+    new_user_email: '',
+    new_user_password: '',
+    new_user_role_id: null,
     department_id: null,
     shift_id: null,
     job_title: '',

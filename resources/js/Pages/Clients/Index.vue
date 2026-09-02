@@ -91,6 +91,7 @@
                             <p v-if="emailError" class="mt-1 text-xs text-red-500">{{ emailError }}</p>
                         </div>
                         <div><label class="block text-sm font-medium text-gray-700 mb-1">رقم السجل التجاري</label><input v-model="form.id_number" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">الموظف المسؤول</label><select v-model="form.employee_id" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500"><option :value="null">— بدون —</option><option v-for="e in employees" :key="e.id" :value="e.id">{{ e.name }}</option></select></div>
                         <div v-if="editItem" class="flex items-end"><label class="flex items-center gap-2"><input v-model="form.is_active" type="checkbox" class="w-4 h-4 rounded text-gold-500"/><span class="text-sm">نشط</span></label></div>
                     </div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">العنوان</label><textarea v-model="form.address" rows="2" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none resize-none"></textarea></div>
@@ -127,12 +128,12 @@ const { can } = usePermissions();
 const saCities = ['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الطائف','تبوك','أبها','القصيم','حائل','نجران','ينبع','الأحساء','الجبيل','القطيف'];
 const joCities = ['عمان','إربد','الزرقاء','العقبة','السلط','الكرك','مادبا','جرش','عجلون','معان','الطفيلة','البلقاء'];
 
-const props = defineProps({ clients: Object, filters: Object });
+const props = defineProps({ clients: Object, filters: Object, employees: Array });
 const search = ref(props.filters?.search||'');
 const showForm = ref(false); const editItem = ref(null); const viewClient = ref(null);
 let t=null;
 
-const form = useForm({ name:'',phone:'',email:'',country:'',city:'',contact_person:'',id_number:'',address:'',notes:'',is_active:true });
+const form = useForm({ name:'',phone:'',email:'',country:'',city:'',contact_person:'',id_number:'',address:'',notes:'',is_active:true,employee_id:null });
 
 const citiesList = computed(() => form.country === 'JO' ? joCities : form.country === 'SA' ? saCities : []);
 watch(() => form.country, (nv, ov) => { if (ov && nv !== ov) form.city = ''; });
@@ -164,6 +165,7 @@ const openModal = (c) => {
     form.address = c?.address||'';
     form.notes = c?.notes||'';
     form.is_active = c?.is_active??true;
+    form.employee_id = c?.employee_id ?? null;
     form.clearErrors();
     showForm.value = true;
 };

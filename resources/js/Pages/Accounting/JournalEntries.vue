@@ -7,7 +7,7 @@
 
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <input v-model="search" type="text" placeholder="بحث برقم القيد أو الوصف..." class="w-72 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500 dark:text-white" @input="debounceSearch" />
-                <button @click="showModal=true" class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">+ قيد يدوي</button>
+                <button @click="openNew" class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">+ قيد يدوي</button>
             </div>
 
             <div class="space-y-4">
@@ -21,7 +21,12 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <span v-if="entry.reference_type" class="px-2 py-0.5 rounded text-xs font-bold" :class="refColor(entry.reference_type)">{{ refLabel(entry.reference_type) }}</span>
+                            <span v-if="entry.is_reversed" class="px-2 py-0.5 rounded text-xs font-bold bg-gray-200 text-gray-500">معكوس</span>
                             <span class="text-xs text-gray-500">{{ entry.creator?.name }}</span>
+                            <template v-if="entry.reference_type==='manual' && !entry.is_reversed">
+                                <button @click="openEdit(entry)" class="px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-50 rounded" title="تعديل القيد">✏️ تعديل</button>
+                                <button @click="reverseEntry(entry)" class="px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 rounded" title="عكس القيد">↺ عكس</button>
+                            </template>
                         </div>
                     </div>
                     <div v-if="entry.description" class="px-5 py-2 text-xs text-gray-600 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-800/20 border-b border-gray-100 dark:border-gray-800">
@@ -71,7 +76,7 @@
         <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showModal=false">
             <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-3xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
                 <div class="flex items-center justify-between mb-5">
-                    <h3 class="text-lg font-bold">📝 قيد يدوي جديد</h3>
+                    <h3 class="text-lg font-bold">{{ editId ? '✏️ تعديل قيد يدوي' : '📝 قيد يدوي جديد' }}</h3>
                     <button @click="showModal=false" class="text-gray-400 hover:text-red-500 text-xl">&times;</button>
                 </div>
                 <form @submit.prevent="submitJournal" class="space-y-5">
@@ -128,7 +133,7 @@
                     </div>
 
                     <div class="flex gap-3">
-                        <button type="submit" :disabled="jForm.processing || !isBalanced" class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 disabled:opacity-50">✅ تسجيل القيد</button>
+                        <button type="submit" :disabled="jForm.processing || !isBalanced" class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 disabled:opacity-50">{{ editId ? '💾 حفظ التعديل' : '✅ تسجيل القيد' }}</button>
                         <button type="button" @click="showModal=false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button>
                     </div>
                 </form>
@@ -147,6 +152,7 @@ const props = defineProps({ entries: Object, filters: Object, leafAccounts: Arra
 const accountOptions = computed(() => props.leafAccounts.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` })));
 const search = ref(props.filters?.search || '');
 const showModal = ref(false);
+const editId = ref(null);
 let t = null;
 
 const fmt = (v) => Number(v || 0).toLocaleString('en', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
@@ -183,20 +189,58 @@ const addLine = () => {
     jForm.lines.push({ account_id: '', debit: 0, credit: 0, description: '' });
 };
 
+const resetLines = () => [
+    { account_id: '', debit: 0, credit: 0, description: '' },
+    { account_id: '', debit: 0, credit: 0, description: '' },
+];
+
+const openNew = () => {
+    editId.value = null;
+    jForm.reset();
+    jForm.clearErrors();
+    jForm.entry_date = new Date().toISOString().split('T')[0];
+    jForm.lines = resetLines();
+    showModal.value = true;
+};
+
+const openEdit = (entry) => {
+    editId.value = entry.id;
+    jForm.clearErrors();
+    jForm.description = entry.description || '';
+    jForm.entry_date = (entry.entry_date || '').split('T')[0];
+    jForm.lines = entry.lines.map(l => ({
+        account_id: l.account_id,
+        debit: Number(l.debit) || 0,
+        credit: Number(l.credit) || 0,
+        description: l.description || '',
+    }));
+    showModal.value = true;
+};
+
+const reverseEntry = (entry) => {
+    if (confirm(`عكس القيد ${entry.entry_number}؟ سيُنشأ قيد عكسي مقابل.`)) {
+        router.post(`/accounting/journal-entries/${entry.id}/reverse`, {}, { preserveScroll: true });
+    }
+};
+
 const totalDebit = computed(() => jForm.lines.reduce((s, l) => s + (Number(l.debit) || 0), 0));
 const totalCredit = computed(() => jForm.lines.reduce((s, l) => s + (Number(l.credit) || 0), 0));
 const isBalanced = computed(() => totalDebit.value > 0 && Math.abs(totalDebit.value - totalCredit.value) < 0.001);
 
 const submitJournal = () => {
-    jForm.post('/accounting/journal-entries', {
+    const opts = {
+        preserveScroll: true,
         onSuccess: () => {
             showModal.value = false;
+            editId.value = null;
             jForm.reset();
-            jForm.lines = [
-                { account_id: '', debit: 0, credit: 0, description: '' },
-                { account_id: '', debit: 0, credit: 0, description: '' },
-            ];
+            jForm.lines = resetLines();
         },
-    });
+    };
+    if (editId.value) {
+        jForm.put(`/accounting/journal-entries/${editId.value}`, opts);
+    } else {
+        jForm.post('/accounting/journal-entries', opts);
+    }
 };
 </script>

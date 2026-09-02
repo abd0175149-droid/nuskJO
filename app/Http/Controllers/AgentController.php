@@ -19,7 +19,10 @@ class AgentController extends Controller
                 ->orWhere('code', 'like', "%{$s}%")
                 ->orWhere('phone', 'like', "%{$s}%"))
             ->when($request->status !== null, fn ($q) => $q->where('is_active', $request->boolean('status')))
-            ->orderByDesc('created_at')
+            // الوكلاء أصحاب الرصيد أولاً (الأكبر رصيداً في المقدمة)، وأصحاب الرصيد صفر/بلا حساب آخراً
+            ->orderByRaw('(CASE WHEN COALESCE((SELECT balance FROM accounts WHERE accounts.id = agents.account_id), 0) = 0 THEN 1 ELSE 0 END) ASC')
+            ->orderByRaw('ABS(COALESCE((SELECT balance FROM accounts WHERE accounts.id = agents.account_id), 0)) DESC')
+            ->orderByDesc('agents.created_at')
             ->paginate(15)
             ->withQueryString();
 

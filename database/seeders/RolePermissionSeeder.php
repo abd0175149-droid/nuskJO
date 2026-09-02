@@ -30,7 +30,7 @@ class RolePermissionSeeder extends Seeder
             'disbursements' => ['view', 'create', 'approve', 'reject'],
             'receipts' => ['view', 'create', 'approve', 'reject'],
             'invoices' => ['view', 'create', 'update', 'submit', 'approve', 'reject'],
-            'reports' => ['view'],
+            'reports' => ['view', 'employee_profit'],
             'settings' => ['view', 'update'],
             'users' => ['view', 'create', 'update', 'delete'],
 
@@ -56,6 +56,7 @@ class RolePermissionSeeder extends Seeder
             'view' => 'عرض', 'create' => 'إنشاء', 'update' => 'تعديل',
             'delete' => 'حذف', 'approve' => 'اعتماد', 'reject' => 'رفض',
             'submit' => 'إرسال', 'manual_edit' => 'تعديل يدوي', 'generate' => 'توليد',
+            'employee_profit' => 'أرباح الموظفين',
         ];
 
         $allPermissions = [];

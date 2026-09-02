@@ -492,6 +492,97 @@ class AccountingController extends Controller
         return redirect()->back()->with('success', 'تم إنشاء القيد اليدوي بنجاح');
     }
 
+    /**
+     * تعديل قيد يومية يدوي (فقط manual وغير معكوس وفترة غير مقفلة).
+     * يعكس أثر السطور القديمة على الأرصدة، ثم يستبدلها بالجديدة ضمن transaction واحدة.
+     */
+    public function updateJournal(Request $request, JournalEntry $entry)
+    {
+        if ($entry->reference_type !== 'manual') {
+            return back()->with('error', 'لا يمكن تعديل إلا القيود اليدوية. القيود المُولّدة من النظام تُعدّل من مصدرها أو تُعكس.');
+        }
+        if ($entry->is_reversed) {
+            return back()->with('error', 'لا يمكن تعديل قيد تم عكسه.');
+        }
+
+        $validated = $request->validate([
+            'description' => 'required|string|max:500',
+            'entry_date' => 'nullable|date',
+            'lines' => 'required|array|min:2',
+            'lines.*.account_id' => 'required|exists:accounts,id',
+            'lines.*.debit' => 'required|numeric|min:0',
+            'lines.*.credit' => 'required|numeric|min:0',
+            'lines.*.description' => 'nullable|string|max:255',
+        ]);
+
+        $totalDebit = collect($validated['lines'])->sum('debit');
+        $totalCredit = collect($validated['lines'])->sum('credit');
+
+        if (round($totalDebit, 3) !== round($totalCredit, 3)) {
+            return back()->with('error', "القيد غير متوازن — مدين: {$totalDebit} ≠ دائن: {$totalCredit}");
+        }
+        if ($totalDebit == 0) {
+            return back()->with('error', 'القيد لا يحتوي على أي مبلغ');
+        }
+        foreach ($validated['lines'] as $line) {
+            if ($line['debit'] > 0 && $line['credit'] > 0) {
+                return back()->with('error', 'لا يمكن أن يكون نفس السطر مديناً ودائناً في نفس الوقت');
+            }
+            if ($line['debit'] == 0 && $line['credit'] == 0) {
+                return back()->with('error', 'كل سطر يجب أن يحتوي على مبلغ مدين أو دائن');
+            }
+        }
+
+        $newDate = $validated['entry_date'] ?? $entry->entry_date->toDateString();
+        if (AccountingPeriod::isDateLocked($entry->entry_date->toDateString()) || AccountingPeriod::isDateLocked($newDate)) {
+            return back()->with('error', 'لا يمكن التعديل ضمن فترة محاسبية مقفلة');
+        }
+
+        DB::transaction(function () use ($entry, $validated, $totalDebit, $totalCredit, $newDate) {
+            $entry->load('lines');
+
+            // 1) عكس أثر السطور القديمة على الرصيد المخبأ
+            foreach ($entry->lines as $old) {
+                $acc = Account::find($old->account_id);
+                if ($acc) {
+                    $delta = in_array($acc->type, ['asset', 'expense'])
+                        ? ($old->debit - $old->credit)
+                        : ($old->credit - $old->debit);
+                    $acc->decrement('balance', $delta);
+                }
+            }
+
+            // 2) حذف السطور القديمة
+            $entry->lines()->delete();
+
+            // 3) تحديث رأس القيد + إدراج السطور الجديدة وتطبيق أثرها
+            $entry->update([
+                'entry_date' => $newDate,
+                'description' => $validated['description'],
+                'total_debit' => $totalDebit,
+                'total_credit' => $totalCredit,
+            ]);
+
+            foreach ($validated['lines'] as $line) {
+                $entry->lines()->create([
+                    'account_id' => $line['account_id'],
+                    'debit' => $line['debit'],
+                    'credit' => $line['credit'],
+                    'description' => $line['description'] ?? null,
+                ]);
+                $acc = Account::find($line['account_id']);
+                if ($acc) {
+                    $d = $line['debit'];
+                    $c = $line['credit'];
+                    $delta = in_array($acc->type, ['asset', 'expense']) ? ($d - $c) : ($c - $d);
+                    $acc->increment('balance', $delta);
+                }
+            }
+        });
+
+        return redirect()->back()->with('success', "تم تعديل القيد {$entry->entry_number} بنجاح");
+    }
+
     // ============================================================
     // عكس القيود
     // ============================================================

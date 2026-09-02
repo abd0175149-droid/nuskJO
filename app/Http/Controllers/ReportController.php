@@ -64,6 +64,79 @@ class ReportController extends Controller
     }
 
     /**
+     * تقرير الزبائن المسافرين بتاريخ محدد (حسب تاريخ الرحلة على الفاتورة)
+     */
+    public function tripDate(Request $request)
+    {
+        $date = $request->date ?? now()->toDateString();
+
+        $invoices = \App\Models\Invoice::query()
+            ->with(['client:id,name,code,phone', 'items:id,invoice_id,agent_id,quantity', 'items.agent:id,name,code'])
+            ->where('status', 'approved')
+            ->whereDate('trip_date', $date)
+            ->when(!auth()->user()->isAdmin(), fn ($q) => $q->where('created_by', auth()->id()))
+            ->orderBy('invoice_number')
+            ->get()
+            ->map(fn ($i) => [
+                'invoice_number' => $i->invoice_number,
+                'client'  => $i->client?->name,
+                'phone'   => $i->client_phone ?: $i->client?->phone,
+                'trip_date' => $i->trip_date?->toDateString(),
+                'agents'  => $i->items->map(fn ($it) => $it->agent?->name)->filter()->unique()->values(),
+                'pax'     => (int) $i->items->sum('quantity'),
+                'total'   => round((float) $i->total_sell_jod, 3),
+                'status'  => $i->status,
+            ]);
+
+        return Inertia::render('Reports/TripDate', [
+            'title' => 'الزبائن المسافرون بتاريخ',
+            'date' => $date,
+            'invoices' => $invoices,
+            'totalPax' => (int) $invoices->sum('pax'),
+            'filters' => ['date' => $date],
+        ]);
+    }
+
+    /**
+     * تقرير أرباح كل موظف — مجموع أرباح الفواتير المعتمدة لعملاء الموظف.
+     * مستقل تماماً عن قائمة الدخل (المبنية على دفتر الأستاذ).
+     */
+    public function employeeProfit(Request $request)
+    {
+        $from = $request->from ?? now()->startOfMonth()->toDateString();
+        $to   = $request->to ?? now()->toDateString();
+
+        $rows = \App\Models\Invoice::query()
+            ->join('clients', 'clients.id', '=', 'invoices.client_id')
+            ->leftJoin('employees', 'employees.id', '=', 'clients.employee_id')
+            ->leftJoin('users', 'users.id', '=', 'employees.user_id')
+            ->where('invoices.status', 'approved')
+            ->whereBetween('invoices.invoice_date', [$from, $to . ' 23:59:59'])
+            ->groupBy('clients.employee_id', 'users.name', 'employees.employee_number')
+            ->selectRaw('clients.employee_id as employee_id, users.name as employee_name, employees.employee_number as employee_number,
+                COUNT(DISTINCT invoices.id) as invoices, COUNT(DISTINCT clients.id) as clients,
+                ROUND(SUM(invoices.profit_jod), 3) as profit_jod, ROUND(SUM(invoices.total_sell_jod), 3) as sell_jod')
+            ->orderByDesc('profit_jod')
+            ->get()
+            ->map(fn ($r) => [
+                'employee_id' => $r->employee_id,
+                'employee' => $r->employee_id ? ($r->employee_name ?: 'موظف #' . $r->employee_id) : 'غير مُسند لموظف',
+                'employee_number' => $r->employee_number,
+                'invoices' => (int) $r->invoices,
+                'clients' => (int) $r->clients,
+                'profit_jod' => (float) $r->profit_jod,
+                'sell_jod' => (float) $r->sell_jod,
+            ]);
+
+        return Inertia::render('Reports/EmployeeProfit', [
+            'title' => 'أرباح الموظفين',
+            'rows' => $rows,
+            'totalProfit' => round((float) $rows->sum('profit_jod'), 3),
+            'filters' => ['from' => $from, 'to' => $to],
+        ]);
+    }
+
+    /**
      * منشئ التقارير التفاعلي (تجميع الخدمات حسب الوكيل/العميل)
      */
     public function builder()

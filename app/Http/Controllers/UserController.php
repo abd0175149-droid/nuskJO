@@ -88,6 +88,20 @@ class UserController extends Controller
         return back()->with('success', 'تم تحديث بيانات الموظف بنجاح');
     }
 
+    /**
+     * إعادة تعيين كلمة مرور مستخدم من قبل الأدمن (دون معرفة القديمة)
+     */
+    public function resetPassword(Request $request, User $user)
+    {
+        $request->validate([
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $user->update(['password' => Hash::make($request->password)]);
+
+        return back()->with('success', "تمت إعادة تعيين كلمة مرور {$user->name} بنجاح");
+    }
+
     public function destroy(User $user)
     {
         if ($user->id === auth()->id()) {

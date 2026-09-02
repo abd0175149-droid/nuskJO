@@ -44,8 +44,9 @@
                                 <span v-else class="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-700">موقوف</span>
                             </td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap actions-cell">
-                                <button @click="openModal(user)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg mr-1 btn-mobile-sm">✏️</button>
-                                <button v-if="$page.props.auth.user.id !== user.id" @click="delUser(user)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button>
+                                <button @click="openModal(user)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg mr-1 btn-mobile-sm" title="تعديل">✏️</button>
+                                <button @click="openReset(user)" class="px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 rounded-lg mr-1 btn-mobile-sm" title="إعادة تعيين كلمة المرور">🔑</button>
+                                <button v-if="$page.props.auth.user.id !== user.id" @click="delUser(user)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm" title="حذف">🗑️</button>
                             </td>
                         </tr>
                         <tr v-if="!users.data?.length"><td colspan="6" class="px-5 py-12 text-center text-gray-400">لا يوجد موظفين</td></tr>
@@ -60,6 +61,32 @@
                     <button v-if="link.url" @click="router.get(link.url, {search, role_id: roleFilter}, {preserveState:true})" v-html="link.label" class="px-3 py-1 rounded text-sm" :class="link.active ? 'bg-gold-500 text-black font-bold' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'"></button>
                     <span v-else v-html="link.label" class="px-3 py-1 text-gray-400 text-sm"></span>
                 </template>
+            </div>
+        </div>
+
+        <!-- Reset Password Modal -->
+        <div v-if="resetTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="resetTarget=null">
+            <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">🔑 إعادة تعيين كلمة المرور</h3>
+                    <button @click="resetTarget=null" class="text-gray-400 hover:text-red-500 text-xl">&times;</button>
+                </div>
+                <p class="text-sm text-gray-500 mb-4">للمستخدم: <strong class="text-gray-800 dark:text-gray-200">{{ resetTarget.name }}</strong></p>
+                <form @submit.prevent="submitReset" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">كلمة المرور الجديدة *</label>
+                        <input v-model="resetForm.password" type="text" required dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-gold-500 dark:text-white"/>
+                        <div v-if="resetForm.errors.password" class="text-red-500 text-xs mt-1">{{ resetForm.errors.password }}</div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">تأكيد كلمة المرور *</label>
+                        <input v-model="resetForm.password_confirmation" type="text" required dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-gold-500 dark:text-white"/>
+                    </div>
+                    <div class="flex gap-3 pt-2">
+                        <button type="submit" :disabled="resetForm.processing" class="flex-1 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 disabled:opacity-50">تعيين</button>
+                        <button type="button" @click="resetTarget=null" class="flex-1 py-2.5 rounded-xl text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800">إلغاء</button>
+                    </div>
+                </form>
             </div>
         </div>
 
@@ -176,6 +203,17 @@ const delUser = (user) => {
     if (confirm(`هل أنت متأكد من حذف الموظف: ${user.name}؟`)) {
         router.delete(`/users/${user.id}`, { preserveScroll: true });
     }
+};
+
+// إعادة تعيين كلمة المرور (أدمن)
+const resetTarget = ref(null);
+const resetForm = useForm({ password: '', password_confirmation: '' });
+const openReset = (user) => { resetTarget.value = user; resetForm.reset(); resetForm.clearErrors(); };
+const submitReset = () => {
+    resetForm.put(`/users/${resetTarget.value.id}/reset-password`, {
+        preserveScroll: true,
+        onSuccess: () => { resetTarget.value = null; resetForm.reset(); },
+    });
 };
 
 const debounceSearch = () => { clearTimeout(t); t = setTimeout(() => applyFilter(), 400); };
