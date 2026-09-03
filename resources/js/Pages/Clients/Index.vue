@@ -59,6 +59,7 @@
                     <div><span class="text-gray-400">البريد:</span><p><span dir="ltr" class="inline-block">{{ viewClient.email||'—' }}</span></p></div>
                     <div><span class="text-gray-400">جهة الاتصال:</span><p>{{ viewClient.contact_person||'—' }}</p></div>
                     <div><span class="text-gray-400">رقم السجل التجاري:</span><p>{{ viewClient.id_number||'—' }}</p></div>
+                    <div><span class="text-gray-400">الموظف المسؤول:</span><p>{{ employeeName(viewClient.employee_id) }}</p></div>
                     <div><span class="text-gray-400">الرصيد:</span><p class="font-bold font-mono" :class="Number(viewClient.account?.balance)>=0?'text-green-600':'text-red-600'">{{ Math.abs(Number(viewClient.account?.balance || 0)).toLocaleString('en',{minimumFractionDigits:3}) }} JOD</p></div>
                     <div><span class="text-gray-400">الحالة:</span><p><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="viewClient.is_active?'bg-green-100 text-green-700':'bg-red-100 text-red-700'">{{ viewClient.is_active?'نشط':'معطل' }}</span></p></div>
                     <div class="col-span-2"><span class="text-gray-400">العنوان:</span><p>{{ viewClient.address||'—' }}</p></div>
@@ -170,6 +171,7 @@ const openModal = (c) => {
     showForm.value = true;
 };
 const openView = (c) => { viewClient.value = c; };
+const employeeName = (id) => (props.employees || []).find(e => e.id === id)?.name || '—';
 const submit = () => {
     if (phoneError.value || emailError.value) return;
     if (form.phone) {

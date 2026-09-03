@@ -68,7 +68,8 @@ class ReportController extends Controller
      */
     public function tripDate(Request $request)
     {
-        $date = $request->date ?? now()->toDateString();
+        // ?: يعامل السلسلة الفارغة (?date=) كاليوم، لا كتاريخ فارغ
+        $date = $request->date ?: now()->toDateString();
 
         $invoices = \App\Models\Invoice::query()
             ->with(['client:id,name,code,phone', 'items:id,invoice_id,agent_id,quantity', 'items.agent:id,name,code'])

@@ -36,3 +36,10 @@ cover letter.pdf
 image.png
 image 233.png
 logosohib2.png
+
+# MCP config (contains secret API key)
+.mcp.json
+testsprite_tests/tmp/
+testsprite_tests/tmp/config.json
+/testsprite_tests
+database/testing.sqlite
