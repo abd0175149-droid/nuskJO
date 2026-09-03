@@ -78,8 +78,8 @@
                     <button @click="showPOS=false" class="text-gray-400 dark:text-gray-500 hover:text-red-500 text-xl">&times;</button>
                 </div>
                 <div class="space-y-5">
-                    <!-- Row 1: Client + Phone + Trip Date -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Row 1: Client + Phone + Trip Date + Seller -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">العميل *</label>
                             <SearchableSelect v-model="pos.client_id" :options="clientOptions" placeholder="اختر العميل" search-placeholder="ابحث عن عميل..." @change="onClientSelect" />
@@ -89,8 +89,15 @@
                             <input v-model="pos.client_phone" type="text" dir="ltr" placeholder="07XXXXXXXX" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm"/>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">تاريخ الرحلة</label>
-                            <input v-model="pos.trip_date" type="date" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm"/>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">تاريخ السفر <span class="text-red-500">*</span></label>
+                            <input v-model="pos.trip_date" type="date" required
+                                   class="w-full px-4 py-2.5 rounded-xl border text-sm"
+                                   :class="pos.trip_date ? 'border-gray-200' : 'border-red-300 bg-red-50'"/>
+                            <p v-if="!pos.trip_date" class="text-xs text-red-500 mt-1">مطلوب لحفظ الفاتورة</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">البائع (تُنسب إليه الأرباح)</label>
+                            <SearchableSelect v-model="pos.sold_by" :options="employeeOptions" placeholder="اختر الموظف البائع" search-placeholder="ابحث عن موظف..." />
                         </div>
                     </div>
 
@@ -150,7 +157,7 @@
                     <!-- Notes + Submit -->
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label><textarea v-model="pos.notes" rows="2" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none resize-none"></textarea></div>
                     <div class="flex gap-3">
-                        <button @click="submitPOS" :disabled="submitting||!pos.client_id||!pos.items.length||!allItemsHaveAgent" class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50">{{ editingInvoiceId ? '📤 حفظ التعديلات' : '🧾 إرسال للاعتماد' }}</button>
+                        <button @click="submitPOS" :disabled="submitting||!pos.client_id||!pos.trip_date||!pos.items.length||!allItemsHaveAgent" class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50">{{ editingInvoiceId ? '📤 حفظ التعديلات' : '🧾 إرسال للاعتماد' }}</button>
                         <button @click="showPOS=false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button>
                     </div>
                 </div>
@@ -166,7 +173,8 @@
                     <div><span class="text-gray-400">التاريخ:</span><p>{{ viewTarget.invoice_date?.split('T')[0] }}</p></div>
                     <div><span class="text-gray-400">العميل:</span><p>{{ viewTarget.client?.name }}</p></div>
                     <div><span class="text-gray-400">هاتف:</span><p dir="ltr">{{ viewTarget.client_phone || '—' }}</p></div>
-                    <div><span class="text-gray-400">تاريخ الرحلة:</span><p>{{ viewTarget.trip_date?.split('T')[0] || '—' }}</p></div>
+                    <div><span class="text-gray-400">تاريخ السفر:</span><p>{{ viewTarget.trip_date?.split('T')[0] || '—' }}</p></div>
+                    <div><span class="text-gray-400">البائع:</span><p>{{ employeeName(viewTarget.sold_by) }}</p></div>
                     <div><span class="text-gray-400">التكلفة JOD:</span><p class="font-bold font-mono" dir="ltr">{{ Number(viewTarget.total_cost_jod||0).toFixed(3) }}</p></div>
                     <div><span class="text-gray-400">البيع JOD:</span><p class="font-bold font-mono text-blue-600" dir="ltr">{{ Number(viewTarget.total_sell_jod||viewTarget.total_jod||0).toFixed(3) }}</p></div>
                     <div><span class="text-gray-400">الربح JOD:</span><p class="font-bold font-mono" :class="Number(viewTarget.profit_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Number(viewTarget.profit_jod||0).toFixed(3) }}</p></div>
@@ -208,7 +216,7 @@ const { can } = usePermissions();
 const { isHighlighted } = useHighlight();
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 
-const props = defineProps({ invoices: Object, filters: Object, agents: Array, clients: Array, services: Array, exchangeRate: Number });
+const props = defineProps({ invoices: Object, filters: Object, agents: Array, clients: Array, services: Array, employees: { type: Array, default: () => [] }, currentEmployeeId: { type: [Number, String], default: null }, exchangeRate: Number });
 const search = ref(props.filters?.search||'');
 const statusFilter = ref(props.filters?.status||'');
 const showPOS = ref(false);
@@ -222,6 +230,7 @@ const pos = reactive({
     client_id: '',
     client_phone: '',
     trip_date: '',
+    sold_by: '',
     sell_price_jod: 0,
     discount_jod: 0,
     notes: '',
@@ -232,6 +241,8 @@ const pos = reactive({
 const agentOptions = computed(() => props.agents.map(a => ({ value: a.id, label: `${a.name} (${a.code})` })));
 const clientOptions = computed(() => props.clients.map(c => ({ value: c.id, label: `${c.name} (${c.code})` })));
 const serviceOptions = computed(() => props.services.map(s => ({ value: s.id, label: s.name })));
+const employeeOptions = computed(() => props.employees.map(e => ({ value: e.id, label: e.name })));
+const employeeName = (id) => props.employees.find(e => e.id == id)?.name || '—';
 
 // حسابات الإجماليات
 const totalCostJod = computed(() => pos.items.reduce((s, i) => s + (i.quantity||0) * (i.unit_price_jod||0), 0));
@@ -255,6 +266,7 @@ const openPOS = async (inv = null) => {
             pos.client_id = data.client_id;
             pos.client_phone = data.client_phone || '';
             pos.trip_date = data.trip_date?.split('T')[0] || '';
+            pos.sold_by = data.sold_by || '';
             pos.sell_price_jod = parseFloat(data.total_sell_jod) || 0;
             pos.discount_jod = parseFloat(data.discount_jod) || 0;
             pos.notes = data.notes || '';
@@ -271,6 +283,7 @@ const openPOS = async (inv = null) => {
             pos.client_id = inv.client_id || '';
             pos.client_phone = '';
             pos.trip_date = '';
+            pos.sold_by = inv.sold_by || '';
             pos.sell_price_jod = 0;
             pos.discount_jod = 0;
             pos.notes = '';
@@ -281,6 +294,7 @@ const openPOS = async (inv = null) => {
         pos.client_id = '';
         pos.client_phone = '';
         pos.trip_date = '';
+        pos.sold_by = props.currentEmployeeId || '';
         pos.sell_price_jod = 0;
         pos.discount_jod = 0;
         pos.notes = '';
@@ -307,6 +321,7 @@ const submitPOS = () => {
         client_id: pos.client_id,
         client_phone: pos.client_phone || null,
         trip_date: pos.trip_date || null,
+        sold_by: pos.sold_by || null,
         sell_price_jod: pos.sell_price_jod || 0,
         discount_jod: pos.discount_jod || 0,
         notes: pos.notes,

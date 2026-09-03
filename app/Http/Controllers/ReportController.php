@@ -9,12 +9,15 @@ use App\Models\Disbursement;
 use App\Models\Receipt;
 use App\Models\LedgerEntry;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class ReportController extends Controller
 {
     public function agentsBalances(Request $request)
     {
+        abort_unless(auth()->user()->can('reports.view'), 403);
+
         // الرصيد بالدينار من الحساب المحاسبي (نفس مصدر كشف حساب الوكيل) — لا الرصيد المبسّط بالريال
         $agents = Agent::query()
             ->with('account:id,balance')
@@ -40,6 +43,8 @@ class ReportController extends Controller
 
     public function clientsBalances(Request $request)
     {
+        abort_unless(auth()->user()->can('reports.view'), 403);
+
         // الرصيد بالدينار من الحساب المحاسبي (نفس مصدر كشف الحساب) — لا الرصيد المبسّط
         $clients = Client::query()
             ->with('account:id,balance')
@@ -68,6 +73,8 @@ class ReportController extends Controller
      */
     public function tripDate(Request $request)
     {
+        abort_unless(auth()->user()->can('reports.view'), 403);
+
         // ?: يعامل السلسلة الفارغة (?date=) كاليوم، لا كتاريخ فارغ
         $date = $request->date ?: now()->toDateString();
 
@@ -104,17 +111,24 @@ class ReportController extends Controller
      */
     public function employeeProfit(Request $request)
     {
+        abort_unless(auth()->user()->can('reports.employee_profit'), 403);
+
         $from = $request->from ?? now()->startOfMonth()->toDateString();
         $to   = $request->to ?? now()->toDateString();
 
+        // تُنسب الأرباح لبائع الفاتورة (sold_by)، وإن لم يُحدَّد فلموظف العميل المسؤول
+        $attributionKey = 'COALESCE(invoices.sold_by, clients.employee_id)';
+
         $rows = \App\Models\Invoice::query()
             ->join('clients', 'clients.id', '=', 'invoices.client_id')
-            ->leftJoin('employees', 'employees.id', '=', 'clients.employee_id')
+            ->leftJoin('employees', function ($join) use ($attributionKey) {
+                $join->on('employees.id', '=', DB::raw($attributionKey));
+            })
             ->leftJoin('users', 'users.id', '=', 'employees.user_id')
             ->where('invoices.status', 'approved')
             ->whereBetween('invoices.invoice_date', [$from, $to . ' 23:59:59'])
-            ->groupBy('clients.employee_id', 'users.name', 'employees.employee_number')
-            ->selectRaw('clients.employee_id as employee_id, users.name as employee_name, employees.employee_number as employee_number,
+            ->groupBy(DB::raw($attributionKey), 'users.name', 'employees.employee_number')
+            ->selectRaw($attributionKey . ' as employee_id, users.name as employee_name, employees.employee_number as employee_number,
                 COUNT(DISTINCT invoices.id) as invoices, COUNT(DISTINCT clients.id) as clients,
                 ROUND(SUM(invoices.profit_jod), 3) as profit_jod, ROUND(SUM(invoices.total_sell_jod), 3) as sell_jod')
             ->orderByDesc('profit_jod')
@@ -142,6 +156,8 @@ class ReportController extends Controller
      */
     public function builder()
     {
+        abort_unless(auth()->user()->can('reports.view'), 403);
+
         return Inertia::render('Reports/Builder', [
             'title' => 'منشئ التقارير',
             'data' => \App\Services\ReportBuilderService::dataset(),
@@ -150,6 +166,8 @@ class ReportController extends Controller
 
     public function profitLoss(Request $request)
     {
+        abort_unless(auth()->user()->can('reports.view'), 403);
+
         $from = $request->from ?? now()->startOfMonth()->toDateString();
         $to = $request->to ?? now()->toDateString();
 
@@ -170,6 +188,8 @@ class ReportController extends Controller
 
     public function dailySummary(Request $request)
     {
+        abort_unless(auth()->user()->can('reports.view'), 403);
+
         $date = $request->date ?? now()->toDateString();
         $user = auth()->user();
 

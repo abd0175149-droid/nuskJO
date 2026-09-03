@@ -37,6 +37,10 @@ class InvoiceController extends Controller
             'agents' => Agent::where('is_active', true)->select('id', 'name', 'code', 'currency')->get(),
             'clients' => Client::where('is_active', true)->select('id', 'name', 'code', 'phone')->get(),
             'services' => Service::where('is_active', true)->get(),
+            'employees' => \App\Models\Employee::with('user:id,name')->where('is_active', true)->get()
+                ->map(fn ($e) => ['id' => $e->id, 'name' => $e->user?->name ?? ('موظف #' . $e->id)])
+                ->values(),
+            'currentEmployeeId' => auth()->user()->employee?->id,
             'exchangeRate' => self::EXCHANGE_RATE,
         ]);
     }
@@ -63,7 +67,8 @@ class InvoiceController extends Controller
         $validated = $request->validate([
             'client_id' => 'required|exists:clients,id',
             'client_phone' => 'nullable|string|max:20',
-            'trip_date' => 'nullable|date',
+            'trip_date' => 'required|date',
+            'sold_by' => 'nullable|exists:employees,id',
             'sell_price_jod' => 'required|numeric|min:0',
             'discount_jod' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
@@ -74,6 +79,8 @@ class InvoiceController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price_jod' => 'required|numeric|min:0',
             'items.*.service_id' => 'nullable|integer',
+        ], [
+            'trip_date.required' => 'تاريخ السفر مطلوب لحفظ الفاتورة',
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -112,6 +119,8 @@ class InvoiceController extends Controller
                 'status' => 'pending',
                 'notes' => $validated['notes'] ?? null,
                 'created_by' => auth()->id(),
+                // البائع المُختار، وإلا موظف المُنشئ إن وُجد
+                'sold_by' => $validated['sold_by'] ?? auth()->user()->employee?->id,
             ]);
 
             // حفظ البنود
@@ -275,7 +284,8 @@ class InvoiceController extends Controller
         $validated = $request->validate([
             'client_id' => 'required|exists:clients,id',
             'client_phone' => 'nullable|string|max:20',
-            'trip_date' => 'nullable|date',
+            'trip_date' => 'required|date',
+            'sold_by' => 'nullable|exists:employees,id',
             'sell_price_jod' => 'required|numeric|min:0',
             'discount_jod' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
@@ -286,6 +296,8 @@ class InvoiceController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price_jod' => 'required|numeric|min:0',
             'items.*.service_id' => 'nullable|integer',
+        ], [
+            'trip_date.required' => 'تاريخ السفر مطلوب لحفظ الفاتورة',
         ]);
 
         DB::transaction(function () use ($invoice, $validated) {
@@ -317,6 +329,7 @@ class InvoiceController extends Controller
                 'services_cost_sar' => $totalCostSar,
                 'profit_sar' => $rate > 0 ? round($profitJod / $rate, 2) : 0,
                 'notes' => $validated['notes'] ?? null,
+                'sold_by' => $validated['sold_by'] ?? $invoice->sold_by ?? auth()->user()->employee?->id,
                 'status' => 'pending',
                 'approved_by' => null,
                 'approved_at' => null,

@@ -49,6 +49,11 @@
                     <span class="value mono" :style="elFont('commission')">{{ fmt(receipt.bank_commission) }} JOD</span>
                 </div>
 
+                <div v-if="!isHidden('notes') && receipt.notes" class="field notes-field" :style="elPos('notes')">
+                    <span class="label">ملاحظات:</span>
+                    <span class="value notes-value" :style="elFont('notes')">{{ receipt.notes }}</span>
+                </div>
+
                 <div v-if="!isHidden('signatures')" class="signatures" :style="sigStyle">
                     <div class="sig-box"><div class="sig-label">المحاسب</div><div class="sig-line"></div></div>
                     <div class="sig-box"><div class="sig-label">المدير المالي</div><div class="sig-line"></div></div>
@@ -85,6 +90,7 @@ const defaults = {
     amount: { x: 10, y: 75, fontSize: 13 },
     payment_method: { x: 10, y: 88, fontSize: 10 },
     commission: { x: 80, y: 88, fontSize: 10 },
+    notes: { x: 10, y: 105, fontSize: 10, w: 190 },
     signatures: { x: 10, y: 250, fontSize: 9, w: 190 },
 };
 
@@ -111,6 +117,7 @@ const replaceVars = (text) => {
         '{{المبلغ}}': fmt(r.amount_jod) + ' JOD',
         '{{طريقة_الدفع}}': paymentLabel(r.payment_method),
         '{{الحالة}}': statusLabels[r.status] || r.status,
+        '{{ملاحظات}}': r.notes || '',
     };
     let result = text;
     for (const [key, val] of Object.entries(map)) result = result.replaceAll(key, val);
@@ -179,6 +186,8 @@ const doPrint = () => window.print();
 .value.gold { color: #96722a; }
 .value.mono { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px; }
 .value.client-name { color: #1a1715; }
+.notes-field { display: flex; gap: 4px; }
+.value.notes-value { font-weight: 600; color: #3d3227; white-space: pre-wrap; line-height: 1.5; }
 .value.status-approved { color: #0d7a3e; background: #e8f5ee; padding: 1px 8px; border-radius: 20px; font-size: 8pt; }
 .value.status-pending { color: #8a6d0b; background: #fef9e7; padding: 1px 8px; border-radius: 20px; font-size: 8pt; }
 .value.status-rejected { color: #b91c1c; background: #fef2f2; padding: 1px 8px; border-radius: 20px; font-size: 8pt; }

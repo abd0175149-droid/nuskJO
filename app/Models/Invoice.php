@@ -21,7 +21,7 @@ class Invoice extends Model
         'services_cost_sar',
         'profit_sar', 'profit_jod',
         'invoice_date', 'due_date', 'notes', 'status', 'rejection_reason',
-        'created_by', 'approved_by', 'approved_at',
+        'created_by', 'sold_by', 'approved_by', 'approved_at',
         'modified_by', 'modified_at', 'original_values',
     ];
 
@@ -50,6 +50,8 @@ class Invoice extends Model
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
     public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
+    // البائع الذي تُنسب إليه أرباح الفاتورة
+    public function seller(): BelongsTo { return $this->belongsTo(Employee::class, 'sold_by'); }
 
     // legacy — للتوافق مع الكود القديم
     public function agent(): BelongsTo { return $this->belongsTo(Agent::class); }

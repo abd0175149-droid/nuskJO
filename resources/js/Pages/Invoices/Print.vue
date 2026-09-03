@@ -79,6 +79,12 @@
                         </div>
                     </div>
 
+                    <!-- الملاحظات -->
+                    <div v-if="invoice.notes && !isHidden('notes')" class="notes-box" :style="notesPos(page, pi)">
+                        <span class="notes-label">ملاحظات:</span>
+                        <span class="notes-text" :style="elFont('notes')">{{ invoice.notes }}</span>
+                    </div>
+
                     <!-- التوقيعات -->
                     <div v-if="!isHidden('signatures')" class="signatures" :style="sigPos(page, pi)">
                         <div class="sig-box"><div class="sig-label">المحاسب</div><div class="sig-line"></div></div>
@@ -116,6 +122,7 @@ const defaults = {
     client_name: { x: 10, y: 58, fontSize: 12 },
     items_table: { x: 10, y: 72, fontSize: 9, w: 190 },
     total: { x: 10, y: 200, fontSize: 13 },
+    notes: { x: 10, y: 215, fontSize: 9, w: 190 },
     signatures: { x: 10, y: 250, fontSize: 9, w: 190 },
 };
 
@@ -217,12 +224,34 @@ const totalPos = (page, pi) => {
     return { position: 'absolute', right: tp.x + 'mm', top: y + 'mm', width: (tp.w || p.w || 190) + 'mm' };
 };
 
+// ارتفاع تقريبي لصندوق الملاحظات (mm) حسب طول النص
+const notesHeightMm = computed(() => {
+    const txt = props.invoice?.notes || '';
+    if (!txt) return 0;
+    const charsPerLine = 105;
+    const lines = txt.split('\n').reduce((n, ln) => n + Math.max(1, Math.ceil(ln.length / charsPerLine)), 0);
+    return (lines * 5) + 6; // 5mm لكل سطر + هامش
+});
+
+// موقع صندوق الملاحظات (أسفل الإجمالي مباشرة في آخر صفحة)
+const notesPos = (page, pi) => {
+    const p = el('items_table');
+    const rowH = 7;
+    const headerH = 8;
+    const baseY = pi === 0 ? p.y : contY.value;
+    const y = baseY + headerH + (page.items.length * rowH) + 14;
+    const np = el('notes');
+    return { position: 'absolute', right: np.x + 'mm', top: y + 'mm', width: (np.w || 190) + 'mm' };
+};
+
 const sigPos = (page, pi) => {
     const p = el('items_table');
     const rowH = 7;
     const headerH = 8;
     const baseY = pi === 0 ? p.y : contY.value;
-    const y = baseY + headerH + (page.items.length * rowH) + 25;
+    // ادفع التوقيعات لأسفل لإفساح المجال للملاحظات إن وُجدت
+    const notesGap = notesHeightMm.value > 0 ? (14 + notesHeightMm.value + 4) : 25;
+    const y = baseY + headerH + (page.items.length * rowH) + notesGap;
     const sp = el('signatures');
     return { position: 'absolute', right: sp.x + 'mm', top: y + 'mm', width: (sp.w || 190) + 'mm' };
 };
@@ -370,6 +399,20 @@ const doPrint = () => window.print();
     letter-spacing: 0.5px;
 }
 
+/* ═══════ الملاحظات ═══════ */
+.notes-box {
+    position: absolute;
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #faf8f5;
+    border: 1px solid #ede0c8;
+    border-radius: 4px;
+    font-family: 'Cairo', sans-serif;
+}
+.notes-label { font-size: 8pt; font-weight: 700; color: #96722a; flex-shrink: 0; }
+.notes-text { font-size: 8.5pt; font-weight: 600; color: #3d3227; white-space: pre-wrap; line-height: 1.5; }
+
 /* ═══════ التوقيعات ═══════ */
 .signatures { display: flex; justify-content: space-between; position: absolute; }
 .sig-box { text-align: center; width: 28%; }
@@ -436,5 +479,6 @@ const doPrint = () => window.print();
     .inv-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .inv-table td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .total-row { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .notes-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
