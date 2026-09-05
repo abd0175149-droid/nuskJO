@@ -30,7 +30,7 @@ class RolePermissionSeeder extends Seeder
             'disbursements' => ['view', 'create', 'approve', 'reject'],
             'receipts' => ['view', 'create', 'approve', 'reject'],
             'invoices' => ['view', 'create', 'update', 'submit', 'approve', 'reject'],
-            'reports' => ['view', 'employee_profit'],
+            'reports' => ['view', 'employee_profit', 'trip_date'],
             'settings' => ['view', 'update'],
             'users' => ['view', 'create', 'update', 'delete'],
 
@@ -56,7 +56,7 @@ class RolePermissionSeeder extends Seeder
             'view' => 'عرض', 'create' => 'إنشاء', 'update' => 'تعديل',
             'delete' => 'حذف', 'approve' => 'اعتماد', 'reject' => 'رفض',
             'submit' => 'إرسال', 'manual_edit' => 'تعديل يدوي', 'generate' => 'توليد',
-            'employee_profit' => 'أرباح الموظفين',
+            'employee_profit' => 'أرباح الموظفين', 'trip_date' => 'تقارير الرحلات',
         ];
 
         $allPermissions = [];
@@ -81,7 +81,7 @@ class RolePermissionSeeder extends Seeder
             'disbursements.view', 'disbursements.create',
             'receipts.view', 'receipts.create',
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.submit',
-            'reports.view',
+            'reports.view', 'reports.trip_date',
         ];
 
         // صلاحيات المحاسب

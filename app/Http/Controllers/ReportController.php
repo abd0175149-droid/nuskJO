@@ -73,7 +73,7 @@ class ReportController extends Controller
      */
     public function tripDate(Request $request)
     {
-        abort_unless(auth()->user()->can('reports.view'), 403);
+        abort_unless(auth()->user()->can('reports.trip_date'), 403);
 
         // ?: يعامل السلسلة الفارغة (?date=) كاليوم، لا كتاريخ فارغ
         $date = $request->date ?: now()->toDateString();

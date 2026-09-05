@@ -364,7 +364,7 @@ const menuGroups = [
     ]},
     { label: '🏛️ المحاسبة', items: [
         { icon: '📈', label: 'منشئ التقارير', route: '/reports/builder', permission: 'reports.view' },
-        { icon: '✈️', label: 'المسافرون بتاريخ', route: '/reports/trip-date', permission: 'reports.view' },
+        { icon: '✈️', label: 'المسافرون بتاريخ', route: '/reports/trip-date', permission: 'reports.trip_date' },
         { icon: '🧑‍💼', label: 'أرباح الموظفين', route: '/reports/employee-profit', permission: 'reports.employee_profit' },
         { icon: '🌳', label: 'شجرة الحسابات', route: '/accounting/chart-of-accounts', permission: 'reports.view' },
         { icon: '⚖️', label: 'ميزان المراجعة', route: '/accounting/trial-balance', permission: 'reports.view' },

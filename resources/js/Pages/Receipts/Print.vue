@@ -90,7 +90,7 @@ const defaults = {
     amount: { x: 10, y: 75, fontSize: 13 },
     payment_method: { x: 10, y: 88, fontSize: 10 },
     commission: { x: 80, y: 88, fontSize: 10 },
-    notes: { x: 10, y: 105, fontSize: 10, w: 190 },
+    notes: { x: 10, y: 192, fontSize: 10, w: 190 },
     signatures: { x: 10, y: 250, fontSize: 9, w: 190 },
 };
 

@@ -224,6 +224,7 @@ const elementsByType = {
         { id: 'client_name', label: 'اسم العميل', icon: '👤', preview: 'اسم العميل', defaultFontSize: 12 },
         { id: 'items_table', label: 'جدول البنود', icon: '📊', preview: '# | الخدمة | الوصف | الكمية | السعر | الإجمالي', defaultFontSize: 9, hasWidth: true },
         { id: 'total', label: 'الإجمالي', icon: '💰', preview: 'الإجمالي: 000.000 JOD', defaultFontSize: 13, hasWidth: true },
+        { id: 'notes', label: 'الملاحظات', icon: '📝', preview: 'ملاحظات: ...', defaultFontSize: 9, hasWidth: true },
         { id: 'signatures', label: 'التوقيعات', icon: '✍️', preview: 'المحاسب | المدير | العميل', defaultFontSize: 9, hasWidth: true },
     ],
     transfer: [
@@ -247,6 +248,7 @@ const elementsByType = {
         { id: 'amount', label: 'المبلغ (JOD)', icon: '💰', preview: 'المبلغ: 000.000 JOD', defaultFontSize: 13 },
         { id: 'payment_method', label: 'طريقة الدفع', icon: '💳', preview: 'نقدي / بنكي / شيك', defaultFontSize: 10 },
         { id: 'commission', label: 'العمولة', icon: '🏦', preview: 'عمولة البنك: 0.000', defaultFontSize: 10 },
+        { id: 'notes', label: 'الملاحظات', icon: '📝', preview: 'ملاحظات: ...', defaultFontSize: 10, hasWidth: true },
         { id: 'signatures', label: 'التوقيعات', icon: '✍️', preview: 'المحاسب | المدير | العميل', defaultFontSize: 9, hasWidth: true },
     ],
     // === الأنواع المحاسبية (Landscape) ===
@@ -302,6 +304,7 @@ const defaultPositions = {
         client_name: { x: 10, y: 58, fontSize: 12 },
         items_table: { x: 10, y: 72, fontSize: 9, w: 190 },
         total: { x: 10, y: 200, fontSize: 13, w: 190 },
+        notes: { x: 10, y: 215, fontSize: 9, w: 190 },
         signatures: { x: 10, y: 250, fontSize: 9, w: 190 },
     },
     transfer: {
@@ -325,6 +328,7 @@ const defaultPositions = {
         amount: { x: 10, y: 75, fontSize: 13 },
         payment_method: { x: 10, y: 88, fontSize: 10 },
         commission: { x: 80, y: 88, fontSize: 10 },
+        notes: { x: 10, y: 192, fontSize: 10, w: 190 },
         signatures: { x: 10, y: 250, fontSize: 9, w: 190 },
     },
     // === محاسبي Landscape (297×210mm) ===
@@ -461,11 +465,16 @@ const insertVar = (varKey) => {
 // تحميل التخطيط المحفوظ أو الافتراضي
 const loadLayout = () => {
     const saved = props.layouts?.[docType.value];
-    const defaults = defaultPositions[docType.value];
-    const src = saved?.elements || defaults;
+    const defaults = defaultPositions[docType.value] || {};
     Object.keys(positions).forEach(k => delete positions[k]);
     // تحميل الحقول المخصصة من البيانات المحفوظة
     customTexts.value = customTexts.value.filter(c => c.docType !== docType.value);
+    // ابدأ دائماً بالمواقع الافتراضية لكل العناصر (يضمن ظهور أي عنصر جديد كالملاحظات
+    // حتى لو حُفِظ التخطيط قبل إضافته)، ثم طبّق المحفوظ فوقها.
+    for (const [id, pos] of Object.entries(defaults)) {
+        positions[id] = { ...pos };
+    }
+    const src = saved?.elements || {};
     for (const [id, pos] of Object.entries(src)) {
         positions[id] = { ...pos };
         if (id.startsWith('custom_')) {

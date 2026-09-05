@@ -17,6 +17,12 @@ class ClientController extends Controller
                 ->orWhere('code', 'like', "%{$s}%")
                 ->orWhere('phone', 'like', "%{$s}%"))
             ->when($request->status !== null, fn ($q) => $q->where('is_active', $request->boolean('status')))
+            ->when($request->filled('employee_id'), function ($q) use ($request) {
+                // 'none' = العملاء غير المُسندين لأي موظف
+                $request->employee_id === 'none'
+                    ? $q->whereNull('employee_id')
+                    : $q->where('employee_id', $request->employee_id);
+            })
             ->orderByRaw('abs(balance_jod) DESC')
             ->orderByDesc('created_at')
             ->paginate(15)
@@ -28,7 +34,7 @@ class ClientController extends Controller
             'employees' => \App\Models\Employee::with('user:id,name')->where('is_active', true)->get()
                 ->map(fn ($e) => ['id' => $e->id, 'name' => $e->user?->name ?? ('موظف #' . $e->id)])
                 ->values(),
-            'filters' => $request->only(['search', 'status']),
+            'filters' => $request->only(['search', 'status', 'employee_id']),
         ]);
     }
 

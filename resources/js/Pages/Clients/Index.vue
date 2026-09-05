@@ -5,7 +5,14 @@
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
             <div v-if="$page.props.flash?.error" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">❌ {{ $page.props.flash.error }}</div>
             <div class="flex flex-wrap items-center justify-between gap-4 filter-bar">
-                <input v-model="search" type="text" placeholder="بحث بالاسم أو الكود أو الهاتف..." class="w-72 max-w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500" @input="debounceSearch"/>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <input v-model="search" type="text" placeholder="بحث بالاسم أو الكود أو الهاتف..." class="w-72 max-w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500" @input="debounceSearch"/>
+                    <select v-model="employeeFilter" @change="applyFilters" class="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500">
+                        <option value="">👥 كل الموظفين</option>
+                        <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.name }}</option>
+                        <option value="none">— غير مُسند —</option>
+                    </select>
+                </div>
                 <button v-if="can('clients.create')" @click="openModal(null)" class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md hover:shadow-gold-500/25 w-full sm:w-auto">+ إضافة عميل</button>
             </div>
             <div class="rounded-xl border overflow-hidden shadow-sm bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
@@ -14,6 +21,7 @@
                     <thead><tr class="bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400">
                         <th class="px-5 py-3 text-right font-bold">الاسم</th>
                         <th class="px-5 py-3 text-right font-bold hide-mobile">الكود</th>
+                        <th class="px-5 py-3 text-right font-bold hide-mobile">الموظف المسؤول</th>
                         <th class="px-5 py-3 text-right font-bold">الرصيد (الذمة)</th>
                         <th class="px-5 py-3 text-right font-bold">الحالة</th>
                         <th class="px-5 py-3 text-center font-bold">إجراءات</th>
@@ -22,6 +30,7 @@
                         <tr v-for="c in clients.data" :key="c.id" class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
                             <td data-label="الاسم" class="px-5 py-3 text-right font-medium text-gray-800 dark:text-gray-100">{{ c.name }}</td>
                             <td data-label="الكود" class="px-5 py-3 text-right font-mono text-xs text-gold-700 hide-mobile">{{ c.code }}</td>
+                            <td data-label="الموظف المسؤول" class="px-5 py-3 text-right text-xs hide-mobile" :class="c.employee_id ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400'">{{ employeeName(c.employee_id) }}</td>
                             <td data-label="الرصيد" class="px-5 py-3 text-right font-bold font-mono text-xs" :class="Number(c.account?.balance)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Math.abs(Number(c.account?.balance || 0)).toLocaleString('en',{minimumFractionDigits:3}) }} JOD</td>
                             <td data-label="الحالة" class="px-5 py-3 text-right"><span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="c.is_active?'bg-green-100 text-green-700':'bg-red-100 text-red-700'">{{ c.is_active?'نشط':'معطل' }}</span></td>
                             <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
@@ -31,7 +40,7 @@
                                 <button v-if="can('clients.delete')" @click="del(c)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️ حذف</button>
                             </td>
                         </tr>
-                        <tr v-if="!clients.data?.length"><td colspan="7" class="px-5 py-12 text-center text-gray-400">لا يوجد عملاء</td></tr>
+                        <tr v-if="!clients.data?.length"><td colspan="6" class="px-5 py-12 text-center text-gray-400">لا يوجد عملاء</td></tr>
                     </tbody>
                 </table>
                 </div>
@@ -131,6 +140,7 @@ const joCities = ['عمان','إربد','الزرقاء','العقبة','الس�
 
 const props = defineProps({ clients: Object, filters: Object, employees: Array });
 const search = ref(props.filters?.search||'');
+const employeeFilter = ref(props.filters?.employee_id ?? '');
 const showForm = ref(false); const editItem = ref(null); const viewClient = ref(null);
 let t=null;
 
@@ -182,7 +192,12 @@ const submit = () => {
     const o = { onSuccess:()=>{showForm.value=false; form.reset(); form.clearErrors(); editItem.value=null;}, preserveScroll:true, preserveState:false };
     editItem.value ? form.put('/clients/'+editItem.value.id, o) : form.post('/clients', o);
 };
-const debounceSearch = () => { clearTimeout(t); t=setTimeout(()=>router.get('/clients',{search:search.value},{preserveState:true,replace:true}),400); };
+const filterParams = () => ({
+    search: search.value || undefined,
+    employee_id: (employeeFilter.value === '' || employeeFilter.value === null) ? undefined : employeeFilter.value,
+});
+const applyFilters = () => router.get('/clients', filterParams(), { preserveState: true, replace: true });
+const debounceSearch = () => { clearTimeout(t); t=setTimeout(applyFilters, 400); };
 const deleteTarget = ref(null);
 const del = (c) => { deleteTarget.value = c; };
 const confirmDelete = () => {
