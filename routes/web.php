@@ -102,6 +102,7 @@ Route::middleware('auth')->group(function () {
     Route::get('accounting/journal-entries', [\App\Http\Controllers\AccountingController::class, 'journalEntries'])->name('accounting.journal-entries');
     Route::post('accounting/journal-entries', [\App\Http\Controllers\AccountingController::class, 'storeJournal'])->name('accounting.journal-entries.store');
     Route::put('accounting/journal-entries/{entry}', [\App\Http\Controllers\AccountingController::class, 'updateJournal'])->name('accounting.journal-entries.update');
+    Route::delete('accounting/journal-entries/{entry}', [\App\Http\Controllers\AccountingController::class, 'destroyJournal'])->name('accounting.journal-entries.destroy');
     Route::post('accounting/journal-entries/{entry}/reverse', [\App\Http\Controllers\AccountingController::class, 'reverseEntry'])->name('accounting.journal-entries.reverse');
     Route::get('accounting/periods', [\App\Http\Controllers\AccountingController::class, 'periods'])->name('accounting.periods');
     Route::post('accounting/periods/close', [\App\Http\Controllers\AccountingController::class, 'closePeriod'])->name('accounting.periods.close');

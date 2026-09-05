@@ -583,6 +583,49 @@ class AccountingController extends Controller
         return redirect()->back()->with('success', "تم تعديل القيد {$entry->entry_number} بنجاح");
     }
 
+    /**
+     * حذف قيد يومية يدوي (فقط manual وغير معكوس وفترة غير مقفلة).
+     * يعكس أثر السطور على الأرصدة المخبأة ثم يحذف السطور والقيد نهائياً — ضمن transaction واحدة.
+     * القيود المُولّدة من النظام (فاتورة/سند/مصروف/عكس/إقفال) محميّة ولا تُحذف من هنا.
+     */
+    public function destroyJournal(JournalEntry $entry)
+    {
+        if ($entry->reference_type !== 'manual') {
+            return back()->with('error', 'لا يمكن حذف إلا القيود اليدوية. القيود المُولّدة من النظام تُدار من مصدرها أو تُعكس.');
+        }
+        if ($entry->is_reversed) {
+            return back()->with('error', 'لا يمكن حذف قيد تم عكسه — القيد العكسي يوثّق الإلغاء.');
+        }
+        if (AccountingPeriod::isDateLocked($entry->entry_date->toDateString())) {
+            return back()->with('error', 'لا يمكن حذف قيد ضمن فترة محاسبية مقفلة');
+        }
+
+        $entryNumber = $entry->entry_number;
+
+        DB::transaction(function () use ($entry) {
+            $entry->load('lines');
+
+            // عكس أثر السطور على الرصيد المخبأ (نفس منطق تعديل القيد)
+            foreach ($entry->lines as $line) {
+                $acc = Account::find($line->account_id);
+                if ($acc) {
+                    $delta = in_array($acc->type, ['asset', 'expense'])
+                        ? ($line->debit - $line->credit)
+                        : ($line->credit - $line->debit);
+                    $acc->decrement('balance', $delta);
+                }
+            }
+
+            // حذف نهائي للسطور ثم القيد (لا SoftDeletes على النموذجين) — يزيلها من الميزان والكشوف
+            $entry->lines()->delete();
+            $entry->delete();
+        });
+
+        \App\Models\AuditLog::log('delete', 'journal_entry', $entry->id, $entryNumber);
+
+        return back()->with('success', "تم حذف القيد {$entryNumber} وعكس أثره على الأرصدة بنجاح");
+    }
+
     // ============================================================
     // عكس القيود
     // ============================================================

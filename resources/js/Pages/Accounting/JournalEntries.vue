@@ -25,7 +25,8 @@
                             <span class="text-xs text-gray-500">{{ entry.creator?.name }}</span>
                             <template v-if="entry.reference_type==='manual' && !entry.is_reversed">
                                 <button @click="openEdit(entry)" class="px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-50 rounded" title="تعديل القيد">✏️ تعديل</button>
-                                <button @click="reverseEntry(entry)" class="px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 rounded" title="عكس القيد">↺ عكس</button>
+                                <button @click="reverseEntry(entry)" class="px-2 py-0.5 text-xs text-amber-600 hover:bg-amber-50 rounded" title="عكس القيد (إنشاء قيد عكسي يوثّق الإلغاء)">↺ عكس</button>
+                                <button @click="deleteEntry(entry)" class="px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 rounded" title="حذف القيد نهائياً وعكس أثره">🗑️ حذف</button>
                             </template>
                         </div>
                     </div>
@@ -220,6 +221,12 @@ const openEdit = (entry) => {
 const reverseEntry = (entry) => {
     if (confirm(`عكس القيد ${entry.entry_number}؟ سيُنشأ قيد عكسي مقابل.`)) {
         router.post(`/accounting/journal-entries/${entry.id}/reverse`, {}, { preserveScroll: true });
+    }
+};
+
+const deleteEntry = (entry) => {
+    if (confirm(`حذف القيد ${entry.entry_number} نهائياً؟\nسيتم عكس أثره على أرصدة الحسابات المرتبطة به وإزالته من السجل والميزان.\nهذا الإجراء لا يمكن التراجع عنه.`)) {
+        router.delete(`/accounting/journal-entries/${entry.id}`, { preserveScroll: true });
     }
 };
 
