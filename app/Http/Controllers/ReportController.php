@@ -77,6 +77,7 @@ class ReportController extends Controller
 
         // ?: يعامل السلسلة الفارغة (?date=) كاليوم، لا كتاريخ فارغ
         $date = $request->date ?: now()->toDateString();
+        $allDates = $request->boolean('all');              // عرض كل المسافرين بأي تاريخ
         $employeeId = $request->employee_id ?: null;      // فلتر حسب منشئ الفاتورة (المستخدم)
         $remaining = $request->remaining ?: null;          // 'with' = عليه متبقٍ | 'without' = مسدّدة
 
@@ -84,8 +85,13 @@ class ReportController extends Controller
         $invoices = \App\Models\Invoice::query()
             ->with(['client:id,name,code,phone', 'items:id,invoice_id,agent_id,quantity', 'items.agent:id,name,code', 'creator:id,name'])
             ->where('status', 'approved')
-            ->whereDate('trip_date', $date)
+            ->when(
+                $allDates,
+                fn ($q) => $q->whereNotNull('trip_date'),          // كل التواريخ (كل من له تاريخ رحلة)
+                fn ($q) => $q->whereDate('trip_date', $date)       // تاريخ محدد
+            )
             ->when($employeeId, fn ($q, $eid) => $q->where('created_by', $eid))
+            ->orderByDesc('trip_date')
             ->orderBy('invoice_number')
             ->get();
 
@@ -128,7 +134,7 @@ class ReportController extends Controller
             'employees' => $creators,
             'totalPax' => (int) $rows->sum('pax'),
             'totalRemaining' => round((float) $rows->sum('remaining'), 3),
-            'filters' => ['date' => $date, 'employee_id' => $employeeId, 'remaining' => $remaining],
+            'filters' => ['date' => $date, 'all' => $allDates, 'employee_id' => $employeeId, 'remaining' => $remaining],
         ]);
     }
 
