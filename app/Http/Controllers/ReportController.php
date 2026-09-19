@@ -77,15 +77,22 @@ class ReportController extends Controller
 
         // ?: يعامل السلسلة الفارغة (?date=) كاليوم، لا كتاريخ فارغ
         $date = $request->date ?: now()->toDateString();
+        $employeeId = $request->employee_id ?: null;      // فلتر حسب منشئ الفاتورة (المستخدم)
+        $remaining = $request->remaining ?: null;          // 'with' = عليه متبقٍ | 'without' = مسدّدة
 
+        // فواتير تاريخ الرحلة (الصفوف المعروضة). من له صلاحية الصفحة يرى الكل ويفلتر حسب الموظف.
         $invoices = \App\Models\Invoice::query()
-            ->with(['client:id,name,code,phone', 'items:id,invoice_id,agent_id,quantity', 'items.agent:id,name,code'])
+            ->with(['client:id,name,code,phone', 'items:id,invoice_id,agent_id,quantity', 'items.agent:id,name,code', 'creator:id,name'])
             ->where('status', 'approved')
             ->whereDate('trip_date', $date)
-            ->when(!auth()->user()->isAdmin(), fn ($q) => $q->where('created_by', auth()->id()))
+            ->when($employeeId, fn ($q, $eid) => $q->where('created_by', $eid))
             ->orderBy('invoice_number')
-            ->get()
-            ->map(fn ($i) => [
+            ->get();
+
+        // المتبقي على كل فاتورة بتوزيع دفعات العميل على فواتيره من الأقدم للأحدث (FIFO)
+        $remainingByInvoice = $this->invoiceRemainingFifo($invoices->pluck('client_id')->unique()->filter());
+
+        $rows = $invoices->map(fn ($i) => [
                 'invoice_number' => $i->invoice_number,
                 'client'  => $i->client?->name,
                 'phone'   => $i->client_phone ?: $i->client?->phone,
@@ -93,16 +100,78 @@ class ReportController extends Controller
                 'agents'  => $i->items->map(fn ($it) => $it->agent?->name)->filter()->unique()->values(),
                 'pax'     => (int) $i->items->sum('quantity'),
                 'total'   => round((float) $i->total_sell_jod, 3),
+                'remaining' => $remainingByInvoice[$i->id] ?? round((float) $i->total_sell_jod, 3),
+                'employee' => $i->creator?->name ?: '—',   // اسم حساب منشئ الفاتورة
                 'status'  => $i->status,
             ]);
+
+        // فلتر وجود مبلغ متبقٍ
+        if ($remaining === 'with') {
+            $rows = $rows->filter(fn ($r) => $r['remaining'] > 0.001)->values();
+        } elseif ($remaining === 'without') {
+            $rows = $rows->filter(fn ($r) => $r['remaining'] <= 0.001)->values();
+        }
+
+        // قائمة منشئي الفواتير (للفلترة حسب الموظف)
+        $creators = \App\Models\User::whereIn('id', function ($q) {
+                $q->select('created_by')->from('invoices')->whereNotNull('created_by');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])
+            ->values();
 
         return Inertia::render('Reports/TripDate', [
             'title' => 'الزبائن المسافرون بتاريخ',
             'date' => $date,
-            'invoices' => $invoices,
-            'totalPax' => (int) $invoices->sum('pax'),
-            'filters' => ['date' => $date],
+            'invoices' => $rows->values(),
+            'employees' => $creators,
+            'totalPax' => (int) $rows->sum('pax'),
+            'totalRemaining' => round((float) $rows->sum('remaining'), 3),
+            'filters' => ['date' => $date, 'employee_id' => $employeeId, 'remaining' => $remaining],
         ]);
+    }
+
+    /**
+     * حساب المتبقي لكل فاتورة معتمدة بتوزيع دفعات العميل (سندات القبض المعتمدة)
+     * على فواتيره من الأقدم للأحدث (FIFO). يعيد [invoice_id => remaining].
+     */
+    private function invoiceRemainingFifo($clientIds): array
+    {
+        $clientIds = collect($clientIds)->filter()->values();
+        if ($clientIds->isEmpty()) {
+            return [];
+        }
+
+        // كل الفواتير المعتمدة لهؤلاء العملاء مرتبة من الأقدم (لتوزيع الدفعات عليها)
+        $invoices = \App\Models\Invoice::query()
+            ->whereIn('client_id', $clientIds)
+            ->where('status', 'approved')
+            ->orderBy('invoice_date')->orderBy('id')
+            ->get(['id', 'client_id', 'total_sell_jod']);
+
+        // إجمالي المدفوع لكل عميل (سندات القبض المعتمدة — المبلغ الكامل يُقيَّد على الذمة)
+        $paidByClient = \App\Models\Receipt::query()
+            ->whereIn('client_id', $clientIds)
+            ->where('status', 'approved')
+            ->selectRaw('client_id, SUM(amount_jod) as paid')
+            ->groupBy('client_id')
+            ->pluck('paid', 'client_id');
+
+        $remaining = [];
+        $pool = []; // client_id => رصيد الدفعات غير الموزَّع بعد
+        foreach ($invoices as $inv) {
+            $cid = $inv->client_id;
+            if (!array_key_exists($cid, $pool)) {
+                $pool[$cid] = (float) ($paidByClient[$cid] ?? 0);
+            }
+            $total = (float) $inv->total_sell_jod;
+            $applied = min($pool[$cid], $total);
+            $pool[$cid] -= $applied;
+            $remaining[$inv->id] = round($total - $applied, 3);
+        }
+
+        return $remaining;
     }
 
     /**
