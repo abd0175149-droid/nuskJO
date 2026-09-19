@@ -91,6 +91,10 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/profit-loss', fn () => redirect('/accounting/profit-loss'));
     Route::get('reports/daily-summary', [\App\Http\Controllers\ReportController::class, 'dailySummary'])->name('reports.daily-summary');
 
+    // تجربة مزوّد أسعار الرحلات (أداة مقارنة — المدير فقط)
+    Route::get('flights/search', [\App\Http\Controllers\FlightSearchController::class, 'index'])->name('flights.search');
+    Route::post('api/flights/search', [\App\Http\Controllers\FlightSearchController::class, 'search'])->name('flights.search.run');
+
     // Accounting
     Route::get('accounting/chart-of-accounts', [\App\Http\Controllers\AccountingController::class, 'chartOfAccounts'])->name('accounting.chart');
     Route::get('accounting/chart-of-accounts/print', [\App\Http\Controllers\AccountingController::class, 'printChart'])->name('accounting.chart.print');

@@ -353,6 +353,7 @@ const menuGroups = [
         { icon: '🔧', label: 'الخدمات', route: '/services', permission: 'settings.view' },
         { icon: '🏷️', label: 'تصنيفات المصاريف', route: '/expense-categories', permission: 'settings.view' },
         { icon: '📊', label: 'قائمة الدخل', route: '/accounting/profit-loss', permission: 'reports.view' },
+        { icon: '✈️', label: 'تجربة أسعار الرحلات', route: '/flights/search', permission: 'settings.view' },
     ]},
     { label: '👨‍💼 الموارد البشرية', items: [
         { icon: '👤', label: 'الموظفين', route: '/employees', permission: 'employees.view' },
