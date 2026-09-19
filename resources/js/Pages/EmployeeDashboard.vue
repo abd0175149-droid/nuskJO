@@ -102,6 +102,14 @@ const sections = [
         ]
     },
     {
+        title: '💬 الواتساب والعروض',
+        cards: [
+            { icon: '💬', label: 'محادثات الواتساب', route: '/whatsapp/inbox', module: 'whatsapp', permission: 'whatsapp.view' },
+            { icon: '💰', label: 'طلبات التسعير', route: '/quote-requests', module: 'quotes', permission: 'quotes.view' },
+            { icon: '📦', label: 'العروض والباقات', route: '/offers', module: 'offers', permission: 'offers.view' },
+        ]
+    },
+    {
         title: '💼 قسم العمليات',
         cards: [
             { icon: '🏢', label: 'الوكلاء', route: '/agents', module: 'agents' },

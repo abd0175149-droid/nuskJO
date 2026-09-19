@@ -31,6 +31,9 @@ class RolePermissionSeeder extends Seeder
             'receipts' => ['view', 'create', 'approve', 'reject'],
             'invoices' => ['view', 'create', 'update', 'submit', 'approve', 'reject'],
             'reports' => ['view', 'employee_profit', 'trip_date'],
+            'whatsapp' => ['view', 'reply', 'bot_toggle', 'settings'],
+            'offers' => ['view', 'create', 'update', 'delete'],
+            'quotes' => ['view', 'price'],
             'settings' => ['view', 'update'],
             'users' => ['view', 'create', 'update', 'delete'],
 
@@ -47,6 +50,7 @@ class RolePermissionSeeder extends Seeder
             'agents' => 'الوكلاء', 'clients' => 'العملاء', 'services' => 'الخدمات',
             'disbursements' => 'سندات الصرف', 'receipts' => 'سندات القبض',
             'invoices' => 'الفواتير', 'reports' => 'التقارير', 'settings' => 'الإعدادات',
+            'whatsapp' => 'الواتساب', 'offers' => 'العروض', 'quotes' => 'طلبات التسعير',
             'users' => 'المستخدمين', 'employees' => 'الموظفين', 'attendance' => 'الحضور',
             'leaves' => 'الإجازات', 'advances' => 'السلف', 'payroll' => 'الرواتب',
             'hr_reports' => 'تقارير HR',
@@ -57,6 +61,8 @@ class RolePermissionSeeder extends Seeder
             'delete' => 'حذف', 'approve' => 'اعتماد', 'reject' => 'رفض',
             'submit' => 'إرسال', 'manual_edit' => 'تعديل يدوي', 'generate' => 'توليد',
             'employee_profit' => 'أرباح الموظفين', 'trip_date' => 'تقارير الرحلات',
+            'reply' => 'الردّ على المحادثات', 'bot_toggle' => 'تشغيل/إيقاف البوت',
+            'price' => 'التسعير والإرسال',
         ];
 
         $allPermissions = [];
@@ -82,6 +88,9 @@ class RolePermissionSeeder extends Seeder
             'receipts.view', 'receipts.create',
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.submit',
             'reports.view', 'reports.trip_date',
+            // الواتساب: الموظف يردّ ويسعّر ويُتمّ الحجز بعد تحويل البوت
+            'whatsapp.view', 'whatsapp.reply', 'whatsapp.bot_toggle',
+            'offers.view', 'quotes.view', 'quotes.price',
         ];
 
         // صلاحيات المحاسب

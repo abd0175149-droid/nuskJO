@@ -19,6 +19,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Trust Cloudflare proxy headers
         $middleware->trustProxies(at: '*');
 
+        // ويبهوك واتساب: لا CSRF (ميتا لا ترسل رمزاً) — الحماية بتوقيع HMAC داخل المتحكّم
+        $middleware->validateCsrfTokens(except: [
+            'api/whatsapp/webhook',
+        ]);
+
         $middleware->redirectGuestsTo('/login');
         $middleware->redirectUsersTo('/');
     })

@@ -347,6 +347,12 @@ const menuGroups = [
         { icon: '📄', label: 'سندات القبض', route: '/receipts', permission: 'receipts.view' },
         { icon: '📤', label: 'سندات الصرف', route: '/disbursements', permission: 'disbursements.view' },
     ]},
+    { label: '💬 الواتساب والعروض', items: [
+        { icon: '💬', label: 'محادثات الواتساب', route: '/whatsapp/inbox', permission: 'whatsapp.view' },
+        { icon: '💰', label: 'طلبات التسعير', route: '/quote-requests', permission: 'quotes.view' },
+        { icon: '📦', label: 'العروض والباقات', route: '/offers', permission: 'offers.view' },
+        { icon: '🤖', label: 'إعدادات البوت', route: '/whatsapp/settings', permission: 'whatsapp.settings' },
+    ]},
     { label: '📂 عمليات أخرى', items: [
         { icon: '🏢', label: 'الوكلاء', route: '/agents', permission: 'agents.view' },
         { icon: '👥', label: 'العملاء', route: '/clients', permission: 'clients.view' },

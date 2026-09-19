@@ -16,6 +16,10 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [LoginController::class, 'login']);
 });
 
+// ويبهوك واتساب — خارج auth وخارج CSRF (الحماية بتوقيع HMAC)
+Route::get('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookController::class, 'verify']);
+Route::post('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookController::class, 'receive']);
+
 // Authenticated Routes
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
@@ -90,6 +94,25 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/clients-balances', [\App\Http\Controllers\ReportController::class, 'clientsBalances'])->name('reports.clients-balances');
     Route::get('reports/profit-loss', fn () => redirect('/accounting/profit-loss'));
     Route::get('reports/daily-summary', [\App\Http\Controllers\ReportController::class, 'dailySummary'])->name('reports.daily-summary');
+
+    // ===== بوت الواتساب =====
+    Route::get('whatsapp/inbox', [\App\Http\Controllers\WhatsAppController::class, 'inbox'])->name('whatsapp.inbox');
+    Route::get('api/whatsapp/conversations', [\App\Http\Controllers\WhatsAppController::class, 'conversations']);
+    Route::get('api/whatsapp/conversations/{conversation}/messages', [\App\Http\Controllers\WhatsAppController::class, 'messages']);
+    Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send']);
+    Route::post('api/whatsapp/conversations/{conversation}/toggle-bot', [\App\Http\Controllers\WhatsAppController::class, 'toggleBot']);
+    Route::post('api/whatsapp/conversations/{conversation}/resolve', [\App\Http\Controllers\WhatsAppController::class, 'resolve']);
+    Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'settings'])->name('whatsapp.settings');
+    Route::put('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'updateSettings'])->name('whatsapp.settings.update');
+
+    // العروض (يقرأها البوت)
+    Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::post('offers/{offer}/toggle-bot', [\App\Http\Controllers\OfferController::class, 'toggleBot'])->name('offers.toggle-bot');
+
+    // طلبات التسعير والحجز
+    Route::get('quote-requests', [\App\Http\Controllers\QuoteRequestController::class, 'index'])->name('quote-requests.index');
+    Route::post('quote-requests/{quoteRequest}/price', [\App\Http\Controllers\QuoteRequestController::class, 'price'])->name('quote-requests.price');
+    Route::post('quote-requests/{quoteRequest}/status', [\App\Http\Controllers\QuoteRequestController::class, 'updateStatus'])->name('quote-requests.status');
 
     // تجربة مزوّد أسعار الرحلات (أداة مقارنة — المدير فقط)
     Route::get('flights/search', [\App\Http\Controllers\FlightSearchController::class, 'index'])->name('flights.search');
