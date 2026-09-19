@@ -6,8 +6,8 @@ use App\Models\WaBotSetting;
 use App\Models\WaBotUsage;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
+use App\Services\WhatsApp\Llm\LlmFactory;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -16,9 +16,6 @@ use Illuminate\Support\Facades\Log;
  */
 class BotEngine
 {
-    private const API = 'https://api.anthropic.com/v1/messages';
-    private const VERSION = '2023-06-01';
-
     public const DEFAULT_PROMPT = <<<'TXT'
 أنت «مساعد نُسك» — مساعد خدمة عملاء لشركة نُسك للسياحة والسفر (الأردن)، تردّ على واتساب.
 
@@ -96,8 +93,12 @@ TXT;
 
     private static function runLoop(WaConversation $conv, WaBotSetting $s): array
     {
-        $system = self::buildSystem($conv, $s);
-        $messages = self::buildMessages($conv, $s);
+        $provider = LlmFactory::make($s->provider);
+        $apiKey = (string) $s->llmKey();
+        $model = (string) $s->model;
+
+        $system = self::buildSystem($conv, $s);                           // مصفوفة نصوص
+        $history = $provider->buildHistory(self::buildMessages($conv, $s));
         $tools = BotTools::declarations($s, $conv);
 
         $usage = ['calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0];
@@ -105,97 +106,55 @@ TXT;
         $loops = max(1, min(8, (int) $s->max_tool_loops));
 
         for ($i = 0; $i < $loops; $i++) {
-            $resp = self::callModel($s, $system, $messages, $tools);
+            $r = $provider->generate($apiKey, $model, $system, $history, $tools);
+
             $usage['calls']++;
-            $usage['in'] += (int) data_get($resp, 'usage.input_tokens', 0);
-            $usage['out'] += (int) data_get($resp, 'usage.output_tokens', 0);
-            $usage['cache_read'] += (int) data_get($resp, 'usage.cache_read_input_tokens', 0);
-            $usage['cache_write'] += (int) data_get($resp, 'usage.cache_creation_input_tokens', 0);
-
-            $content = data_get($resp, 'content', []);
-            $toolUses = array_values(array_filter($content, fn ($b) => data_get($b, 'type') === 'tool_use'));
-
-            // نصّ الردّ إن وُجد
-            foreach ($content as $b) {
-                if (data_get($b, 'type') === 'text') {
-                    $final = trim((string) data_get($b, 'text', ''));
-                }
+            foreach (['in', 'out', 'cache_read', 'cache_write'] as $k) {
+                $usage[$k] += (int) ($r['usage'][$k] ?? 0);
             }
 
-            if (!$toolUses) {
+            if (($r['text'] ?? '') !== '') {
+                $final = $r['text'];
+            }
+
+            if (empty($r['tool_calls'])) {
                 break;   // انتهى — لدينا نصّ نهائي
             }
 
-            // أعد أجزاء النموذج كما وصلت حرفياً (ضروري لسلامة الحلقة)
-            $messages[] = ['role' => 'assistant', 'content' => $content];
+            // أعد أجزاء النموذج كما وصلت حرفياً (thoughtSignature وغيره)
+            $provider->appendAssistant($history, $r['raw_assistant']);
 
             $results = [];
-            foreach ($toolUses as $tu) {
-                $name = (string) data_get($tu, 'name');
-                $input = (array) data_get($tu, 'input', []);
+            foreach ($r['tool_calls'] as $tc) {
                 try {
-                    $out = BotTools::execute($name, $input, $conv->fresh());
+                    $out = BotTools::execute($tc['name'], $tc['input'], $conv->fresh());
                 } catch (\Throwable $e) {
-                    Log::error("tool {$name} failed: " . $e->getMessage());
+                    Log::error("tool {$tc['name']} failed: " . $e->getMessage());
                     $out = ['error' => 'تعذّر تنفيذ العملية', 'note' => 'اعتذر بإيجاز واقترح تحويل المحادثة لموظف.'];
                 }
-                $results[] = [
-                    'type' => 'tool_result',
-                    'tool_use_id' => data_get($tu, 'id'),
-                    'content' => json_encode($out, JSON_UNESCAPED_UNICODE),
-                ];
+                $results[] = ['id' => $tc['id'], 'name' => $tc['name'], 'output' => $out];
             }
-            $messages[] = ['role' => 'user', 'content' => $results];
+            $provider->appendToolResults($history, $results);
         }
 
         return [self::stripToolLeak($final), $usage];
     }
 
-    private static function callModel(WaBotSetting $s, array $system, array $messages, array $tools): array
-    {
-        $body = [
-            'model' => $s->model ?: 'claude-sonnet-5',
-            'max_tokens' => 1024,
-            'system' => $system,
-            'messages' => $messages,
-        ];
-        if ($tools) {
-            $body['tools'] = $tools;
-        }
-
-        $res = Http::withHeaders([
-            'x-api-key' => $s->llmKey(),
-            'anthropic-version' => self::VERSION,
-            'content-type' => 'application/json',
-        ])->timeout(40)->post(self::API, $body);
-
-        if (!$res->successful()) {
-            throw new \RuntimeException('LLM HTTP ' . $res->status() . ': ' . mb_substr($res->body(), 0, 300));
-        }
-
-        return $res->json() ?? [];
-    }
-
     // ==================== تركيب الموجّه ====================
 
+    /**
+     * نصوص الموجّه بترتيب ثابت:
+     *   [0] الثابت (شخصية + قاعدة معرفة) — المزوّد قد يخزّنه مؤقتاً لخفض الكلفة
+     *   [1] المتغيّر (الوقت + بطاقة العميل)
+     */
     private static function buildSystem(WaConversation $conv, WaBotSetting $s): array
     {
-        // الجزء الثابت (شخصية + قاعدة معرفة) يُخزَّن مؤقتاً عند المزوّد — أكبر توفير في الكلفة
-        $static = trim(($s->system_prompt ?: self::DEFAULT_PROMPT));
+        $static = trim($s->system_prompt ?: self::DEFAULT_PROMPT);
         if ($s->knowledge_base) {
             $static .= "\n\n=== قاعدة المعرفة ===\n" . trim($s->knowledge_base);
         }
 
-        $blocks = [[
-            'type' => 'text',
-            'text' => $static,
-            'cache_control' => ['type' => 'ephemeral'],
-        ]];
-
-        // الجزء المتغيّر: الوقت + بطاقة العميل (لا يُخزَّن)
-        $blocks[] = ['type' => 'text', 'text' => self::customerCard($conv)];
-
-        return $blocks;
+        return [$static, self::customerCard($conv)];
     }
 
     private static function customerCard(WaConversation $conv): string
@@ -238,18 +197,18 @@ TXT;
 
             if ($m->direction === 'in') {
                 $btn = data_get($m->payload, '_button_id');
-                $messages[] = ['role' => 'user', 'content' => $text . ($btn ? " [اختيار:{$btn}]" : '')];
+                $messages[] = ['role' => 'user', 'text' => $text . ($btn ? " [اختيار:{$btn}]" : '')];
             } else {
-                $messages[] = ['role' => 'assistant', 'content' => $text];
+                $messages[] = ['role' => 'assistant', 'text' => $text];
             }
         }
 
-        // دمج الأدوار المتتالية المتشابهة (المزوّد يرفض التكرار)
+        // دمج الأدوار المتتالية المتشابهة (المزوّدون يرفضون التكرار)
         $merged = [];
         foreach ($messages as $m) {
             $n = count($merged);
-            if ($n && $merged[$n - 1]['role'] === $m['role'] && is_string($merged[$n - 1]['content'])) {
-                $merged[$n - 1]['content'] .= "\n" . $m['content'];
+            if ($n && $merged[$n - 1]['role'] === $m['role']) {
+                $merged[$n - 1]['text'] .= "\n" . $m['text'];
             } else {
                 $merged[] = $m;
             }
@@ -260,7 +219,7 @@ TXT;
             array_shift($merged);
         }
         if (!$merged || end($merged)['role'] !== 'user') {
-            $merged[] = ['role' => 'user', 'content' => '(المتابعة)'];
+            $merged[] = ['role' => 'user', 'text' => '(المتابعة)'];
         }
 
         return $merged;

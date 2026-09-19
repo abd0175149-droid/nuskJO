@@ -162,6 +162,7 @@ class WhatsAppController extends Controller
                 'wa_suspended' => (bool) $s->wa_suspended,
                 'wa_phone_number_id' => $s->wa_phone_number_id,
                 'wa_verify_token' => $s->wa_verify_token,
+                'provider' => $s->provider ?: 'google',
                 'model' => $s->model,
                 'system_prompt' => $s->system_prompt ?: BotEngine::DEFAULT_PROMPT,
                 'knowledge_base' => $s->knowledge_base,
@@ -177,8 +178,9 @@ class WhatsAppController extends Controller
                 'has_app_secret' => !empty($s->appSecret()),
                 'has_api_key' => !empty($s->llmKey()),
                 'env_token' => !empty(env('WA_TOKEN')),
-                'env_api_key' => !empty(env('ANTHROPIC_API_KEY')),
+                'env_api_key' => $s->envKeyPresent(),
             ],
+            'providers' => \App\Services\WhatsApp\Llm\LlmFactory::PROVIDERS,
             'webhookUrl' => url('/api/whatsapp/webhook'),
             'defaultPrompt' => BotEngine::DEFAULT_PROMPT,
             'toolList' => [
@@ -207,6 +209,7 @@ class WhatsAppController extends Controller
             'wa_token' => 'nullable|string',
             'wa_app_secret' => 'nullable|string',
             'api_key' => 'nullable|string',
+            'provider' => 'nullable|in:google,anthropic',
             'model' => 'nullable|string|max:64',
             'system_prompt' => 'nullable|string|max:20000',
             'knowledge_base' => 'nullable|string|max:40000',
@@ -229,5 +232,41 @@ class WhatsAppController extends Controller
         WaBotSetting::current()->update($data);
 
         return back()->with('success', 'تم حفظ إعدادات البوت');
+    }
+
+    /**
+     * فحص المفتاح وجلب النماذج المتاحة فعلياً لهذا الحساب.
+     * أسماء النماذج تتغيّر باستمرار، فنقرأها حيّاً بدل تثبيتها في الكود.
+     */
+    public function testKey(Request $request)
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        $data = $request->validate([
+            'provider' => 'required|in:google,anthropic',
+            'api_key' => 'nullable|string',
+        ]);
+
+        $s = WaBotSetting::current();
+        // مفتاح جديد من النموذج، وإلا المحفوظ/البيئة للمزوّد المطلوب
+        $key = $data['api_key'] ?: ($data['provider'] === 'anthropic'
+            ? (env('ANTHROPIC_API_KEY') ?: $s->api_key)
+            : (env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY') ?: $s->api_key));
+
+        if (blank($key)) {
+            return response()->json(['ok' => false, 'error' => 'لا يوجد مفتاح — أدخل المفتاح أولاً.'], 422);
+        }
+
+        try {
+            $models = \App\Services\WhatsApp\Llm\LlmFactory::make($data['provider'])->models($key);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'count' => count($models),
+            'models' => $models,
+        ]);
     }
 }

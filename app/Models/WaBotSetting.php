@@ -32,8 +32,8 @@ class WaBotSetting extends Model
         return static::firstOrCreate([], [
             'enabled' => false,
             'wa_suspended' => false,
-            'provider' => 'anthropic',
-            'model' => 'claude-sonnet-5',
+            'provider' => 'google',
+            'model' => 'gemini-2.5-flash',
             'context_messages' => 20,
             'pause_minutes' => 30,
             'max_tool_loops' => 4,
@@ -48,7 +48,22 @@ class WaBotSetting extends Model
     public function phoneNumberId(): ?string { return env('WA_PHONE_NUMBER_ID') ?: $this->wa_phone_number_id; }
     public function verifyToken(): ?string { return env('WA_WEBHOOK_VERIFY_TOKEN') ?: $this->wa_verify_token; }
     public function appSecret(): ?string { return env('WA_APP_SECRET') ?: $this->wa_app_secret; }
-    public function llmKey(): ?string { return env('ANTHROPIC_API_KEY') ?: $this->api_key; }
+    /** مفتاح المزوّد — البيئة أولاً ثم المحفوظ، وحسب المزوّد المختار */
+    public function llmKey(): ?string
+    {
+        if ($this->provider === 'anthropic') {
+            return env('ANTHROPIC_API_KEY') ?: $this->api_key;
+        }
+
+        return env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY') ?: $this->api_key;
+    }
+
+    public function envKeyPresent(): bool
+    {
+        return $this->provider === 'anthropic'
+            ? !empty(env('ANTHROPIC_API_KEY'))
+            : !empty(env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY'));
+    }
 
     public function channelReady(): bool { return !empty($this->token()) && !empty($this->phoneNumberId()); }
     public function botReady(): bool { return $this->enabled && $this->channelReady() && !empty($this->llmKey()); }

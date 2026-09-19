@@ -143,21 +143,39 @@
                 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6">
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">🧠 الذكاء</h3>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label for="wa-provider" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المزوّد</label>
+                            <select id="wa-provider" v-model="form.provider" @change="models = []; modelsMsg = ''"
+                                    class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white">
+                                <option v-for="(label, key) in providers" :key="key" :value="key">{{ label }}</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">
+                                {{ form.provider === 'google' ? 'Gemini: طبقة مجانية سخيّة — الأنسب للحجم العالي.' : 'Claude: جودة أعلى وتخزين مؤقّت للموجّه.' }}
+                            </p>
+                        </div>
+
                         <div>
                             <label for="wa-model" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الموديل</label>
-                            <select id="wa-model" v-model="form.model"
+                            <select v-if="models.length" id="wa-model" v-model="form.model"
                                     class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white">
-                                <option value="claude-sonnet-5">claude-sonnet-5 (متوازن — موصى)</option>
-                                <option value="claude-opus-5">claude-opus-5 (الأقوى)</option>
-                                <option value="claude-haiku-4-5">claude-haiku-4-5 (الأرخص للحجم العالي)</option>
+                                <option v-for="m in models" :key="m.id" :value="m.id">{{ m.id }}<span v-if="m.label && m.label !== m.id"> — {{ m.label }}</span></option>
                             </select>
-                            <p class="text-xs text-gray-500 mt-1">ابدأ بـ Sonnet — ارفع إلى Opus فقط إن كانت الردود ضعيفة.</p>
+                            <input v-else id="wa-model" v-model="form.model" dir="ltr"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
+                            <button type="button" @click="fetchModels" :disabled="loadingModels"
+                                    class="mt-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gold-400 text-gold-700 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20 disabled:opacity-50">
+                                {{ loadingModels ? '⏳ جاري الفحص…' : '🔄 فحص المفتاح وجلب النماذج المتاحة' }}
+                            </button>
+                            <p v-if="modelsMsg" class="text-xs mt-1" :class="modelsOk ? 'text-green-600' : 'text-red-600'">{{ modelsMsg }}</p>
+                            <p v-else class="text-xs text-gray-500 mt-1">أسماء النماذج تتغيّر — اضغط الفحص لتختار من المتاح فعلياً لمفتاحك.</p>
                         </div>
 
                         <div>
                             <div class="flex items-center gap-2 mb-1 flex-wrap">
-                                <label for="wa-apikey" class="block text-sm font-medium text-gray-700 dark:text-gray-300">مفتاح الـ API (Anthropic)</label>
+                                <label for="wa-apikey" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    مفتاح الـ API ({{ form.provider === 'google' ? 'Google AI Studio' : 'Anthropic' }})
+                                </label>
                                 <span v-if="settings.has_api_key" class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">✅ محفوظ</span>
                             </div>
                             <input id="wa-apikey" v-model="form.api_key" type="password" dir="ltr" autocomplete="new-password"
@@ -290,6 +308,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 
 const props = defineProps({
@@ -298,6 +317,7 @@ const props = defineProps({
     webhookUrl: String,
     defaultPrompt: String,
     toolList: Object,
+    providers: { type: Object, default: () => ({ google: 'Google Gemini', anthropic: 'Anthropic Claude' }) },
 });
 
 const handoffTools = ['request_quote', 'confirm_booking'];
@@ -318,7 +338,8 @@ const form = useForm({
     wa_token: '',
     wa_app_secret: '',
     api_key: '',
-    model: props.settings?.model || 'claude-sonnet-5',
+    provider: props.settings?.provider || 'google',
+    model: props.settings?.model || 'gemini-2.5-flash',
     system_prompt: props.settings?.system_prompt || props.defaultPrompt || '',
     knowledge_base: props.settings?.knowledge_base || '',
     context_messages: Number(props.settings?.context_messages ?? 12),
@@ -329,6 +350,36 @@ const form = useForm({
     fail_handoff: !!props.settings?.fail_handoff,
     tools_config: toolsConfig,
 });
+
+// جلب النماذج المتاحة حيّاً من المزوّد — أسماء النماذج تتغيّر فلا نثبّتها
+const models = ref([]);
+const loadingModels = ref(false);
+const modelsMsg = ref('');
+const modelsOk = ref(false);
+
+const fetchModels = async () => {
+    loadingModels.value = true;
+    modelsMsg.value = '';
+    try {
+        const { data } = await axios.post('/api/whatsapp/test-key', {
+            provider: form.provider,
+            api_key: form.api_key || undefined,
+        }, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+
+        models.value = data.models || [];
+        modelsOk.value = true;
+        modelsMsg.value = `✅ المفتاح صالح — ${data.count} نموذجاً متاحاً`;
+        if (models.value.length && !models.value.some((m) => m.id === form.model)) {
+            form.model = models.value[0].id;
+        }
+    } catch (e) {
+        modelsOk.value = false;
+        models.value = [];
+        modelsMsg.value = '❌ ' + (e.response?.data?.error || 'تعذّر فحص المفتاح');
+    } finally {
+        loadingModels.value = false;
+    }
+};
 
 const isLive = computed(() => !!(props.settings?.enabled && props.settings?.has_token && props.settings?.has_api_key));
 
