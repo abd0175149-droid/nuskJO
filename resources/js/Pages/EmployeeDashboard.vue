@@ -125,7 +125,9 @@ const sections = [
     {
         title: '📊 النظام والتقارير',
         cards: [
-            { icon: '📈', label: 'الملخص اليومي', route: '/reports/daily-summary', module: 'reports' },
+            { icon: '📈', label: 'الملخص اليومي', route: '/reports/daily-summary', module: 'reports', permission: 'reports.view' },
+            { icon: '✈️', label: 'المسافرون بتاريخ', route: '/reports/trip-date', module: 'reports', permission: 'reports.trip_date' },
+            { icon: '🧑‍💼', label: 'أرباح الموظفين', route: '/reports/employee-profit', module: 'reports', permission: 'reports.employee_profit' },
             { icon: '📑', label: 'تقارير HR', route: '/hr/reports', module: 'hr_reports' },
             { icon: '👥', label: 'المستخدمين', route: '/users', module: 'users' },
             { icon: '⚙️', label: 'الإعدادات', route: '/settings', module: 'settings' },
@@ -135,7 +137,11 @@ const sections = [
 
 const availableSections = computed(() => {
     return sections.map(section => {
-        const filteredCards = section.cards.filter(c => c.module === 'self' || canAny(c.module));
+        // بطاقة لها صلاحية محددة تُفلتر حسبها بدقة، وإلا حسب وجود أي صلاحية في الوحدة
+        const filteredCards = section.cards.filter(c => {
+            if (c.module === 'self') return true;
+            return c.permission ? can(c.permission) : canAny(c.module);
+        });
         return {
             ...section,
             cards: filteredCards
