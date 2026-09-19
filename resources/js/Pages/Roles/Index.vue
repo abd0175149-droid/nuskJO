@@ -57,9 +57,9 @@
                                     <button @click="toggleModule(perms)" type="button" class="text-xs text-blue-500 hover:underline">تحديد الكل</button>
                                 </div>
                                 <div class="space-y-2">
-                                    <label v-for="p in perms" :key="p.id" class="flex items-center gap-2 cursor-pointer text-sm" :title="getPermDescription(p.slug, moduleName)">
+                                    <label v-for="p in perms" :key="p.id" class="flex items-center gap-2 cursor-pointer text-sm" :title="getPermDescription(p, moduleName)">
                                         <input type="checkbox" :value="p.id" v-model="form.permissions" class="rounded text-gold-500 focus:ring-gold-500 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600"/>
-                                        <span class="text-gray-700 dark:text-gray-300">{{ translateAction(p.slug) }}</span>
+                                        <span class="text-gray-700 dark:text-gray-300">{{ translatePerm(p) }}</span>
                                     </label>
                                 </div>
                             </div>
@@ -116,19 +116,20 @@ const actionTranslations = {
     reject: 'رفض',
     submit: 'إرسال للاعتماد',
     manual_edit: 'تعديل يدوي',
-    generate: 'توليد'
+    generate: 'توليد',
+    employee_profit: 'أرباح الموظفين',
+    trip_date: 'تقارير الرحلات (المسافرون بتاريخ)'
 };
 
 const translateModule = (mod) => moduleTranslations[mod] || mod;
-const translateAction = (slug) => {
-    const action = slug.split('.')[1];
-    return actionTranslations[action] || action;
+// تسمية الصلاحية: الترجمة المعروفة، وإلا اسمها العربي المخزّن (p.name)، وإلا الرمز الخام
+const translatePerm = (p) => {
+    const action = (p.slug || '').split('.')[1];
+    return actionTranslations[action] || p.name || action;
 };
-const getPermDescription = (slug, mod) => {
-    const action = slug.split('.')[1];
-    const actAr = actionTranslations[action] || action;
+const getPermDescription = (p, mod) => {
     const modAr = moduleTranslations[mod] || mod;
-    return `يسمح للمستخدم بـ ${actAr} ضمن قسم ${modAr}`;
+    return `يسمح للمستخدم بـ «${translatePerm(p)}» ضمن قسم ${modAr}`;
 };
 
 const showModal = ref(false);
