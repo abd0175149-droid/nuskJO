@@ -77,8 +77,11 @@
                     class="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm dark:text-white">
               <option value="">افتراضي النظام ({{ driver }})</option>
               <option value="demo">تجريبي (بلا اتصال)</option>
-              <option value="travelfusion">Travelfusion (حقيقي)</option>
+              <option value="travelfusion" :disabled="!configured">
+                Travelfusion (حقيقي){{ configured ? '' : ' — يتطلب LoginId 🔒' }}
+              </option>
             </select>
+            <p v-if="!configured" class="mt-1 text-[11px] text-gray-400">الخيار الحقيقي مقفل حتى تُضبط بيانات الحساب.</p>
           </div>
           <button @click="run" :disabled="loading || !canRun"
                   class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50">
