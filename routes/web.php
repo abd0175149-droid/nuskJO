@@ -84,6 +84,7 @@ Route::middleware('auth')->group(function () {
     // Reports
     Route::get('reports/builder', [\App\Http\Controllers\ReportController::class, 'builder'])->name('reports.builder');
     Route::get('reports/trip-date', [\App\Http\Controllers\ReportController::class, 'tripDate'])->name('reports.trip-date');
+    Route::get('api/travelers-today', [\App\Http\Controllers\ReportController::class, 'travelersToday']);
     Route::get('reports/employee-profit', [\App\Http\Controllers\ReportController::class, 'employeeProfit'])->name('reports.employee-profit');
     Route::get('reports/agents-balances', [\App\Http\Controllers\ReportController::class, 'agentsBalances'])->name('reports.agents-balances');
     Route::get('reports/clients-balances', [\App\Http\Controllers\ReportController::class, 'clientsBalances'])->name('reports.clients-balances');

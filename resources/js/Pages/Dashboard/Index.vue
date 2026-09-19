@@ -37,6 +37,9 @@
                 </div>
             </div>
 
+            <!-- مسافرو اليوم (تحديث تلقائي) -->
+            <TravelersTodayCard />
+
             <!-- Monthly Summary -->
             <div class="dash-card p-5">
                 <h4 class="font-bold text-sm text-gray-700 dark:text-gray-200 mb-4">📊 ملخص الشهر الحالي</h4>
@@ -109,6 +112,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import TravelersTodayCard from '@/Components/Dashboard/TravelersTodayCard.vue';
 
 const props = defineProps({ stats: Object, pending: Object, recentTransfers: Array, recentInvoices: Array, monthly: Object, chartData: Array, exchangeRate: Number });
 const showPending = ref(props.pending?.total > 0);

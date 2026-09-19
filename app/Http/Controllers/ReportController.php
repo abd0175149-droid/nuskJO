@@ -139,45 +139,30 @@ class ReportController extends Controller
     }
 
     /**
-     * حساب المتبقي لكل فاتورة معتمدة بتوزيع دفعات العميل (سندات القبض المعتمدة)
-     * على فواتيره من الأقدم للأحدث (FIFO). يعيد [invoice_id => remaining].
+     * حساب المتبقي لكل فاتورة معتمدة (FIFO) — يفوّض للخدمة المشتركة TravelersReport.
      */
     private function invoiceRemainingFifo($clientIds): array
     {
-        $clientIds = collect($clientIds)->filter()->values();
-        if ($clientIds->isEmpty()) {
-            return [];
-        }
+        return \App\Services\TravelersReport::remainingFifo(collect($clientIds));
+    }
 
-        // كل الفواتير المعتمدة لهؤلاء العملاء مرتبة من الأقدم (لتوزيع الدفعات عليها)
-        $invoices = \App\Models\Invoice::query()
-            ->whereIn('client_id', $clientIds)
-            ->where('status', 'approved')
-            ->orderBy('invoice_date')->orderBy('id')
-            ->get(['id', 'client_id', 'total_sell_jod']);
+    /**
+     * API: مسافرو اليوم — لبطاقة الصفحة الرئيسية ذاتية التحديث (JSON).
+     */
+    public function travelersToday()
+    {
+        abort_unless(auth()->user()->can('reports.trip_date'), 403);
 
-        // إجمالي المدفوع لكل عميل (سندات القبض المعتمدة — المبلغ الكامل يُقيَّد على الذمة)
-        $paidByClient = \App\Models\Receipt::query()
-            ->whereIn('client_id', $clientIds)
-            ->where('status', 'approved')
-            ->selectRaw('client_id, SUM(amount_jod) as paid')
-            ->groupBy('client_id')
-            ->pluck('paid', 'client_id');
+        $date = now()->toDateString();
+        $rows = \App\Services\TravelersReport::rowsForDate($date);
 
-        $remaining = [];
-        $pool = []; // client_id => رصيد الدفعات غير الموزَّع بعد
-        foreach ($invoices as $inv) {
-            $cid = $inv->client_id;
-            if (!array_key_exists($cid, $pool)) {
-                $pool[$cid] = (float) ($paidByClient[$cid] ?? 0);
-            }
-            $total = (float) $inv->total_sell_jod;
-            $applied = min($pool[$cid], $total);
-            $pool[$cid] -= $applied;
-            $remaining[$inv->id] = round($total - $applied, 3);
-        }
-
-        return $remaining;
+        return response()->json([
+            'date' => $date,
+            'rows' => $rows,
+            'totalPax' => (int) array_sum(array_column($rows, 'pax')),
+            'totalRemaining' => round((float) array_sum(array_column($rows, 'remaining')), 3),
+            'updated_at' => now()->format('H:i:s'),
+        ]);
     }
 
     /**
