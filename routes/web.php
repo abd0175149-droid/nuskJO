@@ -16,6 +16,11 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [LoginController::class, 'login']);
 });
 
+// صفحات قانونية عامة (تطلبها ميتا) — بلا تسجيل دخول
+Route::view('/privacy', 'legal.privacy')->name('legal.privacy');
+Route::view('/terms', 'legal.terms')->name('legal.terms');
+Route::view('/data-deletion', 'legal.data-deletion')->name('legal.data-deletion');
+
 // ويبهوك واتساب — خارج auth وخارج CSRF (الحماية بتوقيع HMAC)
 Route::get('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookController::class, 'verify']);
 Route::post('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookController::class, 'receive']);
