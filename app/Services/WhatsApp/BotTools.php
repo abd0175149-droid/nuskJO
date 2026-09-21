@@ -26,7 +26,7 @@ class BotTools
         $all = [
             [
                 'name' => 'get_offers',
-                'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز ولا تخترع عرضاً غير موجود.',
+                'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز باسم العرض و«يبدأ من» ولا تخترع عرضاً غير موجود. انتبه: كل عرض قد يضمّ عدّة فنادق، والسعر دائماً للفرد الواحد ويختلف حسب سعة الغرفة (مفردة/ثنائية/ثلاثية/رباعية).',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
@@ -36,7 +36,7 @@ class BotTools
             ],
             [
                 'name' => 'get_offer_details',
-                'description' => 'تفاصيل عرض محدد برقمه (يشمل ما يشمله وما لا يشمله والفندق والتواريخ). استدعِها بعد أن يختار العميل عرضاً من القائمة.',
+                'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله، وفنادقه المتاحة وسعر الفرد في كل فندق حسب سعة الغرفة، وما يشمله سعر كل فندق. استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
@@ -84,6 +84,8 @@ class BotTools
                     'type' => 'object',
                     'properties' => [
                         'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه'],
+                        'hotel' => ['type' => 'string', 'description' => 'اسم الفندق الذي اختاره العميل من فنادق العرض إن اختار'],
+                        'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية'],
                         'adults' => ['type' => 'integer'],
                         'children' => ['type' => 'integer'],
                         'infants' => ['type' => 'integer'],
@@ -135,11 +137,14 @@ class BotTools
 
     private static function getOffers(array $in): array
     {
-        $q = Offer::forBot()->orderBy('sort_order')->orderBy('price_jod');
+        $q = Offer::forBot()->with('hotels')->orderBy('sort_order')->orderByDesc('id');
         if (!empty($in['category'])) {
             $q->where('category', $in['category']);
         }
-        $offers = $q->limit(12)->get()->map(fn ($o) => $o->toBotArray())->all();
+        // الترتيب النهائي بـ «يبدأ من» يجري في PHP لأنّ السعر صار داخل الفنادق
+        $offers = $q->limit(12)->get()
+            ->sortBy(fn ($o) => $o->priceFrom() ?? INF)
+            ->map(fn ($o) => $o->toBotArray())->values()->all();
 
         return [
             'count' => count($offers),
@@ -276,12 +281,13 @@ class BotTools
             'phone' => $conv->phone,
             'customer_name' => $conv->display_name,
             'type' => 'package',
-            'depart_date' => $offer->departure_date,
-            'return_date' => $offer->return_date,
+            // العرض لم يعد يحمل تواريخ سفر — الموظف يحدّدها مع العميل عند التقفيل
+            'depart_date' => null,
+            'return_date' => null,
             'pax_adults' => max(1, (int) ($in['adults'] ?? 1)),
             'pax_children' => max(0, (int) ($in['children'] ?? 0)),
             'pax_infants' => max(0, (int) ($in['infants'] ?? 0)),
-            'details' => 'طلب حجز عرض: ' . $offer->title . ' — ' . mb_substr((string) ($in['details'] ?? ''), 0, 1500),
+            'details' => self::bookingDetails($offer, $in),
             'status' => 'new',
         ]);
 
@@ -293,6 +299,24 @@ class BotTools
             'note' => 'أبلغ العميل أنّ طلب الحجز وصل وأنّ موظفاً سيتواصل معه لإتمامه وتأكيد التوفّر والدفع. '
                 . 'لا تقل إنّ الحجز تمّ أو تأكّد. جملة قصيرة فقط.',
         ];
+    }
+
+    /** سطر تفاصيل الحجز كما يراه الموظف — الفندق وسعة الغرفة إن اختارهما العميل */
+    private static function bookingDetails(Offer $offer, array $in): string
+    {
+        $parts = ['طلب حجز عرض: ' . $offer->title];
+
+        if (!empty($in['hotel'])) {
+            $parts[] = 'الفندق: ' . mb_substr((string) $in['hotel'], 0, 150);
+        }
+        if (!empty($in['room_type'])) {
+            $parts[] = 'الغرفة: ' . mb_substr((string) $in['room_type'], 0, 30);
+        }
+        if (!empty($in['details'])) {
+            $parts[] = mb_substr((string) $in['details'], 0, 1500);
+        }
+
+        return implode(' — ', $parts);
     }
 
     /**

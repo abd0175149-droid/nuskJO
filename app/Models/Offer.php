@@ -3,33 +3,30 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Offer extends Model
 {
     protected $fillable = [
-        'title', 'category', 'description_client', 'price_jod', 'price_per',
-        'includes', 'excludes', 'departure_date', 'return_date', 'valid_from', 'valid_to',
-        'nights', 'hotel_name', 'hotel_rating', 'airline', 'agent_id', 'available_seats',
-        'is_active', 'is_bot_visible', 'sort_order', 'cost_jod', 'notes_internal', 'created_by',
+        'title', 'category', 'description_client',
+        'includes', 'excludes',
+        'valid_from', 'valid_to',
+        'nights', 'airline',
+        'is_active', 'is_bot_visible', 'sort_order', 'created_by',
     ];
 
     protected $casts = [
         'includes' => 'array',
         'excludes' => 'array',
-        'departure_date' => 'date',
-        'return_date' => 'date',
         'valid_from' => 'date',
         'valid_to' => 'date',
         'is_active' => 'boolean',
         'is_bot_visible' => 'boolean',
-        'price_jod' => 'decimal:3',
-        'cost_jod' => 'decimal:3',
     ];
 
-    public function agent(): BelongsTo
+    public function hotels(): HasMany
     {
-        return $this->belongsTo(Agent::class);
+        return $this->hasMany(OfferHotel::class)->orderBy('sort_order')->orderBy('id');
     }
 
     /** العروض المسموح بظهورها للبوت والصالحة زمنياً */
@@ -47,28 +44,35 @@ class Offer extends Model
             });
     }
 
+    /** «يبدأ من» — أقل سعر للفرد عبر كل فنادق العرض */
+    public function priceFrom(): ?float
+    {
+        $mins = $this->hotels->map(fn ($h) => $h->minPrice())->filter()->all();
+        return $mins ? min($mins) : null;
+    }
+
     /**
-     * الحدّ الأمني: هذه وحدها الحقول التي تُعاد للبوت.
-     * التكلفة (cost_jod) والملاحظات الداخلية لا تخرج من هنا إطلاقاً.
+     * ما يُعاد للبوت. لم يعد هناك أي حقل داخلي في العروض إطلاقاً،
+     * والسعر دائماً «للفرد حسب سعة الغرفة» ضمن كل فندق.
      */
     public function toBotArray(): array
     {
+        $this->loadMissing('hotels');
+
         return [
             'id' => $this->id,
             'title' => $this->title,
             'category' => $this->category,
             'description' => $this->description_client,
-            'price_jod' => (float) $this->price_jod,
-            'price_per' => $this->price_per,
+            'nights' => $this->nights,
+            'airline' => $this->airline,
+            'valid_from' => $this->valid_from?->toDateString(),
+            'valid_to' => $this->valid_to?->toDateString(),
             'includes' => $this->includes ?: [],
             'excludes' => $this->excludes ?: [],
-            'departure_date' => $this->departure_date?->toDateString(),
-            'return_date' => $this->return_date?->toDateString(),
-            'nights' => $this->nights,
-            'hotel' => $this->hotel_name,
-            'hotel_rating' => $this->hotel_rating,
-            'airline' => $this->airline,
-            'seats_left' => $this->available_seats,
+            'price_from_per_person_jod' => $this->priceFrom(),
+            'pricing_note' => 'الأسعار للفرد الواحد وتختلف حسب سعة الغرفة والفندق.',
+            'hotels' => $this->hotels->map(fn ($h) => $h->toBotArray())->values()->all(),
         ];
     }
 }
