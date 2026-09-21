@@ -224,6 +224,14 @@
     $font = $has($fontFamily ?? null)
         ? preg_replace('/[<>{}\\\\]/u', '', (string) $fontFamily)
         : "'Noto Naskh Arabic', 'Amiri', serif";
+
+    /* ===== وضع «الورقة الرسمية الكاملة» =====
+       حين تُرفع ورقة الشركة كاملةً، تصير خلفيةَ الصفحة ويُخفى شريطُ الترويسة
+       وشريطُ التذييل لأنّ الورقة تحملهما أصلاً — فلا تتكرّر الهوية ولا تتعارض.
+       نِسَب الترويسة والتذييل تُضبط من الإعدادات لأنّ كل ورقة تختلف. */
+    $letterhead = $has($letterheadUri ?? null) ? $letterheadUri : null;
+    $lhTop      = is_numeric($lhTop ?? null) ? (float) $lhTop : 21.0;
+    $lhBottom   = is_numeric($lhBottom ?? null) ? (float) $lhBottom : 15.0;
 @endphp
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -255,6 +263,33 @@
             background: #ffffff;
             display: flex;
             flex-direction: column;
+        }
+
+        /* ===== وضع الورقة الرسمية: الورقة خلفية الصفحة كاملةً ===== */
+        .poster--letterhead {
+            border: 0;
+            padding: 0;
+            background-repeat: no-repeat;
+            background-size: 100% 100%;   /* الورقة بمقاس A4 نفسه فلا تُقتطع */
+            background-position: center;
+        }
+        /* عنوان العرض داخل مساحة الورقة البيضاء، لا فوق ترويستها */
+        .lh-title {
+            flex: 0 0 auto;
+            padding: 0 3.2em 0.4em;
+            text-align: center;
+        }
+        .lh-title h1 {
+            margin: 0;
+            font-size: 46px;
+            font-weight: 700;
+            color: #b8912f;
+            line-height: 1.25;
+        }
+        .lh-title p {
+            margin: 6px 0 0;
+            font-size: 24px;
+            color: #4a3d22;
         }
 
         /* ===== 1) شريط الترويسة ===== */
@@ -460,7 +495,22 @@
     </style>
 </head>
 <body>
-<div class="poster">
+<div class="poster @if ($letterhead) poster--letterhead @endif"
+     @if ($letterhead)
+         style="background-image: url('{{ $letterhead }}'); padding: {{ $lhTop }}% 0 {{ $lhBottom }}%;"
+     @endif>
+
+@if ($letterhead)
+    {{-- الورقة الرسمية تحمل ترويستها وتذييلها، فنكتفي بعنوان العرض داخل بياضها --}}
+    <div class="lh-title">
+        @if ($has($offer->title ?? null))
+            <h1>{{ $offer->title }}</h1>
+        @endif
+        @if ($metaLine !== '')
+            <p>{{ $metaLine }}</p>
+        @endif
+    </div>
+@else
 
     {{-- ===== 1) الترويسة: صورة + شعار يميناً + العنوان يساراً ===== --}}
     <header class="hero {{ $has($heroUri ?? null) ? 'hero--photo' : 'hero--plain' }}"
@@ -488,6 +538,7 @@
             @endif
         </div>
     </header>
+@endif
 
     {{-- ===== 2+3) الجدول/التفاصيل والأقسام داخل صندوق يتقلّص ليَسَع الصفحة ===== --}}
     <div id="fit">
@@ -652,8 +703,9 @@
         </div>
     </div>
 
-    {{-- ===== 4) التذييل: هواتف · عنوان · بريد ===== --}}
-    @if (count($phones) || $has($address) || count($emails))
+    {{-- ===== 4) التذييل: هواتف · عنوان · بريد =====
+         يُخفى في وضع الورقة الرسمية لأنّ الورقة تحمل تذييلها الخاص --}}
+    @if (!$letterhead && (count($phones) || $has($address) || count($emails)))
         <footer class="bar">
             @if (count($phones))
                 <div class="bar__group">

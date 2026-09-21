@@ -29,6 +29,7 @@ class SettingController extends Controller
             'brand' => [
                 'logo' => ($v = Setting::get('company_logo')) ? Storage::url($v) : null,
                 'hero' => ($h = Setting::get('card_hero_path')) ? Storage::url($h) : null,
+                'letterhead' => ($l = Setting::get('card_letterhead_path')) ? Storage::url($l) : null,
             ],
         ]);
     }
@@ -87,12 +88,16 @@ class SettingController extends Controller
     {
         $request->validate([
             'asset' => 'required|image|mimes:png,jpg,jpeg,webp,svg|max:5120',
-            'type' => 'required|in:logo,hero',
+            'type' => 'required|in:logo,hero,letterhead',
         ]);
 
         $type = $request->input('type');
         // company_logo مُهيّأ مسبقاً في البذور (type=image) ولم يكن يُقرأ من أي مكان
-        $key = $type === 'logo' ? 'company_logo' : 'card_hero_path';
+        $key = match ($type) {
+            'logo' => 'company_logo',
+            'letterhead' => 'card_letterhead_path',
+            default => 'card_hero_path',
+        };
 
         $old = Setting::where('key', $key)->first();
         if ($old?->value && Storage::disk('public')->exists($old->value)) {
@@ -107,11 +112,32 @@ class SettingController extends Controller
                 'value' => $path,
                 'group_name' => 'company',
                 'type' => 'image',   // تُدار من قسم الهوية لا كحقل نصّي
-                'description' => $type === 'logo' ? 'شعار الشركة' : 'ترويسة بطاقات العروض',
+                'description' => match ($type) {
+                    'logo' => 'شعار الشركة',
+                    'letterhead' => 'ورقة الشركة الرسمية',
+                    default => 'ترويسة بطاقات العروض',
+                },
             ]
         );
 
-        return redirect()->back()->with('success', $type === 'logo' ? 'تم رفع الشعار' : 'تم رفع صورة الترويسة');
+        // نسب ترويسة الورقة وتذييلها — تختلف من ورقة لأخرى فتُضبط يدوياً
+        if ($type === 'letterhead') {
+            foreach ([
+                'card_letterhead_top' => ['21', 'نسبة ترويسة الورقة من ارتفاع الصفحة %'],
+                'card_letterhead_bottom' => ['15', 'نسبة تذييل الورقة من ارتفاع الصفحة %'],
+            ] as $k => [$default, $label]) {
+                Setting::firstOrCreate(
+                    ['key' => $k],
+                    ['value' => $default, 'group_name' => 'company', 'type' => 'number', 'description' => $label]
+                );
+            }
+        }
+
+        return redirect()->back()->with('success', match ($type) {
+            'logo' => 'تم رفع الشعار',
+            'letterhead' => 'تم رفع ورقة الشركة — اضبط النسب ثم أعد توليد البطاقات',
+            default => 'تم رفع صورة الترويسة',
+        });
     }
 
     public function storeExchangeRate(Request $request)

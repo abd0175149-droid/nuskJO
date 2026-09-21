@@ -62,6 +62,38 @@
                             <button type="submit" class="mt-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-gold-600 hover:bg-gold-700">📤 رفع الشعار</button>
                         </form>
                     </div>
+                    <!-- ورقة الشركة الرسمية -->
+                    <div class="p-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 md:col-span-2">
+                        <h4 class="font-bold text-sm text-gray-700 mb-2">📄 ورقة الشركة الرسمية (اختياري)</h4>
+                        <p class="text-xs text-gray-500 mb-3">
+                            ارفع ورقتك الرسمية كاملة بمقاس A4 عمودي، فتصير خلفية البطاقة ويُرسم الجدول داخل بياضها.
+                            عند استخدامها يُخفى شريط الترويسة وشريط التواصل لأنّ الورقة تحملهما أصلاً.
+                        </p>
+                        <div v-if="brand?.letterhead" class="mb-3 p-2 bg-white rounded-lg border border-gray-200 flex items-start gap-3">
+                            <img :src="brand.letterhead" alt="ورقة الشركة" class="max-h-36 rounded border border-gray-100"/>
+                            <a :href="brand.letterhead" target="_blank" class="text-xs text-blue-600 hover:underline">فتح</a>
+                        </div>
+                        <form @submit.prevent="uploadBrand('letterhead')" enctype="multipart/form-data">
+                            <input ref="letterheadFile" type="file" accept="image/png,image/jpeg" class="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"/>
+                            <button type="submit" class="mt-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-purple-600 hover:bg-purple-700">📤 رفع الورقة</button>
+                        </form>
+                        <div v-if="brand?.letterhead" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">ارتفاع ترويسة الورقة (% من الصفحة)</label>
+                                <input v-model="settingsData.card_letterhead_top" type="number" min="0" max="60" step="0.5" dir="ltr"
+                                       class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">ارتفاع تذييل الورقة (% من الصفحة)</label>
+                                <input v-model="settingsData.card_letterhead_bottom" type="number" min="0" max="60" step="0.5" dir="ltr"
+                                       class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                            </div>
+                            <p class="sm:col-span-2 text-xs text-gray-500">
+                                تحدّدان المساحة المحجوزة لترويسة ورقتك وتذييلها حتى لا يركبهما المحتوى. اضبطهما ثم احفظ الإعدادات وأعد توليد البطاقة.
+                            </p>
+                        </div>
+                    </div>
+
                     <!-- الترويسة -->
                     <div class="p-4 rounded-xl border border-dashed border-gray-300 bg-gray-50">
                         <h4 class="font-bold text-sm text-gray-700 mb-2">🏞️ صورة الترويسة الافتراضية</h4>
@@ -131,10 +163,11 @@ const props = defineProps({ settings: Object, templates: Object, brand: Object }
 
 const logoFile = ref(null);
 const heroFile = ref(null);
+const letterheadFile = ref(null);
 
-// رفع الشعار أو الترويسة — يُحفظان في الإعدادات ويقرأهما مولّد البطاقات
+// رفع الشعار أو الترويسة أو الورقة الرسمية — تُحفظ في الإعدادات ويقرأها مولّد البطاقات
 const uploadBrand = (type) => {
-    const input = type === 'logo' ? logoFile.value : heroFile.value;
+    const input = { logo: logoFile, hero: heroFile, letterhead: letterheadFile }[type]?.value;
     if (!input?.files?.length) return;
 
     const formData = new FormData();

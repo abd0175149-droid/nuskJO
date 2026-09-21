@@ -32,6 +32,23 @@ class OfferCardService
     private const MAX_BYTES = 4_500_000;
 
     /**
+     * نِسَب ترويسة الورقة الرسمية وتذييلها من ارتفاع الصفحة.
+     * تُضبط من الإعدادات لأنّ كل ورقة شركة تختلف.
+     */
+    private const LH_TOP = 21.0;
+    private const LH_BOTTOM = 15.0;
+
+    /** نسبة مئوية آمنة ضمن 0..60 */
+    private static function percent($value, float $fallback): float
+    {
+        if ($value === null || $value === '' || !is_numeric($value)) {
+            return $fallback;
+        }
+
+        return max(0.0, min(60.0, (float) $value));
+    }
+
+    /**
      * يولّد البطاقة ويحدّث العرض. يعيد المسار النسبي على قرص public.
      *
      * @throws \RuntimeException إذا تعذّر التصيير
@@ -110,6 +127,10 @@ class OfferCardService
             'heroUri' => self::dataUri($offer->hero_path ?: Setting::get('card_hero_path')),
             'minPrice' => $offer->priceFrom(),
             'fontFamily' => self::fontFamily(),
+            // ورقة الشركة الرسمية كاملةً خلفيةً للصفحة (تُلغي شريطَي الترويسة والتذييل)
+            'letterheadUri' => self::dataUri(Setting::get('card_letterhead_path')),
+            'lhTop' => self::percent(Setting::get('card_letterhead_top'), self::LH_TOP),
+            'lhBottom' => self::percent(Setting::get('card_letterhead_bottom'), self::LH_BOTTOM),
         ])->render();
     }
 
