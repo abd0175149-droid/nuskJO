@@ -13,6 +13,19 @@ use Inertia\Inertia;
  */
 class QuoteRequestController extends Controller
 {
+    /**
+     * «من → إلى» بأمان.
+     *
+     * ⚠️ لا تستخدم trim($s, ' →') هنا: قائمة المحارف في trim تعمل على البايتات
+     * لا على المحارف، و«→» = E2 86 92، فكان يقتطع البايت 86 من آخر أي نصّ
+     * ينتهي بحرف يحمله — و«ن» = D9 86 — فيبقى D9 معلّقاً ويتلف ترميز UTF-8
+     * ويُسقط الصفحة كلها عند تحويل الردّ إلى JSON.
+     */
+    private static function route(?string $from, ?string $to): string
+    {
+        return implode(' → ', array_filter([trim((string) $from), trim((string) $to)], 'strlen'));
+    }
+
     public function index(Request $request)
     {
         abort_unless(auth()->user()->can('quotes.view'), 403);
@@ -42,7 +55,7 @@ class QuoteRequestController extends Controller
             'customer' => $r->customer_name ?: $r->client?->name ?: $r->phone,
             'client' => $r->client?->name,
             'offer' => $r->offer?->title,
-            'route' => trim(($r->route_from ?: '') . ' → ' . ($r->route_to ?: ''), ' →'),
+            'route' => self::route($r->route_from, $r->route_to),
             'depart_date' => $r->depart_date?->toDateString(),
             'return_date' => $r->return_date?->toDateString(),
             'pax' => $r->pax(),
@@ -95,7 +108,7 @@ class QuoteRequestController extends Controller
             if ($quoteRequest->offer) {
                 $lines[] = $quoteRequest->offer->title;
             } elseif ($quoteRequest->route_from || $quoteRequest->route_to) {
-                $lines[] = trim(($quoteRequest->route_from ?: '') . ' → ' . ($quoteRequest->route_to ?: ''), ' →')
+                $lines[] = self::route($quoteRequest->route_from, $quoteRequest->route_to)
                     . ($quoteRequest->depart_date ? ' — ' . $quoteRequest->depart_date->toDateString() : '');
             }
             $lines[] = "الإجمالي: {$price} د.أ لعدد {$quoteRequest->pax()} مسافر";
