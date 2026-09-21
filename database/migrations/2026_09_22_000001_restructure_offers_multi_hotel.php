@@ -2,6 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -28,6 +30,46 @@ return new class extends Migration
                 $t->unsignedInteger('sort_order')->default(0);
                 $t->timestamps();
             });
+        }
+
+        // ── ترحيل العروض القائمة إلى فندق واحد قبل حذف الأعمدة ──
+        // العرض القديم كان يحمل سعراً واحداً للفرد بلا تفريق بين سعات الغرف،
+        // فلا يصحّ إسناده لسعة معيّنة تلقائياً. نُرحّل الفندق وتصنيفه فقط،
+        // ونترك الأسعار فارغة ليُدخلها المالك حسب السعة من الواجهة.
+        // الأسعار القديمة تُسجّل في اللوج قبل حذف العمود للرجوع إليها.
+        if (Schema::hasTable('offer_hotels') && Schema::hasColumn('offers', 'hotel_name')) {
+            $cols = ['id', 'title', 'hotel_name'];
+            if (Schema::hasColumn('offers', 'hotel_rating')) $cols[] = 'hotel_rating';
+            if (Schema::hasColumn('offers', 'price_jod')) $cols[] = 'price_jod';
+
+            $rows = DB::table('offers')->select($cols)->get();
+
+            foreach ($rows as $row) {
+                if (DB::table('offer_hotels')->where('offer_id', $row->id)->exists()) {
+                    continue; // مُرحّل سابقاً
+                }
+                if (blank($row->hotel_name ?? null)) {
+                    continue; // لا فندق يُرحّل
+                }
+
+                DB::table('offer_hotels')->insert([
+                    'offer_id' => $row->id,
+                    'name' => $row->hotel_name,
+                    'rating' => $row->hotel_rating ?? null,
+                    'includes_note' => null,
+                    'prices' => json_encode(['single' => null, 'double' => null, 'triple' => null, 'quad' => null]),
+                    'sort_order' => 0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                Log::warning('ترحيل عرض إلى نموذج الفنادق — يلزم إدخال أسعار الغرف يدوياً', [
+                    'offer_id' => $row->id,
+                    'title' => $row->title,
+                    'hotel' => $row->hotel_name,
+                    'old_price_per_person_jod' => $row->price_jod ?? null,
+                ]);
+            }
         }
 
         // ── تنظيف أعمدة العرض ────────────────────────────────
