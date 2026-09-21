@@ -14,7 +14,7 @@
                     <label class="sr-only" for="offers-category">التصنيف</label>
                     <select id="offers-category" v-model="categoryFilter" @change="applyFilters" class="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500">
                         <option value="">🗂️ كل التصنيفات</option>
-                        <option v-for="c in categories" :key="c" :value="c">{{ catLabel(c) }}</option>
+                        <option v-for="(cLabel, cKey) in categories" :key="cKey" :value="cKey">{{ cLabel }}</option>
                     </select>
                 </div>
                 <button v-if="can?.create" @click="openModal(null)" class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md hover:shadow-gold-500/25 w-full sm:w-auto">+ إضافة عرض</button>
@@ -31,7 +31,7 @@
                 <table class="w-full text-sm responsive-table">
                     <thead><tr class="bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400">
                         <th class="px-5 py-3 text-right font-bold">العنوان</th>
-                        <th class="px-5 py-3 text-right font-bold">الفنادق</th>
+                        <th class="px-5 py-3 text-right font-bold">المحتوى</th>
                         <th class="px-5 py-3 text-right font-bold">يبدأ من</th>
                         <th class="px-5 py-3 text-right font-bold hide-mobile">الليالي</th>
                         <th class="px-5 py-3 text-right font-bold hide-mobile">الصلاحية</th>
@@ -43,14 +43,15 @@
                         <tr v-for="o in offers.data" :key="o.id" class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
                             <td data-label="العنوان" class="px-5 py-3 text-right">
                                 <div class="font-medium text-gray-800 dark:text-gray-100">{{ o.title }}</div>
-                                <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold" :class="catChip(o.category)">{{ catLabel(o.category) }}</span>
+                                <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold" :class="catChip(o.category)">{{ o.category_label || catLabel(o.category) }}</span>
                             </td>
-                            <td data-label="الفنادق" class="px-5 py-3 text-right">
-                                <template v-if="Number(o.hotels_count) > 0">
-                                    <div class="text-xs font-bold text-gray-700 dark:text-gray-200 tabular-nums">🏨 {{ o.hotels_count }} فندق</div>
-                                    <div class="text-[11px] leading-4 text-gray-500 dark:text-gray-400 max-w-[220px] truncate" :title="hotelNames(o)">{{ hotelNames(o) }}</div>
+                            <td data-label="المحتوى" class="px-5 py-3 text-right">
+                                <span v-if="o.is_visa" class="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">تأشيرة</span>
+                                <template v-else-if="Number(o.options_count) > 0">
+                                    <div class="text-xs font-bold text-gray-700 dark:text-gray-200 tabular-nums">🏨 {{ o.options_count }} خيار</div>
+                                    <div class="text-[11px] leading-4 text-gray-500 dark:text-gray-400 max-w-[220px] truncate" :title="optionLabels(o)">{{ optionLabels(o) }}</div>
                                 </template>
-                                <span v-else class="text-xs font-bold text-amber-600 dark:text-amber-400">— لا فنادق</span>
+                                <span v-else class="text-xs font-bold text-amber-600 dark:text-amber-400">— لا خيارات</span>
                             </td>
                             <td data-label="يبدأ من" class="px-5 py-3 text-right whitespace-nowrap">
                                 <template v-if="hasPrice(o.price_from)">
@@ -112,14 +113,14 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mobile-form-grid">
                             <div>
-                                <label for="f-title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عنوان العرض *</label>
+                                <label for="f-title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ isVisa ? 'مسمى التأشيرة *' : 'عنوان العرض *' }}</label>
                                 <input id="f-title" v-model="form.title" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
                                 <p v-if="form.errors.title" class="mt-1 text-xs text-red-500">{{ form.errors.title }}</p>
                             </div>
                             <div>
                                 <label for="f-category" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">التصنيف *</label>
                                 <select id="f-category" v-model="form.category" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
-                                    <option v-for="c in categories" :key="c" :value="c">{{ catLabel(c) }}</option>
+                                    <option v-for="(cLabel, cKey) in categories" :key="cKey" :value="cKey">{{ cLabel }}</option>
                                 </select>
                                 <p v-if="form.errors.category" class="mt-1 text-xs text-red-500">{{ form.errors.category }}</p>
                             </div>
@@ -139,16 +140,18 @@
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mobile-form-grid">
-                            <div>
-                                <label for="f-nights" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عدد الليالي</label>
-                                <input id="f-nights" v-model="form.nights" type="number" min="0" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm font-mono tabular-nums focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
-                                <p v-if="form.errors.nights" class="mt-1 text-xs text-red-500">{{ form.errors.nights }}</p>
-                            </div>
-                            <div>
-                                <label for="f-airline" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">شركة الطيران</label>
-                                <input id="f-airline" v-model="form.airline" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
-                                <p v-if="form.errors.airline" class="mt-1 text-xs text-red-500">{{ form.errors.airline }}</p>
-                            </div>
+                            <template v-if="!isVisa">
+                                <div>
+                                    <label for="f-nights" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عدد الليالي</label>
+                                    <input id="f-nights" v-model="form.nights" type="number" min="0" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm font-mono tabular-nums focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                    <p v-if="form.errors.nights" class="mt-1 text-xs text-red-500">{{ form.errors.nights }}</p>
+                                </div>
+                                <div>
+                                    <label for="f-airline" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">شركة الطيران</label>
+                                    <input id="f-airline" v-model="form.airline" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                    <p v-if="form.errors.airline" class="mt-1 text-xs text-red-500">{{ form.errors.airline }}</p>
+                                </div>
+                            </template>
                             <div>
                                 <label for="f-vfrom" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">العرض صالح من</label>
                                 <input id="f-vfrom" v-model="form.valid_from" type="date" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
@@ -182,8 +185,51 @@
                         </div>
                     </section>
 
-                    <!-- ===== Section 2 : الفنادق والأسعار ===== -->
-                    <section class="space-y-4">
+                    <!-- ===== Section 2-أ : بيانات التأشيرة ===== -->
+                    <section v-if="isVisa" class="space-y-4">
+                        <div class="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                            <span class="text-base">🛂</span>
+                            <h4 class="text-sm font-bold text-gray-800 dark:text-gray-100">بيانات التأشيرة</h4>
+                        </div>
+
+                        <div>
+                            <label for="f-requirements" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الشروط والمتطلبات</label>
+                            <textarea id="f-requirements" v-model="form.requirements" rows="4" placeholder="مثال: جواز سفر ساري 6 أشهر + صورة شخصية بخلفية بيضاء" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none resize-none"></textarea>
+                            <p v-if="form.errors.requirements" class="mt-1 text-xs text-red-500">{{ form.errors.requirements }}</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label for="f-visa-validity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">صلاحية التأشيرة</label>
+                                <input id="f-visa-validity" v-model="form.visa_validity" type="text" maxlength="60" placeholder="مثال: 3 أشهر" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                <p v-if="form.errors.visa_validity" class="mt-1 text-xs text-red-500">{{ form.errors.visa_validity }}</p>
+                            </div>
+                            <div>
+                                <label for="f-visa-entries" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عدد مرات الدخول</label>
+                                <input id="f-visa-entries" v-model="form.visa_entries" type="text" maxlength="40" list="visa-entries-options" placeholder="مثال: دخول واحد" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                <datalist id="visa-entries-options">
+                                    <option v-for="e in VISA_ENTRY_OPTIONS" :key="'ent-'+e" :value="e"></option>
+                                </datalist>
+                                <p v-if="form.errors.visa_entries" class="mt-1 text-xs text-red-500">{{ form.errors.visa_entries }}</p>
+                            </div>
+                            <div>
+                                <label for="f-visa-processing" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المدة اللازمة للإصدار</label>
+                                <input id="f-visa-processing" v-model="form.visa_processing" type="text" maxlength="60" placeholder="مثال: 5 أيام عمل" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                <p v-if="form.errors.visa_processing" class="mt-1 text-xs text-red-500">{{ form.errors.visa_processing }}</p>
+                            </div>
+                            <div>
+                                <label for="f-price-person" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">السعر للشخص الواحد</label>
+                                <div class="flex items-center gap-2">
+                                    <input id="f-price-person" v-model="form.price_per_person" type="number" step="0.001" min="0" placeholder="—" dir="ltr" class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm font-mono tabular-nums focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                    <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">د.أ</span>
+                                </div>
+                                <p v-if="form.errors.price_per_person" class="mt-1 text-xs text-red-500">{{ form.errors.price_per_person }}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===== Section 2-ب : الفنادق والأسعار ===== -->
+                    <section v-else class="space-y-4">
                         <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
                             <div class="flex items-center gap-2">
                                 <span class="text-base">🏨</span>
@@ -195,102 +241,125 @@
                             </span>
                         </div>
 
-                        <p class="text-xs text-gray-500 dark:text-gray-400">السعر دائماً للفرد الواحد ويختلف حسب سعة الغرفة والفندق.</p>
+                        <!-- route mode -->
+                        <div v-if="showRouteMode" class="rounded-xl border p-3 space-y-2 border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40">
+                            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">المسار</span>
+                            <div role="radiogroup" aria-label="المسار" class="flex flex-wrap gap-2">
+                                <label v-for="(rmLabel, rmKey) in routeModes" :key="'rm-'+rmKey" :for="'f-route-'+rmKey" class="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer transition"
+                                       :class="form.route_mode === rmKey ? 'border-gold-500 bg-gold-50 text-gold-800 font-bold dark:bg-gold-900/30 dark:text-gold-200' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gold-400'">
+                                    <input :id="'f-route-'+rmKey" type="radio" name="f-route-mode" :value="rmKey" :checked="form.route_mode === rmKey" @change="setRouteMode(rmKey)" class="w-4 h-4 text-gold-500"/>
+                                    <span>{{ rmLabel }}</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-400 dark:text-gray-500">«مكة والمدينة» يجعل كل خيار يضمّ فندقين بسعر واحد لهما معاً.</p>
+                            <p v-if="form.errors.route_mode" class="text-xs text-red-500">{{ form.errors.route_mode }}</p>
+                        </div>
 
-                        <p v-if="typeof form.errors.hotels === 'string' && form.errors.hotels" class="text-xs text-red-500">{{ form.errors.hotels }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">السعر دائماً للفرد الواحد ويختلف حسب سعة الغرفة والخيار.</p>
 
-                        <!-- Hotel cards -->
-                        <div v-if="form.hotels.length" class="space-y-4">
-                            <div v-for="(h, hi) in form.hotels" :key="'hotel-'+hi" class="rounded-xl border p-4 space-y-3 border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40">
+                        <p v-if="typeof form.errors.options === 'string' && form.errors.options" class="text-xs text-red-500">{{ form.errors.options }}</p>
+
+                        <!-- Option cards -->
+                        <div v-if="form.options.length" class="space-y-4">
+                            <div v-for="(opt, oi) in form.options" :key="'opt-'+oi" class="rounded-xl border p-4 space-y-3 border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40">
                                 <!-- card header -->
                                 <div class="flex flex-wrap items-center justify-between gap-2">
-                                    <h5 class="text-sm font-bold text-gray-800 dark:text-gray-100">فندق {{ hi + 1 }}</h5>
+                                    <h5 class="text-sm font-bold text-gray-800 dark:text-gray-100">الخيار {{ oi + 1 }}</h5>
                                     <div class="flex items-center gap-1">
-                                        <button type="button" @click="moveHotel(hi, -1)" :disabled="hi === 0" :aria-label="'تحريك الفندق '+(hi+1)+' للأعلى'" title="تحريك للأعلى" class="px-2 py-1 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">▲</button>
-                                        <button type="button" @click="moveHotel(hi, 1)" :disabled="hi === form.hotels.length - 1" :aria-label="'تحريك الفندق '+(hi+1)+' للأسفل'" title="تحريك للأسفل" class="px-2 py-1 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">▼</button>
-                                        <button type="button" @click="removeHotel(hi)" :aria-label="'حذف الفندق '+(hi+1)" title="حذف الفندق" class="px-2 py-1 rounded-lg text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">&times;</button>
+                                        <button type="button" @click="moveOption(oi, -1)" :disabled="oi === 0" :aria-label="'تحريك الخيار '+(oi+1)+' للأعلى'" title="تحريك للأعلى" class="px-2 py-1 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">▲</button>
+                                        <button type="button" @click="moveOption(oi, 1)" :disabled="oi === form.options.length - 1" :aria-label="'تحريك الخيار '+(oi+1)+' للأسفل'" title="تحريك للأسفل" class="px-2 py-1 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">▼</button>
+                                        <button type="button" @click="removeOption(oi)" :aria-label="'حذف الخيار '+(oi+1)" title="حذف الخيار" class="px-2 py-1 rounded-lg text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">&times;</button>
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mobile-form-grid">
-                                    <div>
-                                        <label :for="'f-h-name-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الفندق *</label>
-                                        <input :id="'f-h-name-'+hi" v-model="h.name" required placeholder="مثال: فندق دار التوحيد" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
-                                        <p v-if="form.errors['hotels.'+hi+'.name']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.name'] }}</p>
-                                    </div>
-                                    <div>
-                                        <label :for="'f-h-rating-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">تصنيف الفندق</label>
-                                        <div class="flex items-center gap-3 flex-wrap">
-                                            <select :id="'f-h-rating-'+hi" v-model="h.rating" class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
-                                                <option :value="null">— بدون —</option>
-                                                <option v-for="n in 7" :key="n" :value="n">{{ stars(n) }} {{ n }}</option>
-                                            </select>
-                                            <label :for="'f-h-ratingplus-'+hi" class="flex items-center gap-1.5 shrink-0" :class="ratingLabel(h) ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
-                                                <input :id="'f-h-ratingplus-'+hi" v-model="h.rating_plus" type="checkbox" :disabled="!ratingLabel(h)" class="w-4 h-4 rounded text-gold-500 disabled:cursor-not-allowed"/>
-                                                <span class="text-sm text-gray-700 dark:text-gray-300">زائد (+)</span>
-                                            </label>
-                                            <span v-if="ratingLabel(h)" class="shrink-0 text-xs text-gray-400 dark:text-gray-500">يظهر: <span dir="ltr" class="font-mono">{{ ratingLabel(h) }}</span></span>
+                                <p v-if="form.errors['options.'+oi+'.stays']" class="text-xs text-red-500">{{ form.errors['options.'+oi+'.stays'] }}</p>
+
+                                <!-- stays of this option -->
+                                <div class="space-y-3">
+                                    <div v-for="(stay, si) in opt.stays" :key="'opt-'+oi+'-stay-'+si" class="space-y-3" :class="isMultiCity ? 'rounded-xl border p-3 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40' : ''">
+                                        <h6 v-if="isMultiCity" class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ cityHeading(si, stay) }}</h6>
+
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mobile-form-grid">
+                                            <div>
+                                                <label :for="'f-o-'+oi+'-s-'+si+'-name'" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الفندق *</label>
+                                                <input :id="'f-o-'+oi+'-s-'+si+'-name'" v-model="stay.name" required placeholder="مثال: فندق دار التوحيد" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                                <p v-if="form.errors['options.'+oi+'.stays.'+si+'.name']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.stays.'+si+'.name'] }}</p>
+                                            </div>
+                                            <div>
+                                                <label :for="'f-o-'+oi+'-s-'+si+'-rating'" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">التصنيف</label>
+                                                <div class="flex items-center gap-3 flex-wrap">
+                                                    <select :id="'f-o-'+oi+'-s-'+si+'-rating'" v-model="stay.rating" class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
+                                                        <option :value="null">— بدون —</option>
+                                                        <option v-for="n in 7" :key="n" :value="n">{{ stars(n) }} {{ n }}</option>
+                                                    </select>
+                                                    <label :for="'f-o-'+oi+'-s-'+si+'-ratingplus'" class="flex items-center gap-1.5 shrink-0" :class="ratingLabel(stay) ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
+                                                        <input :id="'f-o-'+oi+'-s-'+si+'-ratingplus'" v-model="stay.rating_plus" type="checkbox" :disabled="!ratingLabel(stay)" class="w-4 h-4 rounded text-gold-500 disabled:cursor-not-allowed"/>
+                                                        <span class="text-sm text-gray-700 dark:text-gray-300">زائد (+)</span>
+                                                    </label>
+                                                    <span v-if="ratingLabel(stay)" class="shrink-0 text-xs text-gray-400 dark:text-gray-500">يظهر: <span dir="ltr" class="font-mono">{{ ratingLabel(stay) }}</span></span>
+                                                </div>
+                                                <p v-if="form.errors['options.'+oi+'.stays.'+si+'.rating']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.stays.'+si+'.rating'] }}</p>
+                                                <p v-if="form.errors['options.'+oi+'.stays.'+si+'.rating_plus']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.stays.'+si+'.rating_plus'] }}</p>
+                                            </div>
                                         </div>
-                                        <p v-if="form.errors['hotels.'+hi+'.rating']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.rating'] }}</p>
-                                        <p v-if="form.errors['hotels.'+hi+'.rating_plus']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.rating_plus'] }}</p>
+
+                                        <div class="grid grid-cols-1 gap-3" :class="usesHaramDistance ? 'sm:grid-cols-3' : 'sm:grid-cols-2'">
+                                            <div>
+                                                <label :for="'f-o-'+oi+'-s-'+si+'-loc'" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الموقع</label>
+                                                <input :id="'f-o-'+oi+'-s-'+si+'-loc'" v-model="stay.location" type="text" maxlength="80" placeholder="مثال: التيسير" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                                <p v-if="form.errors['options.'+oi+'.stays.'+si+'.location']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.stays.'+si+'.location'] }}</p>
+                                            </div>
+                                            <div>
+                                                <label :for="'f-o-'+oi+'-s-'+si+'-meals'" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوجبات</label>
+                                                <input :id="'f-o-'+oi+'-s-'+si+'-meals'" v-model="stay.meals" type="text" maxlength="60" :list="'meals-options-'+oi+'-'+si" placeholder="مثال: بدون / إفطار" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                                <datalist :id="'meals-options-'+oi+'-'+si">
+                                                    <option v-for="m in MEAL_OPTIONS" :key="'meal-'+oi+'-'+si+'-'+m" :value="m"></option>
+                                                </datalist>
+                                                <p v-if="form.errors['options.'+oi+'.stays.'+si+'.meals']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.stays.'+si+'.meals'] }}</p>
+                                            </div>
+                                            <div v-if="usesHaramDistance">
+                                                <label :for="'f-o-'+oi+'-s-'+si+'-dist'" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المسافة عن الحرم</label>
+                                                <input :id="'f-o-'+oi+'-s-'+si+'-dist'" v-model="stay.distance_haram" type="text" maxlength="40" placeholder="مثال: 950 متر" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                                <p v-if="form.errors['options.'+oi+'.stays.'+si+'.distance_haram']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.stays.'+si+'.distance_haram'] }}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <!-- card details: location / meals / distance -->
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div>
-                                        <label :for="'f-h-loc-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الموقع</label>
-                                        <input :id="'f-h-loc-'+hi" v-model="h.location" type="text" maxlength="80" placeholder="مثال: التيسير" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
-                                        <p v-if="form.errors['hotels.'+hi+'.location']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.location'] }}</p>
-                                    </div>
-                                    <div>
-                                        <label :for="'f-h-meals-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوجبات</label>
-                                        <input :id="'f-h-meals-'+hi" v-model="h.meals" type="text" maxlength="60" :list="'meals-options-'+hi" placeholder="مثال: بدون / إفطار" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
-                                        <datalist :id="'meals-options-'+hi">
-                                            <option v-for="m in MEAL_OPTIONS" :key="'meal-'+hi+'-'+m" :value="m"></option>
-                                        </datalist>
-                                        <p v-if="form.errors['hotels.'+hi+'.meals']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.meals'] }}</p>
-                                    </div>
-                                    <div>
-                                        <label :for="'f-h-dist-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المسافة عن الحرم</label>
-                                        <input :id="'f-h-dist-'+hi" v-model="h.distance_haram" type="text" maxlength="40" placeholder="مثال: 950 متر" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
-                                        <p v-if="form.errors['hotels.'+hi+'.distance_haram']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.distance_haram'] }}</p>
-                                    </div>
-                                </div>
-
-                                <!-- prices per room capacity -->
+                                <!-- one price row for the whole option -->
                                 <div>
+                                    <p v-if="isMultiCity" class="mb-2 text-xs font-bold text-gray-600 dark:text-gray-300">السعر للفرد ويشمل الإقامة في الفندقين معاً.</p>
                                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                        <div v-for="(rLabel, rKey) in roomTypes" :key="'p-'+hi+'-'+rKey">
-                                            <label :for="'f-h-'+hi+'-'+rKey" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ rLabel }}</label>
-                                            <input :id="'f-h-'+hi+'-'+rKey" v-model="h.prices[rKey]" type="number" step="0.001" min="0" placeholder="—" dir="ltr" class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm font-mono tabular-nums focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                        <div v-for="(rLabel, rKey) in roomTypes" :key="'p-'+oi+'-'+rKey">
+                                            <label :for="'f-o-'+oi+'-'+rKey" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ rLabel }}</label>
+                                            <input :id="'f-o-'+oi+'-'+rKey" v-model="opt.prices[rKey]" type="number" step="0.001" min="0" placeholder="—" dir="ltr" class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm font-mono tabular-nums focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
                                             <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">د.أ / للفرد</p>
-                                            <p v-if="form.errors['hotels.'+hi+'.prices.'+rKey]" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.prices.'+rKey] }}</p>
+                                            <p v-if="form.errors['options.'+oi+'.prices.'+rKey]" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.prices.'+rKey] }}</p>
                                         </div>
                                     </div>
-                                    <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">اترك الخانة فارغة إذا كان هذا النوع غير متاح في هذا الفندق</p>
-                                    <p v-if="form.errors['hotels.'+hi+'.prices']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.prices'] }}</p>
+                                    <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">اترك الخانة فارغة إذا كان هذا النوع غير متاح</p>
+                                    <p v-if="form.errors['options.'+oi+'.prices']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.prices'] }}</p>
                                 </div>
 
                                 <div>
-                                    <label :for="'f-h-inc-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ما يشمله سعر هذا الفندق</label>
-                                    <textarea :id="'f-h-inc-'+hi" v-model="h.includes_note" rows="2" placeholder="مثال: يشمل الإفطار يومياً" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none resize-none"></textarea>
-                                    <p v-if="form.errors['hotels.'+hi+'.includes_note']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.includes_note'] }}</p>
+                                    <label :for="'f-o-inc-'+oi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ما يشمله سعر هذا الخيار</label>
+                                    <textarea :id="'f-o-inc-'+oi" v-model="opt.includes_note" rows="2" placeholder="مثال: يشمل الإفطار يومياً" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none resize-none"></textarea>
+                                    <p v-if="form.errors['options.'+oi+'.includes_note']" class="mt-1 text-xs text-red-500">{{ form.errors['options.'+oi+'.includes_note'] }}</p>
                                 </div>
 
-                                <p class="text-xs font-bold" :class="hotelMin(h) !== null ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
-                                    <template v-if="hotelMin(h) !== null">أقل سعر: <span dir="ltr" class="font-mono tabular-nums">{{ money(hotelMin(h)) }}</span> د.أ للفرد</template>
+                                <p class="text-xs font-bold" :class="optionMin(opt) !== null ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+                                    <template v-if="optionMin(opt) !== null">أقل سعر: <span dir="ltr" class="font-mono tabular-nums">{{ money(optionMin(opt)) }}</span> د.أ للفرد</template>
                                     <template v-else>لم تُدخل أسعار بعد</template>
                                 </p>
                             </div>
 
-                            <button type="button" @click="addHotel" class="px-4 py-2 rounded-xl text-sm font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200 dark:hover:bg-gold-900/50">+ إضافة فندق</button>
+                            <button type="button" @click="addOption" class="px-4 py-2 rounded-xl text-sm font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200 dark:hover:bg-gold-900/50">+ إضافة خيار</button>
                         </div>
 
                         <!-- Empty state -->
                         <div v-else class="rounded-xl border-2 border-dashed p-6 text-center space-y-3 border-gray-300 dark:border-gray-600 bg-gray-50/60 dark:bg-gray-800/30">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">لم تُضف فنادق بعد — العرض لن يظهر للبوت بلا فندق واحد على الأقل بسعر</p>
-                            <button type="button" @click="addHotel" class="px-4 py-2 rounded-xl text-sm font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200 dark:hover:bg-gold-900/50">+ إضافة فندق</button>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">لم تُضف خيارات بعد — العرض لن يظهر للبوت بلا خيار واحد على الأقل بسعر</p>
+                            <button type="button" @click="addOption" class="px-4 py-2 rounded-xl text-sm font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200 dark:hover:bg-gold-900/50">+ إضافة خيار</button>
                         </div>
                     </section>
 
@@ -351,7 +420,7 @@
                     <section class="space-y-3">
                         <div class="pb-2 border-b border-gray-200 dark:border-gray-700">
                             <h4 class="text-sm font-bold text-gray-800 dark:text-gray-100">✅ العرض يشمل / ❌ العرض لا يشمل</h4>
-                            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">هذه البنود تنطبق على العرض بالكامل، وليست خاصة بفندق معيّن.</p>
+                            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">هذه البنود تنطبق على العرض بالكامل، وليست خاصة بخيار معيّن.</p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mobile-form-grid">
@@ -420,21 +489,13 @@ const props = defineProps({
     title: String,
     offers: Object,
     filters: Object,
-    categories: Array,
-    roomTypes: Object,
+    categories: Object,   // {key: label}
+    routeModes: Object,   // {makkah_only: 'مكة فقط', ...}
+    routeCities: Object,  // {makkah_only: ['مكة'], ...}
+    roomTypes: Object,    // {single: 'مفردة', ...}
     can: Object,
 });
 
-const CAT_LABELS = {
-    package: 'باقة',
-    umrah: 'عمرة',
-    hajj: 'حج',
-    flight: 'تذاكر طيران',
-    visa: 'تأشيرات',
-    hotel: 'فنادق',
-    transport: 'نقل',
-    tour: 'رحلات سياحية',
-};
 const CAT_CHIPS = {
     package: 'bg-gold-100 text-gold-800 dark:bg-gold-900/40 dark:text-gold-200',
     umrah: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
@@ -446,14 +507,20 @@ const CAT_CHIPS = {
     tour: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
 };
 
-const catLabel = (c) => CAT_LABELS[c] || c || '—';
+// التصنيفات المبنية على فنادق بمسار (مكة / مكة والمدينة)
+const ROUTE_CATEGORIES = ['umrah', 'hajj'];
+const MEAL_OPTIONS = ['بدون', 'إفطار', 'إفطار وعشاء', 'إفطار وغداء وعشاء'];
+const VISA_ENTRY_OPTIONS = ['دخول واحد', 'متعددة الدخول'];
+const CITY_ICONS = { 'مكة': '🕋', 'المدينة': '🕌' };
+
+const catLabel = (c) => props.categories?.[c] || c || '—';
 const catChip = (c) => CAT_CHIPS[c] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
 const money = (v) => Number(v || 0).toLocaleString('en', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 const stars = (n) => '⭐'.repeat(Math.max(0, Math.min(7, Number(n) || 0)));
 const d = (v) => (v ? String(v).slice(0, 10) : '—');
 const dateVal = (v) => (v ? String(v).slice(0, 10) : '');
 const hasPrice = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
-const hotelNames = (o) => (o.hotels || []).map((h) => h?.name).filter(Boolean).join('، ') || '—';
+const optionLabels = (o) => (o.options || []).map((x) => x?.label).filter(Boolean).join('، ') || '—';
 
 // حالة بطاقة العرض في الجدول
 const cardChip = (o) => {
@@ -482,29 +549,31 @@ const blankPrices = () => {
     roomKeys.value.forEach((k) => { p[k] = null; });
     return p;
 };
-const blankHotel = () => ({
+const blankStay = (city = null) => ({
+    city: city ?? null,
     name: '',
     rating: null,
     rating_plus: false,
     location: '',
     meals: '',
     distance_haram: '',
+});
+const blankOption = () => ({
     includes_note: '',
     prices: blankPrices(),
+    stays: activeCities.value.length > 1 ? activeCities.value.map((c) => blankStay(c)) : [blankStay(null)],
 });
 
-const MEAL_OPTIONS = ['بدون', 'إفطار', 'إفطار وعشاء', 'إفطار وغداء وعشاء'];
-
-// «4+» / «4» — what the card will print for this hotel's rating
-const ratingLabel = (h) => {
-    if (h?.rating === null || h?.rating === undefined || h?.rating === '') return '';
-    return String(h.rating) + (h?.rating_plus ? '+' : '');
+// «4+» / «4» — what the card will print for this stay's rating
+const ratingLabel = (s) => {
+    if (s?.rating === null || s?.rating === undefined || s?.rating === '') return '';
+    return String(s.rating) + (s?.rating_plus ? '+' : '');
 };
 
-// min of the filled prices of one hotel row (null when nothing usable)
-const hotelMin = (h) => {
+// min of the filled prices of one option (null when nothing usable)
+const optionMin = (opt) => {
     const vals = roomKeys.value
-        .map((k) => h?.prices?.[k])
+        .map((k) => opt?.prices?.[k])
         .filter((v) => v !== null && v !== undefined && String(v).trim() !== '')
         .map((v) => Number(v))
         .filter((v) => Number.isFinite(v) && v > 0);
@@ -521,10 +590,16 @@ let t = null;
 const form = useForm({
     title: '',
     category: 'package',
+    route_mode: null,
     description_client: '',
     notes_public: '',
     nights: null,
     airline: '',
+    requirements: '',
+    visa_validity: '',
+    visa_entries: '',
+    visa_processing: '',
+    price_per_person: null,
     valid_from: '',
     valid_to: '',
     includes: [],
@@ -532,24 +607,60 @@ const form = useForm({
     is_active: true,
     is_bot_visible: false,
     sort_order: 0,
-    hotels: [],
+    options: [],
 });
 
+/* ===== شكل النموذج يتبع التصنيف ===== */
+const isVisa = computed(() => form.category === 'visa');
+const usesHaramDistance = computed(() => ROUTE_CATEGORIES.includes(form.category));
+const showRouteMode = computed(() => ROUTE_CATEGORIES.includes(form.category));
+const activeCities = computed(() => (showRouteMode.value && form.route_mode ? (props.routeCities?.[form.route_mode] || []) : []));
+const isMultiCity = computed(() => activeCities.value.length > 1);
+
+const cityHeading = (si, stay) => {
+    const city = activeCities.value[si] || stay?.city || '';
+    return city ? (CITY_ICONS[city] || '🏨') + ' فندق ' + city : '🏨 الفندق';
+};
+
 const formMinPrice = computed(() => {
-    const mins = form.hotels.map((h) => hotelMin(h)).filter((v) => v !== null);
+    const mins = form.options.map((opt) => optionMin(opt)).filter((v) => v !== null);
     return mins.length ? Math.min(...mins) : null;
 });
 
-const addHotel = () => { form.hotels = [...form.hotels, blankHotel()]; };
-const removeHotel = (i) => { form.hotels = form.hotels.filter((_, idx) => idx !== i); };
-const moveHotel = (i, dir) => {
+/* ===== الخيارات ===== */
+const addOption = () => { form.options = [...form.options, blankOption()]; };
+const removeOption = (i) => { form.options = form.options.filter((_, idx) => idx !== i); };
+const moveOption = (i, dir) => {
     const j = i + dir;
-    if (j < 0 || j >= form.hotels.length) return;
-    const arr = [...form.hotels];
+    if (j < 0 || j >= form.options.length) return;
+    const arr = [...form.options];
     const tmp = arr[i];
     arr[i] = arr[j];
     arr[j] = tmp;
-    form.hotels = arr;
+    form.options = arr;
+};
+
+// يُعيد تشكيل الإقامات حسب مدن المسار دون إفقاد ما كتبه المستخدم
+const reshapeStays = (cities) => {
+    form.options = form.options.map((opt) => {
+        const stays = [...(opt.stays || [])];
+        if (!stays.length) stays.push(blankStay());
+
+        if (cities.length > 1) {
+            while (stays.length < cities.length) stays.push(blankStay(cities[stays.length]));
+            stays.forEach((s, i) => { s.city = cities[i] ?? s.city ?? null; });
+            return { ...opt, stays };
+        }
+
+        // مسار بمدينة واحدة (أو بلا مسار) — نُبقي أول إقامة فقط بلا مدينة
+        return { ...opt, stays: [{ ...stays[0], city: null }] };
+    });
+};
+
+const setRouteMode = (mode) => {
+    if (form.route_mode === mode) return;
+    form.route_mode = mode;
+    reshapeStays(props.routeCities?.[mode] || []);
 };
 
 const addRow = (key) => { form[key] = [...form[key], '']; };
@@ -559,10 +670,16 @@ const openModal = (o) => {
     editItem.value = o;
     form.title = o?.title || '';
     form.category = o?.category || 'package';
+    form.route_mode = o?.route_mode || null;
     form.description_client = o?.description_client || '';
     form.notes_public = o?.notes_public || '';
     form.nights = o?.nights ?? null;
     form.airline = o?.airline || '';
+    form.requirements = o?.requirements || '';
+    form.visa_validity = o?.visa_validity || '';
+    form.visa_entries = o?.visa_entries || '';
+    form.visa_processing = o?.visa_processing || '';
+    form.price_per_person = o?.price_per_person ?? null;
     form.valid_from = dateVal(o?.valid_from);
     form.valid_to = dateVal(o?.valid_to);
     form.includes = toArr(o?.includes);
@@ -570,53 +687,104 @@ const openModal = (o) => {
     form.is_active = o?.is_active ?? true;
     form.is_bot_visible = o?.is_bot_visible ?? false;
     form.sort_order = o?.sort_order ?? 0;
-    form.hotels = (o?.hotels || []).map((h) => {
+
+    const cities = form.route_mode ? (props.routeCities?.[form.route_mode] || []) : [];
+    form.options = (o?.options || []).map((opt) => {
         const prices = blankPrices();
         roomKeys.value.forEach((k) => {
-            const v = h?.prices?.[k];
+            const v = opt?.prices?.[k];
             prices[k] = v === null || v === undefined || String(v).trim() === '' ? null : v;
         });
-        return {
-            name: h?.name || '',
-            rating: h?.rating ?? null,
-            rating_plus: !!h?.rating_plus,
-            location: h?.location || '',
-            meals: h?.meals || '',
-            distance_haram: h?.distance_haram || '',
-            includes_note: h?.includes_note || '',
-            prices,
-        };
+
+        const stays = (opt?.stays || []).map((s) => ({
+            city: s?.city ?? null,
+            name: s?.name || '',
+            rating: s?.rating ?? null,
+            rating_plus: !!s?.rating_plus,
+            location: s?.location || '',
+            meals: s?.meals || '',
+            distance_haram: s?.distance_haram || '',
+        }));
+        if (!stays.length) stays.push(blankStay(cities.length > 1 ? cities[0] : null));
+        // مواءمة الإقامات مع مدن المسار المحفوظ — دون حذف إقامة محفوظة
+        if (cities.length > 1) {
+            while (stays.length < cities.length) stays.push(blankStay(cities[stays.length]));
+            stays.forEach((s, i) => { if (cities[i]) s.city = cities[i]; });
+        }
+
+        return { includes_note: opt?.includes_note || '', prices, stays };
     });
+
     form.clearErrors();
     cardBusy.value = false;
     showForm.value = true;
 };
 
+const txt = (v) => {
+    const s = String(v ?? '').trim();
+    return s === '' ? null : s;
+};
+const num = (v) => {
+    if (v === null || v === undefined || String(v).trim() === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+};
+
 const submit = () => {
+    form.title = String(form.title || '').trim();
+    form.description_client = txt(form.description_client);
+    form.notes_public = txt(form.notes_public);
+    form.valid_from = txt(form.valid_from);
+    form.valid_to = txt(form.valid_to);
+    form.sort_order = num(form.sort_order);
     form.includes = form.includes.map((x) => String(x || '').trim()).filter((x) => x !== '');
     form.excludes = form.excludes.map((x) => String(x || '').trim()).filter((x) => x !== '');
-    form.hotels = form.hotels.map((h, i) => {
-        const prices = {};
-        roomKeys.value.forEach((k) => {
-            const v = h?.prices?.[k];
-            prices[k] = v === null || v === undefined || String(v).trim() === '' ? null : Number(v);
+
+    if (isVisa.value) {
+        form.route_mode = null;
+        form.nights = null;
+        form.airline = null;
+        form.requirements = txt(form.requirements);
+        form.visa_validity = txt(form.visa_validity);
+        form.visa_entries = txt(form.visa_entries);
+        form.visa_processing = txt(form.visa_processing);
+        form.price_per_person = num(form.price_per_person);
+        form.options = [];
+    } else {
+        form.requirements = null;
+        form.visa_validity = null;
+        form.visa_entries = null;
+        form.visa_processing = null;
+        form.price_per_person = null;
+        form.nights = num(form.nights);
+        form.airline = txt(form.airline);
+        form.route_mode = showRouteMode.value ? (form.route_mode || null) : null;
+
+        form.options = form.options.map((opt, oi) => {
+            const prices = {};
+            roomKeys.value.forEach((k) => { prices[k] = num(opt?.prices?.[k]); });
+
+            const stays = (opt?.stays || [])
+                .filter((s) => String(s?.name || '').trim() !== '')
+                .map((s, si) => ({
+                    city: txt(s?.city),
+                    name: String(s?.name || '').trim(),
+                    rating: num(s?.rating),
+                    rating_plus: !!s?.rating_plus,
+                    location: txt(s?.location),
+                    meals: txt(s?.meals),
+                    distance_haram: usesHaramDistance.value ? txt(s?.distance_haram) : null,
+                    sort_order: si,
+                }));
+
+            return {
+                includes_note: txt(opt?.includes_note),
+                prices,
+                stays,
+                sort_order: oi,
+            };
         });
-        const txt = (v) => {
-            const s = String(v ?? '').trim();
-            return s === '' ? null : s;
-        };
-        return {
-            name: String(h?.name || '').trim(),
-            rating: h?.rating === '' || h?.rating === undefined ? null : h?.rating,
-            rating_plus: !!h?.rating_plus,
-            location: txt(h?.location),
-            meals: txt(h?.meals),
-            distance_haram: txt(h?.distance_haram),
-            includes_note: String(h?.includes_note || '').trim(),
-            prices,
-            sort_order: i,
-        };
-    });
+    }
 
     const o = {
         onSuccess: () => { showForm.value = false; form.reset(); form.clearErrors(); editItem.value = null; },

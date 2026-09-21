@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Offer;
-use App\Models\OfferHotel;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -39,10 +38,14 @@ class OfferCardService
      */
     public static function generate(Offer $offer): string
     {
-        $offer->loadMissing('hotels');
+        $offer->loadMissing('options.stays');
 
-        if ($offer->hotels->isEmpty()) {
-            throw new \RuntimeException('لا يمكن توليد بطاقة لعرض بلا فنادق.');
+        if ($offer->isVisa()) {
+            if ($offer->priceFrom() === null) {
+                throw new \RuntimeException('لا يمكن توليد بطاقة تأشيرة بلا سعر.');
+            }
+        } elseif ($offer->options->isEmpty()) {
+            throw new \RuntimeException('لا يمكن توليد بطاقة لعرض بلا خيارات فنادق.');
         }
 
         $html = self::html($offer);
@@ -93,11 +96,14 @@ class OfferCardService
     /** HTML البطاقة — يُستخدم أيضاً للمعاينة في المتصفّح قبل التوليد */
     public static function html(Offer $offer): string
     {
-        $offer->loadMissing('hotels');
+        $offer->loadMissing('options.stays');
 
         return View::make('offers.card', [
             'offer' => $offer,
-            'hotels' => $offer->hotels,
+            'options' => $offer->options,
+            'isVisa' => $offer->isVisa(),
+            'showDistance' => $offer->usesHaramDistance(),
+            'cities' => $offer->isMultiCity() ? $offer->cities() : [],
             'roomTypes' => self::cardRoomLabels(),
             'company' => CompanyInfo::all(),
             'logoUri' => self::dataUri(Setting::get('company_logo')),

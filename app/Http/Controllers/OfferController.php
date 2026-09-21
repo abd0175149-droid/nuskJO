@@ -3,61 +3,36 @@
 namespace App\Http\Controllers;
 
 use App\Models\Offer;
-use App\Models\OfferHotel;
+use App\Models\OfferOption;
 use App\Services\OfferCardService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class OfferController extends Controller
 {
-    private const CATEGORIES = ['package', 'umrah', 'hajj', 'flight', 'visa', 'hotel', 'transport', 'tour'];
-
     public function index(Request $request)
     {
         abort_unless(auth()->user()->can('offers.view'), 403);
 
-        $offers = Offer::with('hotels')
+        $offers = Offer::with('options.stays')
             ->when($request->search, fn ($q, $s) => $q->where('title', 'like', "%{$s}%"))
             ->when($request->category, fn ($q, $c) => $q->where('category', $c))
             ->orderBy('sort_order')->orderByDesc('id')
             ->paginate(20)->withQueryString();
 
-        $offers->getCollection()->transform(function ($o) {
-            $arr = $o->toArray();
-            $arr['price_from'] = $o->priceFrom();
-            $arr['hotels_count'] = $o->hotels->count();
-            $arr['hotels'] = $o->hotels->map(fn ($h) => [
-                'id' => $h->id,
-                'name' => $h->name,
-                'rating' => $h->rating,
-                'rating_plus' => (bool) $h->rating_plus,
-                'location' => $h->location,
-                'meals' => $h->meals,
-                'distance_haram' => $h->distance_haram,
-                'includes_note' => $h->includes_note,
-                'prices' => $h->prices ?: [],
-                'sort_order' => $h->sort_order,
-                'min_price' => $h->minPrice(),
-            ])->values()->all();
-
-            // بطاقة العرض
-            $card = $o->cardImage();
-            $arr['card_url'] = $card ? Storage::disk('public')->url($card) . '?v=' . ($o->card_generated_at?->timestamp ?: $o->updated_at?->timestamp) : null;
-            $arr['card_is_custom'] = (bool) $o->custom_card_path;
-            $arr['card_is_stale'] = $o->cardIsStale();
-            $arr['hero_url'] = $o->hero_path ? Storage::disk('public')->url($o->hero_path) : null;
-
-            return $arr;
-        });
+        $offers->getCollection()->transform(fn ($o) => $this->rowFor($o));
 
         return Inertia::render('Offers/Index', [
             'title' => 'العروض والباقات',
             'offers' => $offers,
             'filters' => $request->only(['search', 'category']),
-            'categories' => self::CATEGORIES,
-            'roomTypes' => OfferHotel::ROOM_TYPES,
+            'categories' => Offer::CATEGORIES,
+            'routeModes' => Offer::ROUTE_MODES,
+            'routeCities' => Offer::ROUTE_CITIES,
+            'roomTypes' => OfferOption::ROOM_TYPES,
             'can' => [
                 'create' => auth()->user()->can('offers.create'),
                 'update' => auth()->user()->can('offers.update'),
@@ -66,18 +41,62 @@ class OfferController extends Controller
         ]);
     }
 
+    /** صفّ العرض كما تحتاجه الواجهة */
+    private function rowFor(Offer $o): array
+    {
+        $arr = $o->toArray();
+
+        $arr['category_label'] = $o->categoryLabel();
+        $arr['price_from'] = $o->priceFrom();
+        $arr['is_visa'] = $o->isVisa();
+        $arr['uses_hotels'] = $o->usesHotels();
+        $arr['uses_haram_distance'] = $o->usesHaramDistance();
+        $arr['is_multi_city'] = $o->isMultiCity();
+        $arr['options_count'] = $o->options->count();
+
+        $arr['options'] = $o->options->map(fn ($opt) => [
+            'id' => $opt->id,
+            'includes_note' => $opt->includes_note,
+            'prices' => $opt->prices ?: [],
+            'sort_order' => $opt->sort_order,
+            'min_price' => $opt->minPrice(),
+            'label' => $opt->label(),
+            'stays' => $opt->stays->map(fn ($s) => [
+                'id' => $s->id,
+                'city' => $s->city,
+                'name' => $s->name,
+                'rating' => $s->rating,
+                'rating_plus' => (bool) $s->rating_plus,
+                'location' => $s->location,
+                'meals' => $s->meals,
+                'distance_haram' => $s->distance_haram,
+                'sort_order' => $s->sort_order,
+            ])->values()->all(),
+        ])->values()->all();
+
+        // بطاقة العرض
+        $card = $o->cardImage();
+        $stamp = $o->card_generated_at?->timestamp ?: $o->updated_at?->timestamp;
+        $arr['card_url'] = $card ? Storage::disk('public')->url($card) . '?v=' . $stamp : null;
+        $arr['card_is_custom'] = (bool) $o->custom_card_path;
+        $arr['card_is_stale'] = $o->cardIsStale();
+        $arr['hero_url'] = $o->hero_path ? Storage::disk('public')->url($o->hero_path) : null;
+
+        return $arr;
+    }
+
     public function store(Request $request)
     {
         abort_unless(auth()->user()->can('offers.create'), 403);
 
         $data = $this->validated($request);
-        $hotels = $data['hotels'] ?? [];
-        unset($data['hotels']);
+        $options = $data['options'] ?? [];
+        unset($data['options']);
         $data['created_by'] = auth()->id();
 
-        DB::transaction(function () use ($data, $hotels) {
+        DB::transaction(function () use ($data, $options) {
             $offer = Offer::create($data);
-            $this->syncHotels($offer, $hotels);
+            $this->syncOptions($offer, $options);
         });
 
         return back()->with('success', 'تم إضافة العرض');
@@ -88,12 +107,12 @@ class OfferController extends Controller
         abort_unless(auth()->user()->can('offers.update'), 403);
 
         $data = $this->validated($request);
-        $hotels = $data['hotels'] ?? [];
-        unset($data['hotels']);
+        $options = $data['options'] ?? [];
+        unset($data['options']);
 
-        DB::transaction(function () use ($offer, $data, $hotels) {
+        DB::transaction(function () use ($offer, $data, $options) {
             $offer->update($data);
-            $this->syncHotels($offer, $hotels);
+            $this->syncOptions($offer, $options);
         });
 
         return back()->with('success', 'تم تحديث العرض');
@@ -106,7 +125,11 @@ class OfferController extends Controller
         OfferCardService::forget($offer);
 
         DB::transaction(function () use ($offer) {
-            $offer->hotels()->delete();
+            $offer->load('options');
+            foreach ($offer->options as $opt) {
+                $opt->stays()->delete();
+            }
+            $offer->options()->delete();
             $offer->delete();
         });
 
@@ -117,9 +140,14 @@ class OfferController extends Controller
     {
         abort_unless(auth()->user()->can('offers.update'), 403);
 
-        // لا يُنشر للبوت عرضٌ بلا فندق واحد على الأقل بسعر
+        $offer->loadMissing('options');
+
         if (!$offer->is_bot_visible && !$offer->priceFrom()) {
-            return back()->with('error', 'أضف فندقاً واحداً على الأقل بسعر قبل إظهار العرض للبوت.');
+            $msg = $offer->isVisa()
+                ? 'أدخل سعر التأشيرة قبل إظهار العرض للبوت.'
+                : 'أضف خياراً واحداً على الأقل بسعر قبل إظهار العرض للبوت.';
+
+            return back()->with('error', $msg);
         }
 
         $offer->update(['is_bot_visible' => !$offer->is_bot_visible]);
@@ -129,7 +157,6 @@ class OfferController extends Controller
 
     // ==================== بطاقة العرض ====================
 
-    /** توليد صورة البطاقة الآن */
     public function generateCard(Offer $offer)
     {
         abort_unless(auth()->user()->can('offers.update'), 403);
@@ -143,7 +170,6 @@ class OfferController extends Controller
         return back()->with('success', 'تم توليد بطاقة العرض');
     }
 
-    /** معاينة القالب في المتصفّح قبل التوليد — يسهّل ضبط التصميم */
     public function previewCard(Offer $offer)
     {
         abort_unless(auth()->user()->can('offers.update'), 403);
@@ -152,7 +178,6 @@ class OfferController extends Controller
             ->header('Content-Type', 'text/html; charset=utf-8');
     }
 
-    /** رفع بطاقة جاهزة من المصمّم — تتقدّم على المولّدة */
     public function uploadCard(Request $request, Offer $offer)
     {
         abort_unless(auth()->user()->can('offers.update'), 403);
@@ -172,7 +197,6 @@ class OfferController extends Controller
         return back()->with('success', 'تم رفع البطاقة — ستُستخدم بدل المولّدة');
     }
 
-    /** إزالة البطاقة المرفوعة والعودة للمولّدة */
     public function deleteCard(Offer $offer)
     {
         abort_unless(auth()->user()->can('offers.update'), 403);
@@ -185,7 +209,6 @@ class OfferController extends Controller
         return back()->with('success', 'أُزيلت البطاقة المرفوعة');
     }
 
-    /** صورة ترويسة خاصة بهذا العرض (اختيارية — وإلا الافتراضية من الإعدادات) */
     public function uploadHero(Request $request, Offer $offer)
     {
         abort_unless(auth()->user()->can('offers.update'), 403);
@@ -203,40 +226,63 @@ class OfferController extends Controller
         return back()->with('success', 'تم رفع صورة الترويسة — أعد توليد البطاقة لتظهر');
     }
 
-    /** استبدال كامل لفنادق العرض (العروض صغيرة ولا تبعيات عليها) */
-    private function syncHotels(Offer $offer, array $hotels): void
-    {
-        $offer->hotels()->delete();
+    // ==================== الحفظ ====================
 
-        foreach (array_values($hotels) as $i => $h) {
+    /** استبدال كامل لخيارات العرض وإقاماتها (العروض صغيرة ولا تبعيات عليها) */
+    private function syncOptions(Offer $offer, array $options): void
+    {
+        $offer->load('options');
+        foreach ($offer->options as $old) {
+            $old->stays()->delete();
+        }
+        $offer->options()->delete();
+
+        // التأشيرات بلا خيارات — سعرها على العرض نفسه
+        if ($offer->isVisa()) {
+            return;
+        }
+
+        foreach (array_values($options) as $i => $opt) {
             $prices = [];
-            foreach (array_keys(OfferHotel::ROOM_TYPES) as $rt) {
-                $v = $h['prices'][$rt] ?? null;
+            foreach (array_keys(OfferOption::ROOM_TYPES) as $rt) {
+                $v = $opt['prices'][$rt] ?? null;
                 $prices[$rt] = ($v === null || $v === '') ? null : round((float) $v, 3);
             }
 
-            $offer->hotels()->create([
-                'name' => $h['name'],
-                'rating' => $h['rating'] ?? null,
-                'rating_plus' => (bool) ($h['rating_plus'] ?? false),
-                'location' => $h['location'] ?? null,
-                'meals' => $h['meals'] ?? null,
-                'distance_haram' => $h['distance_haram'] ?? null,
-                'includes_note' => $h['includes_note'] ?? null,
+            $created = $offer->options()->create([
+                'includes_note' => $opt['includes_note'] ?? null,
                 'prices' => $prices,
                 'sort_order' => $i,
             ]);
+
+            foreach (array_values($opt['stays'] ?? []) as $j => $stay) {
+                if (blank($stay['name'] ?? null)) {
+                    continue;
+                }
+
+                $created->stays()->create([
+                    'city' => $stay['city'] ?? null,
+                    'name' => $stay['name'],
+                    'rating' => $stay['rating'] ?? null,
+                    'rating_plus' => (bool) ($stay['rating_plus'] ?? false),
+                    'location' => $stay['location'] ?? null,
+                    'meals' => $stay['meals'] ?? null,
+                    // المسافة عن الحرم تخصّ العمرة والحج فقط
+                    'distance_haram' => $offer->usesHaramDistance() ? ($stay['distance_haram'] ?? null) : null,
+                    'sort_order' => $j,
+                ]);
+            }
         }
     }
 
     private function validated(Request $request): array
     {
-        return $request->validate([
+        $isVisa = $request->input('category') === 'visa';
+
+        $rules = [
             'title' => 'required|string|max:180',
-            'category' => 'required|in:' . implode(',', self::CATEGORIES),
+            'category' => ['required', Rule::in(array_keys(Offer::CATEGORIES))],
             'description_client' => 'nullable|string|max:4000',
-            'nights' => 'nullable|integer|min:0|max:365',
-            'airline' => 'nullable|string|max:80',
             'valid_from' => 'nullable|date',
             'valid_to' => 'nullable|date|after_or_equal:valid_from',
             'includes' => 'nullable|array',
@@ -247,23 +293,60 @@ class OfferController extends Controller
             'is_active' => 'boolean',
             'is_bot_visible' => 'boolean',
             'sort_order' => 'nullable|integer|min:0|max:9999',
+        ];
 
-            // الفنادق وأسعارها للفرد حسب سعة الغرفة
-            'hotels' => 'nullable|array|max:20',
-            'hotels.*.name' => 'required|string|max:150',
-            'hotels.*.rating' => 'nullable|integer|min:1|max:7',
-            'hotels.*.rating_plus' => 'boolean',
-            'hotels.*.location' => 'nullable|string|max:80',
-            'hotels.*.meals' => 'nullable|string|max:60',
-            'hotels.*.distance_haram' => 'nullable|string|max:40',
-            'hotels.*.includes_note' => 'nullable|string|max:500',
-            'hotels.*.prices' => 'nullable|array',
-            'hotels.*.prices.single' => 'nullable|numeric|min:0|max:999999',
-            'hotels.*.prices.double' => 'nullable|numeric|min:0|max:999999',
-            'hotels.*.prices.triple' => 'nullable|numeric|min:0|max:999999',
-            'hotels.*.prices.quad'   => 'nullable|numeric|min:0|max:999999',
-        ], [
-            'hotels.*.name.required' => 'اسم الفندق مطلوب لكل فندق مُضاف.',
+        if ($isVisa) {
+            // التأشيرات: سعر واحد للفرد وحقول إصدار، بلا فنادق ولا ليالٍ
+            $rules += [
+                'requirements' => 'nullable|string|max:4000',
+                'visa_validity' => 'nullable|string|max:60',
+                'visa_entries' => 'nullable|string|max:40',
+                'visa_processing' => 'nullable|string|max:60',
+                'price_per_person' => 'nullable|numeric|min:0|max:999999',
+            ];
+        } else {
+            $rules += [
+                'nights' => 'nullable|integer|min:0|max:365',
+                'airline' => 'nullable|string|max:80',
+                'route_mode' => ['nullable', Rule::in(array_keys(Offer::ROUTE_MODES))],
+
+                'options' => 'nullable|array|max:20',
+                'options.*.includes_note' => 'nullable|string|max:500',
+                'options.*.prices' => 'nullable|array',
+                'options.*.prices.single' => 'nullable|numeric|min:0|max:999999',
+                'options.*.prices.double' => 'nullable|numeric|min:0|max:999999',
+                'options.*.prices.triple' => 'nullable|numeric|min:0|max:999999',
+                'options.*.prices.quad'   => 'nullable|numeric|min:0|max:999999',
+
+                'options.*.stays' => 'required|array|min:1|max:4',
+                'options.*.stays.*.city' => 'nullable|string|max:60',
+                'options.*.stays.*.name' => 'required|string|max:150',
+                'options.*.stays.*.rating' => 'nullable|integer|min:1|max:7',
+                'options.*.stays.*.rating_plus' => 'boolean',
+                'options.*.stays.*.location' => 'nullable|string|max:80',
+                'options.*.stays.*.meals' => 'nullable|string|max:60',
+                'options.*.stays.*.distance_haram' => 'nullable|string|max:40',
+            ];
+        }
+
+        $data = $request->validate($rules, [
+            'options.*.stays.required' => 'كل خيار يحتاج فندقاً واحداً على الأقل.',
+            'options.*.stays.*.name.required' => 'اسم الفندق مطلوب.',
         ]);
+
+        // تنظيف الحقول التي لا تخصّ التصنيف حتى لا تبقى قيم قديمة بعد تغييره
+        if ($isVisa) {
+            $data += ['nights' => null, 'airline' => null, 'route_mode' => null];
+        } else {
+            $data += [
+                'requirements' => null, 'visa_validity' => null,
+                'visa_entries' => null, 'visa_processing' => null, 'price_per_person' => null,
+            ];
+            if (!in_array($data['category'], ['umrah', 'hajj'], true)) {
+                $data['route_mode'] = null;
+            }
+        }
+
+        return $data;
     }
 }

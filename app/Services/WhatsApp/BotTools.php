@@ -29,7 +29,11 @@ class BotTools
         $all = [
             [
                 'name' => 'get_offers',
-                'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز باسم العرض و«يبدأ من» ولا تخترع عرضاً غير موجود. انتبه: كل عرض قد يضمّ عدّة فنادق، والسعر دائماً للفرد الواحد ويختلف حسب سعة الغرفة (مفردة/ثنائية/ثلاثية/رباعية).',
+                'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). '
+                    . 'استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز باسم العرض و«يبدأ من» ولا تخترع عرضاً غير موجود. '
+                    . 'انتبه: شكل العرض يختلف بتصنيفه — عروض الفنادق تأتي بخيارات لكل خيار أسعار للفرد حسب سعة الغرفة، '
+                    . 'وعمرة «مكة والمدينة» يشمل خيارها فندقين بسعر واحد لهما معاً، والتأشيرات لها سعر واحد للفرد بلا فنادق. '
+                    . 'التزم دائماً بحقل pricing_note المرافق لكل عرض ولا تصف التسعير بغيره.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
@@ -39,7 +43,8 @@ class BotTools
             ],
             [
                 'name' => 'get_offer_details',
-                'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله، وفنادقه المتاحة وسعر الفرد في كل فندق حسب سعة الغرفة، وما يشمله سعر كل فندق. استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
+                'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله وخياراته وأسعارها، أو شروط التأشيرة ومدّة إصدارها إن كان تأشيرة. '
+                    . 'استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
@@ -98,7 +103,7 @@ class BotTools
                     'type' => 'object',
                     'properties' => [
                         'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه'],
-                        'hotel' => ['type' => 'string', 'description' => 'اسم الفندق الذي اختاره العميل من فنادق العرض إن اختار'],
+                        'hotel' => ['type' => 'string', 'description' => 'الخيار الذي اختاره العميل: اسم الفندق، أو الفندقين معاً في عمرة مكة والمدينة'],
                         'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية'],
                         'adults' => ['type' => 'integer'],
                         'children' => ['type' => 'integer'],
@@ -152,7 +157,7 @@ class BotTools
 
     private static function getOffers(array $in): array
     {
-        $q = Offer::forBot()->with('hotels')->orderBy('sort_order')->orderByDesc('id');
+        $q = Offer::forBot()->with('options.stays')->orderBy('sort_order')->orderByDesc('id');
         if (!empty($in['category'])) {
             $q->where('category', $in['category']);
         }
@@ -172,7 +177,7 @@ class BotTools
 
     private static function getOfferDetails(array $in): array
     {
-        $o = Offer::forBot()->find($in['offer_id'] ?? 0);
+        $o = Offer::forBot()->with('options.stays')->find($in['offer_id'] ?? 0);
         if (!$o) {
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ هذا العرض غير متاح حالياً واعرض عليه البدائل.'];
         }
@@ -186,7 +191,7 @@ class BotTools
     /** إرسال بطاقة العرض كصورة — تُولَّد عند الطلب إن لم تكن جاهزة */
     private static function sendOfferCard(array $in, WaConversation $conv): array
     {
-        $offer = Offer::forBot()->with('hotels')->find($in['offer_id'] ?? 0);
+        $offer = Offer::forBot()->with('options.stays')->find($in['offer_id'] ?? 0);
         if (!$offer) {
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ العرض غير متاح واعرض البدائل.'];
         }
