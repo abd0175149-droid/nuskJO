@@ -32,6 +32,17 @@ RUN apk add --no-cache \
     oniguruma-dev \
     curl \
     bash \
+    # ── توليد بطاقات العروض: كروميوم بلا واجهة + خطوط عربية ──
+    # gd لا يُشكّل الحروف العربية ولا يضبط اتجاه النصّ، فالتصيير يتم عبر
+    # كروميوم من قالب HTML. الخطوط إلزامية: الصورة الأساسية بلا أي خطّ.
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    fontconfig \
+    ttf-freefont \
+    font-noto \
+    font-noto-arabic \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo_sqlite \

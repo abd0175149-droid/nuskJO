@@ -28,7 +28,8 @@
                     {{ {company:'🏢 بيانات الشركة',printing:'🖨️ الطباعة',notifications:'🔔 الإشعارات',financial:'💰 المالية'}[group]||('⚙️ '+group) }}
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div v-for="item in items" :key="item.key">
+                    <!-- إعدادات الصور تُدار من قسم «هوية بطاقات العروض» لا كمسار نصّي -->
+                    <div v-for="item in items.filter(i => i.type !== 'image')" :key="item.key">
                         <label class="block text-sm font-medium text-gray-700 mb-1">{{ item.description || item.key }}</label>
                         <template v-if="item.type==='boolean'">
                             <label class="flex items-center gap-2"><input v-model="settingsData[item.key]" type="checkbox" true-value="1" false-value="0" class="w-4 h-4 rounded text-gold-500"/><span class="text-sm text-gray-600">تفعيل</span></label>
@@ -39,6 +40,40 @@
                         <template v-else>
                             <input v-model="settingsData[item.key]" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
                         </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- هوية بطاقات العروض -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">🖼️ هوية بطاقات العروض</h3>
+                <p class="text-xs text-gray-500 mb-4">تُستخدم في صورة البطاقة التي تُرسل للعميل على واتساب</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- الشعار -->
+                    <div class="p-4 rounded-xl border border-dashed border-gray-300 bg-gray-50">
+                        <h4 class="font-bold text-sm text-gray-700 mb-2">🏷️ شعار الشركة</h4>
+                        <p class="text-xs text-gray-500 mb-3">يُفضّل PNG بخلفية شفافة — يظهر أعلى البطاقة</p>
+                        <div v-if="brand?.logo" class="mb-3 p-2 bg-white rounded-lg border border-gray-200 flex items-center gap-3">
+                            <img :src="brand.logo" alt="شعار الشركة" class="max-h-14"/>
+                            <a :href="brand.logo" target="_blank" class="text-xs text-blue-600 hover:underline">فتح</a>
+                        </div>
+                        <form @submit.prevent="uploadBrand('logo')" enctype="multipart/form-data">
+                            <input ref="logoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-gold-100 file:text-gold-700 hover:file:bg-gold-200"/>
+                            <button type="submit" class="mt-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-gold-600 hover:bg-gold-700">📤 رفع الشعار</button>
+                        </form>
+                    </div>
+                    <!-- الترويسة -->
+                    <div class="p-4 rounded-xl border border-dashed border-gray-300 bg-gray-50">
+                        <h4 class="font-bold text-sm text-gray-700 mb-2">🏞️ صورة الترويسة الافتراضية</h4>
+                        <p class="text-xs text-gray-500 mb-3">الصورة العريضة أعلى البطاقة — يمكن لكل عرض رفع ترويسة خاصة تتجاوزها</p>
+                        <div v-if="brand?.hero" class="mb-3 p-2 bg-white rounded-lg border border-gray-200">
+                            <img :src="brand.hero" alt="ترويسة البطاقات" class="max-h-24 rounded"/>
+                            <a :href="brand.hero" target="_blank" class="text-xs text-blue-600 hover:underline">فتح</a>
+                        </div>
+                        <form @submit.prevent="uploadBrand('hero')" enctype="multipart/form-data">
+                            <input ref="heroFile" type="file" accept="image/png,image/jpeg,image/webp" class="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"/>
+                            <button type="submit" class="mt-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700">📤 رفع الترويسة</button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -92,7 +127,22 @@
 import { ref, reactive } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
-const props = defineProps({ settings: Object, templates: Object });
+const props = defineProps({ settings: Object, templates: Object, brand: Object });
+
+const logoFile = ref(null);
+const heroFile = ref(null);
+
+// رفع الشعار أو الترويسة — يُحفظان في الإعدادات ويقرأهما مولّد البطاقات
+const uploadBrand = (type) => {
+    const input = type === 'logo' ? logoFile.value : heroFile.value;
+    if (!input?.files?.length) return;
+
+    const formData = new FormData();
+    formData.append('asset', input.files[0]);
+    formData.append('type', type);
+
+    router.post('/settings/brand-asset', formData, { preserveScroll: true, forceFormData: true });
+};
 
 const settingsData = reactive({});
 if (props.settings) {

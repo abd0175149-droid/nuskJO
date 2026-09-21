@@ -186,6 +186,7 @@ class WhatsAppController extends Controller
             'toolList' => [
                 'get_offers' => 'عرض العروض والباقات',
                 'get_offer_details' => 'تفاصيل عرض',
+                'send_offer_card' => 'إرسال صورة بطاقة العرض',
                 'get_my_balance' => 'رصيد ذمّة العميل',
                 'get_my_invoices' => 'فواتير العميل والمتبقي',
                 'get_my_trips' => 'رحلات العميل القادمة',

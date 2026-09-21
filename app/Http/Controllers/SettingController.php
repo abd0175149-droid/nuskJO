@@ -25,6 +25,11 @@ class SettingController extends Controller
                 'financial' => $financialTemplate?->value ? Storage::url($financialTemplate->value) : null,
                 'accounting' => $accountingTemplate?->value ? Storage::url($accountingTemplate->value) : null,
             ],
+            // هوية بطاقات العروض
+            'brand' => [
+                'logo' => ($v = Setting::get('company_logo')) ? Storage::url($v) : null,
+                'hero' => ($h = Setting::get('card_hero_path')) ? Storage::url($h) : null,
+            ],
         ]);
     }
 
@@ -72,6 +77,41 @@ class SettingController extends Controller
         );
 
         return redirect()->back()->with('success', 'تم رفع القالب بنجاح');
+    }
+
+    /**
+     * رفع هوية الشركة البصرية المستخدمة في بطاقات العروض:
+     * الشعار (PNG بخلفية شفافة) وصورة الترويسة الافتراضية.
+     */
+    public function uploadBrandAsset(Request $request)
+    {
+        $request->validate([
+            'asset' => 'required|image|mimes:png,jpg,jpeg,webp,svg|max:5120',
+            'type' => 'required|in:logo,hero',
+        ]);
+
+        $type = $request->input('type');
+        // company_logo مُهيّأ مسبقاً في البذور (type=image) ولم يكن يُقرأ من أي مكان
+        $key = $type === 'logo' ? 'company_logo' : 'card_hero_path';
+
+        $old = Setting::where('key', $key)->first();
+        if ($old?->value && Storage::disk('public')->exists($old->value)) {
+            Storage::disk('public')->delete($old->value);
+        }
+
+        $path = $request->file('asset')->store('brand', 'public');
+
+        Setting::updateOrCreate(
+            ['key' => $key],
+            [
+                'value' => $path,
+                'group_name' => 'company',
+                'type' => 'image',   // تُدار من قسم الهوية لا كحقل نصّي
+                'description' => $type === 'logo' ? 'شعار الشركة' : 'ترويسة بطاقات العروض',
+            ]
+        );
+
+        return redirect()->back()->with('success', $type === 'logo' ? 'تم رفع الشعار' : 'تم رفع صورة الترويسة');
     }
 
     public function storeExchangeRate(Request $request)

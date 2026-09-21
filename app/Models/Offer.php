@@ -9,10 +9,11 @@ class Offer extends Model
 {
     protected $fillable = [
         'title', 'category', 'description_client',
-        'includes', 'excludes',
+        'includes', 'excludes', 'notes_public',
         'valid_from', 'valid_to',
         'nights', 'airline',
         'is_active', 'is_bot_visible', 'sort_order', 'created_by',
+        'hero_path', 'card_path', 'card_generated_at', 'custom_card_path',
     ];
 
     protected $casts = [
@@ -22,6 +23,7 @@ class Offer extends Model
         'valid_to' => 'date',
         'is_active' => 'boolean',
         'is_bot_visible' => 'boolean',
+        'card_generated_at' => 'datetime',
     ];
 
     public function hotels(): HasMany
@@ -52,6 +54,31 @@ class Offer extends Model
     }
 
     /**
+     * البطاقة المعتمدة: المرفوعة يدوياً تتقدّم على المولّدة.
+     * تعيد المسار النسبي على قرص public أو null.
+     */
+    public function cardImage(): ?string
+    {
+        return $this->custom_card_path ?: $this->card_path;
+    }
+
+    /** هل البطاقة المولّدة أقدم من آخر تعديل على العرض أو فنادقه؟ */
+    public function cardIsStale(): bool
+    {
+        if ($this->custom_card_path) {
+            return false; // بطاقة يدوية — لا تُولَّد
+        }
+        if (!$this->card_path || !$this->card_generated_at) {
+            return true;
+        }
+
+        $touched = $this->hotels->max('updated_at');
+
+        return $this->card_generated_at->lt($this->updated_at)
+            || ($touched && $this->card_generated_at->lt($touched));
+    }
+
+    /**
      * ما يُعاد للبوت. لم يعد هناك أي حقل داخلي في العروض إطلاقاً،
      * والسعر دائماً «للفرد حسب سعة الغرفة» ضمن كل فندق.
      */
@@ -70,6 +97,8 @@ class Offer extends Model
             'valid_to' => $this->valid_to?->toDateString(),
             'includes' => $this->includes ?: [],
             'excludes' => $this->excludes ?: [],
+            'notes' => $this->notes_public,
+            'has_card_image' => (bool) $this->cardImage(),
             'price_from_per_person_jod' => $this->priceFrom(),
             'pricing_note' => 'الأسعار للفرد الواحد وتختلف حسب سعة الغرفة والفندق.',
             'hotels' => $this->hotels->map(fn ($h) => $h->toBotArray())->values()->all(),

@@ -36,6 +36,7 @@
                         <th class="px-5 py-3 text-right font-bold hide-mobile">الليالي</th>
                         <th class="px-5 py-3 text-right font-bold hide-mobile">الصلاحية</th>
                         <th class="px-5 py-3 text-right font-bold">الحالة</th>
+                        <th class="px-5 py-3 text-right font-bold">البطاقة</th>
                         <th class="px-5 py-3 text-center font-bold">إجراءات</th>
                     </tr></thead>
                     <tbody>
@@ -69,12 +70,15 @@
                                     <button type="button" @click="toggleBot(o)" :title="o.is_bot_visible?'اضغط لإخفائه عن البوت':'اضغط لإظهاره للبوت'" class="px-2.5 py-1 rounded-full text-xs font-bold cursor-pointer transition hover:opacity-80" :class="o.is_bot_visible?'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300':'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'">{{ o.is_bot_visible?'🤖 ظاهر للبوت':'مخفي عن البوت' }}</button>
                                 </div>
                             </td>
+                            <td data-label="البطاقة" class="px-5 py-3 text-right whitespace-nowrap">
+                                <span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="cardChip(o).cls">{{ cardChip(o).text }}</span>
+                            </td>
                             <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
                                 <button v-if="can?.update" @click="openModal(o)" class="px-2 py-1 text-xs text-gold-700 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20 rounded-lg btn-mobile-sm">✏️ تعديل</button>
                                 <button v-if="can?.delete" @click="del(o)" class="px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg btn-mobile-sm">🗑️ حذف</button>
                             </td>
                         </tr>
-                        <tr v-if="!offers.data?.length"><td colspan="7" class="px-5 py-12 text-center text-gray-400">لا توجد عروض</td></tr>
+                        <tr v-if="!offers.data?.length"><td colspan="8" class="px-5 py-12 text-center text-gray-400">لا توجد عروض</td></tr>
                     </tbody>
                 </table>
                 </div>
@@ -125,6 +129,13 @@
                             <label for="f-desc" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">وصف العرض (يظهر للعميل)</label>
                             <textarea id="f-desc" v-model="form.description_client" rows="3" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none resize-none"></textarea>
                             <p v-if="form.errors.description_client" class="mt-1 text-xs text-red-500">{{ form.errors.description_client }}</p>
+                        </div>
+
+                        <div>
+                            <label for="f-notes-public" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ملاحظات تظهر للعميل</label>
+                            <textarea id="f-notes-public" v-model="form.notes_public" rows="3" maxlength="1000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none resize-none"></textarea>
+                            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">تظهر في أسفل بطاقة العرض — مثل: جواز سفر ساري المفعول لمدة 7 أشهر</p>
+                            <p v-if="form.errors.notes_public" class="mt-1 text-xs text-red-500">{{ form.errors.notes_public }}</p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mobile-form-grid">
@@ -209,11 +220,41 @@
                                     </div>
                                     <div>
                                         <label :for="'f-h-rating-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">تصنيف الفندق</label>
-                                        <select :id="'f-h-rating-'+hi" v-model="h.rating" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
-                                            <option :value="null">— بدون —</option>
-                                            <option v-for="n in 7" :key="n" :value="n">{{ stars(n) }} {{ n }}</option>
-                                        </select>
+                                        <div class="flex items-center gap-3 flex-wrap">
+                                            <select :id="'f-h-rating-'+hi" v-model="h.rating" class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none">
+                                                <option :value="null">— بدون —</option>
+                                                <option v-for="n in 7" :key="n" :value="n">{{ stars(n) }} {{ n }}</option>
+                                            </select>
+                                            <label :for="'f-h-ratingplus-'+hi" class="flex items-center gap-1.5 shrink-0" :class="ratingLabel(h) ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
+                                                <input :id="'f-h-ratingplus-'+hi" v-model="h.rating_plus" type="checkbox" :disabled="!ratingLabel(h)" class="w-4 h-4 rounded text-gold-500 disabled:cursor-not-allowed"/>
+                                                <span class="text-sm text-gray-700 dark:text-gray-300">زائد (+)</span>
+                                            </label>
+                                            <span v-if="ratingLabel(h)" class="shrink-0 text-xs text-gray-400 dark:text-gray-500">يظهر: <span dir="ltr" class="font-mono">{{ ratingLabel(h) }}</span></span>
+                                        </div>
                                         <p v-if="form.errors['hotels.'+hi+'.rating']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.rating'] }}</p>
+                                        <p v-if="form.errors['hotels.'+hi+'.rating_plus']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.rating_plus'] }}</p>
+                                    </div>
+                                </div>
+
+                                <!-- card details: location / meals / distance -->
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div>
+                                        <label :for="'f-h-loc-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الموقع</label>
+                                        <input :id="'f-h-loc-'+hi" v-model="h.location" type="text" maxlength="80" placeholder="مثال: التيسير" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                        <p v-if="form.errors['hotels.'+hi+'.location']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.location'] }}</p>
+                                    </div>
+                                    <div>
+                                        <label :for="'f-h-meals-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوجبات</label>
+                                        <input :id="'f-h-meals-'+hi" v-model="h.meals" type="text" maxlength="60" :list="'meals-options-'+hi" placeholder="مثال: بدون / إفطار" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                        <datalist :id="'meals-options-'+hi">
+                                            <option v-for="m in MEAL_OPTIONS" :key="'meal-'+hi+'-'+m" :value="m"></option>
+                                        </datalist>
+                                        <p v-if="form.errors['hotels.'+hi+'.meals']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.meals'] }}</p>
+                                    </div>
+                                    <div>
+                                        <label :for="'f-h-dist-'+hi" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المسافة عن الحرم</label>
+                                        <input :id="'f-h-dist-'+hi" v-model="h.distance_haram" type="text" maxlength="40" placeholder="مثال: 950 متر" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
+                                        <p v-if="form.errors['hotels.'+hi+'.distance_haram']" class="mt-1 text-xs text-red-500">{{ form.errors['hotels.'+hi+'.distance_haram'] }}</p>
                                     </div>
                                 </div>
 
@@ -253,7 +294,60 @@
                         </div>
                     </section>
 
-                    <!-- ===== Section 3 : includes / excludes ===== -->
+                    <!-- ===== Section 3 : بطاقة العرض ===== -->
+                    <section class="space-y-4">
+                        <div class="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                            <span class="text-base">🖼️</span>
+                            <h4 class="text-sm font-bold text-gray-800 dark:text-gray-100">بطاقة العرض</h4>
+                        </div>
+
+                        <p v-if="!editItem" class="text-xs text-gray-400 dark:text-gray-500">احفظ العرض أولاً ثم يمكنك توليد بطاقته.</p>
+
+                        <template v-else>
+                            <!-- notices -->
+                            <div v-if="editItem.card_is_stale && editItem.card_url" class="p-3 rounded-xl border text-xs bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-200">
+                                ⚠️ البطاقة أقدم من آخر تعديل — أعد توليدها
+                            </div>
+                            <div v-if="editItem.card_is_custom" class="space-y-1">
+                                <span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">بطاقة مرفوعة يدوياً</span>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">يتم إرسال البطاقة المرفوعة، ولا تُستخدم البطاقة المولّدة تلقائياً.</p>
+                            </div>
+
+                            <!-- thumbnail -->
+                            <a v-if="editItem.card_url" :href="editItem.card_url" target="_blank" rel="noopener" class="block w-fit max-w-full rounded-xl border p-1 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 hover:border-gold-500">
+                                <img :src="editItem.card_url" alt="معاينة بطاقة العرض" class="max-h-64 max-w-full rounded-lg"/>
+                            </a>
+                            <div v-else class="rounded-xl border-2 border-dashed p-6 text-center border-gray-300 dark:border-gray-600 bg-gray-50/60 dark:bg-gray-800/30">
+                                <p class="text-sm text-gray-500 dark:text-gray-400">لم تُولَّد بطاقة بعد</p>
+                            </div>
+
+                            <!-- actions -->
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button type="button" @click="generateCard" :disabled="cardBusy" class="px-4 py-2 rounded-xl text-sm font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200 dark:hover:bg-gold-900/50 disabled:opacity-50 disabled:cursor-not-allowed">{{ cardBusy ? '...جارٍ التوليد' : '🔄 توليد البطاقة' }}</button>
+
+                                <a :href="'/offers/'+editItem.id+'/card/preview'" target="_blank" rel="noopener" class="px-4 py-2 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">👁️ معاينة القالب</a>
+
+                                <button type="button" @click="cardFileInput?.click()" class="px-4 py-2 rounded-xl text-sm font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50">⬆️ رفع بطاقة جاهزة</button>
+                                <label class="sr-only" for="f-card-upload">رفع بطاقة جاهزة (PNG أو JPEG)</label>
+                                <input id="f-card-upload" ref="cardFileInput" type="file" accept="image/png,image/jpeg" class="hidden" @change="onCardFile"/>
+
+                                <button v-if="editItem.card_is_custom" type="button" @click="removeCustomCard" class="px-4 py-2 rounded-xl text-sm font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40">🗑️ إزالة المرفوعة</button>
+                            </div>
+
+                            <!-- hero image -->
+                            <div class="rounded-xl border p-4 space-y-2 border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40">
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <button type="button" @click="heroFileInput?.click()" class="px-4 py-2 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">🏞️ صورة الترويسة</button>
+                                    <label class="sr-only" for="f-hero-upload">رفع صورة ترويسة البطاقة (PNG أو JPEG)</label>
+                                    <input id="f-hero-upload" ref="heroFileInput" type="file" accept="image/png,image/jpeg" class="hidden" @change="onHeroFile"/>
+                                    <img v-if="editItem.hero_url" :src="editItem.hero_url" alt="صورة ترويسة البطاقة" class="max-h-24 max-w-full rounded-lg border border-gray-200 dark:border-gray-700"/>
+                                </div>
+                                <p class="text-xs text-gray-400 dark:text-gray-500">إن لم تُرفع تُستخدم الترويسة الافتراضية من الإعدادات</p>
+                            </div>
+                        </template>
+                    </section>
+
+                    <!-- ===== Section 4 : includes / excludes ===== -->
                     <section class="space-y-3">
                         <div class="pb-2 border-b border-gray-200 dark:border-gray-700">
                             <h4 class="text-sm font-bold text-gray-800 dark:text-gray-100">✅ العرض يشمل / ❌ العرض لا يشمل</h4>
@@ -361,6 +455,13 @@ const dateVal = (v) => (v ? String(v).slice(0, 10) : '');
 const hasPrice = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
 const hotelNames = (o) => (o.hotels || []).map((h) => h?.name).filter(Boolean).join('، ') || '—';
 
+// حالة بطاقة العرض في الجدول
+const cardChip = (o) => {
+    if (!o?.card_url) return { text: '—', cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300' };
+    if (o.card_is_stale) return { text: '⚠️ قديمة', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
+    return { text: '✅ جاهزة', cls: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' };
+};
+
 const toArr = (v) => {
     if (Array.isArray(v)) return v.map((x) => String(x ?? ''));
     if (typeof v === 'string' && v.trim()) {
@@ -381,7 +482,24 @@ const blankPrices = () => {
     roomKeys.value.forEach((k) => { p[k] = null; });
     return p;
 };
-const blankHotel = () => ({ name: '', rating: null, includes_note: '', prices: blankPrices() });
+const blankHotel = () => ({
+    name: '',
+    rating: null,
+    rating_plus: false,
+    location: '',
+    meals: '',
+    distance_haram: '',
+    includes_note: '',
+    prices: blankPrices(),
+});
+
+const MEAL_OPTIONS = ['بدون', 'إفطار', 'إفطار وعشاء', 'إفطار وغداء وعشاء'];
+
+// «4+» / «4» — what the card will print for this hotel's rating
+const ratingLabel = (h) => {
+    if (h?.rating === null || h?.rating === undefined || h?.rating === '') return '';
+    return String(h.rating) + (h?.rating_plus ? '+' : '');
+};
 
 // min of the filled prices of one hotel row (null when nothing usable)
 const hotelMin = (h) => {
@@ -404,6 +522,7 @@ const form = useForm({
     title: '',
     category: 'package',
     description_client: '',
+    notes_public: '',
     nights: null,
     airline: '',
     valid_from: '',
@@ -441,6 +560,7 @@ const openModal = (o) => {
     form.title = o?.title || '';
     form.category = o?.category || 'package';
     form.description_client = o?.description_client || '';
+    form.notes_public = o?.notes_public || '';
     form.nights = o?.nights ?? null;
     form.airline = o?.airline || '';
     form.valid_from = dateVal(o?.valid_from);
@@ -459,11 +579,16 @@ const openModal = (o) => {
         return {
             name: h?.name || '',
             rating: h?.rating ?? null,
+            rating_plus: !!h?.rating_plus,
+            location: h?.location || '',
+            meals: h?.meals || '',
+            distance_haram: h?.distance_haram || '',
             includes_note: h?.includes_note || '',
             prices,
         };
     });
     form.clearErrors();
+    cardBusy.value = false;
     showForm.value = true;
 };
 
@@ -476,9 +601,17 @@ const submit = () => {
             const v = h?.prices?.[k];
             prices[k] = v === null || v === undefined || String(v).trim() === '' ? null : Number(v);
         });
+        const txt = (v) => {
+            const s = String(v ?? '').trim();
+            return s === '' ? null : s;
+        };
         return {
             name: String(h?.name || '').trim(),
             rating: h?.rating === '' || h?.rating === undefined ? null : h?.rating,
+            rating_plus: !!h?.rating_plus,
+            location: txt(h?.location),
+            meals: txt(h?.meals),
+            distance_haram: txt(h?.distance_haram),
             includes_note: String(h?.includes_note || '').trim(),
             prices,
             sort_order: i,
@@ -494,6 +627,52 @@ const submit = () => {
 };
 
 const toggleBot = (o) => router.post('/offers/' + o.id + '/toggle-bot', {}, { preserveScroll: true, preserveState: false });
+
+/* ===== بطاقة العرض (PNG) ===== */
+const cardBusy = ref(false);
+const cardFileInput = ref(null);
+const heroFileInput = ref(null);
+
+// المودال مفتوح على صف قديم — أعد ربطه بالصف المحدّث حتى تظهر البطاقة الجديدة
+const syncEditItem = () => {
+    if (!editItem.value) return;
+    const fresh = (props.offers?.data || []).find((x) => x.id === editItem.value.id);
+    if (fresh) editItem.value = fresh;
+};
+
+const generateCard = () => {
+    if (!editItem.value || cardBusy.value) return;
+    cardBusy.value = true;
+    router.post('/offers/' + editItem.value.id + '/card', {}, {
+        preserveScroll: true,
+        onSuccess: syncEditItem,
+        onFinish: () => { cardBusy.value = false; },
+    });
+};
+
+const uploadImage = (e, key, url) => {
+    const file = e?.target?.files?.[0];
+    if (!file || !editItem.value) return;
+    const fd = new FormData();
+    fd.append(key, file);
+    router.post('/offers/' + editItem.value.id + url, fd, {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: syncEditItem,
+    });
+    e.target.value = '';
+};
+
+const onCardFile = (e) => uploadImage(e, 'card', '/card/upload');
+const onHeroFile = (e) => uploadImage(e, 'hero', '/hero');
+
+const removeCustomCard = () => {
+    if (!editItem.value) return;
+    router.delete('/offers/' + editItem.value.id + '/card', {
+        preserveScroll: true,
+        onSuccess: syncEditItem,
+    });
+};
 
 const filterParams = () => ({
     search: search.value || undefined,

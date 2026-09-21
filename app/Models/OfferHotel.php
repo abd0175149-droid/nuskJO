@@ -15,9 +15,21 @@ class OfferHotel extends Model
         'quad'   => 'رباعية',
     ];
 
-    protected $fillable = ['offer_id', 'name', 'rating', 'includes_note', 'prices', 'sort_order'];
+    protected $fillable = [
+        'offer_id', 'name', 'rating', 'rating_plus', 'location', 'meals',
+        'distance_haram', 'includes_note', 'prices', 'sort_order',
+    ];
 
-    protected $casts = ['prices' => 'array'];
+    protected $casts = [
+        'prices' => 'array',
+        'rating_plus' => 'boolean',
+    ];
+
+    /** التصنيف كما يُكتب في البطاقة: «4+» أو «4» */
+    public function ratingLabel(): ?string
+    {
+        return $this->rating ? $this->rating . ($this->rating_plus ? '+' : '') : null;
+    }
 
     public function offer(): BelongsTo
     {
@@ -50,7 +62,10 @@ class OfferHotel extends Model
     {
         return [
             'hotel' => $this->name,
-            'rating' => $this->rating,
+            'rating' => $this->ratingLabel(),
+            'location' => $this->location,
+            'meals' => $this->meals,
+            'distance_from_haram' => $this->distance_haram,
             'price_includes' => $this->includes_note,
             'prices_per_person_jod' => collect($this->availablePrices())
                 ->mapWithKeys(fn ($v, $k) => [$v['label'] => $v['price_per_person_jod']])

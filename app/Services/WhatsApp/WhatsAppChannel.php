@@ -54,6 +54,39 @@ class WhatsAppChannel
     }
 
     /**
+     * إرسال صورة عبر رابط عام (بطاقة عرض مثلاً) مع تعليق اختياري.
+     *
+     * ميتا هي من تجلب الرابط، فيجب أن يكون HTTPS ومتاحاً بلا مصادقة —
+     * وهذا ينطبق على /storage لأنّ storage:link يُنشأ عند إقلاع الحاوية.
+     *
+     * @return array{ok:bool, error:?string, code:?string, message_id:?string}
+     */
+    public static function sendImage(
+        WaConversation $conv,
+        string $url,
+        ?string $caption = null,
+        string $source = 'bot',
+        ?int $staffId = null
+    ): array {
+        if (!str_starts_with($url, 'https://')) {
+            return self::fail('BAD_MEDIA_URL', 'رابط الصورة يجب أن يكون HTTPS ليقبله واتساب.');
+        }
+
+        $image = ['link' => $url];
+        if ($caption !== null && trim($caption) !== '') {
+            $image['caption'] = mb_substr($caption, 0, 1024);
+        }
+
+        return self::dispatch($conv, [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => $conv->wa_phone,
+            'type' => 'image',
+            'image' => $image,
+        ], $caption ?: '📷 صورة', 'image', $source, $staffId);
+    }
+
+    /**
      * إرسال أزرار (حتى 3) — معرّف كل زر يحمل الحالة مثل offer:12
      * @param array<array{id:string,title:string}> $buttons
      */

@@ -8,7 +8,10 @@ use App\Models\QuoteRequest;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaCustomerNote;
+use App\Services\OfferCardService;
 use App\Services\TravelersReport;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * أدوات المجال — الحدّ الفاصل بين البوت ونظام نُسك.
@@ -37,6 +40,17 @@ class BotTools
             [
                 'name' => 'get_offer_details',
                 'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله، وفنادقه المتاحة وسعر الفرد في كل فندق حسب سعة الغرفة، وما يشمله سعر كل فندق. استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
+                    'required' => ['offer_id'],
+                ],
+            ],
+            [
+                'name' => 'send_offer_card',
+                'description' => 'أرسل للعميل صورة بطاقة العرض (تحوي الفنادق والأسعار حسب سعة الغرفة وما يشمله العرض). '
+                    . 'استدعِها بعد أن يختار العميل عرضاً محدّداً أو يطلب تفاصيله أو صورته أو «التفاصيل كاملة». '
+                    . 'أرسل البطاقة مرّة واحدة لكل عرض في المحادثة، ولا تصف محتوى الصورة بعدها — جملة قصيرة تكفي.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
@@ -124,6 +138,7 @@ class BotTools
         return match ($name) {
             'get_offers' => self::getOffers($in),
             'get_offer_details' => self::getOfferDetails($in),
+            'send_offer_card' => self::sendOfferCard($in, $conv),
             'get_my_balance' => self::getBalance($conv),
             'get_my_invoices' => self::getInvoices($conv),
             'get_my_trips' => self::getTrips($conv),
@@ -165,6 +180,56 @@ class BotTools
         return [
             'offer' => $o->toBotArray(),
             'note' => 'اعرض التفاصيل بإيجاز. إن أراد الحجز فاستدعِ confirm_booking.',
+        ];
+    }
+
+    /** إرسال بطاقة العرض كصورة — تُولَّد عند الطلب إن لم تكن جاهزة */
+    private static function sendOfferCard(array $in, WaConversation $conv): array
+    {
+        $offer = Offer::forBot()->with('hotels')->find($in['offer_id'] ?? 0);
+        if (!$offer) {
+            return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ العرض غير متاح واعرض البدائل.'];
+        }
+
+        $path = $offer->cardImage();
+
+        // البطاقة غير موجودة أو قديمة بعد تعديل الأسعار → نولّدها الآن
+        if (!$path || $offer->cardIsStale()) {
+            try {
+                $path = OfferCardService::generate($offer);
+            } catch (\Throwable $e) {
+                Log::error('تعذّر توليد بطاقة العرض للبوت', [
+                    'offer_id' => $offer->id, 'error' => $e->getMessage(),
+                ]);
+
+                return [
+                    'sent' => false,
+                    'note' => 'تعذّر إرسال الصورة. اذكر تفاصيل العرض وأسعاره نصّاً بإيجاز بدلاً منها، ولا تعتذر عن الصورة.',
+                ];
+            }
+        }
+
+        $res = WhatsAppChannel::sendImage(
+            $conv,
+            url(Storage::disk('public')->url($path)),
+            mb_substr($offer->title, 0, 200),
+            'bot'
+        );
+
+        if (!$res['ok']) {
+            Log::warning('فشل إرسال بطاقة العرض', ['offer_id' => $offer->id, 'error' => $res['error']]);
+
+            return [
+                'sent' => false,
+                'note' => 'تعذّر إرسال الصورة. اذكر التفاصيل نصّاً بإيجاز بدلاً منها.',
+            ];
+        }
+
+        return [
+            'sent' => true,
+            'offer' => $offer->title,
+            'note' => 'أُرسلت البطاقة للعميل بالفعل. لا تصف محتواها ولا تعيد سرد الأسعار — '
+                . 'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
         ];
     }
 

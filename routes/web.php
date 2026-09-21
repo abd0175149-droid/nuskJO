@@ -62,6 +62,7 @@ Route::middleware('auth')->group(function () {
     Route::put('settings', [SettingController::class, 'update'])->name('settings.update');
     Route::post('settings/exchange-rate', [SettingController::class, 'storeExchangeRate'])->name('settings.exchange-rate');
     Route::post('settings/upload-template', [SettingController::class, 'uploadTemplate'])->name('settings.upload-template');
+    Route::post('settings/brand-asset', [SettingController::class, 'uploadBrandAsset'])->name('settings.brand-asset');
     Route::get('settings/print-layout', [SettingController::class, 'printLayout'])->name('settings.print-layout');
     Route::post('settings/print-layout', [SettingController::class, 'savePrintLayout'])->name('settings.save-print-layout');
     Route::resource('attendance-locations', \App\Http\Controllers\AttendanceLocationController::class)->only(['index', 'store', 'update', 'destroy']);
@@ -117,6 +118,13 @@ Route::middleware('auth')->group(function () {
     // العروض (يقرأها البوت)
     Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::post('offers/{offer}/toggle-bot', [\App\Http\Controllers\OfferController::class, 'toggleBot'])->name('offers.toggle-bot');
+
+    // بطاقة العرض التسويقية (صورة تُرسل للعميل على واتساب)
+    Route::post('offers/{offer}/card', [\App\Http\Controllers\OfferController::class, 'generateCard'])->name('offers.card.generate');
+    Route::get('offers/{offer}/card/preview', [\App\Http\Controllers\OfferController::class, 'previewCard'])->name('offers.card.preview');
+    Route::post('offers/{offer}/card/upload', [\App\Http\Controllers\OfferController::class, 'uploadCard'])->name('offers.card.upload');
+    Route::delete('offers/{offer}/card', [\App\Http\Controllers\OfferController::class, 'deleteCard'])->name('offers.card.delete');
+    Route::post('offers/{offer}/hero', [\App\Http\Controllers\OfferController::class, 'uploadHero'])->name('offers.hero.upload');
 
     // طلبات التسعير والحجز
     Route::get('quote-requests', [\App\Http\Controllers\QuoteRequestController::class, 'index'])->name('quote-requests.index');

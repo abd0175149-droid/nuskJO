@@ -45,6 +45,9 @@ class BotEngine
 الأدوات:
 - استخدم الأدوات فعلياً ولا تكتب أسماءها في نصّ الردّ إطلاقاً.
 - إن لم تتوفّر معلومة من أداة فلا تخترعها — اسأل العميل أو حوّل لموظف.
+- متى اختار العميل عرضاً بعينه أو طلب تفاصيله: استدعِ send_offer_card لترسل له بطاقة العرض بالصورة،
+  فهي تحوي الفنادق والأسعار كاملة. بعد إرسالها لا تُعد سرد الأسعار نصّاً — اسأله أيّ فندق يناسبه.
+- أرسل البطاقة مرّة واحدة لكل عرض في المحادثة الواحدة.
 TXT;
 
     /**
@@ -244,8 +247,8 @@ TXT;
     /** حارس تسريب الأدوات: النموذج يكتب اسم أداة أو كتلة كود كنصّ */
     private static function stripToolLeak(string $text): string
     {
-        $names = ['get_offers','get_offer_details','get_my_balance','get_my_invoices','get_my_trips',
-                  'request_quote','confirm_booking','save_note','handoff_to_human'];
+        $names = ['get_offers','get_offer_details','send_offer_card','get_my_balance','get_my_invoices',
+                  'get_my_trips','request_quote','confirm_booking','save_note','handoff_to_human'];
 
         $clean = preg_replace('/```.*?```/s', '', $text) ?? $text;
         foreach ($names as $n) {
