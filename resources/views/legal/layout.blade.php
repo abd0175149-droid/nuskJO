@@ -3,7 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title') — شركة نُسك للسياحة والسفر</title>
+    @php($co = \App\Services\CompanyInfo::all())
+<title>@yield('title') — {{ $co['name'] }}</title>
     <meta name="description" content="@yield('desc')">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -52,7 +53,7 @@
 <body>
 <div class="wrap">
     <header>
-        <div class="brand">شركة نُسك للسياحة والسفر</div>
+        <div class="brand">{{ $co['name'] }}</div>
         <h1>@yield('title')</h1>
         <p class="updated">آخر تحديث: {{ $updated ?? '21 أيلول 2026' }}</p>
         <nav class="legal">
@@ -65,9 +66,13 @@
     @yield('content')
 
     <footer>
-        © {{ date('Y') }} شركة نُسك للسياحة والسفر — المملكة الأردنية الهاشمية.
+        © {{ date('Y') }} {{ $co['name'] }} — المملكة الأردنية الهاشمية.
+        @if($co['address'])<br>{{ $co['address'] }}@endif
+        @if($co['hours'])<br>الدوام: {{ $co['hours'] }}@endif
         <br>
-        للاستفسار: <a href="mailto:info@nusuk-jo.com">info@nusuk-jo.com</a>
+        @if($co['phone'])هاتف: <a href="tel:{{ $co['phone'] }}" dir="ltr">{{ $co['phone'] }}</a>@endif
+        @if($co['email']) · <a href="mailto:{{ $co['email'] }}">{{ $co['email'] }}</a>@endif
+        @if($co['facebook']) · <a href="{{ $co['facebook'] }}" target="_blank" rel="noopener">فيسبوك</a>@endif
     </footer>
 </div>
 </body>

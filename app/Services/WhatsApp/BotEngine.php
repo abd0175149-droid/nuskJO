@@ -101,7 +101,9 @@ TXT;
         $history = $provider->buildHistory(self::buildMessages($conv, $s));
         $tools = BotTools::declarations($s, $conv);
 
-        $usage = ['calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0];
+        $usage = ['calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0,
+                  'tools' => [], 'leaked' => false, 'ms' => 0];
+        $t0 = microtime(true);
         $final = '';
         $loops = max(1, min(8, (int) $s->max_tool_loops));
 
@@ -132,12 +134,17 @@ TXT;
                     Log::error("tool {$tc['name']} failed: " . $e->getMessage());
                     $out = ['error' => 'تعذّر تنفيذ العملية', 'note' => 'اعتذر بإيجاز واقترح تحويل المحادثة لموظف.'];
                 }
+                $usage['tools'][] = $tc['name'];
                 $results[] = ['id' => $tc['id'], 'name' => $tc['name'], 'output' => $out];
             }
             $provider->appendToolResults($history, $results);
         }
 
-        return [self::stripToolLeak($final), $usage];
+        $clean = self::stripToolLeak($final);
+        $usage['leaked'] = ($clean !== $final);
+        $usage['ms'] = (int) ((microtime(true) - $t0) * 1000);
+
+        return [$clean, $usage];
     }
 
     // ==================== تركيب الموجّه ====================
@@ -150,6 +157,12 @@ TXT;
     private static function buildSystem(WaConversation $conv, WaBotSetting $s): array
     {
         $static = trim($s->system_prompt ?: self::DEFAULT_PROMPT);
+
+        // هوية الشركة تُقرأ من الإعدادات دائماً — لا تُكتب يدوياً في قاعدة المعرفة
+        $static .= "
+
+" . \App\Services\CompanyInfo::botBlock();
+
         if ($s->knowledge_base) {
             $static .= "\n\n=== قاعدة المعرفة ===\n" . trim($s->knowledge_base);
         }
@@ -269,6 +282,9 @@ TXT;
                 'output_tokens' => $u['out'],
                 'cache_read_tokens' => $u['cache_read'],
                 'cache_write_tokens' => $u['cache_write'],
+                'tools_used' => array_values(array_unique($u['tools'] ?? [])),
+                'leaked' => (bool) ($u['leaked'] ?? false),
+                'latency_ms' => (int) ($u['ms'] ?? 0),
                 'created_at' => now(),
             ]);
         } catch (\Throwable $e) {

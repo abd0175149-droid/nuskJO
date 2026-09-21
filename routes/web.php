@@ -109,6 +109,9 @@ Route::middleware('auth')->group(function () {
     Route::post('api/whatsapp/conversations/{conversation}/resolve', [\App\Http\Controllers\WhatsAppController::class, 'resolve']);
     Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'settings'])->name('whatsapp.settings');
     Route::put('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'updateSettings'])->name('whatsapp.settings.update');
+    Route::get('whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analytics'])->name('whatsapp.analytics');
+    Route::get('api/whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analyticsData']);
+    Route::put('whatsapp/prices', [\App\Http\Controllers\WhatsAppController::class, 'savePrices'])->name('whatsapp.prices');
     Route::post('api/whatsapp/test-key', [\App\Http\Controllers\WhatsAppController::class, 'testKey']);
 
     // العروض (يقرأها البوت)

@@ -13,7 +13,7 @@ class WaBotSetting extends Model
         'wa_token', 'wa_phone_number_id', 'wa_verify_token', 'wa_app_secret',
         'provider', 'model', 'api_key', 'system_prompt', 'knowledge_base',
         'context_messages', 'pause_minutes', 'max_tool_loops', 'rate_limit_per_hour',
-        'fail_message', 'fail_handoff', 'tools_config',
+        'fail_message', 'fail_handoff', 'tools_config', 'model_prices', 'cache_discount',
     ];
 
     protected $casts = [
@@ -21,6 +21,7 @@ class WaBotSetting extends Model
         'wa_suspended' => 'boolean',
         'fail_handoff' => 'boolean',
         'tools_config' => 'array',
+        'model_prices' => 'array',
         'wa_token' => 'encrypted',
         'wa_app_secret' => 'encrypted',
         'api_key' => 'encrypted',

@@ -10,7 +10,8 @@ class WaBotUsage extends Model
     public $timestamps = false;
     protected $fillable = [
         'conversation_id', 'source', 'model', 'calls',
-        'prompt_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens', 'created_at',
+        'prompt_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens',
+        'tools_used', 'leaked', 'latency_ms', 'created_at',
     ];
-    protected $casts = ['created_at' => 'datetime'];
+    protected $casts = ['created_at' => 'datetime', 'tools_used' => 'array', 'leaked' => 'boolean'];
 }

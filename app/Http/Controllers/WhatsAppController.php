@@ -234,6 +234,42 @@ class WhatsAppController extends Controller
         return back()->with('success', 'تم حفظ إعدادات البوت');
     }
 
+    // ==================== التحليلات ====================
+
+    public function analytics()
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        return Inertia::render('WhatsApp/Analytics', [
+            'title' => 'استهلاك البوت وجودته',
+            'usage' => \App\Services\WhatsApp\BotAnalytics::usage(),
+            'quality' => \App\Services\WhatsApp\BotAnalytics::quality(),
+        ]);
+    }
+
+    public function analyticsData()
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        return response()->json([
+            'usage' => \App\Services\WhatsApp\BotAnalytics::usage(),
+            'quality' => \App\Services\WhatsApp\BotAnalytics::quality(),
+        ]);
+    }
+
+    public function savePrices(Request $request)
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        $data = $request->validate([
+            'model_prices' => 'required|array',
+            'cache_discount' => 'nullable|numeric|min:0|max:1',
+        ]);
+        WaBotSetting::current()->update($data);
+
+        return back()->with('success', 'تم حفظ الأسعار');
+    }
+
     /**
      * فحص المفتاح وجلب النماذج المتاحة فعلياً لهذا الحساب.
      * أسماء النماذج تتغيّر باستمرار، فنقرأها حيّاً بدل تثبيتها في الكود.
