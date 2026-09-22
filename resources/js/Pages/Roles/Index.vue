@@ -118,7 +118,12 @@ const actionTranslations = {
     manual_edit: 'تعديل يدوي',
     generate: 'توليد',
     employee_profit: 'أرباح الموظفين',
-    trip_date: 'تقارير الرحلات (المسافرون بتاريخ)'
+    trip_date: 'تقارير الرحلات (المسافرون بتاريخ)',
+    view_all: 'رؤية كل المحادثات (لا محادثات اختصاصه فقط)',
+    reply: 'الردّ على العملاء',
+    assign: 'نقل المحادثات بين الموظفين',
+    bot_toggle: 'تشغيل البوت وإيقافه',
+    settings: 'الإعدادات والتوجيه'
 };
 
 const translateModule = (mod) => moduleTranslations[mod] || mod;

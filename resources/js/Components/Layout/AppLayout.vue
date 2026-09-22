@@ -352,6 +352,7 @@ const menuGroups = [
         { icon: '💰', label: 'طلبات التسعير', route: '/quote-requests', permission: 'quotes.view' },
         { icon: '📦', label: 'العروض والباقات', route: '/offers', permission: 'offers.view' },
         { icon: '🤖', label: 'إعدادات البوت', route: '/whatsapp/settings', permission: 'whatsapp.settings' },
+        { icon: '🎯', label: 'توجيه المحادثات', route: '/whatsapp/routing', permission: 'whatsapp.settings' },
         { icon: '📊', label: 'استهلاك البوت وجودته', route: '/whatsapp/analytics', permission: 'whatsapp.settings' },
     ]},
     { label: '📂 عمليات أخرى', items: [

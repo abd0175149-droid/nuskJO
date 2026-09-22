@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Services\WhatsApp\BotEngine;
+use App\Services\WhatsApp\TopicRouter;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class WhatsAppController extends Controller
@@ -22,7 +25,7 @@ class WhatsAppController extends Controller
         return Inertia::render('WhatsApp/Inbox', [
             'title' => 'محادثات الواتساب',
             'conversations' => $this->conversationList($request),
-            'filters' => $request->only(['filter', 'search']),
+            'filters' => $request->only(['filter', 'search', 'topic']),
             'status' => [
                 'channel_ready' => $s->channelReady(),
                 'bot_ready' => $s->botReady(),
@@ -30,6 +33,12 @@ class WhatsAppController extends Controller
                 'suspended' => $s->wa_suspended,
             ],
             'canReply' => auth()->user()->can('whatsapp.reply'),
+            'canAssign' => auth()->user()->can('whatsapp.assign'),
+            'seesAll' => auth()->user()->can('whatsapp.view_all'),
+            'topics' => TopicRouter::TOPICS,
+            'staff' => auth()->user()->can('whatsapp.assign')
+                ? \App\Models\User::where('is_active', true)->orderBy('name')->get(['id', 'name'])->all()
+                : [],
         ]);
     }
 
@@ -48,8 +57,18 @@ class WhatsAppController extends Controller
     {
         $filter = $request->get('filter', 'all');
 
+        $me = auth()->user();
+
         return WaConversation::query()
             ->with(['client:id,name,code', 'assignee:id,name'])
+            // الموظف لا يرى إلا ما يحمل وسماً من اختصاصه أو ما وُكّل له
+            ->tap(fn ($q) => TopicRouter::scopeVisible($q, $me))
+            ->when($request->topic, fn ($q, $t) => $q->whereExists(function ($sub) use ($t) {
+                $sub->selectRaw(1)->from('wa_conversation_topics')
+                    ->whereColumn('wa_conversation_topics.conversation_id', 'wa_conversations.id')
+                    ->where('wa_conversation_topics.topic', $t);
+            }))
+            ->when($filter === 'mine', fn ($q) => $q->where('assigned_to', $me->id))
             ->when($request->search, function ($q, $s) {
                 $q->where(function ($w) use ($s) {
                     $w->where('phone', 'like', "%{$s}%")
@@ -77,6 +96,8 @@ class WhatsAppController extends Controller
                 'last_at' => $c->last_message_at?->diffForHumans(),
                 'window_open' => $c->isWindowOpen(),
                 'assignee' => $c->assignee?->name,
+                'assigned_to' => $c->assigned_to,
+                'topics' => TopicRouter::topicsOf($c),
             ])->all();
     }
 
@@ -84,9 +105,11 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.view'), 403);
 
+        // staff_id كان يُحفظ ولا يُرسل للواجهة، فلم يكن يظهر من أرسل الرسالة
         $msgs = $conversation->messages()
+            ->with('staff:id,name')
             ->orderBy('id')->limit(300)
-            ->get(['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'created_at'])
+            ->get(['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'staff_id', 'created_at'])
             ->map(fn ($m) => [
                 'id' => $m->id,
                 'direction' => $m->direction,
@@ -95,6 +118,7 @@ class WhatsAppController extends Controller
                 'body' => $m->body,
                 'status' => $m->status,
                 'error' => $m->error_message,
+                'sender' => $m->source === 'staff' ? ($m->staff?->name ?: 'موظف') : null,
                 'at' => $m->created_at?->format('Y-m-d H:i'),
             ]);
 
@@ -110,9 +134,109 @@ class WhatsAppController extends Controller
                 'bot_enabled' => (bool) $conversation->bot_enabled,
                 'needs_attention' => (bool) $conversation->needs_attention,
                 'window_open' => $conversation->isWindowOpen(),
+                'topics' => TopicRouter::topicsOf($conversation),
+                'assignee' => $conversation->assignee?->name,
+                'assigned_to' => $conversation->assigned_to,
             ],
             'notes' => $conversation->notes()->orderByDesc('id')->limit(10)->pluck('note'),
         ]);
+    }
+
+    // ==================== المواضيع والتوجيه ====================
+
+    /** إضافة أو إزالة وسم موضوع يدوياً */
+    public function toggleTopic(Request $request, WaConversation $conversation)
+    {
+        abort_unless(auth()->user()->can('whatsapp.reply'), 403);
+
+        $data = $request->validate([
+            'topic' => ['required', 'string', Rule::in(array_keys(TopicRouter::TOPICS))],
+            'attach' => 'required|boolean',
+        ]);
+
+        if ($data['attach']) {
+            TopicRouter::tag($conversation, $data['topic'], 'manual', auth()->id());
+        } else {
+            TopicRouter::untag($conversation, $data['topic']);
+        }
+
+        return back()->with('success', $data['attach'] ? 'أُضيف الوسم' : 'أُزيل الوسم');
+    }
+
+    /** نقل المحادثة لموظف آخر */
+    public function assign(Request $request, WaConversation $conversation)
+    {
+        abort_unless(auth()->user()->can('whatsapp.assign'), 403);
+
+        $data = $request->validate(['user_id' => 'nullable|exists:users,id']);
+
+        $conversation->update(['assigned_to' => $data['user_id'] ?: null]);
+
+        if ($data['user_id']) {
+            try {
+                \App\Services\NotificationService::send(
+                    (int) $data['user_id'],
+                    '💬 محادثة واتساب مُحوّلة إليك',
+                    ($conversation->display_name ?: $conversation->phone) . ' — حوّلها ' . auth()->user()->name,
+                    ['type' => 'whatsapp', 'icon' => '💬', 'action_url' => '/whatsapp/inbox']
+                );
+            } catch (\Throwable $e) {
+                // الإشعار ليس حرجاً — التوكيل محفوظ
+            }
+        }
+
+        return back()->with('success', 'تم تحديث التوكيل');
+    }
+
+    /** شاشة توجيه المواضيع — المدير يحدّد مختصّي كل موضوع */
+    public function routing()
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        return Inertia::render('WhatsApp/Routing', [
+            'title' => 'توجيه محادثات الواتساب',
+            'topics' => TopicRouter::routingTable(),
+            'users' => \App\Models\User::where('is_active', true)
+                ->orderBy('name')->get(['id', 'name'])->all(),
+        ]);
+    }
+
+    /** حفظ خريطة التوجيه كاملة */
+    public function saveRouting(Request $request)
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        $data = $request->validate([
+            'routes' => 'present|array',
+            'routes.*.topic' => ['required', 'string', Rule::in(array_keys(TopicRouter::TOPICS))],
+            'routes.*.users' => 'present|array',
+            'routes.*.users.*.user_id' => 'required|exists:users,id',
+            'routes.*.users.*.is_primary' => 'boolean',
+        ]);
+
+        DB::transaction(function () use ($data) {
+            DB::table('wa_topic_users')->delete();
+
+            foreach ($data['routes'] as $route) {
+                $seenPrimary = false;
+
+                foreach ($route['users'] as $u) {
+                    // أساسيّ واحد فقط لكل موضوع — الأول يفوز
+                    $primary = !$seenPrimary && !empty($u['is_primary']);
+                    $seenPrimary = $seenPrimary || $primary;
+
+                    DB::table('wa_topic_users')->insert([
+                        'topic' => $route['topic'],
+                        'user_id' => $u['user_id'],
+                        'is_primary' => $primary,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+        });
+
+        return back()->with('success', 'حُفظ التوجيه');
     }
 
     /** ردّ الموظف — يوقف البوت مؤقتاً تلقائياً داخل بوّابة الإرسال */
@@ -187,6 +311,7 @@ class WhatsAppController extends Controller
                 'get_offers' => 'عرض العروض والباقات',
                 'get_offer_details' => 'تفاصيل عرض',
                 'send_offer_card' => 'إرسال صورة بطاقة العرض',
+                'set_topic' => 'تحديد موضوع المحادثة وتوجيهها',
                 'get_my_balance' => 'رصيد ذمّة العميل',
                 'get_my_invoices' => 'فواتير العميل والمتبقي',
                 'get_my_trips' => 'رحلات العميل القادمة',

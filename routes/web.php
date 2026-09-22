@@ -108,6 +108,12 @@ Route::middleware('auth')->group(function () {
     Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send']);
     Route::post('api/whatsapp/conversations/{conversation}/toggle-bot', [\App\Http\Controllers\WhatsAppController::class, 'toggleBot']);
     Route::post('api/whatsapp/conversations/{conversation}/resolve', [\App\Http\Controllers\WhatsAppController::class, 'resolve']);
+
+    // توجيه المحادثات بالموضوع
+    Route::post('api/whatsapp/conversations/{conversation}/topic', [\App\Http\Controllers\WhatsAppController::class, 'toggleTopic']);
+    Route::post('api/whatsapp/conversations/{conversation}/assign', [\App\Http\Controllers\WhatsAppController::class, 'assign']);
+    Route::get('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'routing'])->name('whatsapp.routing');
+    Route::put('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'saveRouting'])->name('whatsapp.routing.save');
     Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'settings'])->name('whatsapp.settings');
     Route::put('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'updateSettings'])->name('whatsapp.settings.update');
     Route::get('whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analytics'])->name('whatsapp.analytics');

@@ -16,5 +16,8 @@ class WaMessage extends Model
 
     public function conversation(): BelongsTo { return $this->belongsTo(WaConversation::class, 'conversation_id'); }
 
+    /** الموظف الذي أرسل الرسالة — للرسائل من نوع staff */
+    public function staff(): BelongsTo { return $this->belongsTo(User::class, 'staff_id'); }
+
     public function isInbound(): bool { return $this->direction === 'in'; }
 }

@@ -247,8 +247,8 @@ TXT;
     /** حارس تسريب الأدوات: النموذج يكتب اسم أداة أو كتلة كود كنصّ */
     private static function stripToolLeak(string $text): string
     {
-        $names = ['get_offers','get_offer_details','send_offer_card','get_my_balance','get_my_invoices',
-                  'get_my_trips','request_quote','confirm_booking','save_note','handoff_to_human'];
+        $names = ['get_offers','get_offer_details','send_offer_card','set_topic','get_my_balance',
+                  'get_my_invoices','get_my_trips','request_quote','confirm_booking','save_note','handoff_to_human'];
 
         $clean = preg_replace('/```.*?```/s', '', $text) ?? $text;
         foreach ($names as $n) {

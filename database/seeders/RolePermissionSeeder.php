@@ -31,7 +31,7 @@ class RolePermissionSeeder extends Seeder
             'receipts' => ['view', 'create', 'approve', 'reject'],
             'invoices' => ['view', 'create', 'update', 'submit', 'approve', 'reject'],
             'reports' => ['view', 'employee_profit', 'trip_date'],
-            'whatsapp' => ['view', 'reply', 'bot_toggle', 'settings'],
+            'whatsapp' => ['view', 'view_all', 'reply', 'assign', 'bot_toggle', 'settings'],
             'offers' => ['view', 'create', 'update', 'delete'],
             'quotes' => ['view', 'price'],
             'settings' => ['view', 'update'],

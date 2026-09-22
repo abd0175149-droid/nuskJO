@@ -39,6 +39,14 @@
                 {{ f.label }}
               </button>
             </div>
+            <select v-model="topic" @change="load()" aria-label="تصفية بحسب الموضوع"
+                    class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs dark:text-white">
+              <option value="">كل المواضيع</option>
+              <option v-for="(label, key) in props.topics" :key="key" :value="key">{{ label }}</option>
+            </select>
+            <p v-if="!props.seesAll" class="text-[11px] text-gray-500 dark:text-gray-400">
+              تظهر لك المحادثات التي تخصّ مجالاتك فقط
+            </p>
           </div>
 
           <div class="overflow-y-auto flex-1">
@@ -50,6 +58,17 @@
                 <span v-if="c.unread" class="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold grid place-items-center">{{ c.unread }}</span>
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ c.preview || '—' }}</p>
+              <div v-if="(c.topics && c.topics.length) || c.assignee" class="flex items-center gap-1 mt-1 flex-wrap">
+                <span v-for="tp in (c.topics || [])" :key="tp.key"
+                      :title="tp.source === 'manual' ? 'وسم يدوي' : 'وسم آلي من البوت'"
+                      class="px-1.5 py-0.5 rounded text-[10px] leading-4"
+                      :class="tp.source === 'manual'
+                        ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-300 ring-1 ring-gold-300 dark:ring-gold-700'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'">
+                  {{ tp.label }}
+                </span>
+                <span v-if="c.assignee" class="text-[10px] text-gray-400 dark:text-gray-500">‹{{ c.assignee }}›</span>
+              </div>
               <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 <span v-if="c.needs_attention" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">⚠️ تدخّل</span>
                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="c.bot_enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
@@ -68,17 +87,60 @@
         <div class="lg:col-span-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden flex flex-col" style="max-height:72vh">
           <template v-if="thread">
             <!-- رأس المحادثة -->
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="font-bold text-sm">{{ thread.name }}</p>
-                <p class="text-xs text-gray-400 font-mono" dir="ltr">{{ thread.phone }}<span v-if="thread.client"> · {{ thread.client }}</span></p>
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="font-bold text-sm">{{ thread.name }}</p>
+                  <p class="text-xs text-gray-400 font-mono" dir="ltr">{{ thread.phone }}<span v-if="thread.client"> · {{ thread.client }}</span></p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button v-if="thread.needs_attention" @click="resolve" class="px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20">✅ تمّت المعالجة</button>
+                  <button @click="toggleBot" class="px-2.5 py-1 rounded-lg text-xs font-bold border"
+                          :class="thread.bot_enabled ? 'border-gray-300 text-gray-600' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20'">
+                    {{ thread.bot_enabled ? '⏸️ إيقاف البوت' : '▶️ تشغيل البوت' }}
+                  </button>
+                </div>
               </div>
-              <div class="flex items-center gap-2">
-                <button v-if="thread.needs_attention" @click="resolve" class="px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20">✅ تمّت المعالجة</button>
-                <button @click="toggleBot" class="px-2.5 py-1 rounded-lg text-xs font-bold border"
-                        :class="thread.bot_enabled ? 'border-gray-300 text-gray-600' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20'">
-                  {{ thread.bot_enabled ? '⏸️ إيقاف البوت' : '▶️ تشغيل البوت' }}
-                </button>
+
+              <!-- المواضيع -->
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-[11px] text-gray-400 dark:text-gray-500">المواضيع:</span>
+                <span v-for="tp in (thread.topics || [])" :key="tp.key"
+                      :title="tp.source === 'manual' ? 'وسم يدوي' : 'وسم آلي من البوت'"
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] leading-4"
+                      :class="tp.source === 'manual'
+                        ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-300 ring-1 ring-gold-300 dark:ring-gold-700'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'">
+                  {{ tp.label }}
+                  <button type="button" @click="setTopic(tp.key, false)"
+                          :aria-label="`إزالة وسم ${tp.label}`" :title="`إزالة وسم ${tp.label}`"
+                          class="leading-none hover:text-red-600 dark:hover:text-red-400">✕</button>
+                </span>
+                <span v-if="!(thread.topics && thread.topics.length)" class="text-[10px] text-gray-400 dark:text-gray-500">بلا وسوم</span>
+
+                <template v-if="addableTopics.length">
+                  <select v-model="newTopic" aria-label="اختيار موضوع للإضافة"
+                          class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[11px] dark:text-white">
+                    <option value="">— اختر موضوعاً</option>
+                    <option v-for="tp in addableTopics" :key="tp.key" :value="tp.key">{{ tp.label }}</option>
+                  </select>
+                  <button type="button" :disabled="!newTopic" @click="addTopic"
+                          class="px-2 py-1 rounded-lg text-[11px] font-bold border border-gold-400 text-gold-700 dark:text-gold-400 disabled:opacity-40">
+                    + وسم
+                  </button>
+                </template>
+              </div>
+
+              <!-- التوكيل -->
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-[11px] text-gray-400 dark:text-gray-500">الموكل إليه:</span>
+                <select v-if="props.canAssign" :value="thread.assigned_to ?? ''" @change="assignTo($event.target.value)"
+                        aria-label="توكيل المحادثة لموظف"
+                        class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[11px] dark:text-white">
+                  <option value="">— بلا توكيل</option>
+                  <option v-for="u in props.staff" :key="u.id" :value="u.id">{{ u.name }}</option>
+                </select>
+                <span v-else class="text-[11px] text-gray-500 dark:text-gray-400">{{ thread.assignee || '— بلا توكيل' }}</span>
               </div>
             </div>
 
@@ -86,10 +148,11 @@
             <div ref="scroller" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-950/40">
               <div v-for="m in messages" :key="m.id" class="flex" :class="m.direction === 'in' ? 'justify-start' : 'justify-end'">
                 <div class="max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm" :class="bubble(m)">
+                  <p v-if="m.sender" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
                   <p class="whitespace-pre-wrap break-words">{{ m.body }}</p>
                   <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70">
                     <span dir="ltr">{{ m.at }}</span>
-                    <span v-if="m.source !== 'customer'">· {{ srcLabel(m.source) }}</span>
+                    <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
                     <span v-if="m.status === 'failed'" class="text-red-200">· فشل</span>
                   </div>
                 </div>
@@ -135,8 +198,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 
 const props = defineProps({
@@ -145,11 +209,17 @@ const props = defineProps({
   filters: Object,
   status: { type: Object, default: () => ({}) },
   canReply: Boolean,
+  canAssign: Boolean,
+  seesAll: Boolean,
+  topics: { type: Object, default: () => ({}) },
+  staff: { type: Array, default: () => [] },
 });
 
 const list = ref([...props.conversations]);
 const filter = ref(props.filters?.filter || 'all');
 const search = ref(props.filters?.search || '');
+const topic = ref(props.filters?.topic || '');
+const newTopic = ref('');
 const activeId = ref(null);
 const thread = ref(null);
 const messages = ref([]);
@@ -166,14 +236,28 @@ const filterTabs = [
   { key: 'attention', label: '⚠️ تدخّل' },
   { key: 'bot', label: '🤖 بوت' },
   { key: 'human', label: '👤 بشري' },
+  { key: 'mine', label: '🙋 الموكلة لي' },
 ];
+
+/** المواضيع غير المرتبطة بالمحادثة المفتوحة — للإضافة اليدوية */
+const addableTopics = computed(() => {
+  const attached = (thread.value?.topics || []).map((t) => t.key);
+  return Object.entries(props.topics)
+    .filter(([key]) => !attached.includes(key))
+    .map(([key, label]) => ({ key, label }));
+});
 
 const api = { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
 
 const load = async () => {
   try {
     const { data } = await axios.get('/api/whatsapp/conversations', {
-      ...api, params: { filter: filter.value, search: search.value || undefined },
+      ...api,
+      params: {
+        filter: filter.value,
+        search: search.value || undefined,
+        topic: topic.value || undefined,
+      },
     });
     list.value = data.conversations || [];
   } catch (e) { /* تجاهل — يُعاد في الدورة التالية */ }
@@ -182,6 +266,7 @@ const load = async () => {
 const debounceLoad = () => { clearTimeout(t); t = setTimeout(load, 400); };
 
 const open = async (id) => {
+  if (activeId.value !== id) newTopic.value = '';
   activeId.value = id;
   sendError.value = '';
   try {
@@ -222,6 +307,35 @@ const resolve = async () => {
     thread.value.needs_attention = false;
     load();
   } catch (e) { /* noop */ }
+};
+
+/** إضافة/إزالة وسم موضوع للمحادثة المفتوحة */
+const setTopic = (key, attach) => {
+  const id = activeId.value;
+  if (!id || !key) return;
+  router.post(`/api/whatsapp/conversations/${id}/topic`, { topic: key, attach }, {
+    preserveScroll: true,
+    preserveState: true,
+    onFinish: () => { if (activeId.value === id) open(id); },
+  });
+};
+
+const addTopic = () => {
+  const key = newTopic.value;
+  if (!key) return;
+  newTopic.value = '';
+  setTopic(key, true);
+};
+
+/** تحويل المحادثة لموظف آخر */
+const assignTo = (value) => {
+  const id = activeId.value;
+  if (!id) return;
+  router.post(`/api/whatsapp/conversations/${id}/assign`, { user_id: value === '' ? null : Number(value) }, {
+    preserveScroll: true,
+    preserveState: true,
+    onFinish: () => { if (activeId.value === id) open(id); },
+  });
 };
 
 const bubble = (m) => {

@@ -63,6 +63,24 @@ class BotTools
                 ],
             ],
             [
+                'name' => 'set_topic',
+                'description' => 'سجّل موضوع المحادثة فور اتّضاحه — حتى قبل أي تحويل لموظف. '
+                    . 'هذا يربط المحادثة بالموظف المختصّ فيتابعها من البداية. '
+                    . 'استدعِها مرّة واحدة لكل موضوع، وإن تعدّدت اهتمامات العميل سجّلها كلها. '
+                    . 'لا تُخبر العميل بذلك ولا تذكره في ردّك إطلاقاً.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'topics' => [
+                            'type' => 'array',
+                            'description' => 'موضوع أو أكثر من: ' . implode(' | ', array_keys(\App\Services\WhatsApp\TopicRouter::TOPICS)),
+                            'items' => ['type' => 'string'],
+                        ],
+                    ],
+                    'required' => ['topics'],
+                ],
+            ],
+            [
                 'name' => 'get_my_balance',
                 'description' => 'رصيد ذمّة العميل الحالي (كم عليه من مبالغ). تعمل فقط إن كان رقم المحادثة مربوطاً بحساب عميل مسجّل.',
                 'input_schema' => ['type' => 'object', 'properties' => []],
@@ -141,9 +159,10 @@ class BotTools
     public static function execute(string $name, array $in, WaConversation $conv): array
     {
         return match ($name) {
-            'get_offers' => self::getOffers($in),
-            'get_offer_details' => self::getOfferDetails($in),
+            'get_offers' => self::getOffers($in, $conv),
+            'get_offer_details' => self::getOfferDetails($in, $conv),
             'send_offer_card' => self::sendOfferCard($in, $conv),
+            'set_topic' => self::setTopic($in, $conv),
             'get_my_balance' => self::getBalance($conv),
             'get_my_invoices' => self::getInvoices($conv),
             'get_my_trips' => self::getTrips($conv),
@@ -155,11 +174,15 @@ class BotTools
         };
     }
 
-    private static function getOffers(array $in): array
+    private static function getOffers(array $in, WaConversation $conv): array
     {
         $q = Offer::forBot()->with('options.stays')->orderBy('sort_order')->orderByDesc('id');
         if (!empty($in['category'])) {
             $q->where('category', $in['category']);
+            // تصفّح تصنيف بعينه دليل كافٍ على الموضوع — نسم المحادثة بلا انتظار
+            if ($t = TopicRouter::fromOfferCategory($in['category'])) {
+                TopicRouter::tag($conv, $t, 'bot');
+            }
         }
         // الترتيب النهائي بـ «يبدأ من» يجري في PHP لأنّ السعر صار داخل الفنادق
         $offers = $q->limit(12)->get()
@@ -175,16 +198,43 @@ class BotTools
         ];
     }
 
-    private static function getOfferDetails(array $in): array
+    private static function getOfferDetails(array $in, WaConversation $conv): array
     {
         $o = Offer::forBot()->with('options.stays')->find($in['offer_id'] ?? 0);
         if (!$o) {
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ هذا العرض غير متاح حالياً واعرض عليه البدائل.'];
         }
 
+        if ($t = TopicRouter::fromOfferCategory($o->category)) {
+            TopicRouter::tag($conv, $t, 'bot');
+        }
+
         return [
             'offer' => $o->toBotArray(),
             'note' => 'اعرض التفاصيل بإيجاز. إن أراد الحجز فاستدعِ confirm_booking.',
+        ];
+    }
+
+    /** تسجيل موضوع المحادثة — يربطها بالموظف المختصّ قبل أي تحويل */
+    private static function setTopic(array $in, WaConversation $conv): array
+    {
+        $raw = $in['topics'] ?? [];
+        if (is_string($raw)) {
+            $raw = [$raw];
+        }
+
+        $added = [];
+        foreach (array_slice((array) $raw, 0, 4) as $topic) {
+            $topic = trim((string) $topic);
+            if (TopicRouter::tag($conv, $topic, 'bot')) {
+                $added[] = TopicRouter::label($topic);
+            }
+        }
+
+        return [
+            'ok' => true,
+            'tagged' => $added,
+            'note' => 'سُجّل داخلياً. لا تذكر هذا للعميل إطلاقاً وتابع الحوار طبيعياً.',
         ];
     }
 
@@ -394,11 +444,8 @@ class BotTools
      */
     private static function escalate(WaConversation $conv, ?QuoteRequest $qr, string $title): void
     {
-        $assignee = null;
-        // موظف العميل المسؤول إن وُجد
-        if ($conv->client_id && ($emp = $conv->client?->employee_id)) {
-            $assignee = \App\Models\Employee::with('user:id,name')->find($emp)?->user_id;
-        }
+        // الأولوية: توكيل قائم ← مختصّ الموضوع ← موظف العميل المسؤول
+        $assignee = TopicRouter::assigneeFor($conv);
 
         $conv->update([
             'bot_enabled' => false,          // تحويل كامل — لا يردّ البوت بعدها
