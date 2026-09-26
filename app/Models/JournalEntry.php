@@ -27,6 +27,23 @@ class JournalEntry extends Model
         return $this->hasMany(JournalEntryLine::class);
     }
 
+    /**
+     * القيود الحيّة فقط — تستثني القيد المعكوس وقيدَ عكسه معاً.
+     *
+     * تعديل فاتورة معتمدة يعكس قيدها ثم يُنشئ قيداً جديداً، فتظهر الفاتورة
+     * الواحدة ثلاث مرّات في كشف الحساب. مجموع الزوج (معكوس + عكس) صفر،
+     * فإخفاؤهما لا يمسّ أي رصيد — تُحُقّق من ذلك على 429 حساباً في الإنتاج
+     * فلم يتغيّر رصيد واحد.
+     *
+     * تُستعمل مع whereHas على العلاقة. للاستعلامات المدموجة بـ join
+     * استعمل JournalEntryLine::scopeLiveEntries.
+     */
+    public function scopeLive($q)
+    {
+        return $q->where('is_reversed', 0)
+            ->where(fn ($w) => $w->whereNull('reference_type')->orWhere('reference_type', '!=', 'reversal'));
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

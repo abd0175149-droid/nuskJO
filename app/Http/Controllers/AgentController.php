@@ -79,8 +79,10 @@ class AgentController extends Controller
             $entries = collect([]);
             $summary = ['total_debit' => 0, 'total_credit' => 0, 'opening_balance' => 0, 'current_balance' => 0];
         } else {
+            // الحركات الملغاة بالتعديل لا تظهر: القيد المعكوس وقيد عكسه معاً
             $lines = \App\Models\JournalEntryLine::where('account_id', $agent->account_id)
                 ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+                ->liveEntries()
                 ->whereBetween('journal_entries.entry_date', [$from, $to . ' 23:59:59'])
                 ->orderBy('journal_entries.entry_date')
                 ->orderBy('journal_entries.id')
@@ -98,13 +100,16 @@ class AgentController extends Controller
                 )
                 ->get();
 
+            // الافتتاحي بنفس الفلتر، وإلّا حُسبت فاتورة عُدّلت لاحقاً مرّتين
             $openingDebit = \App\Models\JournalEntryLine::where('account_id', $agent->account_id)
                 ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+                ->liveEntries()
                 ->where('journal_entries.entry_date', '<', $from)
                 ->sum('journal_entry_lines.debit');
-            
+
             $openingCredit = \App\Models\JournalEntryLine::where('account_id', $agent->account_id)
                 ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+                ->liveEntries()
                 ->where('journal_entries.entry_date', '<', $from)
                 ->sum('journal_entry_lines.credit');
 

@@ -782,6 +782,7 @@ class AccountingController extends Controller
 
         $lines = JournalEntryLine::where('account_id', $account->id)
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->liveEntries()
             ->whereBetween('journal_entries.entry_date', [$from, $to . ' 23:59:59'])
             ->orderBy('journal_entries.entry_date')
             ->orderBy('journal_entries.id')
@@ -796,13 +797,15 @@ class AccountingController extends Controller
             )
             ->get();
 
-        // حساب الرصيد الافتتاحي
+        // حساب الرصيد الافتتاحي — بنفس فلتر الحركات وإلّا اختلّ التراكم
         $openingDebit = JournalEntryLine::where('account_id', $account->id)
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->liveEntries()
             ->where('journal_entries.entry_date', '<', $from)
             ->sum('journal_entry_lines.debit');
         $openingCredit = JournalEntryLine::where('account_id', $account->id)
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->liveEntries()
             ->where('journal_entries.entry_date', '<', $from)
             ->sum('journal_entry_lines.credit');
 
@@ -868,8 +871,9 @@ class AccountingController extends Controller
         $from = $request->from ?? now()->startOfMonth()->toDateString();
         $to = $request->to ?? now()->toDateString();
 
+        // الحركات الملغاة بالتعديل لا تُطبع: القيد المعكوس وقيد عكسه معاً
         $lines = JournalEntryLine::where('account_id', $account->id)
-            ->whereHas('journalEntry', fn ($q) => $q->whereBetween('entry_date', [$from, $to . ' 23:59:59']))
+            ->whereHas('journalEntry', fn ($q) => $q->live()->whereBetween('entry_date', [$from, $to . ' 23:59:59']))
             ->with('journalEntry')
             ->get()
             ->map(fn ($l) => [
@@ -914,8 +918,10 @@ class AccountingController extends Controller
             return $line;
         });
 
+        // الافتتاحي يُفلتَر بنفس القاعدة، وإلّا حُسبت فاتورة عُدّلت لاحقاً مرّتين:
+        // مرّة بقيمتها القديمة في الافتتاحي، ومرّة بقيمتها الجديدة داخل الفترة.
         $openingBalance = JournalEntryLine::where('account_id', $account->id)
-            ->whereHas('journalEntry', fn ($q) => $q->where('entry_date', '<', $from))
+            ->whereHas('journalEntry', fn ($q) => $q->live()->where('entry_date', '<', $from))
             ->sum(DB::raw('debit - credit'));
 
         $template = \App\Models\Setting::where('key', 'print_template_accounting')->first();
