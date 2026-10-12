@@ -13,11 +13,12 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * حفظ العرض بكل أجزائه: البيانات، والعرض الجاهز، والمجموعات والخيارات والفنادق والتكاليف.
+ * حفظ العرض بكل أجزائه: البيانات، والعرض الجاهز، والمجموعات والخيارات والفنادق — بيانات البيع وحدها.
  *
- * الحفظ تحديث بالمعرّف لا حذف وإعادة إنشاء، لأن الفواتير تشير إلى الخيارات
- * والفنادق والبنود. ما له مبيعات لا يُحذف ولا يتغير وكيله — يُعطَّل الخيار بدلاً من ذلك.
- * من لا يملك offers.view_cost لا يرى التكاليف، فلا تُمسّ تكاليف العرض من حفظه.
+ * الوكيل والتكلفة لا يُحفظان على العرض: يُدخلان في كل فاتورة بقيمتهما الفعلية. ما كان مخزّناً منهما
+ * قبل ذلك (offer_costs وعقد الفندق) يبقى في القاعدة كما هو ولا يُقرأ.
+ * الحفظ تحديث بالمعرّف لا حذف وإعادة إنشاء، لأن الفواتير تشير إلى الخيارات والفنادق.
+ * ما له مبيعات لا يُحذف — يُعطَّل الخيار بدلاً من ذلك.
  */
 class OfferWriter
 {
@@ -48,10 +49,7 @@ class OfferWriter
             'travel_mode' => [$isReady ? 'required' : 'nullable', Rule::in(array_keys(Offer::TRAVEL_MODES))],
             'destination' => [$isReady ? 'required' : 'nullable', 'string', 'max:120'],
             'total_seats' => [$isReady ? 'required' : 'nullable', 'integer', 'min:1', 'max:5000'],
-
-            'fixed_costs' => 'nullable|array|max:30',
         ];
-        $rules += self::costRules('fixed_costs.*');
 
         if ($isVisa) {
             $rules += [
@@ -75,7 +73,6 @@ class OfferWriter
                 'groups.*.label' => 'required|string|max:120',
                 'groups.*.city' => 'nullable|string|max:60',
                 'groups.*.nights' => 'nullable|integer|min:0|max:365',
-                'groups.*.service_id' => 'nullable|integer',
                 'groups.*.options' => 'nullable|array|max:20',
                 'groups.*.options.*.id' => 'nullable|integer',
                 'groups.*.options.*.label' => 'nullable|string|max:120',
@@ -94,34 +91,13 @@ class OfferWriter
                 'groups.*.options.*.stays.*.meals' => 'nullable|string|max:60',
                 'groups.*.options.*.stays.*.distance_haram' => 'nullable|string|max:40',
                 'groups.*.options.*.stays.*.nights' => 'nullable|integer|min:0|max:365',
-                'groups.*.options.*.stays.*.agent_id' => 'nullable|integer|exists:agents,id',
-                'groups.*.options.*.stays.*.currency' => ['nullable', Rule::in(['SAR', 'JOD'])],
-                'groups.*.options.*.stays.*.room_rates' => 'nullable|array',
-                'groups.*.options.*.costs' => 'nullable|array|max:10',
             ];
             foreach ($rooms as $r) {
                 $rules["groups.*.options.*.prices.{$r}"] = 'nullable|numeric|min:0|max:999999';
-                $rules["groups.*.options.*.stays.*.room_rates.{$r}"] = 'nullable|numeric|min:0|max:999999';
             }
-            $rules += self::costRules('groups.*.options.*.costs.*');
         }
 
         return $rules;
-    }
-
-    private static function costRules(string $p): array
-    {
-        return [
-            "{$p}.id" => 'nullable|integer',
-            "{$p}.kind" => ['required', Rule::in(array_keys(OfferCost::KINDS))],
-            "{$p}.label" => 'required|string|max:150',
-            "{$p}.agent_id" => 'nullable|integer|exists:agents,id',
-            "{$p}.service_id" => 'nullable|integer',
-            "{$p}.basis" => ['required', Rule::in(array_keys(OfferCost::BASES))],
-            "{$p}.qty" => 'nullable|numeric|min:0|max:9999',
-            "{$p}.unit_cost" => 'nullable|numeric|min:0|max:9999999',
-            "{$p}.currency" => ['required', Rule::in(['SAR', 'JOD'])],
-        ];
     }
 
     public static function messages(): array
@@ -134,15 +110,13 @@ class OfferWriter
             'travel_mode.required' => 'وسيلة السفر مطلوبة للعرض الجاهز.',
             'destination.required' => 'الوجهة مطلوبة للعرض الجاهز.',
             'total_seats.required' => 'عدد المقاعد مطلوب للعرض الجاهز.',
-            'fixed_costs.*.label.required' => 'اسم البند مطلوب.',
-            'groups.*.options.*.costs.*.label.required' => 'اسم البند مطلوب.',
         ];
     }
 
-    /** ما بيع من العرض: مصادر البنود والخيارات في الفواتير غير المرفوضة */
+    /** ما بيع من العرض في الفواتير غير المرفوضة: الخيارات المختارة وفنادقها */
     public static function soldRefs(Offer $offer): array
     {
-        $refs = ['stay' => [], 'cost' => [], 'option' => []];
+        $refs = ['stay' => [], 'option' => []];
         if (!$offer->exists) {
             return $refs;
         }
@@ -152,19 +126,17 @@ class OfferWriter
                 foreach (array_values($l['sel'] ?? []) as $optId) {
                     $refs['option'][(int) $optId] = true;
                 }
-                foreach (($l['costs'] ?? []) as $c) {
-                    if (in_array($c['source_type'] ?? null, ['stay', 'cost'], true)) {
-                        $refs[$c['source_type']][(int) $c['source_id']] = (int) ($c['agent_id'] ?? 0);
-                    }
-                }
             }
+        }
+        foreach (OfferStay::whereIn('option_id', array_keys($refs['option']))->pluck('id') as $sid) {
+            $refs['stay'][(int) $sid] = true;
         }
 
         return $refs;
     }
 
     /** يحفظ العرض ويعيده. يرمي ValidationException برسائل عربية واضحة */
-    public static function save(?Offer $offer, array $data, bool $canCost): Offer
+    public static function save(?Offer $offer, array $data): Offer
     {
         $offer ??= new Offer();
         $isNew = !$offer->exists;
@@ -235,18 +207,14 @@ class OfferWriter
             ];
         }
 
-        return DB::transaction(function () use ($offer, $isNew, $fields, $data, $canCost, $isVisa, $sold) {
+        return DB::transaction(function () use ($offer, $isNew, $fields, $data, $isVisa, $sold) {
             if ($isNew) {
                 $fields['created_by'] = auth()->id();
             }
             $offer->fill($fields)->save();
 
             $errors = [];
-            $keep = ['group' => [], 'option' => [], 'stay' => [], 'cost' => []];
-
-            if ($canCost) {
-                self::syncCosts($offer, null, $data['fixed_costs'] ?? [], $sold, $keep, $errors, 'fixed_costs');
-            }
+            $keep = ['group' => [], 'option' => [], 'stay' => []];
 
             if (!$isVisa) {
                 foreach (array_values($data['groups'] ?? []) as $gi => $g) {
@@ -257,7 +225,6 @@ class OfferWriter
                         'label' => trim($g['label']),
                         'city' => $data['pricing_mode'] === 'city' ? ($g['city'] ?? null) : null,
                         'nights' => $g['nights'] ?? null,
-                        'service_id' => $g['service_id'] ?? null,
                         'sort_order' => $gi,
                     ])->save();
                     $keep['group'][] = $group->id;
@@ -297,32 +264,12 @@ class OfferWriter
                                     'nights' => $s['nights'] ?? null,
                                     'sort_order' => $si,
                                 ];
-                                if ($canCost) {
-                                    $rates = [];
-                                    foreach (array_keys(OfferOption::ROOM_TYPES) as $r) {
-                                        $v = $s['room_rates'][$r] ?? null;
-                                        $rates[$r] = ($v === null || $v === '') ? null : round((float) $v, 3);
-                                    }
-                                    $agentId = !empty($s['agent_id']) ? (int) $s['agent_id'] : null;
-                                    if ($stay->exists && isset($sold['stay'][$stay->id]) && (int) $stay->agent_id !== (int) $agentId) {
-                                        $errors["stay.{$stay->id}"] = "«{$stay->name}» له مبيعات ولا يُغيَّر وكيله. عطّل الخيار وأضف بديلاً بالوكيل الجديد.";
-                                    }
-                                    $fill += ['agent_id' => $agentId, 'room_rates' => $rates, 'currency' => $s['currency'] ?? 'SAR'];
-                                }
                                 $stay->fill($fill)->save();
                                 $keep['stay'][] = $stay->id;
                             }
-                        } elseif ($canCost) {
-                            self::syncCosts($offer, $opt, $o['costs'] ?? [], $sold, $keep, $errors, "option.{$opt->id}");
-                        } else {
-                            $keep['cost'] = array_merge($keep['cost'], $opt->costs()->pluck('id')->all());
                         }
                     }
                 }
-            }
-
-            if (!$canCost) {
-                $keep['cost'] = array_merge($keep['cost'], $offer->fixedCosts()->pluck('id')->all());
             }
 
             // الحذف: ما لم يرد في الحفظ — إلا ما له مبيعات
@@ -334,15 +281,6 @@ class OfferWriter
                         $errors["stay.{$s->id}"] = "«{$s->name}» له مبيعات ولا يُحذف. عطّل خياره بدلاً من ذلك.";
                     } else {
                         $s->delete();
-                    }
-                }
-            }
-            foreach (OfferCost::where('offer_id', $offer->id)->get(['id', 'label']) as $c) {
-                if (!in_array($c->id, $keep['cost'], true)) {
-                    if (isset($sold['cost'][$c->id])) {
-                        $errors["cost.{$c->id}"] = "«{$c->label}» له مبيعات ولا يُحذف. عطّل خياره بدلاً من ذلك.";
-                    } else {
-                        $c->delete();
                     }
                 }
             }
@@ -369,31 +307,6 @@ class OfferWriter
 
             return $offer->fresh();
         });
-    }
-
-    private static function syncCosts(Offer $offer, ?OfferOption $opt, array $rows, array $sold, array &$keep, array &$errors, string $where): void
-    {
-        foreach (array_values($rows) as $ci => $c) {
-            $cost = self::find(OfferCost::class, $c['id'] ?? null, ['offer_id' => $offer->id]) ?? new OfferCost(['offer_id' => $offer->id]);
-            $agentId = !empty($c['agent_id']) ? (int) $c['agent_id'] : null;
-            if ($cost->exists && isset($sold['cost'][$cost->id]) && (int) $cost->agent_id !== (int) $agentId) {
-                $errors["cost.{$cost->id}"] = "«{$cost->label}» له مبيعات ولا يُغيَّر وكيله. عطّل الخيار وأضف بديلاً بالوكيل الجديد.";
-            }
-            $cost->fill([
-                'offer_id' => $offer->id,
-                'option_id' => $opt?->id,
-                'kind' => $c['kind'],
-                'label' => trim($c['label']),
-                'agent_id' => $agentId,
-                'service_id' => $c['service_id'] ?? null,
-                'basis' => $c['basis'],
-                'qty' => (float) ($c['qty'] ?? 1),
-                'unit_cost' => round((float) ($c['unit_cost'] ?? 0), 3),
-                'currency' => $c['currency'],
-                'sort_order' => $ci,
-            ])->save();
-            $keep['cost'][] = $cost->id;
-        }
     }
 
     /** سجل بمعرّفه إن كان ينتمي لهذا العرض — لا يُقبل معرّف من عرض آخر */

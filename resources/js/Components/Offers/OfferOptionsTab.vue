@@ -1,7 +1,7 @@
 <template>
     <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
         <div class="space-y-5 min-w-0">
-            <!-- ===== تأشيرة: السعر وبند تكلفتها ===== -->
+            <!-- ===== تأشيرة: السعر ===== -->
             <template v-if="isVisa">
                 <section :class="box">
                     <h4 :class="h4">🛂 سعر التأشيرة</h4>
@@ -9,9 +9,8 @@
                         <label for="f-visa-price" :class="lbl">السعر للفرد (د.أ)<UseTags tags="bot card inv"/></label>
                         <input id="f-visa-price" v-model="form.price_per_person" type="number" step="0.001" min="0" dir="ltr" :class="inp + ' font-mono'"/>
                     </div>
-                    <p :class="hint">هو السعر الذي يقوله البوت وتطبعه البطاقة وتبيع به فاتورة العرض.</p>
+                    <p :class="hint">هو السعر الذي يقوله البوت وتطبعه البطاقة وتبيع به فاتورة العرض. الوكيل والتكلفة يُدخلان في كل فاتورة.</p>
                 </section>
-                <CostList v-if="can.cost" title="بنود التكلفة" hint="تكلفة التأشيرة بوكيلها — تدخل كل فاتورة." :list="form.fixed_costs" :agents="agents" :services="services" :meta="meta" :sold="sold.cost" default-kind="visa" default-currency="SAR"/>
             </template>
 
             <!-- ===== باقي التصنيفات ===== -->
@@ -21,12 +20,12 @@
                         <div>
                             <label for="f-seats2" :class="lbl">المقاعد<UseTags tags="ready inv"/></label>
                             <input id="f-seats2" v-model="form.total_seats" type="number" min="1" dir="ltr" :class="inp + ' font-mono'" :placeholder="form.is_ready ? '' : 'اختياري'"/>
-                            <p :class="hint">يُقسم عليها كل بند «مقطوع للرحلة» (الباص).</p>
+                            <p :class="hint">تحجزها الفواتير المعلّقة والمعتمدة، والبوت يرى «متوفر» أو «مقاعد محدودة».</p>
                         </div>
                         <div>
                             <label for="f-base" :class="lbl">السعر الأساسي للفرد (د.أ)<UseTags tags="bot card inv"/></label>
                             <input id="f-base" v-model="form.base_sell_pp" type="number" step="0.001" min="0" dir="ltr" :class="inp + ' font-mono'"/>
-                            <p :class="hint">يُضاف لسعر الفنادق المختارة، ويغطي البنود الثابتة وهامشها. صفر في نمط الباقات عادةً.</p>
+                            <p :class="hint">يُضاف لسعر الفنادق المختارة، ويغطي ما يشمله العرض خارج الفنادق (التأشيرة، النقل…) وهامشه. صفر في نمط الباقات عادةً.</p>
                         </div>
                         <div>
                             <span :class="lbl">نمط الفنادق</span>
@@ -39,7 +38,6 @@
                     </div>
                 </section>
 
-                <CostList v-if="can.cost" title="بنود ثابتة" hint="تدخل كل فاتورة على العرض بلا اختيار: التأشيرة، الزيارات…" :list="form.fixed_costs" :agents="agents" :services="services" :meta="meta" :sold="sold.cost" default-kind="visa" default-currency="SAR"/>
 
                 <!-- المجموعات -->
                 <section v-for="(g, gi) in form.groups" :key="g._k" class="rounded-xl border overflow-hidden border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -53,13 +51,6 @@
                                 <input :id="'g-city-' + g._k" v-model="g.city" :class="inpSm + ' w-24'"/>
                                 <label :for="'g-nights-' + g._k" class="text-xs text-gray-500">الليالي</label>
                                 <input :id="'g-nights-' + g._k" v-model="g.nights" type="number" min="0" dir="ltr" :class="inpSm + ' w-16 font-mono'"/>
-                            </template>
-                            <template v-if="g.kind === 'stay' && can.cost">
-                                <label :for="'g-svc-' + g._k" class="text-xs text-gray-500">خدمة الإيراد</label>
-                                <select :id="'g-svc-' + g._k" v-model="g.service_id" :class="inpSm + ' w-40'">
-                                    <option :value="null">تلقائي</option>
-                                    <option v-for="s in services" :key="s.id" :value="s.id">{{ s.name }}</option>
-                                </select>
                             </template>
                         </div>
                         <button type="button" @click="removeGroup(gi)" :disabled="groupSold(g)" :title="groupSold(g) ? 'فيها خيارات لها مبيعات' : ''" class="px-2 py-1 rounded-lg text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-30">حذف المجموعة</button>
@@ -100,28 +91,6 @@
                                             <div class="flex items-end"><label :for="'s-plus-' + s._k" class="flex items-center gap-1.5 text-xs cursor-pointer pb-2"><input :id="'s-plus-' + s._k" v-model="s.rating_plus" type="checkbox" class="w-4 h-4 rounded text-gold-500"/> تصنيف زائد (+)</label></div>
                                         </div>
                                     </div>
-                                    <div v-if="can.cost" class="rounded-lg p-2 bg-gray-50 dark:bg-gray-800/60">
-                                        <p class="text-xs font-bold text-gray-500 mb-2">العقد مع الفندق: لا يصل للبوت ولا للبطاقة<UseTags tags="cost"/></p>
-                                        <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
-                                            <div class="col-span-2">
-                                                <label :for="'s-agent-' + s._k" :class="mini">الوكيل *</label>
-                                                <select :id="'s-agent-' + s._k" v-model="s.agent_id" :class="inpSm">
-                                                    <option :value="null">— الوكيل —</option>
-                                                    <option v-for="a in agents" :key="a.id" :value="a.id">{{ a.name }}</option>
-                                                </select>
-                                                <p v-if="stayGone(s)" class="text-[11px] text-amber-600 mt-0.5">له مبيعات: لا يتغير وكيله.</p>
-                                            </div>
-                                            <div>
-                                                <label :for="'s-cur-' + s._k" :class="mini">العملة</label>
-                                                <select :id="'s-cur-' + s._k" v-model="s.currency" :class="inpSm"><option value="SAR">ريال</option><option value="JOD">دينار</option></select>
-                                            </div>
-                                            <div v-for="(rl, rk) in meta.roomTypes" :key="rk">
-                                                <label :for="'s-rate-' + s._k + rk" :class="mini">{{ rl }}: للفرد/ليلة</label>
-                                                <input :id="'s-rate-' + s._k + rk" v-model="s.room_rates[rk]" type="number" step="0.001" min="0" dir="ltr" placeholder="—" :class="inpSm + ' font-mono'"/>
-                                            </div>
-                                        </div>
-                                        <p class="text-[11px] text-gray-400 mt-1">تكلفة الفرد لليلة الواحدة حسب سعة الغرفة. تكلفة الفرد على الفاتورة = هذا الرقم × عدد الليالي.</p>
-                                    </div>
                                 </div>
                                 <button v-if="form.pricing_mode === 'bundle' && opt.stays.length < 4" type="button" @click="opt.stays.push(blankStay(''))" class="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200">+ فندق في مدينة أخرى ضمن الباقة</button>
 
@@ -153,8 +122,7 @@
                                         <input :id="'o-cap-' + opt._k" v-model="opt.capacity" type="number" min="1" dir="ltr" placeholder="غير محدودة" :class="inpSm + ' font-mono'"/>
                                     </div>
                                 </div>
-                                <p :class="hint">الخيار الأول هو الافتراضي ويدخل في «يبدأ من». البقية يعرضها البوت إضافةً بفرق سعرها.</p>
-                                <CostList v-if="can.cost" title="بنود تكلفة هذا الخيار" :list="opt.costs" :agents="agents" :services="services" :meta="meta" :sold="sold.cost" :default-kind="g.kind === 'flight' ? 'flight' : g.kind === 'transport' ? 'transport' : 'service'" default-currency="JOD" compact/>
+                                <p :class="hint">الخيار الأول هو الافتراضي ويدخل في «يبدأ من». البقية يعرضها البوت إضافةً بفرق سعرها. الخيار بفرق سعر يقترح بند تكلفة في الفاتورة.</p>
                             </template>
                         </div>
                     </div>
@@ -174,42 +142,24 @@
             </template>
         </div>
 
-        <!-- اللوحة الجانبية: الاكتمال والهامش (حسب آخر حفظ) -->
+        <!-- اللوحة الجانبية: اكتمال بيانات البيع (حسب آخر حفظ) -->
         <aside class="space-y-4 xl:sticky xl:top-20">
             <div v-if="isNew" :class="box">
-                <p class="text-sm text-gray-500">احفظ العرض ليظهر هنا اكتمال تكاليفه وهامش كل تركيبة.</p>
+                <p class="text-sm text-gray-500">احفظ العرض ليظهر هنا هل يُباع بفاتورة عرض.</p>
             </div>
-            <template v-else-if="can.cost">
-                <div :class="box">
-                    <b v-if="issues.length" class="text-sm text-red-600 dark:text-red-400">لا يُباع بفاتورة عرض بعد: {{ issues.length }} نقاط</b>
-                    <b v-else class="text-sm text-green-600 dark:text-green-400">التكاليف مكتملة: يُباع بفاتورة عرض.</b>
-                    <ul v-if="issues.length" class="list-disc ps-5 text-xs text-red-600 dark:text-red-400 space-y-0.5">
-                        <li v-for="(x, i) in issues.slice(0, 10)" :key="i">{{ x }}</li>
-                        <li v-if="issues.length > 10">و{{ issues.length - 10 }} أخرى…</li>
-                    </ul>
-                    <p v-for="(w, i) in warnings" :key="'w' + i" class="p-2 rounded-lg text-xs bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">{{ w }}</p>
-                    <p class="text-[11px] text-gray-400">حسب آخر حفظ.</p>
-                </div>
-                <div v-if="margin.length" :class="box">
-                    <b class="text-sm">هامش كل تركيبة للفرد (د.أ)</b>
-                    <p class="text-[11px] text-gray-400">الربح وتحته النسبة. الأصفر تحت 20%، والأحمر خسارة. حسب آخر حفظ.</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead><tr class="text-gray-500"><th class="text-right p-1">الخيارات</th><th v-for="(rl, rk) in meta.roomTypes" :key="rk" class="p-1">{{ rl }}</th></tr></thead>
-                            <tbody>
-                                <tr v-for="(row, ri) in margin" :key="ri" class="border-t border-gray-100 dark:border-gray-700">
-                                    <td class="p-1 text-gray-600 dark:text-gray-300">{{ row.label }}</td>
-                                    <td v-for="(rl, rk) in meta.roomTypes" :key="rk" class="p-1 text-center font-mono tabular-nums" :class="cellCls(row.cells[rk])">
-                                        <template v-if="row.cells[rk]">{{ row.cells[rk].profit.toFixed(1) }}<div class="text-[10px] opacity-75">{{ Math.round(row.cells[rk].margin * 100) }}%</div></template>
-                                        <span v-else class="text-gray-300">—</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </template>
-            <div v-else :class="box"><p class="text-sm text-gray-500">التكاليف والوكلاء تظهر لمن يملك صلاحية «عرض تكاليف العروض».</p></div>
+            <div v-else :class="box">
+                <b v-if="issues.length" class="text-sm text-red-600 dark:text-red-400">لا يُباع بفاتورة عرض بعد: {{ issues.length }} نقاط</b>
+                <b v-else class="text-sm text-green-600 dark:text-green-400">بيانات البيع مكتملة: يُباع بفاتورة عرض.</b>
+                <ul v-if="issues.length" class="list-disc ps-5 text-xs text-red-600 dark:text-red-400 space-y-0.5">
+                    <li v-for="(x, i) in issues.slice(0, 10)" :key="i">{{ x }}</li>
+                    <li v-if="issues.length > 10">و{{ issues.length - 10 }} أخرى…</li>
+                </ul>
+                <p class="text-[11px] text-gray-400">حسب آخر حفظ.</p>
+            </div>
+            <div :class="box">
+                <b class="text-sm">أين التكاليف؟</b>
+                <p class="text-xs text-gray-500 leading-relaxed">العرض يحمل البيع وحده. الوكيل والتكلفة يتغيران كل يوم، فيُدخلان في كل فاتورة عند البيع بقيمتهما الفعلية، والفاتورة لا تُعتمد قبل اكتمالهما. مصاريف الرحلة المشتركة (الباص المستأجر، المرشد) تُدخل مرة واحدة في «الإقفال».</p>
+            </div>
         </aside>
     </div>
 </template>
@@ -217,11 +167,9 @@
 <script setup>
 import { computed, ref } from 'vue';
 import UseTags from '@/Components/Offers/UseTags.vue';
-import CostList from '@/Components/Offers/CostList.vue';
 
 const props = defineProps({
-    form: Object, meta: Object, agents: Array, services: Array, can: Object,
-    sold: Object, hasSales: Boolean, issues: Array, warnings: Array, margin: Array, isNew: Boolean,
+    form: Object, meta: Object, sold: Object, hasSales: Boolean, issues: Array, isNew: Boolean,
 });
 
 const box = 'rounded-xl border p-4 space-y-3 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900';
@@ -238,8 +186,7 @@ const newKind = ref('transport');
 
 let uid = 100000;
 const rooms = () => Object.fromEntries(Object.keys(props.meta.roomTypes).map((k) => [k, null]));
-const blankStay = (city) => ({ _k: ++uid, id: null, city: city ?? null, name: '', rating: null, rating_plus: false, location: '', meals: '', distance_haram: '', nights: null, agent_id: null, currency: 'SAR', room_rates: rooms() });
-const blankCost = (kind) => ({ _k: ++uid, id: null, kind, label: '', agent_id: null, service_id: null, basis: 'per_person', qty: 1, unit_cost: null, currency: kind === 'visa' ? 'SAR' : 'JOD' });
+const blankStay = (city) => ({ _k: ++uid, id: null, city: city ?? null, name: '', rating: null, rating_plus: false, location: '', meals: '', distance_haram: '', nights: null });
 
 const optSold = (opt) => opt.id && props.sold?.option?.includes(opt.id);
 const stayGone = (s) => s.id && props.sold?.stay?.includes(s.id);
@@ -248,8 +195,8 @@ const groupSold = (g) => (g.options || []).some(optSold);
 const addGroup = () => {
     const k = newKind.value;
     props.form.groups.push(k === 'stay'
-        ? { _k: ++uid, id: null, kind: 'stay', label: props.form.pricing_mode === 'city' ? 'فندق مدينة' : 'الإقامة', city: '', nights: null, service_id: null, options: [] }
-        : { _k: ++uid, id: null, kind: k, label: props.meta.groupKinds[k], city: null, nights: null, service_id: null, options: [] });
+        ? { _k: ++uid, id: null, kind: 'stay', label: props.form.pricing_mode === 'city' ? 'فندق مدينة' : 'الإقامة', city: '', nights: null, options: [] }
+        : { _k: ++uid, id: null, kind: k, label: props.meta.groupKinds[k], city: null, nights: null, options: [] });
 };
 const removeGroup = (gi) => { props.form.groups.splice(gi, 1); };
 const addOption = (g) => {
@@ -257,9 +204,9 @@ const addOption = (g) => {
         const stays = props.form.pricing_mode === 'bundle'
             ? (['umrah', 'hajj'].includes(props.form.category) && props.form.route_mode === 'makkah_madinah' ? [blankStay('مكة'), blankStay('المدينة')] : [blankStay('')])
             : [blankStay(g.city)];
-        g.options.push({ _k: ++uid, id: null, label: '', includes_note: '', prices: rooms(), sell_flat: 0, capacity: null, is_active: true, stays, costs: [] });
+        g.options.push({ _k: ++uid, id: null, label: '', includes_note: '', prices: rooms(), sell_flat: 0, capacity: null, is_active: true, stays });
     } else {
-        g.options.push({ _k: ++uid, id: null, label: '', includes_note: null, prices: rooms(), sell_flat: 0, capacity: null, is_active: true, stays: [], costs: [blankCost(g.kind === 'flight' ? 'flight' : g.kind === 'transport' ? 'transport' : 'service')] });
+        g.options.push({ _k: ++uid, id: null, label: '', includes_note: null, prices: rooms(), sell_flat: 0, capacity: null, is_active: true, stays: [] });
     }
 };
 const removeOption = (g, oi) => { g.options.splice(oi, 1); };
@@ -273,16 +220,10 @@ const setMode = (mode) => {
     if (typed) return;
     const others = props.form.groups.filter((g) => g.kind !== 'stay');
     const stayGroups = mode === 'city'
-        ? [{ _k: ++uid, id: null, kind: 'stay', label: 'فندق مكة', city: 'مكة', nights: 5, service_id: null, options: [] },
-           { _k: ++uid, id: null, kind: 'stay', label: 'فندق المدينة', city: 'المدينة', nights: 4, service_id: null, options: [] }]
-        : [{ _k: ++uid, id: null, kind: 'stay', label: 'الإقامة', city: null, nights: null, service_id: null, options: [] }];
+        ? [{ _k: ++uid, id: null, kind: 'stay', label: 'فندق مكة', city: 'مكة', nights: 5, options: [] },
+           { _k: ++uid, id: null, kind: 'stay', label: 'فندق المدينة', city: 'المدينة', nights: 4, options: [] }]
+        : [{ _k: ++uid, id: null, kind: 'stay', label: 'الإقامة', city: null, nights: null, options: [] }];
     props.form.groups.splice(0, props.form.groups.length, ...stayGroups, ...others);
 };
 
-const cellCls = (c) => {
-    if (!c) return '';
-    if (c.margin < 0) return 'text-red-600 bg-red-50 dark:bg-red-900/20';
-    if (c.margin < 0.2) return 'text-amber-700 bg-amber-50 dark:bg-amber-900/20';
-    return 'text-green-700 dark:text-green-400';
-};
 </script>

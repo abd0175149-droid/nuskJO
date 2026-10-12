@@ -66,7 +66,7 @@ class InvoiceController extends Controller
     {
         $today = now()->toDateString();
 
-        return Offer::with(['groups.options.stays', 'groups.options.costs', 'fixedCosts'])
+        return Offer::with(['groups.options.stays'])
             ->where('is_active', true)
             ->where(fn ($w) => $w->whereNull('settlement_status')->orWhere('settlement_status', '!=', 'approved'))
             ->where(fn ($w) => $w->where('is_ready', false)->orWhereDate('trip_date', '>', $today))
@@ -76,10 +76,13 @@ class InvoiceController extends Controller
             ->values()->all();
     }
 
-    /** بنية العرض في نموذج الفاتورة: القوائم المنسدلة وأسعار البيع والمتاح — بلا تكاليف */
+    /**
+     * بنية العرض في نموذج الفاتورة: القوائم المنسدلة وأسعار البيع والمتاح، وما يلزم لاقتراح بنود التكلفة
+     * (أسماء الفنادق ولياليها)، و«آخر تكلفة» من الفواتير المعتمدة. العرض نفسه لا يحمل تكلفة.
+     */
     public static function posOffer(Offer $o, ?int $ignoreInvoiceId = null): array
     {
-        $o->loadMissing(['groups.options.stays', 'groups.options.costs', 'fixedCosts']);
+        $o->loadMissing(['groups.options.stays']);
         $issues = OfferPricing::issues($o);
         $today = now()->toDateString();
         $available = $o->availableSeats($ignoreInvoiceId);
@@ -89,12 +92,14 @@ class InvoiceController extends Controller
         elseif (!$o->is_active) $block = 'غير فعّال';
         elseif ($o->is_ready && $o->trip_date && $o->trip_date->toDateString() <= $today) $block = 'أقلعت الرحلة';
         elseif ($o->is_ready && $available !== null && $available <= 0) $block = 'مكتمل';
-        elseif ($issues) $block = 'التكاليف ناقصة';
+        elseif ($issues) $block = 'بيانات البيع ناقصة';
 
         return [
             'id' => $o->id,
             'title' => $o->title,
             'category_label' => $o->categoryLabel(),
+            'is_visa' => $o->isVisa(),
+            'visa_service_id' => $o->isVisa() ? OfferPricing::serviceFor(null, 'visa') : null,
             'is_ready' => (bool) $o->is_ready,
             'trip_date' => $o->trip_date?->toDateString(),
             'return_date' => $o->return_date?->toDateString(),
@@ -115,16 +120,29 @@ class InvoiceController extends Controller
                 'options' => $g->options->map(fn ($opt) => [
                     'id' => $opt->id,
                     'label' => OfferPricing::optionLabel($o, $g, $opt),
+                    'name' => $opt->label ?: $g->label,
                     'is_active' => (bool) $opt->is_active,
                     'prices' => $g->isStay() ? collect(OfferOption::ROOM_TYPES)->keys()
                         ->mapWithKeys(fn ($r) => [$r => $opt->sellFor($r)])->all() : null,
-                    'rooms' => $g->isStay() ? array_values(array_filter(OfferPricing::ROOMS, fn ($r) => $opt->sellFor($r) !== null
-                        && !$opt->stays->contains(fn ($s) => $s->rateFor($r) === null))) : null,
+                    'rooms' => $g->isStay() ? array_values(array_filter(OfferPricing::ROOMS, fn ($r) => $opt->sellFor($r) !== null)) : null,
                     'sell_flat' => (float) $opt->sell_flat,
                     'capacity' => $opt->capacity,
                     'used' => $opt->capacity ? OfferPricing::optionUsage($o, $opt->id, $ignoreInvoiceId) : null,
+                    // لاقتراح بنود التكلفة: كل فندق بلياليه، والخيار المدفوع بنوعه — بلا أي تكلفة
+                    'stays' => $g->isStay() ? $opt->stays->map(function ($s) use ($o, $g) {
+                        $city = OfferPricing::stayCity($o, $g, $s);
+
+                        return [
+                            'id' => $s->id,
+                            'name' => ($s->name ?: 'فندق') . ($city ? " ({$city})" : ''),
+                            'nights' => OfferPricing::stayNights($o, $g, $s),
+                            'service_id' => OfferPricing::serviceFor(null, 'hotel', $city),
+                        ];
+                    })->values()->all() : [],
+                    'service_id' => $g->isStay() ? null : OfferPricing::serviceFor(null, OfferPricing::kindFor($g)),
                 ])->values()->all(),
             ])->values()->all(),
+            'last' => OfferPricing::lastCosts($o, $ignoreInvoiceId),
         ];
     }
 
@@ -197,40 +215,41 @@ class InvoiceController extends Controller
             'offer_id' => 'required|integer|exists:offers,id',
             'invoice_id' => 'nullable|integer',
             'lines' => 'array',
-            'extras' => 'nullable|array',
+            'costs' => 'nullable|array',
             'discount' => 'nullable|numeric|min:0',
             'refresh' => 'boolean',
         ]);
         $offer = Offer::findOrFail($data['offer_id']);
         $invoice = !empty($data['invoice_id']) ? Invoice::where('offer_id', $offer->id)->find($data['invoice_id']) : null;
 
-        $b = OfferPricing::build($offer, $data['lines'] ?? [], $data['extras'] ?? [], (float) ($data['discount'] ?? 0),
+        $b = OfferPricing::build($offer, $data['lines'] ?? [], $data['costs'] ?? [], (float) ($data['discount'] ?? 0),
             $invoice?->offer_lines['lines'] ?? [], (bool) ($data['refresh'] ?? false));
-        $names = Agent::whereIn('id', collect($b['items'])->pluck('agent_id')->filter()->unique())->pluck('name', 'id');
+        $named = collect($b['costs'])->filter(fn ($r) => $r['agent_id']);
+        $names = Agent::whereIn('id', $named->pluck('agent_id')->unique())->pluck('name', 'id');
 
-        // التكلفة الحالية لسطر محفوظ — لينبّه الموظف إن تغيّرت منذ البيع
+        // سعر البيع الحالي لسطر محفوظ — لينبّه البائع إن تغيّر في العرض منذ البيع
         $lines = array_map(function ($l) use ($offer) {
             $now = $l['kept'] ? OfferPricing::priceLine($offer, $l['sel'], $l['room'] ?? 'single') : null;
 
             return [
-                'sell_pp' => $l['sell_pp'], 'cost_pp' => $l['cost_pp'], 'kept' => $l['kept'], 'pax' => $l['pax'],
-                'cost_now' => $now && !$now['errors'] ? $now['cost_pp'] : null,
+                'sell_pp' => $l['sell_pp'], 'kept' => $l['kept'], 'pax' => $l['pax'],
+                'sell_now' => $now && !$now['errors'] ? $now['sell_pp'] : null,
             ];
         }, $b['lines']);
 
         return response()->json([
             'errors' => $b['errors'],
             'lines' => $lines,
-            'agents' => collect($b['items'])->groupBy('agent_id')->map(fn ($its, $a) => [
-                'agent' => $names[$a] ?? 'بلا وكيل',
-                'total' => round($its->sum('total_cost_jod'), 3),
-                'items' => $its->map(fn ($it) => [
-                    'description' => $it['description'], 'qty' => $it['quantity'], 'unit' => $it['unit_price_jod'],
-                    'total' => $it['total_cost_jod'], 'currency' => $it['cost_currency'], 'original' => $it['cost_original'],
+            'agents' => $named->groupBy('agent_id')->map(fn ($rs, $a) => [
+                'agent' => $names[$a] ?? '—',
+                'total' => round($rs->sum('total_jod'), 3),
+                'items' => $rs->map(fn ($r) => [
+                    'description' => $r['description'], 'qty' => $r['qty'], 'unit' => $r['unit_jod'],
+                    'total' => $r['total_jod'], 'currency' => $r['currency'], 'original' => $r['total_original'],
                 ])->values(),
             ])->values(),
             'gross' => $b['gross'], 'discount' => $b['discount'], 'sell' => $b['sell'],
-            'cost' => $b['cost'], 'profit' => $b['profit'], 'pax' => $b['pax'],
+            'cost' => $b['cost'], 'profit' => $b['profit'], 'missing' => $b['missing'], 'pax' => $b['pax'],
             'available' => $offer->availableSeats($invoice?->id),
         ]);
     }
@@ -247,17 +266,21 @@ class InvoiceController extends Controller
             'lines.*.sel' => 'nullable|array',
             'lines.*.room' => 'nullable|string|max:10',
             'lines.*.pax' => 'required|integer|min:1|max:500',
-            'extras' => 'nullable|array|max:10',
-            'extras.*.agent_id' => 'required|exists:agents,id',
-            'extras.*.service_id' => 'nullable|integer',
-            'extras.*.description' => 'required|string|max:255',
-            'extras.*.qty' => 'required|integer|min:1',
-            'extras.*.cost' => 'required|numeric|min:0',
-            'extras.*.sell' => 'required|numeric|min:0',
+            // بنود التكلفة: الوكيل والتكلفة يُدخلان هنا لكل فاتورة، وقد يبقيان فارغين حتى الاعتماد
+            'costs' => 'nullable|array|max:60',
+            'costs.*.src' => 'required|string|max:40',
+            'costs.*.line' => 'nullable|integer|min:0|max:20',
+            'costs.*.description' => 'nullable|string|max:255',
+            'costs.*.agent_id' => 'nullable|integer|exists:agents,id',
+            'costs.*.service_id' => 'nullable|integer|exists:services,id',
+            'costs.*.qty' => 'nullable|integer|min:0|max:5000',
+            'costs.*.unit' => 'nullable|numeric|min:0|max:9999999',
+            'costs.*.currency' => 'nullable|in:SAR,JOD',
+            'costs.*.sell' => 'nullable|numeric|min:0|max:999999',
             'discount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'quote_request_id' => 'nullable|integer|exists:quote_requests,id',
-            'refresh_costs' => 'boolean',
+            'refresh_prices' => 'boolean',
         ];
     }
 
@@ -269,7 +292,7 @@ class InvoiceController extends Controller
             'trip_date.required' => 'تاريخ الرحلة مطلوب.',
             'offer_id.required' => 'اختر العرض.',
             'lines.required' => 'أضف سطر حجز واحداً على الأقل.',
-            'extras.*.agent_id.required' => 'الوكيل مطلوب في البند الإضافي.',
+            'costs.*.agent_id.exists' => 'وكيل بند التكلفة غير موجود.',
         ];
     }
 
@@ -282,7 +305,7 @@ class InvoiceController extends Controller
         return DB::transaction(function () use ($v, $invoice) {
             DB::table('offers')->where('id', $v['offer_id'])->increment('seats_version');
 
-            $offer = Offer::with(['groups.options.stays', 'groups.options.costs', 'fixedCosts'])->findOrFail($v['offer_id']);
+            $offer = Offer::with(['groups.options.stays'])->findOrFail($v['offer_id']);
             $ignore = $invoice?->id;
             $errors = [];
 
@@ -300,12 +323,12 @@ class InvoiceController extends Controller
                 if ($offer->valid_to && $v['trip_date'] > $offer->valid_to->toDateString()) $errors[] = 'تاريخ الرحلة بعد نهاية مدة العرض.';
             }
             foreach (OfferPricing::issues($offer) as $i) {
-                $errors[] = "تكاليف العرض غير مكتملة: {$i}";
+                $errors[] = "بيانات البيع في العرض ناقصة: {$i}";
                 break;
             }
 
-            $b = OfferPricing::build($offer, $v['lines'], $v['extras'] ?? [], (float) ($v['discount'] ?? 0),
-                $invoice?->offer_lines['lines'] ?? [], (bool) ($v['refresh_costs'] ?? false));
+            $b = OfferPricing::build($offer, $v['lines'], $v['costs'] ?? [], (float) ($v['discount'] ?? 0),
+                $invoice?->offer_lines['lines'] ?? [], (bool) ($v['refresh_prices'] ?? false));
             $errors = array_merge($errors, $b['errors']);
 
             if ($offer->total_seats) {
@@ -325,9 +348,7 @@ class InvoiceController extends Controller
                     }
                 }
             }
-            if (!$errors && $b['profit'] < 0) {
-                $errors[] = 'سعر البيع بعد الخصم أقل من التكلفة (' . number_format($b['cost'], 3) . ' د.أ). قلّل الخصم.';
-            }
+            // الخسارة تنبيه في النموذج لا مانع: قد تُباع الفاتورة بخسارة عن قصد، والقيد يسجّلها
             if ($errors) {
                 throw ValidationException::withMessages(['offer' => array_values(array_unique($errors))]);
             }
@@ -356,11 +377,13 @@ class InvoiceController extends Controller
                 'offer_title' => $offer->title,
                 'trip_date' => $v['trip_date'],
                 'lines' => $b['lines'],
+                'costs' => $b['costs'],
                 'extras' => $b['extras'],
                 'gross' => $b['gross'],
                 'discount' => $b['discount'],
                 'sell' => $b['sell'],
                 'cost' => $b['cost'],
+                'missing' => $b['missing'],
                 'pax' => $b['pax'],
             ];
             $fields = [
@@ -542,6 +565,10 @@ class InvoiceController extends Controller
     {
         if (!$invoice->isPending()) {
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
+        }
+        // فاتورة العرض لا تُعتمد قبل أن يكون لكل بند وكيل وتكلفة: يحمي القيد من سطر وكيل فارغ وتقارير الأرباح من ربح وهمي
+        if ($invoice->offer_id && ($missing = OfferPricing::missingCosts($invoice))) {
+            return back()->with('error', "لا تُعتمد الفاتورة {$invoice->invoice_number}: تكاليفها ناقصة ({$missing} " . ($missing >= 3 && $missing <= 10 ? 'بنود' : 'بند') . ' بلا وكيل أو تكلفة). أكملها من «تعديل» ثم اعتمدها.');
         }
 
         try {

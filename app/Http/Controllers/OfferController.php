@@ -36,7 +36,7 @@ class OfferController extends Controller
     {
         abort_unless(auth()->user()->can('offers.view'), 403);
 
-        $offers = Offer::with(['groups.options.stays', 'groups.options.costs', 'fixedCosts', 'options.stays'])
+        $offers = Offer::with(['groups.options.stays', 'options.stays'])
             ->when($request->search, fn ($q, $s) => $q->where('title', 'like', "%{$s}%"))
             ->when($request->category, fn ($q, $c) => $q->where('category', $c))
             ->when($request->kind === 'ready', fn ($q) => $q->where('is_ready', true))
@@ -63,7 +63,7 @@ class OfferController extends Controller
         $filter = $request->get('filter', 'upcoming');
         $today = now()->toDateString();
 
-        $offers = Offer::ready()->with(['groups.options.stays', 'groups.options.costs', 'fixedCosts', 'options.stays'])
+        $offers = Offer::ready()->with(['groups.options.stays', 'options.stays'])
             ->when($filter === 'upcoming', fn ($q) => $q->whereDate('trip_date', '>', $today)
                 ->where(fn ($w) => $w->whereNull('settlement_status')->orWhere('settlement_status', '!=', 'approved')))
             ->when($filter === 'past', fn ($q) => $q->where(fn ($w) => $w->whereDate('trip_date', '<=', $today)->orWhere('settlement_status', 'approved')))
@@ -140,7 +140,7 @@ class OfferController extends Controller
         $end = $o->return_date ?: $o->trip_date;
         if ($end && $end->toDateString() < $today) return ['label' => 'عادت — بانتظار الإقفال', 'tone' => 'blue'];
         if ($o->trip_date && $o->trip_date->toDateString() <= $today) return ['label' => 'في الرحلة', 'tone' => 'blue'];
-        if ($issues) return ['label' => 'لا يُباع: التكاليف ناقصة', 'tone' => 'amber'];
+        if ($issues) return ['label' => 'لا يُباع: بيانات البيع ناقصة', 'tone' => 'amber'];
         $label = $o->availabilityLabel();
         if ($label === 'مكتمل') return ['label' => 'مكتمل', 'tone' => 'red'];
         if ($label === 'مقاعد محدودة') return ['label' => 'مقاعد محدودة', 'tone' => 'amber'];
@@ -169,7 +169,7 @@ class OfferController extends Controller
         $canCost = $this->canCost();
         $props = [
             'title' => $offer ? $offer->title : ($request->boolean('ready') ? 'عرض جاهز جديد' : 'عرض جديد'),
-            'offer' => $offer ? $this->editPayload($offer, $canCost) : $this->blankPayload($request->boolean('ready')),
+            'offer' => $offer ? $this->editPayload($offer) : $this->blankPayload($request->boolean('ready')),
             'tab' => $request->get('tab', 'data'),
             'from' => $request->get('from', $offer?->is_ready || $request->boolean('ready') ? 'ready' : 'offers'),
             'meta' => [
@@ -180,26 +180,21 @@ class OfferController extends Controller
                 'travelModes' => Offer::TRAVEL_MODES,
                 'pricingModes' => Offer::PRICING_MODES,
                 'groupKinds' => OfferGroup::KINDS,
-                'costKinds' => OfferCost::KINDS,
-                'costBases' => OfferCost::BASES,
                 'rate' => OfferPricing::rate(),
             ],
+            // للإقفال وحده: المصاريف المشتركة بوكيلها. العرض لا يحمل وكيلاً ولا تكلفة
             'agents' => $canCost ? Agent::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code', 'currency']) : [],
-            'services' => Service::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'can' => $this->can(),
         ];
 
         if ($offer) {
-            $offer->load(['groups.options.stays', 'groups.options.costs', 'fixedCosts', 'options.stays']);
-            $issues = OfferPricing::issues($offer);
+            $offer->load(['groups.options.stays', 'options.stays']);
             $props += [
                 'summary' => $this->rowFor($offer),
-                'issues' => $canCost ? $issues : [],
-                'warnings' => $canCost ? OfferPricing::warnings($offer) : [],
+                'issues' => OfferPricing::issues($offer),
                 'sold' => array_map(fn ($m) => array_keys($m), OfferWriter::soldRefs($offer)),
                 'bot' => $this->botData($offer),
                 'sales' => $this->salesData($offer, $canCost),
-                'margin' => $canCost ? OfferPricing::marginMatrix($offer) : [],
                 'closing' => $canCost ? $this->closingData($offer) : null,
             ];
         }
@@ -223,22 +218,17 @@ class OfferController extends Controller
             'return_date' => $ready ? $today->copy()->addDays(30)->toDateString() : null,
             'travel_mode' => 'land', 'destination' => $ready ? 'مكة والمدينة' : '', 'total_seats' => $ready ? 40 : null,
             'pricing_mode' => 'city', 'base_sell_pp' => 0,
-            'fixed_costs' => [],
             'groups' => [
-                ['id' => null, 'kind' => 'stay', 'label' => 'فندق مكة', 'city' => 'مكة', 'nights' => 5, 'service_id' => null, 'options' => []],
-                ['id' => null, 'kind' => 'stay', 'label' => 'فندق المدينة', 'city' => 'المدينة', 'nights' => 4, 'service_id' => null, 'options' => []],
+                ['id' => null, 'kind' => 'stay', 'label' => 'فندق مكة', 'city' => 'مكة', 'nights' => 5, 'options' => []],
+                ['id' => null, 'kind' => 'stay', 'label' => 'فندق المدينة', 'city' => 'المدينة', 'nights' => 4, 'options' => []],
             ],
         ];
     }
 
-    /** بنية العرض للتحرير — التكاليف والوكلاء لمن يملك offers.view_cost فقط */
-    private function editPayload(Offer $o, bool $canCost): array
+    /** بنية العرض للتحرير — بيانات البيع وحدها؛ الوكيل والتكلفة يُدخلان في الفاتورة */
+    private function editPayload(Offer $o): array
     {
-        $o->loadMissing(['groups.options.stays', 'groups.options.costs', 'fixedCosts']);
-        $cost = fn ($c) => [
-            'id' => $c->id, 'kind' => $c->kind, 'label' => $c->label, 'agent_id' => $c->agent_id, 'service_id' => $c->service_id,
-            'basis' => $c->basis, 'qty' => $c->qty, 'unit_cost' => $c->unit_cost, 'currency' => $c->currency,
-        ];
+        $o->loadMissing(['groups.options.stays']);
 
         return [
             'id' => $o->id,
@@ -253,23 +243,17 @@ class OfferController extends Controller
             'is_ready' => (bool) $o->is_ready, 'trip_date' => $o->trip_date?->toDateString(), 'return_date' => $o->return_date?->toDateString(),
             'travel_mode' => $o->travel_mode ?: 'land', 'destination' => $o->destination, 'total_seats' => $o->total_seats,
             'pricing_mode' => $o->pricing_mode ?: 'bundle', 'base_sell_pp' => (float) $o->base_sell_pp,
-            'fixed_costs' => $canCost ? $o->fixedCosts->map($cost)->values()->all() : [],
             'groups' => $o->groups->map(fn ($g) => [
                 'id' => $g->id, 'kind' => $g->kind, 'label' => $g->label, 'city' => $g->city, 'nights' => $g->nights,
-                'service_id' => $g->service_id,
                 'options' => $g->options->map(fn ($opt) => [
                     'id' => $opt->id, 'label' => $opt->label, 'includes_note' => $opt->includes_note,
                     'prices' => array_merge(array_fill_keys(array_keys(OfferOption::ROOM_TYPES), null), $opt->prices ?: []),
                     'sell_flat' => (float) $opt->sell_flat, 'capacity' => $opt->capacity, 'is_active' => (bool) $opt->is_active,
-                    'stays' => $opt->stays->map(fn ($s) => array_merge([
+                    'stays' => $opt->stays->map(fn ($s) => [
                         'id' => $s->id, 'city' => $s->city, 'name' => $s->name, 'rating' => $s->rating,
                         'rating_plus' => (bool) $s->rating_plus, 'location' => $s->location, 'meals' => $s->meals,
                         'distance_haram' => $s->distance_haram, 'nights' => $s->nights,
-                    ], $canCost ? [
-                        'agent_id' => $s->agent_id, 'currency' => $s->currency ?: 'SAR',
-                        'room_rates' => array_merge(array_fill_keys(array_keys(OfferOption::ROOM_TYPES), null), $s->room_rates ?: []),
-                    ] : []))->values()->all(),
-                    'costs' => $canCost ? $opt->costs->map($cost)->values()->all() : [],
+                    ])->values()->all(),
                 ])->values()->all(),
             ])->values()->all(),
         ];
@@ -338,6 +322,8 @@ class OfferController extends Controller
                 ])->all(),
                 'sell' => (float) $i->total_sell_jod,
                 'profit' => $canCost ? (float) $i->profit_jod : null,
+                // بنود بلا وكيل أو تكلفة — تمنع الاعتماد
+                'missing' => in_array($i->status, ['pending', 'editing'], true) ? (int) ($i->offer_lines['missing'] ?? 0) : 0,
                 'date' => $i->created_at?->toDateString(),
             ])->values()->all(),
         ];
@@ -346,15 +332,16 @@ class OfferController extends Controller
             $sales = round((float) $approved->sum('total_sell_jod'), 3);
             $cost = round((float) $approved->sum('total_cost_jod'), 3);
             $settlement = $o->settlement;
-            $settl = round((float) ($settlement->total_jod ?? 0), 3);
+            // ربح العرض = مجموع أرباح فواتيره. مصاريف الإقفال المشتركة مصروف مستقل لا يُخصم منه
             $data['pl'] = [
                 'pax' => (int) $approved->sum('offer_seats'),
                 'sales' => $sales,
                 'cost' => $cost,
-                'settlement' => $settl,
+                'profit' => round($sales - $cost, 3),
+                'shared' => round((float) ($settlement->total_jod ?? 0), 3),
                 'settled' => (bool) $settlement,
-                'profit' => round($sales - $cost - $settl, 3),
             ];
+            $data['actual'] = $this->actualCosts($approved);
 
             // ما ندين به لكل وكيل عن العرض
             $items = DB::table('invoice_items')->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
@@ -380,6 +367,38 @@ class OfferController extends Controller
         return $data;
     }
 
+    /** التكلفة الفعلية لكل فندق وسعة من الفواتير المعتمدة: ما دُفع فعلاً، وبأي وكيل */
+    private function actualCosts($approved): array
+    {
+        $m = [];
+        foreach ($approved as $inv) {
+            foreach (($inv->offer_lines['costs'] ?? []) as $r) {
+                if (($r['kind'] ?? null) !== 'hotel' || empty($r['done'])) {
+                    continue;
+                }
+                $k = $r['src'] . '|' . ($r['currency'] ?? 'SAR');
+                $m[$k] ??= ['label' => preg_replace('/ · [^·]*$/u', '', $r['description']), 'currency' => $r['currency'] ?? 'SAR', 'pax' => 0, 'sum' => 0.0, 'min' => null, 'max' => null, 'agents' => []];
+                $pn = (float) $r['unit'];
+                $m[$k]['pax'] += (int) $r['qty'];
+                $m[$k]['sum'] += $pn * (int) $r['qty'];
+                $m[$k]['min'] = $m[$k]['min'] === null ? $pn : min($m[$k]['min'], $pn);
+                $m[$k]['max'] = $m[$k]['max'] === null ? $pn : max($m[$k]['max'], $pn);
+                $m[$k]['agents'][(int) $r['agent_id']] = true;
+            }
+        }
+        $names = Agent::whereIn('id', collect($m)->flatMap(fn ($x) => array_keys($x['agents']))->unique())->pluck('name', 'id');
+
+        return array_values(array_map(fn ($x) => [
+            'label' => $x['label'],
+            'currency' => $x['currency'],
+            'pax' => $x['pax'],
+            'avg' => $x['pax'] ? round($x['sum'] / $x['pax'], 2) : 0,
+            'min' => $x['min'],
+            'max' => $x['max'],
+            'agents' => collect(array_keys($x['agents']))->map(fn ($a) => $names[$a] ?? '—')->values()->all(),
+        ], $m));
+    }
+
     private function closingData(Offer $o): array
     {
         $settlement = $o->settlement;
@@ -403,7 +422,7 @@ class OfferController extends Controller
         abort_unless(auth()->user()->can('offers.create'), 403);
 
         $data = $request->validate(OfferWriter::rules($request->all()), OfferWriter::messages());
-        $offer = OfferWriter::save(null, $data, $this->canCost());
+        $offer = OfferWriter::save(null, $data);
 
         return redirect()->route('offers.show', ['offer' => $offer->id, 'tab' => $request->get('tab', 'data')])
             ->with('success', 'تم إضافة العرض');
@@ -417,7 +436,7 @@ class OfferController extends Controller
         }
 
         $data = $request->validate(OfferWriter::rules($request->all()), OfferWriter::messages());
-        OfferWriter::save($offer, $data, $this->canCost());
+        OfferWriter::save($offer, $data);
 
         return back()->with('success', 'تم حفظ العرض. البوت والبطاقة والفواتير الجديدة تقرأ النسخة المحفوظة الآن.');
     }
@@ -468,22 +487,32 @@ class OfferController extends Controller
     {
         abort_unless($this->canCost(), 403);
 
-        return response()->json(OfferSettlementService::preview($offer, $request->only(['allot', 'bill'])));
+        $request->validate($this->settleRules());
+
+        return response()->json(OfferSettlementService::preview($offer, $request->only(['shared', 'bill'])));
+    }
+
+    private function settleRules(): array
+    {
+        return [
+            'shared' => 'nullable|array|max:30',
+            'shared.*.agent_id' => 'nullable|integer|exists:agents,id',
+            'shared.*.description' => 'nullable|string|max:150',
+            'shared.*.amount' => 'nullable|numeric|min:0|max:9999999',
+            'shared.*.currency' => 'nullable|in:SAR,JOD',
+            'bill' => 'nullable|array',
+            'bill.*' => 'nullable|numeric|min:-999999|max:999999',
+        ];
     }
 
     public function settle(Request $request, Offer $offer)
     {
         abort_unless($this->canCost() && auth()->user()->can('offers.update'), 403);
 
-        $request->validate([
-            'allot' => 'nullable|array',
-            'allot.*' => 'nullable|integer|min:0|max:5000',
-            'bill' => 'nullable|array',
-            'bill.*' => 'nullable|numeric|min:-999999|max:999999',
-        ]);
+        $request->validate($this->settleRules());
 
         try {
-            OfferSettlementService::approve($offer, $request->only(['allot', 'bill']));
+            OfferSettlementService::approve($offer, $request->only(['shared', 'bill']));
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
@@ -493,7 +522,7 @@ class OfferController extends Controller
         }
 
         return redirect()->route('offers.show', ['offer' => $offer->id, 'tab' => 'close'])
-            ->with('success', 'اعتُمدت التسوية وأُقفل العرض. اختفى من فاتورة العرض ومن البوت.');
+            ->with('success', 'اعتُمد الإقفال وأُقفل العرض: المصاريف المشتركة سُجّلت مصروفاً، وربح العرض بقي كما هو. اختفى العرض من فاتورة العرض ومن البوت.');
     }
 
     // ==================== بطاقة العرض ====================

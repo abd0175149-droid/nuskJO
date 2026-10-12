@@ -681,31 +681,40 @@ class AccountingService
         );
     }
 
+    /** حساب «مصاريف الرحلات المشتركة» — كان اسمه «تكاليف عروض غير مستردة» قبل نقل التكاليف إلى الفاتورة */
+    public static function sharedTripExpenseAccount(): Account
+    {
+        return Account::where('name', 'مصاريف الرحلات المشتركة')->first()
+            ?? Account::where('name', 'تكاليف عروض غير مستردة')->first()
+            ?? self::account('5300');
+    }
+
     /**
-     * قيد تسوية إقفال العرض.
-     * لكل وكيل فرقه: موجب = ندين له أكثر (دائن الوكيل / مدين «تكاليف عروض غير مستردة»)،
+     * قيد إقفال العرض: مصاريف الرحلة المشتركة وفروق فواتير الموردين، مصروفاً لا تخفيضاً لربح العرض.
+     * لكل سطر: موجب = ندين للوكيل (دائن الوكيل / مدين «مصاريف الرحلات المشتركة»)،
      * سالب = خصم أو استرداد (مدين الوكيل / دائن الحساب نفسه).
      *
-     * @param array $perAgent [agent_id => diff_jod]
+     * @param array $rows [{agent_id, diff (د.أ), label, type: shared|bill}]
      */
-    public static function recordOfferSettlement(\App\Models\OfferSettlement $settlement, array $perAgent, string $title): ?JournalEntry
+    public static function recordOfferSettlement(\App\Models\OfferSettlement $settlement, array $rows, string $title): ?JournalEntry
     {
-        $expense = Account::where('name', 'تكاليف عروض غير مستردة')->first() ?? self::account('5300');
+        $expense = self::sharedTripExpenseAccount();
         $lines = [];
         $net = 0.0;
 
-        foreach ($perAgent as $agentId => $diff) {
-            $diff = round((float) $diff, 3);
-            if ($diff == 0) {
+        foreach ($rows as $r) {
+            $diff = round((float) ($r['diff'] ?? 0), 3);
+            if ($diff == 0 || empty($r['agent_id'])) {
                 continue;
             }
-            $agent = \App\Models\Agent::find($agentId);
+            $agent = \App\Models\Agent::find($r['agent_id']);
             $agentAccount = ($agent && $agent->account_id) ? Account::find($agent->account_id) : self::account('2110');
+            $what = ($r['type'] ?? '') === 'bill' ? 'فرق فاتورة المورّد' : ($r['label'] ?? 'مصروف مشترك');
             $lines[] = [
                 'account_id' => $agentAccount->id,
                 'debit' => $diff < 0 ? -$diff : 0,
                 'credit' => $diff > 0 ? $diff : 0,
-                'description' => mb_substr("تسوية إقفال «{$title}»", 0, 250),
+                'description' => mb_substr("إقفال «{$title}» · {$what}", 0, 250),
             ];
             $net += $diff;
         }
@@ -720,12 +729,12 @@ class AccountingService
                 'account_id' => $expense->id,
                 'debit' => $net > 0 ? $net : 0,
                 'credit' => $net < 0 ? -$net : 0,
-                'description' => mb_substr("تسوية إقفال «{$title}»", 0, 250),
+                'description' => mb_substr("مصاريف رحلة «{$title}» المشتركة", 0, 250),
             ];
         }
 
         // فرقان متعاكسان يتلاشيان: لا قيد على المصروف، والوكيلان يتقابلان
-        return self::createEntry("تسوية إقفال العرض — {$title}", 'offer_settlement', $settlement->id, $lines);
+        return self::createEntry("إقفال العرض — {$title}", 'offer_settlement', $settlement->id, $lines);
     }
 
     /**

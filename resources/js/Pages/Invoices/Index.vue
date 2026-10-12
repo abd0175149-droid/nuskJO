@@ -41,14 +41,16 @@
                             <td data-label="الرحلة" class="px-4 py-3 text-right font-mono text-xs text-gray-500 hide-mobile" dir="ltr">{{ inv.trip_date?.split('T')[0] || '—' }}</td>
                             <td data-label="التكلفة" class="px-4 py-3 text-right font-bold font-mono text-xs" dir="ltr">{{ Number(inv.total_cost_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
                             <td data-label="البيع" class="px-4 py-3 text-right font-bold font-mono text-xs text-blue-600" dir="ltr">{{ Number(inv.total_sell_jod||inv.total_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
-                            <td data-label="الربح" class="px-4 py-3 text-right font-bold font-mono text-xs hide-mobile" :class="Number(inv.profit_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Number(inv.profit_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
+                            <td v-if="costsMissing(inv)" data-label="الربح" class="px-4 py-3 text-right hide-mobile"><span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap">تكاليف ناقصة ({{ costsMissing(inv) }})</span></td>
+                            <td v-else data-label="الربح" class="px-4 py-3 text-right font-bold font-mono text-xs hide-mobile" :class="Number(inv.profit_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Number(inv.profit_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
                             <td data-label="الملاحظات" class="px-4 py-3 text-right text-xs text-gray-500 hide-mobile max-w-xs truncate" :title="inv.notes">{{ inv.notes || '—' }}</td>
                             <td data-label="الحالة" class="px-4 py-3 text-right"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="{'bg-yellow-100 text-yellow-700':inv.status==='pending','bg-green-100 text-green-700':inv.status==='approved','bg-red-100 text-red-700':inv.status==='rejected','bg-blue-100 text-blue-700':inv.status==='editing'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة',editing:'تحت التعديل'}[inv.status] }}</span></td>
                             <td data-label="بواسطة" class="px-4 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ inv.creator?.name || '—' }}</div><div v-if="inv.status !== 'pending'" class="mt-0.5">{{ inv.status === 'approved' ? '✅' : '❌' }} {{ inv.approver?.name || '—' }}</div></td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap actions-cell">
                                 <a :href="'/invoices/'+inv.id+'/print'" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
                                 <button @click="viewInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">👁️</button>
-                                <button v-if="inv.status==='pending' && can('invoices.approve')" @click="approveInv(inv)" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button>
+                                <button v-if="inv.status==='pending' && inv.offer_id && (can('invoices.update') || can('invoices.create'))" @click="openPOS(inv)" class="px-2 py-1 text-xs font-bold rounded-lg btn-mobile-sm" :class="costsMissing(inv) ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'">📝 {{ costsMissing(inv) ? 'إكمال التكاليف' : 'تعديل' }}</button>
+                                <button v-if="inv.status==='pending' && can('invoices.approve')" @click="approveInv(inv)" :disabled="!!costsMissing(inv)" :title="costsMissing(inv) ? 'لا تُعتمد قبل اكتمال التكاليف: لكل بند وكيل وتكلفة' : 'اعتماد'" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm disabled:opacity-30 disabled:cursor-not-allowed">✅</button>
                                 <button v-if="inv.status==='pending' && can('invoices.reject')" @click="rejectInv(inv)" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg btn-mobile-sm">❌</button>
                                 <button v-if="inv.status!=='approved' && can('invoices.delete')" @click="delInv(inv)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button>
                                 <button v-if="inv.status==='approved' && can('invoices.edit_approved')" @click="startEditInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button>
@@ -87,7 +89,7 @@
                     <span class="text-xs text-gray-500">{{ posMode === 'offer' ? 'البنود والسعر من العرض، والمقاعد تُحجز عند الحفظ.' : 'البنود والسعر يكتبها البائع.' }}</span>
                 </div>
                 <OfferInvoiceForm v-if="posMode === 'offer'" :key="offerFormKey" :catalog="offerCatalog" :room-types="roomTypes" :today="today"
-                                  :clients="clients" :agents="agents" :employees="employees" :current-employee-id="currentEmployeeId"
+                                  :clients="clients" :agents="agents" :employees="employees" :services="services" :rate="exchangeRate" :current-employee-id="currentEmployeeId"
                                   :editing="offerEditing" :prefill="quotePrefill" :preset-offer-id="offerPreset" @close="closePOS"/>
                 <div v-else class="space-y-5">
                     <!-- Row 1: Client + Phone + Trip Date + Seller -->
@@ -412,6 +414,8 @@ const viewInv = async (inv) => {
         viewDetails.value = await res.json();
     } catch { viewDetails.value = null; }
 };
+// فاتورة عرض معلّقة ببنود بلا وكيل أو تكلفة: لا تُعتمد قبل إكمالها
+const costsMissing = (inv) => (inv.offer_id && ['pending', 'editing'].includes(inv.status) ? Number(inv.offer_lines?.missing || 0) : 0);
 const approveInv = (inv) => { if(confirm('اعتماد الفاتورة وتحديث الأرصدة؟')) router.post('/invoices/'+inv.id+'/approve',{},{preserveScroll:true}); };
 const rejectInv = (inv) => { const r=prompt('سبب الرفض:'); if(r!==null) router.post('/invoices/'+inv.id+'/reject',{reason:r},{preserveScroll:true}); };
 const startEditInv = (inv) => { if(confirm('تعديل الفاتورة المعتمدة؟ سيتم عكس الأثر المالي.')) router.post('/invoices/'+inv.id+'/start-edit',{},{preserveScroll:true}); };

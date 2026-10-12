@@ -8,11 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * إقامة: فندق في مدينة، تحت خيار مسعّر.
  *
- * السجل الواحد له وجهان:
- *  - الوصف (city, name, rating, location, meals, distance_haram) يقرؤه البوت والبطاقة.
- *  - العقد (agent_id, room_rates, nights, currency) داخلي: لا يدخل أي حمولة للعميل.
- *
- * room_rates: تكلفة الفرد لليلة الواحدة حسب سعة الغرفة، بعملة الوكيل.
+ * الوصف (city, name, rating, location, meals, distance_haram) والليالي يقرؤها البوت والبطاقة والفاتورة.
+ * الوكيل والتكلفة لا يُحفظان على العرض: يُدخلان في كل فاتورة. أعمدة العقد القديمة
+ * (agent_id, room_rates, currency) باقية في القاعدة بلا استخدام.
  */
 class OfferStay extends Model
 {
@@ -31,19 +29,6 @@ class OfferStay extends Model
     public function option(): BelongsTo
     {
         return $this->belongsTo(OfferOption::class, 'option_id');
-    }
-
-    public function agent(): BelongsTo
-    {
-        return $this->belongsTo(Agent::class);
-    }
-
-    /** تكلفة الفرد لليلة بعملة الوكيل لسعة معيّنة، أو null */
-    public function rateFor(string $room): ?float
-    {
-        $v = $this->room_rates[$room] ?? null;
-
-        return ($v !== null && $v !== '' && (float) $v > 0) ? (float) $v : null;
     }
 
     /** التصنيف كما يُكتب في البطاقة: «4+» أو «4» */

@@ -2,30 +2,29 @@
 
 namespace App\Services;
 
+use App\Models\Invoice;
 use App\Models\Offer;
-use App\Models\OfferCost;
 use App\Models\OfferGroup;
 use App\Models\OfferOption;
 use App\Models\OfferStay;
 use App\Models\Service;
 
 /**
- * المصدر الوحيد لحساب سعر فاتورة العرض وتكلفتها.
+ * المصدر الوحيد لحساب فاتورة العرض: البيع من العرض، والتكلفة من الفاتورة.
  *
- * يستخدمه نموذج العرض (اكتمال التكاليف ومصفوفة الهامش)، ومعاينة الفاتورة،
- * وحفظ الفاتورة نفسها — فلا يوجد حساب ثانٍ في الواجهة يمكن أن يختلف عنه.
- *
- * أسس التكلفة:
- *  - الفندق: تكلفة الفرد لليلة حسب سعة الغرفة × عدد الليالي.
- *  - للفرد: العدد × تكلفة الوحدة.
- *  - مقطوع للرحلة: (العدد × تكلفة الوحدة) ÷ مقاعد العرض لكل مقعد، والباقي عند الإقفال.
- * كل تكلفة بعملة وكيلها، وتُحوَّل للدينار بسعر واحد من config/accounting.php.
+ * العرض يحمل بيانات البيع وحدها: السعر الأساسي، وسعر كل سعة، وفروق الخيارات.
+ * الوكيل والتكلفة يتغيران كل يوم، فيُدخلان في كل فاتورة بقيمتهما الفعلية:
+ *  - بنود مقترحة من اختيار العميل: كل فندق بسعته ولياليه، وكل خيار له فرق سعر.
+ *  - بنود يدوية: تأشيرة، طيران، زيارات… ولها سعر بيع اختياري إن كانت خارج العرض.
+ * الفندق: تكلفة الفرد لليلة × الليالي × المسافرين. غيره: تكلفة الوحدة × العدد.
+ * كل تكلفة بعملتها، وتُحوَّل للدينار بسعر واحد من config/accounting.php.
+ * الفاتورة تُحفظ وتحجز مقاعدها والتكاليف ناقصة، ولا تُعتمد قبل أن يكتمل كل بند.
  */
 class OfferPricing
 {
     public const ROOMS = ['single', 'double', 'triple', 'quad'];
 
-    /** خدمة الإيراد الافتراضية لكل نوع بند حين لا يحدّدها المدير */
+    /** خدمة الإيراد الافتراضية لكل نوع بند حين لا يحدّدها البائع */
     private const SERVICE_KEYWORDS = [
         'visa' => ['تاشير', 'تأشير'],
         'flight' => ['طيران', 'تذاكر', 'تذكر'],
@@ -47,37 +46,23 @@ class OfferPricing
 
     private static function load(Offer $o): void
     {
-        $o->loadMissing(['groups.options.stays', 'groups.options.costs', 'fixedCosts']);
+        $o->loadMissing(['groups.options.stays']);
     }
 
-    // ==================== اكتمال التكاليف ====================
+    // ==================== اكتمال بيانات البيع ====================
 
-    /** ما يمنع بيع العرض بفاتورة عرض. مصفوفة فارغة = جاهز للبيع */
+    /** ما يمنع بيع العرض بفاتورة عرض — بيانات البيع وحدها. مصفوفة فارغة = يُباع */
     public static function issues(Offer $o): array
     {
         self::load($o);
         $out = [];
 
-        $chk = function (OfferCost $c, string $where) use (&$out) {
-            $n = $c->label ?: $where;
-            if (!$c->agent_id) $out[] = "«{$n}»: الوكيل مطلوب.";
-            if (!((float) $c->unit_cost > 0)) $out[] = "«{$n}»: التكلفة مطلوبة.";
-            if (!((float) $c->qty > 0)) $out[] = "«{$n}»: العدد مطلوب.";
-        };
-
-        $perGroup = $o->fixedCosts->contains('basis', 'per_group')
-            || $o->groups->flatMap->options->flatMap->costs->contains('basis', 'per_group');
-        if (($o->is_ready || $perGroup) && !((int) $o->total_seats >= 1)) {
-            $out[] = $perGroup ? 'عدد المقاعد مطلوب لتوزيع البنود المقطوعة.' : 'عدد المقاعد مطلوب للعرض الجاهز.';
-        }
-
-        foreach ($o->fixedCosts as $c) {
-            $chk($c, 'بند ثابت');
+        if ($o->is_ready && !((int) $o->total_seats >= 1)) {
+            $out[] = 'عدد المقاعد مطلوب للعرض الجاهز.';
         }
 
         if ($o->isVisa()) {
             if (!($o->basePrice() > 0)) $out[] = 'سعر التأشيرة للفرد مطلوب.';
-            if ($o->fixedCosts->isEmpty()) $out[] = 'أضف بند تكلفة التأشيرة بوكيله.';
 
             return $out;
         }
@@ -94,47 +79,20 @@ class OfferPricing
             if ($g->isStay() && $o->pricing_mode === 'city' && !((int) $g->nights > 0)) {
                 $out[] = "«{$g->label}»: عدد الليالي مطلوب.";
             }
-
+            if (!$g->isStay()) {
+                continue;
+            }
             foreach ($active as $opt) {
                 $lab = self::optionLabel($o, $g, $opt);
-                if ($g->isStay()) {
-                    $sellRooms = array_values(array_filter(self::ROOMS, fn ($r) => $opt->sellFor($r) !== null));
-                    if (!$sellRooms) $out[] = "«{$lab}»: لا سعر بيع لأي سعة.";
-                    if ($opt->stays->isEmpty()) $out[] = "«{$lab}»: أضف فندقاً.";
-                    foreach ($opt->stays as $s) {
-                        $n = $s->name ?: 'فندق';
-                        if (!$s->agent_id) $out[] = "«{$n}»: الوكيل مطلوب.";
-                        if (!(self::stayNights($o, $g, $s) > 0)) $out[] = "«{$n}»: عدد الليالي مطلوب.";
-                        foreach ($sellRooms as $r) {
-                            if ($s->rateFor($r) === null) {
-                                $out[] = "«{$n}»: تكلفة الفرد لليلة في الغرفة " . OfferOption::ROOM_TYPES[$r] . ' مطلوبة لأنها تُباع.';
-                            }
-                        }
-                    }
-                } else {
-                    if ($opt->costs->isEmpty()) $out[] = "«{$lab}»: بلا بند تكلفة.";
-                    foreach ($opt->costs as $c) {
-                        $chk($c, $lab);
-                    }
+                if (!array_filter(self::ROOMS, fn ($r) => $opt->sellFor($r) !== null)) $out[] = "«{$lab}»: لا سعر بيع لأي سعة.";
+                if ($opt->stays->isEmpty()) $out[] = "«{$lab}»: أضف فندقاً.";
+                foreach ($opt->stays as $s) {
+                    if (!(self::stayNights($o, $g, $s) > 0)) $out[] = '«' . ($s->name ?: 'فندق') . '»: عدد الليالي مطلوب.';
                 }
             }
         }
 
         return array_values(array_unique($out));
-    }
-
-    /** تنبيهات لا تمنع البيع */
-    public static function warnings(Offer $o): array
-    {
-        self::load($o);
-        $out = [];
-        $includes = array_values(array_filter($o->includes ?: []));
-        $nonHotel = $o->fixedCosts->isNotEmpty() || $o->groups->reject->isStay()->isNotEmpty();
-        if (!$o->isVisa() && $includes && !$nonHotel) {
-            $out[] = '«يشمل» فيه ' . count($includes) . ' بنود (' . implode('، ', $includes) . ') ولا بند تكلفة غير فندقي. إن كانت لها تكلفة فسجّلها، وإلا ظهر ربح العرض أعلى من حقيقته.';
-        }
-
-        return $out;
     }
 
     // ==================== سعر سطر حجز ====================
@@ -158,6 +116,12 @@ class OfferPricing
             . ($s->name ?: 'فندق') . ($s->rating ? " {$s->rating}★" : ''))->implode(' + ');
 
         return ($o->pricing_mode === 'bundle' && $opt->label ? $opt->label . ' — ' : '') . ($names ?: '—');
+    }
+
+    /** نوع بند التكلفة لخيار غير فندقي حسب نوع مجموعته */
+    public static function kindFor(OfferGroup $g): string
+    {
+        return in_array($g->kind, ['transport', 'flight'], true) ? $g->kind : 'service';
     }
 
     /** خدمة الإيراد لبند — المحدّدة على البند، وإلا بالكلمات المفتاحية */
@@ -196,21 +160,18 @@ class OfferPricing
     }
 
     /**
-     * سعر الفرد وتكلفته لاختيار واحد وسعة واحدة.
+     * سعر الفرد لاختيار واحد وسعة واحدة — من العرض وحده.
      *
      * @param array $sel [group_id => option_id]
-     * @return array{errors: array, parts: array, costs: array, sell_pp: float, cost_pp: float}
+     * @return array{errors: array, parts: array, sell_pp: float}
      */
     public static function priceLine(Offer $o, array $sel, string $room): array
     {
         self::load($o);
-        $errors = $parts = $costs = [];
+        $errors = $parts = [];
 
         if ($o->basePrice() > 0) {
             $parts[] = ['label' => $o->isVisa() ? 'سعر التأشيرة' : 'السعر الأساسي', 'pp' => round($o->basePrice(), 3)];
-        }
-        foreach ($o->fixedCosts as $c) {
-            $costs[] = self::costLine($o, $c);
         }
 
         foreach ($o->groups as $g) {
@@ -231,91 +192,19 @@ class OfferPricing
                     continue;
                 }
                 $parts[] = ['label' => "{$g->label}: {$lab}", 'pp' => $sp];
-
-                foreach ($opt->stays as $s) {
-                    $rate = $s->rateFor($room);
-                    $nights = self::stayNights($o, $g, $s);
-                    $city = self::stayCity($o, $g, $s);
-                    if ($rate === null) {
-                        $errors[] = 'لا تكلفة غرفة ' . OfferOption::ROOM_TYPES[$room] . " لـ «{$s->name}».";
-                        continue;
-                    }
-                    $orig = $rate * $nights;
-                    $costs[] = [
-                        'source_type' => 'stay',
-                        'source_id' => $s->id,
-                        'kind' => 'hotel',
-                        'label' => $s->name . ($city ? " ({$city})" : ''),
-                        'description' => $s->name . ($city ? " ({$city})" : '') . ' · ' . OfferOption::ROOM_TYPES[$room] . " · {$nights} " . ($nights >= 3 && $nights <= 10 ? 'ليالٍ' : 'ليلة'),
-                        'agent_id' => $s->agent_id,
-                        'service_id' => self::serviceFor($g->service_id, 'hotel', $city),
-                        'currency' => $s->currency ?: 'SAR',
-                        'basis' => 'room_night',
-                        'calc' => self::num($rate) . ' × ' . $nights . ' ' . ($s->currency === 'JOD' ? 'د.أ' : 'ريال'),
-                        'original_pp' => round($orig, 3),
-                        'jod_pp' => self::toJod($orig, $s->currency),
-                        'room' => $room,
-                        'nights' => $nights,
-                    ];
-                }
-            } else {
-                if ((float) $opt->sell_flat) {
-                    $parts[] = ['label' => "{$g->label}: {$opt->label}", 'pp' => round((float) $opt->sell_flat, 3)];
-                }
-                foreach ($opt->costs as $c) {
-                    $costs[] = self::costLine($o, $c);
-                }
-            }
-        }
-
-        foreach ($costs as $c) {
-            if (!$c['agent_id']) {
-                $errors[] = "«{$c['label']}» بلا وكيل.";
+            } elseif ((float) $opt->sell_flat) {
+                $parts[] = ['label' => "{$g->label}: {$opt->label}", 'pp' => round((float) $opt->sell_flat, 3)];
             }
         }
 
         return [
             'errors' => array_values(array_unique($errors)),
             'parts' => $parts,
-            'costs' => $costs,
             'sell_pp' => round(array_sum(array_column($parts, 'pp')), 3),
-            'cost_pp' => round(array_sum(array_column($costs, 'jod_pp')), 3),
         ];
     }
 
-    private static function costLine(Offer $o, OfferCost $c): array
-    {
-        $qty = (float) $c->qty;
-        $unit = (float) $c->unit_cost;
-        $cur = $c->currency ?: 'JOD';
-        $curL = $cur === 'SAR' ? 'ريال' : 'د.أ';
-        if ($c->basis === 'per_group') {
-            $orig = (int) $o->total_seats > 0 ? $qty * $unit / (int) $o->total_seats : 0;
-            $calc = self::num($qty * $unit) . " {$curL} ÷ " . (int) $o->total_seats;
-        } else {
-            $orig = $qty * $unit;
-            $calc = self::num($qty) . ' × ' . self::num($unit) . " {$curL}";
-        }
-
-        return [
-            'source_type' => 'cost',
-            'source_id' => $c->id,
-            'kind' => $c->kind,
-            'label' => $c->label ?: (OfferCost::KINDS[$c->kind] ?? 'بند'),
-            'description' => $c->label ?: (OfferCost::KINDS[$c->kind] ?? 'بند'),
-            'agent_id' => $c->agent_id,
-            'service_id' => self::serviceFor($c->service_id, $c->kind),
-            'currency' => $cur,
-            'basis' => $c->basis,
-            'calc' => $calc,
-            'original_pp' => round($orig, 3),
-            'jod_pp' => self::toJod($orig, $cur),
-            'room' => null,
-            'nights' => null,
-        ];
-    }
-
-    /** السعات المتاحة لاختيار: لها سعر بيع وتكلفة في كل فندق مختار */
+    /** السعات المتاحة لاختيار: لها سعر بيع في كل مجموعة فنادق */
     public static function roomsFor(Offer $o, array $sel): array
     {
         self::load($o);
@@ -324,13 +213,102 @@ class OfferPricing
         return array_values(array_filter(self::ROOMS, function ($r) use ($stayGroups, $sel) {
             foreach ($stayGroups as $g) {
                 $opt = $g->options->firstWhere('id', (int) ($sel[$g->id] ?? 0));
-                if (!$opt || $opt->sellFor($r) === null || $opt->stays->contains(fn ($s) => $s->rateFor($r) === null)) {
+                if (!$opt || $opt->sellFor($r) === null) {
                     return false;
                 }
             }
 
             return true;
         }));
+    }
+
+    // ==================== بنود التكلفة المقترحة ====================
+
+    /**
+     * بنود التكلفة التي يقترحها اختيار سطر: أسماء وكميات فقط، بلا وكيل ولا سعر.
+     * الفندق بنده إلزامي (لا يُحذف) لأن كل فندق مبيع له تكلفة.
+     */
+    public static function template(Offer $o, array $sel, ?string $room, int $pax, int $line): array
+    {
+        self::load($o);
+        $rows = [];
+        $base = ['line' => $line, 'qty' => $pax, 'fixed' => true];
+
+        if ($o->isVisa()) {
+            return [$base + [
+                'src' => 'visa', 'kind' => 'visa', 'description' => $o->title, 'nights' => null,
+                'source_type' => 'visa', 'source_id' => null,
+                'default_service' => self::serviceFor(null, 'visa'), 'default_currency' => 'JOD',
+            ]];
+        }
+
+        foreach ($o->groups as $g) {
+            $opt = $g->options->firstWhere('id', (int) ($sel[$g->id] ?? 0));
+            if (!$opt) {
+                continue;
+            }
+            if ($g->isStay()) {
+                if (!$room) {
+                    continue;
+                }
+                foreach ($opt->stays as $s) {
+                    $nights = self::stayNights($o, $g, $s);
+                    $city = self::stayCity($o, $g, $s);
+                    $rows[] = $base + [
+                        'src' => "stay:{$s->id}:{$room}", 'kind' => 'hotel',
+                        'description' => ($s->name ?: 'فندق') . ($city ? " ({$city})" : '') . ' · ' . (OfferOption::ROOM_TYPES[$room] ?? $room)
+                            . " · {$nights} " . ($nights >= 3 && $nights <= 10 ? 'ليالٍ' : 'ليلة'),
+                        'nights' => $nights, 'source_type' => 'stay', 'source_id' => $s->id,
+                        'default_service' => self::serviceFor(null, 'hotel', $city), 'default_currency' => 'SAR',
+                    ];
+                }
+            } elseif ((float) $opt->sell_flat > 0) {
+                $kind = self::kindFor($g);
+                $rows[] = $base + [
+                    'src' => "opt:{$opt->id}", 'kind' => $kind, 'description' => $opt->label ?: $g->label, 'nights' => null,
+                    'source_type' => 'option', 'source_id' => $opt->id,
+                    'default_service' => self::serviceFor(null, $kind), 'default_currency' => 'JOD',
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /** بند تكلفة كامل من قالبه وما أدخله البائع */
+    private static function costRow(array $t, array $c): array
+    {
+        $cur = in_array($c['currency'] ?? null, ['SAR', 'JOD'], true) ? $c['currency'] : $t['default_currency'];
+        $raw = $c['unit'] ?? null;
+        $unit = ($raw === null || $raw === '') ? null : round(max(0, (float) $raw), 3);
+        // البند المقترح عدده مسافرو سطره؛ اليدوي يحدّده البائع
+        $qty = $t['fixed'] ? (int) $t['qty'] : max(0, (int) ($c['qty'] ?? $t['qty']));
+        $per = round((float) $unit * ($t['nights'] ?: 1), 3);
+        $perJod = self::toJod($per, $cur);
+        $agent = !empty($c['agent_id']) ? (int) $c['agent_id'] : null;
+        $manual = $t['src'] === 'manual';
+
+        return [
+            'src' => $t['src'],
+            'line' => $t['line'],
+            'fixed' => $t['fixed'],
+            'kind' => $t['kind'],
+            'description' => $t['description'],
+            'nights' => $t['nights'],
+            'qty' => $qty,
+            'agent_id' => $agent,
+            'service_id' => !empty($c['service_id']) ? (int) $c['service_id'] : $t['default_service'],
+            'currency' => $cur,
+            'unit' => $unit,
+            'unit_original' => $per,
+            'unit_jod' => $perJod,
+            'total_original' => round($per * $qty, 3),
+            'total_jod' => round($perJod * $qty, 3),
+            'sell' => $manual ? round(max(0, (float) ($c['sell'] ?? 0)), 3) : 0.0,
+            'source_type' => $t['source_type'],
+            'source_id' => $t['source_id'],
+            'done' => $agent && $per > 0 && $qty >= 1,
+        ];
     }
 
     // ==================== الفاتورة ====================
@@ -343,13 +321,14 @@ class OfferPricing
     }
 
     /**
-     * يبني فاتورة عرض: السطور (لقطة)، وبنود التكلفة لكل وكيل، والإجماليات.
+     * يبني فاتورة عرض: السطور (لقطة البيع)، وبنود التكلفة كما أدخلها البائع، والإجماليات.
      *
      * @param array $lines [{sel: {group_id: option_id}, room, pax}]
-     * @param array $extras [{agent_id, description, qty, cost, sell}] بنود يدوية خارج العرض
-     * @param array $previous سطور اللقطة السابقة للفاتورة — تُحفظ تكاليفها ما لم يتغير الاختيار
+     * @param array $costs [{src, line, description, agent_id, service_id, qty, unit, currency, sell}]
+     *                     src: «stay:…»/«opt:…»/«visa» لبند مقترح، و«manual» لبند يدوي
+     * @param array $previous سطور اللقطة السابقة — يُحفظ سعر بيعها ما لم يتغير الاختيار
      */
-    public static function build(Offer $o, array $lines, array $extras = [], float $discount = 0, array $previous = [], bool $refresh = false): array
+    public static function build(Offer $o, array $lines, array $costs = [], float $discount = 0, array $previous = [], bool $refresh = false): array
     {
         self::load($o);
         $errors = [];
@@ -357,6 +336,7 @@ class OfferPricing
         $stay = $o->groups->filter->isStay()->isNotEmpty();
 
         $built = [];
+        $template = [];
         foreach (array_values($lines) as $i => $l) {
             $n = $i + 1;
             $sel = array_map('intval', (array) ($l['sel'] ?? []));
@@ -372,11 +352,9 @@ class OfferPricing
 
             $key = self::lineKey($sel, $room);
             $prev = $prevByKey->get($key);
-            if ($prev && !$refresh) {
-                $pr = ['errors' => [], 'parts' => $prev['parts'], 'costs' => $prev['costs'], 'sell_pp' => $prev['sell_pp'], 'cost_pp' => $prev['cost_pp']];
-            } else {
-                $pr = self::priceLine($o, $sel, $room);
-            }
+            $pr = $prev && !$refresh
+                ? ['errors' => [], 'parts' => $prev['parts'], 'sell_pp' => $prev['sell_pp']]
+                : self::priceLine($o, $sel, $room);
             foreach ($pr['errors'] as $e) {
                 $errors[] = "السطر {$n}: {$e}";
             }
@@ -388,85 +366,142 @@ class OfferPricing
                 'pax' => max(0, $pax),
                 'labels' => self::selectionLabels($o, $sel),
                 'parts' => $pr['parts'],
-                'costs' => $pr['costs'],
                 'sell_pp' => $pr['sell_pp'],
-                'cost_pp' => $pr['cost_pp'],
                 'kept' => (bool) ($prev && !$refresh),
             ];
+            array_push($template, ...self::template($o, $sel, $stay ? $room : null, max(0, $pax), $i));
         }
 
-        $items = [];
-        foreach ($built as $l) {
-            foreach ($l['costs'] as $c) {
-                $items[] = [
-                    'agent_id' => $c['agent_id'],
-                    'service_id' => $c['service_id'],
-                    'description' => $c['description'],
-                    'statement' => $o->title,
-                    'quantity' => $l['pax'],
-                    'unit_price_jod' => $c['jod_pp'],
-                    'total_cost_jod' => round($c['jod_pp'] * $l['pax'], 3),
-                    'source_type' => $c['source_type'],
-                    'source_id' => $c['source_id'],
-                    'cost_currency' => $c['currency'],
-                    'cost_original' => round($c['original_pp'] * $l['pax'], 3),
-                    'fx_rate' => $c['currency'] === 'SAR' ? self::rate() : 1,
-                    'room' => $c['room'],
-                ];
+        // البنود المقترحة من الخادم دائماً — ما أرسله البائع يملأ وكيلها وتكلفتها فقط
+        $given = [];
+        $manual = [];
+        foreach (array_values($costs) as $c) {
+            $src = (string) ($c['src'] ?? 'manual');
+            if ($src === 'manual') {
+                $manual[] = $c;
+            } else {
+                $given[(int) ($c['line'] ?? 0) . '|' . $src] = $c;
             }
         }
-
-        $extraSell = 0.0;
-        $cleanExtras = [];
-        foreach (array_values($extras) as $i => $e) {
-            $n = $i + 1;
-            $q = (int) ($e['qty'] ?? 0);
-            $cost = round((float) ($e['cost'] ?? 0), 3);
-            $sell = round((float) ($e['sell'] ?? 0), 3);
-            $desc = trim((string) ($e['description'] ?? ''));
-            if (empty($e['agent_id'])) $errors[] = "البند الإضافي {$n}: الوكيل مطلوب.";
-            if ($desc === '') $errors[] = "البند الإضافي {$n}: البيان مطلوب.";
-            if ($q < 1) $errors[] = "البند الإضافي {$n}: العدد 1 أو أكثر.";
-            $items[] = [
-                'agent_id' => !empty($e['agent_id']) ? (int) $e['agent_id'] : null,
-                'service_id' => !empty($e['service_id']) ? (int) $e['service_id'] : null,
-                'description' => $desc ?: 'بند إضافي',
-                'statement' => 'خارج العرض',
-                'quantity' => max(0, $q),
-                'unit_price_jod' => $cost,
-                'total_cost_jod' => round($cost * max(0, $q), 3),
-                'source_type' => 'manual',
-                'source_id' => null,
-                'cost_currency' => 'JOD',
-                'cost_original' => round($cost * max(0, $q), 3),
-                'fx_rate' => 1,
-                'room' => null,
-            ];
-            $extraSell += $sell * max(0, $q);
-            $cleanExtras[] = ['agent_id' => $e['agent_id'] ?? null, 'service_id' => $e['service_id'] ?? null, 'description' => $desc, 'qty' => $q, 'cost' => $cost, 'sell' => $sell];
+        $rows = [];
+        foreach ($template as $t) {
+            $rows[] = self::costRow($t, $given[$t['line'] . '|' . $t['src']] ?? []);
+        }
+        foreach ($manual as $mi => $c) {
+            $n = $mi + 1;
+            $desc = trim((string) ($c['description'] ?? ''));
+            if ($desc === '') $errors[] = "البند اليدوي {$n}: البيان مطلوب.";
+            if ((int) ($c['qty'] ?? 0) < 1) $errors[] = "البند اليدوي {$n}: العدد 1 أو أكثر.";
+            $rows[] = self::costRow([
+                'src' => 'manual', 'line' => null, 'fixed' => false, 'kind' => 'service', 'description' => $desc,
+                'nights' => null, 'qty' => (int) ($c['qty'] ?? 0), 'source_type' => 'manual', 'source_id' => null,
+                'default_service' => null, 'default_currency' => 'JOD',
+            ], $c);
         }
 
+        $items = array_map(fn ($r) => [
+            'agent_id' => $r['agent_id'],
+            'service_id' => $r['service_id'],
+            'description' => $r['description'] ?: 'بند',
+            'statement' => $r['sell'] > 0 ? 'خارج العرض' : $o->title,
+            'quantity' => $r['qty'],
+            'unit_price_jod' => $r['unit_jod'],
+            'total_cost_jod' => $r['total_jod'],
+            'source_type' => $r['source_type'],
+            'source_id' => $r['source_id'],
+            'cost_currency' => $r['currency'],
+            'cost_original' => $r['total_original'],
+            'fx_rate' => $r['currency'] === 'SAR' ? self::rate() : 1,
+        ], $rows);
+
         $lineSell = array_sum(array_map(fn ($l) => round($l['sell_pp'] * $l['pax'], 3), $built));
+        $extraSell = array_sum(array_map(fn ($r) => round($r['sell'] * $r['qty'], 3), $rows));
         $gross = round($lineSell + $extraSell, 3);
         $discount = round(max(0, $discount), 3);
         if ($discount > $gross) {
             $errors[] = 'الخصم أكبر من إجمالي البيع.';
         }
         $sell = round($gross - $discount, 3);
-        $cost = round(array_sum(array_column($items, 'total_cost_jod')), 3);
+        $cost = round(array_sum(array_column($rows, 'total_jod')), 3);
+        $missing = count(array_filter($rows, fn ($r) => !$r['done'])) + ($rows ? 0 : 1);
 
         return [
             'errors' => array_values(array_unique($errors)),
             'lines' => $built,
-            'extras' => $cleanExtras,
+            'costs' => $rows,
+            // ما بيع خارج العرض — تطبعه الفاتورة سطراً مستقلاً
+            'extras' => array_values(array_map(fn ($r) => ['description' => $r['description'], 'qty' => $r['qty'], 'sell' => $r['sell']],
+                array_filter($rows, fn ($r) => $r['sell'] > 0))),
             'items' => $items,
             'gross' => $gross,
             'discount' => $discount,
             'sell' => $sell,
             'cost' => $cost,
             'profit' => round($sell - $cost, 3),
+            'missing' => $missing,
             'pax' => array_sum(array_column($built, 'pax')),
         ];
+    }
+
+    /** بنود فاتورة عرض ناقصة: بلا وكيل أو بلا تكلفة — من بنودها المحفوظة التي يقرؤها القيد */
+    public static function missingCosts(Invoice $invoice): int
+    {
+        $items = $invoice->items()->get(['agent_id', 'total_cost_jod', 'quantity']);
+        if ($items->isEmpty()) {
+            return 1;
+        }
+
+        return $items->filter(fn ($i) => !$i->agent_id || (float) $i->total_cost_jod <= 0 || (int) $i->quantity < 1)->count();
+    }
+
+    /**
+     * «آخر تكلفة»: ما استُخدم لكل بند مقترح في آخر فاتورة معتمدة على العرض، والبنود اليدوية لآخر فاتورة فيها بنود يدوية.
+     * اقتراح من السجل يملأ الحقول ويبقى قابلاً للتعديل — لا قيمة مخزّنة على العرض.
+     */
+    public static function lastCosts(Offer $o, ?int $ignoreInvoiceId = null): array
+    {
+        $bySrc = [];
+        $byStay = [];
+        $manual = null;
+        $invoices = Invoice::where('offer_id', $o->id)->where('status', 'approved')
+            ->when($ignoreInvoiceId, fn ($q) => $q->where('id', '!=', $ignoreInvoiceId))
+            ->orderByDesc('approved_at')->orderByDesc('id')->limit(30)
+            ->get(['id', 'invoice_number', 'offer_lines', 'offer_seats']);
+
+        foreach ($invoices as $inv) {
+            $rows = $inv->offer_lines['costs'] ?? [];
+            foreach ($rows as $r) {
+                $src = $r['src'] ?? 'manual';
+                if ($src === 'manual' || empty($r['done'])) {
+                    continue;
+                }
+                $bySrc[$src] ??= [
+                    'agent_id' => $r['agent_id'], 'unit' => $r['unit'], 'currency' => $r['currency'],
+                    'service_id' => $r['service_id'], 'number' => $inv->invoice_number,
+                ];
+                // وكيل الفندق نفسه بأي سعة — يُقترح حين لا تكلفة سابقة لهذه السعة
+                if (str_starts_with($src, 'stay:')) {
+                    $byStay[implode(':', array_slice(explode(':', $src), 0, 2))] ??= [
+                        'agent_id' => $r['agent_id'], 'currency' => $r['currency'], 'service_id' => $r['service_id'], 'number' => $inv->invoice_number,
+                    ];
+                }
+            }
+            if (!$manual) {
+                $m = array_values(array_filter($rows, fn ($r) => ($r['src'] ?? '') === 'manual'));
+                if ($m) {
+                    $manual = [
+                        'number' => $inv->invoice_number,
+                        'pax' => (int) ($inv->offer_lines['pax'] ?? $inv->offer_seats),
+                        'rows' => array_map(fn ($r) => [
+                            'description' => $r['description'], 'agent_id' => $r['agent_id'], 'service_id' => $r['service_id'],
+                            'qty' => $r['qty'], 'unit' => $r['unit'], 'currency' => $r['currency'], 'sell' => $r['sell'] ?? 0,
+                        ], $m),
+                    ];
+                }
+            }
+        }
+
+        return ['costs' => (object) $bySrc, 'stays' => (object) $byStay, 'manual' => $manual];
     }
 
     /** أسماء ما اختاره العميل في كل مجموعة — للطباعة والعرض */
@@ -500,58 +535,5 @@ class OfferPricing
         }
 
         return $used;
-    }
-
-    // ==================== مصفوفة الهامش ====================
-
-    /** هامش كل تركيبة لكل سعة — يراها المدير قبل البيع */
-    public static function marginMatrix(Offer $o, int $limit = 24): array
-    {
-        self::load($o);
-        if ($o->isVisa()) {
-            $r = self::priceLine($o, [], 'single');
-
-            return [['label' => 'التأشيرة', 'cells' => ['single' => self::cell($r)]]];
-        }
-
-        $acc = [[]];
-        foreach ($o->groups as $g) {
-            $active = $g->activeOptions();
-            if ($active->isEmpty()) {
-                return [];
-            }
-            $next = [];
-            foreach ($acc as $sel) {
-                foreach ($active as $opt) {
-                    $next[] = $sel + [$g->id => $opt->id];
-                }
-            }
-            $acc = array_slice($next, 0, $limit);
-        }
-
-        return array_map(function ($sel) use ($o) {
-            $label = collect(self::selectionLabels($o, $sel))->pluck('option')->implode(' · ');
-            $cells = [];
-            foreach (self::ROOMS as $room) {
-                $cells[$room] = self::cell(self::priceLine($o, $sel, $room));
-            }
-
-            return ['label' => $label, 'cells' => $cells];
-        }, $acc);
-    }
-
-    private static function cell(array $r): ?array
-    {
-        if ($r['errors'] || !$r['sell_pp']) {
-            return null;
-        }
-        $profit = round($r['sell_pp'] - $r['cost_pp'], 3);
-
-        return ['sell' => $r['sell_pp'], 'cost' => $r['cost_pp'], 'profit' => $profit, 'margin' => round($profit / $r['sell_pp'], 4)];
-    }
-
-    private static function num(float $v): string
-    {
-        return rtrim(rtrim(number_format($v, 3, '.', ','), '0'), '.');
     }
 }

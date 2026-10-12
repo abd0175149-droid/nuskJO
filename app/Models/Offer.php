@@ -139,12 +139,7 @@ class Offer extends Model
         return $this->hasMany(OfferGroup::class)->orderBy('sort_order')->orderBy('id');
     }
 
-    /** البنود الثابتة: تدخل كل فاتورة على العرض */
-    public function fixedCosts(): HasMany
-    {
-        return $this->hasMany(OfferCost::class)->whereNull('option_id')->orderBy('sort_order')->orderBy('id');
-    }
-
+    /** تكاليف كانت تُخزَّن على العرض قبل نقلها إلى الفاتورة — باقية في القاعدة ولا تُقرأ */
     public function costs(): HasMany
     {
         return $this->hasMany(OfferCost::class);

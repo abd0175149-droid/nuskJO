@@ -40,7 +40,7 @@
                         <th class="px-5 py-3 text-right font-bold">المقاعد</th>
                         <th class="px-5 py-3 text-right font-bold">يبدأ من</th>
                         <th class="px-5 py-3 text-right font-bold">البوت</th>
-                        <th class="px-5 py-3 text-right font-bold hide-mobile">التكاليف</th>
+                        <th class="px-5 py-3 text-right font-bold hide-mobile">البيع</th>
                         <th class="px-5 py-3 text-right font-bold hide-mobile">البطاقة</th>
                         <th class="px-5 py-3 text-center font-bold">إجراءات</th>
                     </tr></thead>
@@ -76,8 +76,8 @@
                                         :class="o.is_bot_visible ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'">{{ o.is_bot_visible ? '🤖 ظاهر' : 'مخفي' }}</button>
                                 <div class="text-[11px] mt-1" :class="o.for_bot ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">{{ o.for_bot ? 'يقرؤه البوت الآن' : 'لا يقرؤه: ' + o.bot_blocker }}</div>
                             </td>
-                            <td data-label="التكاليف" class="px-5 py-3 text-right hide-mobile">
-                                <span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="o.issues_count ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'">{{ o.issues_count ? 'ناقصة (' + o.issues_count + ')' : 'مكتملة' }}</span>
+                            <td data-label="البيع" class="px-5 py-3 text-right hide-mobile">
+                                <span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="o.issues_count ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'">{{ o.issues_count ? 'بيانات ناقصة (' + o.issues_count + ')' : 'يُباع' }}</span>
                             </td>
                             <td data-label="البطاقة" class="px-5 py-3 text-right hide-mobile whitespace-nowrap">
                                 <span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="cardChip(o.card).cls">{{ cardChip(o.card).text }}</span>
