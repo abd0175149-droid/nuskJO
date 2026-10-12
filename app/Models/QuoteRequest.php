@@ -12,6 +12,8 @@ class QuoteRequest extends Model
         'type', 'route_from', 'route_to', 'depart_date', 'return_date',
         'pax_adults', 'pax_children', 'pax_infants', 'details', 'status',
         'quoted_price_jod', 'quoted_note', 'quoted_by', 'quoted_at', 'assigned_to',
+        // اختيار العميل من حمولة البوت: {sel: {group_id: option_id}, room, pax}
+        'offer_selection', 'invoice_id',
     ];
 
     protected $casts = [
@@ -19,6 +21,7 @@ class QuoteRequest extends Model
         'return_date' => 'date',
         'quoted_at' => 'datetime',
         'quoted_price_jod' => 'decimal:3',
+        'offer_selection' => 'array',
     ];
 
     public function conversation(): BelongsTo

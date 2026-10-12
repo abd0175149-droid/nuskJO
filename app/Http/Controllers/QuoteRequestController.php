@@ -26,6 +26,20 @@ class QuoteRequestController extends Controller
         return implode(' → ', array_filter([trim((string) $from), trim((string) $to)], 'strlen'));
     }
 
+    /** «فندق مكة: رحاب الصفوة · ثنائية × 2» — من offer_selection إن وُجد */
+    private static function selectionText(QuoteRequest $r): ?string
+    {
+        $sel = $r->offer_selection;
+        if (!$r->offer || !is_array($sel) || !isset($sel['sel'])) {
+            return null;
+        }
+        $labels = collect(\App\Services\OfferPricing::selectionLabels($r->offer, (array) $sel['sel']))
+            ->pluck('option')->implode(' · ');
+        $room = $sel['room'] ? (\App\Models\OfferOption::ROOM_TYPES[$sel['room']] ?? null) : null;
+
+        return trim(($labels ?: $r->offer->title) . ($room ? " · {$room}" : '') . ' × ' . ($sel['pax'] ?? $r->pax()));
+    }
+
     public function index(Request $request)
     {
         abort_unless(auth()->user()->can('quotes.view'), 403);
@@ -33,7 +47,7 @@ class QuoteRequestController extends Controller
         $status = $request->get('status', 'open');
 
         $requests = QuoteRequest::query()
-            ->with(['client:id,name,code', 'offer:id,title', 'quoter:id,name', 'conversation:id,phone,display_name,bot_enabled,last_inbound_at'])
+            ->with(['client:id,name,code', 'offer.groups.options.stays', 'quoter:id,name', 'conversation:id,phone,display_name,bot_enabled,last_inbound_at'])
             ->when($status === 'open', fn ($q) => $q->whereIn('status', ['new', 'priced']))
             ->when(in_array($status, ['new', 'priced', 'sent', 'won', 'lost', 'cancelled'], true),
                 fn ($q) => $q->where('status', $status))
@@ -68,6 +82,13 @@ class QuoteRequestController extends Controller
             'created_at' => $r->created_at?->format('Y-m-d H:i'),
             'conversation_id' => $r->conversation_id,
             'window_open' => $r->conversation?->isWindowOpen() ?? false,
+            // طلب حجز عرض: اختيار العميل منظّماً من حمولة البوت، والتحويل لفاتورة عرض
+            'offer_id' => $r->offer_id,
+            'selection' => self::selectionText($r),
+            'invoice_id' => $r->invoice_id,
+            'invoice_number' => $r->invoice_id ? \App\Models\Invoice::whereKey($r->invoice_id)->value('invoice_number') : null,
+            'can_convert' => $r->offer_id && !$r->invoice_id && !in_array($r->status, ['lost', 'cancelled'], true)
+                && auth()->user()->can('invoices.create'),
         ]);
 
         return Inertia::render('QuoteRequests/Index', [

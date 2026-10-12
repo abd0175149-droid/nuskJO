@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * خيار مسعّر داخل العرض — وهو الوحدة التي تحمل السعر.
+ * خيار داخل مجموعة اختيار — وهو الوحدة التي تحمل سعر البيع.
  *
- * كان اسمه offer_hotels حين كان السعر ملك الفندق. مع عمرة «مكة والمدينة»
- * صار الخيار الواحد يضمّ فندقين بسعر واحد لهما معاً، فانفصل السعر عن الفندق.
+ * خيار فندقي: أسعار بيع للفرد لكل سعة (prices) وإقامة أو أكثر (stays).
+ * خيار غير فندقي (باص VIP): فرق بيع ثابت (sell_flat) وبنود تكلفة (costs).
  */
 class OfferOption extends Model
 {
@@ -22,13 +22,26 @@ class OfferOption extends Model
         'quad'   => 'رباعية',
     ];
 
-    protected $fillable = ['offer_id', 'includes_note', 'prices', 'sort_order'];
+    protected $fillable = [
+        'offer_id', 'group_id', 'label', 'includes_note', 'prices',
+        'sell_flat', 'capacity', 'is_active', 'sort_order',
+    ];
 
-    protected $casts = ['prices' => 'array'];
+    protected $casts = [
+        'prices' => 'array',
+        'sell_flat' => 'float',
+        'capacity' => 'integer',
+        'is_active' => 'boolean',
+    ];
 
     public function offer(): BelongsTo
     {
         return $this->belongsTo(Offer::class);
+    }
+
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(OfferGroup::class, 'group_id');
     }
 
     public function stays(): HasMany
@@ -36,14 +49,27 @@ class OfferOption extends Model
         return $this->hasMany(OfferStay::class, 'option_id')->orderBy('sort_order')->orderBy('id');
     }
 
+    public function costs(): HasMany
+    {
+        return $this->hasMany(OfferCost::class, 'option_id')->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** سعر بيع الفرد لسعة معيّنة، أو null إن لم تكن متاحة */
+    public function sellFor(string $room): ?float
+    {
+        $v = $this->prices[$room] ?? null;
+
+        return ($v !== null && $v !== '' && (float) $v > 0) ? round((float) $v, 3) : null;
+    }
+
     /** الأسعار المتاحة فقط (غير الفارغة) مرتّبة بترتيب أنواع الغرف */
     public function availablePrices(): array
     {
         $out = [];
         foreach (self::ROOM_TYPES as $key => $label) {
-            $v = $this->prices[$key] ?? null;
-            if ($v !== null && $v !== '' && (float) $v > 0) {
-                $out[$key] = ['label' => $label, 'price_per_person_jod' => round((float) $v, 3)];
+            $v = $this->sellFor($key);
+            if ($v !== null) {
+                $out[$key] = ['label' => $label, 'price_per_person_jod' => $v];
             }
         }
 
@@ -57,15 +83,21 @@ class OfferOption extends Model
         return $p ? min($p) : null;
     }
 
-    /** عنوان مختصر للخيار: أسماء فنادقه مسبوقةً بمدنها إن وُجدت */
+    /** عنوان مختصر للخيار: اسمه إن وُجد، ثم أسماء فنادقه مسبوقةً بمدنها */
     public function label(): string
     {
-        return $this->stays
+        $hotels = $this->stays
             ->map(fn ($s) => $s->city ? "{$s->city}: {$s->name}" : $s->name)
-            ->implode(' + ') ?: '—';
+            ->implode(' + ');
+
+        if ($this->label && $hotels) {
+            return "{$this->label} — {$hotels}";
+        }
+
+        return $this->label ?: ($hotels ?: '—');
     }
 
-    /** ما يُعاد للبوت — لا يوجد في هذه الجداول أي حقل داخلي */
+    /** ما يُعاد للبوت — لا يوجد في هذه الحقول أي حقل داخلي */
     public function toBotArray(bool $withDistance = true): array
     {
         return [

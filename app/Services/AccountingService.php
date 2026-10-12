@@ -507,8 +507,15 @@ class AccountingService
             
             $matchedAccount = $revenueParent;
             $serviceName = $item->service ? $item->service->name : '';
-            
-            if ($serviceName && $revenueChildren->count() > 0) {
+
+            // حساب إيراد الخدمة نفسها (ServiceObserver ينشئه تحت 4001) — قبل مطابقة الكلمات
+            $serviceAccount = $item->service?->account_id
+                ? $revenueChildren->firstWhere('id', $item->service->account_id)
+                : null;
+
+            if ($serviceAccount && $serviceAccount->is_active) {
+                $matchedAccount = $serviceAccount;
+            } elseif ($serviceName && $revenueChildren->count() > 0) {
                 $matchedChild = $revenueChildren->first(function($acc) use ($serviceName) {
                     $accName = mb_strtolower($acc->name);
                     $srvName = mb_strtolower($serviceName);
@@ -547,34 +554,46 @@ class AccountingService
             'description' => "فاتورة {$invoice->invoice_number} على {$invoice->client->name}",
         ];
 
-        // دائن: كل وكيل بحصته
-        foreach ($agentCosts as $agentId => $costJod) {
-            $agent = \App\Models\Agent::find($agentId);
-            $agentAccount = ($agent && $agent->account_id)
-                ? Account::find($agent->account_id)
-                : self::account('2110');
-
-            if ($costJod > 0) {
-                $lines[] = [
-                    'account_id' => $agentAccount->id,
-                    'debit' => 0,
-                    'credit' => $costJod,
-                    'description' => "تكلفة خدمات من {$agent->name}",
-                ];
+        // دائن: كل وكيل بتكلفة كل بند — سطر لكل بند بوصفه، فيظهر في كشف الوكيل
+        // رقم الفاتورة وما اشتُري (المجموع لكل وكيل لا يتغير)
+        $agentAccounts = [];
+        foreach ($invoice->items as $item) {
+            $costJod = round((float) ($item->total_cost_jod ?: round($item->total_cost_sar * $rate, 3)), 3);
+            if (!$item->agent_id || $costJod <= 0) {
+                continue;
             }
+            if (!isset($agentAccounts[$item->agent_id])) {
+                $agent = \App\Models\Agent::find($item->agent_id);
+                $agentAccounts[$item->agent_id] = ($agent && $agent->account_id)
+                    ? Account::find($agent->account_id)
+                    : self::account('2110');
+            }
+            $what = trim((string) $item->description);
+            if ($item->statement && $item->statement !== $what) {
+                $what .= " — {$item->statement}";
+            }
+            $lines[] = [
+                'account_id' => $agentAccounts[$item->agent_id]->id,
+                'debit' => 0,
+                'credit' => $costJod,
+                'description' => mb_substr("فاتورة {$invoice->invoice_number} · {$what} · العدد {$item->quantity}", 0, 250),
+            ];
         }
 
-        // دائن: الربح موزّع على حسابات الإيرادات
+        // الربح موزّع على حسابات الإيرادات — والخسارة مدين على الحساب نفسه،
+        // وإلا امتصّها تصحيح التوازن من سطر وكيل فنقص ما ندين به له
         foreach ($revenueProfits as $accId => $profit) {
-            if ($profit > 0) {
-                $acc = Account::find($accId) ?? $revenueParent;
-                $lines[] = [
-                    'account_id' => $acc->id,
-                    'debit' => 0,
-                    'credit' => $profit,
-                    'description' => "ربح فاتورة {$invoice->invoice_number}",
-                ];
+            $profit = round($profit, 3);
+            if ($profit == 0) {
+                continue;
             }
+            $acc = Account::find($accId) ?? $revenueParent;
+            $lines[] = [
+                'account_id' => $acc->id,
+                'debit' => $profit < 0 ? -$profit : 0,
+                'credit' => $profit > 0 ? $profit : 0,
+                'description' => ($profit > 0 ? 'ربح' : 'خسارة') . " فاتورة {$invoice->invoice_number}",
+            ];
         }
 
         // ضمان التوازن: تصحيح فرق التقريب الناتج عن توزيع الأرباح نسبياً على البنود.
@@ -660,6 +679,53 @@ class AccountingService
             ],
             $expense->expense_date?->toDateString()
         );
+    }
+
+    /**
+     * قيد تسوية إقفال العرض.
+     * لكل وكيل فرقه: موجب = ندين له أكثر (دائن الوكيل / مدين «تكاليف عروض غير مستردة»)،
+     * سالب = خصم أو استرداد (مدين الوكيل / دائن الحساب نفسه).
+     *
+     * @param array $perAgent [agent_id => diff_jod]
+     */
+    public static function recordOfferSettlement(\App\Models\OfferSettlement $settlement, array $perAgent, string $title): ?JournalEntry
+    {
+        $expense = Account::where('name', 'تكاليف عروض غير مستردة')->first() ?? self::account('5300');
+        $lines = [];
+        $net = 0.0;
+
+        foreach ($perAgent as $agentId => $diff) {
+            $diff = round((float) $diff, 3);
+            if ($diff == 0) {
+                continue;
+            }
+            $agent = \App\Models\Agent::find($agentId);
+            $agentAccount = ($agent && $agent->account_id) ? Account::find($agent->account_id) : self::account('2110');
+            $lines[] = [
+                'account_id' => $agentAccount->id,
+                'debit' => $diff < 0 ? -$diff : 0,
+                'credit' => $diff > 0 ? $diff : 0,
+                'description' => mb_substr("تسوية إقفال «{$title}»", 0, 250),
+            ];
+            $net += $diff;
+        }
+
+        if (!$lines) {
+            return null;
+        }
+
+        $net = round($net, 3);
+        if ($net != 0) {
+            $lines[] = [
+                'account_id' => $expense->id,
+                'debit' => $net > 0 ? $net : 0,
+                'credit' => $net < 0 ? -$net : 0,
+                'description' => mb_substr("تسوية إقفال «{$title}»", 0, 250),
+            ];
+        }
+
+        // فرقان متعاكسان يتلاشيان: لا قيد على المصروف، والوكيلان يتقابلان
+        return self::createEntry("تسوية إقفال العرض — {$title}", 'offer_settlement', $settlement->id, $lines);
     }
 
     /**

@@ -72,12 +72,11 @@ Route::middleware('auth')->group(function () {
     Route::post('invoices/{invoice}/approve', [\App\Http\Controllers\InvoiceController::class, 'approve'])->name('invoices.approve');
     Route::post('invoices/{invoice}/reject', [\App\Http\Controllers\InvoiceController::class, 'reject'])->name('invoices.reject');
     Route::post('invoices/{invoice}/start-edit', [\App\Http\Controllers\InvoiceController::class, 'startEdit'])->name('invoices.start-edit');
+    // معاينة فاتورة العرض: السعر والتكلفة لكل وكيل من OfferPricing نفسه الذي يحفظ الفاتورة
+    Route::post('invoices/offer-preview', [\App\Http\Controllers\InvoiceController::class, 'offerPreview'])->name('invoices.offer-preview');
 
     // API: تفاصيل فاتورة
-    Route::get('api/invoices/{invoice}/details', function(\App\Models\Invoice $invoice) {
-        $invoice->load('items.agent:id,name,code');
-        return response()->json($invoice);
-    });
+    Route::get('api/invoices/{invoice}/details', [\App\Http\Controllers\InvoiceController::class, 'details']);
 
     // API: FCM Tokens
     Route::post('api/fcm-token', [\App\Http\Controllers\FcmTokenController::class, 'store']);
@@ -134,9 +133,12 @@ Route::middleware('auth')->group(function () {
     Route::put('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'update'])->name('whatsapp.knowledge.update');
     Route::delete('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'destroy'])->name('whatsapp.knowledge.destroy');
 
-    // العروض (يقرأها البوت)
-    Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'store', 'update', 'destroy']);
+    // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
+    Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready');
+    Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'create', 'store', 'show', 'update', 'destroy']);
     Route::post('offers/{offer}/toggle-bot', [\App\Http\Controllers\OfferController::class, 'toggleBot'])->name('offers.toggle-bot');
+    Route::post('offers/{offer}/settlement/preview', [\App\Http\Controllers\OfferController::class, 'settlementPreview'])->name('offers.settlement.preview');
+    Route::post('offers/{offer}/settlement', [\App\Http\Controllers\OfferController::class, 'settle'])->name('offers.settlement');
 
     // بطاقة العرض التسويقية (صورة تُرسل للعميل على واتساب)
     Route::post('offers/{offer}/card', [\App\Http\Controllers\OfferController::class, 'generateCard'])->name('offers.card.generate');

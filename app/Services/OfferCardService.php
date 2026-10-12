@@ -61,8 +61,8 @@ class OfferCardService
             if ($offer->priceFrom() === null) {
                 throw new \RuntimeException('لا يمكن توليد بطاقة تأشيرة بلا سعر.');
             }
-        } elseif ($offer->options->isEmpty()) {
-            throw new \RuntimeException('لا يمكن توليد بطاقة لعرض بلا خيارات فنادق.');
+        } elseif ($offer->sellOptions()->isEmpty()) {
+            throw new \RuntimeException('لا يمكن توليد بطاقة لعرض بلا خيارات فنادق بأسعار.');
         }
 
         $html = self::html($offer);
@@ -115,12 +115,14 @@ class OfferCardService
     {
         $offer->loadMissing('options.stays');
 
+        // الخيارات من Offer::sellOptions() — الإسقاط نفسه الذي يقرؤه البوت، فلا تختلف أسعار الصورة عن النص
         return View::make('offers.card', [
             'offer' => $offer,
-            'options' => $offer->options,
+            'options' => $offer->sellOptions(),
+            'supplements' => $offer->supplements(),
             'isVisa' => $offer->isVisa(),
             'showDistance' => $offer->usesHaramDistance(),
-            'cities' => $offer->isMultiCity() ? $offer->cities() : [],
+            'cities' => $offer->cardCities(),
             'roomTypes' => self::cardRoomLabels(),
             'company' => CompanyInfo::all(),
             'logoUri' => self::dataUri(Setting::get('company_logo')),

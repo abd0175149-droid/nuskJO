@@ -188,7 +188,25 @@
                 : 'طيران ' . $air;
         }
     }
+    /* العرض الجاهز: تاريخ الانطلاق والعودة ووسيلة السفر — من سجل العرض نفسه */
+    if (!empty($offer->is_ready) && !empty($offer->trip_date)) {
+        $arMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+        $arDate = fn ($d) => $d ? ((int) $d->format('j')) . ' ' . $arMonths[(int) $d->format('n') - 1] : null;
+        $trip = 'الانطلاق ' . $arDate($offer->trip_date);
+        if (!empty($offer->return_date)) {
+            $trip .= ' والعودة ' . $arDate($offer->return_date);
+        }
+        $metaParts[] = $trip;
+        $mode = \App\Models\Offer::TRAVEL_MODES[$offer->travel_mode ?? ''] ?? null;
+        if ($mode) {
+            $metaParts[] = $mode;
+        }
+    }
     $metaLine = implode(' · ', $metaParts);
+
+    /* الإضافات (باص VIP…) — فرق سعر الفرد عن الخيار الافتراضي */
+    $supplements = collect(is_array($supplements ?? null) ? $supplements : [])
+        ->filter(fn ($s) => $has($s['option'] ?? null))->values();
 
     /* تاريخ نهاية الصلاحية */
     $validTo = null;
@@ -659,6 +677,18 @@
                     <div class="sec">
                         <p class="sec__title">-الشروط والمتطلبات :</p>
                         <div class="sec__body">{!! nl2br(e(trim($offer->requirements))) !!}</div>
+                    </div>
+                @endif
+
+                {{-- الإضافات الاختيارية --}}
+                @if ($supplements->isNotEmpty())
+                    <div class="sec">
+                        <p class="sec__title">-إضافات اختيارية :</p>
+                        <div class="sec__body">
+                            @foreach ($supplements as $sup)
+                                <p class="sec__line">- {{ $sup['option'] }}: {{ ($sup['price_per_person_jod'] >= 0 ? '+' : '') . $fmtPrice((float) $sup['price_per_person_jod']) }} دينار للفرد</p>
+                            @endforeach
+                        </div>
                     </div>
                 @endif
 

@@ -46,6 +46,10 @@
             <div class="flex items-center gap-2">
               <a v-if="r.conversation_id" :href="'/whatsapp/inbox?conv=' + r.conversation_id"
                  class="px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg font-bold">💬 المحادثة</a>
+              <a v-if="r.can_convert" :href="'/invoices?quote=' + r.id"
+                 class="px-3 py-1.5 rounded-lg text-xs font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200">🧾 تحويل لفاتورة عرض</a>
+              <a v-if="r.invoice_number" :href="'/invoices?search=' + r.invoice_number"
+                 class="px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 font-mono" dir="ltr">🧾 {{ r.invoice_number }}</a>
               <button v-if="canReply" @click="openPrice(r)"
                       class="px-3 py-1.5 rounded-lg text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-sm">
                 {{ r.quoted_price_jod !== null ? '✏️ تعديل السعر' : '💰 تسعير' }}
@@ -78,6 +82,10 @@
             </div>
           </div>
 
+          <div v-if="r.selection" class="px-5 pb-3">
+            <span class="text-gray-400 text-xs block mb-1">اختيار العميل من العرض</span>
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ r.selection }}</p>
+          </div>
           <div v-if="r.details" class="px-5 pb-3">
             <span class="text-gray-400 text-xs block mb-1">طلب العميل</span>
             <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ r.details }}</p>

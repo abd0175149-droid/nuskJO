@@ -42,6 +42,10 @@ class DisbursementController extends Controller
             'filters' => $request->only(['search', 'status', 'agent_id']),
             'agents' => Agent::where('is_active', true)->select('id', 'name', 'code')->get(),
             'accounts' => $accounts,
+            // ربط اختياري بعرض: الدفعة للوكيل تظهر في «ما ندين به لكل وكيل عن العرض»
+            'offers' => \App\Models\Offer::where(fn ($w) => $w->whereNull('settlement_status')->orWhere('settlement_status', '!=', 'approved'))
+                ->orderByDesc('id')->limit(200)->get(['id', 'title', 'trip_date'])
+                ->map(fn ($o) => ['id' => $o->id, 'title' => $o->title . ($o->trip_date ? ' — ' . $o->trip_date->toDateString() : '')]),
         ]);
     }
 
@@ -54,7 +58,10 @@ class DisbursementController extends Controller
             'payment_method' => 'required|in:cash,bank,check',
             'description' => 'required|string|max:500',
             'notes' => 'nullable|string|max:1000',
+            'offer_id' => 'nullable|integer|exists:offers,id',
         ]);
+        // سند على حساب وكيل: نربطه بالوكيل نفسه (لكشف «ما ندين به عن العرض»)
+        $validated['agent_id'] = Agent::where('account_id', $validated['account_id'])->value('id');
 
         $validated['disbursement_number'] = NumberingService::generate('DIS');
         $validated['disbursement_date'] = now()->toDateString();
@@ -144,7 +151,10 @@ class DisbursementController extends Controller
             'payment_method' => 'required|in:cash,bank,check',
             'description' => 'required|string|max:500',
             'notes' => 'nullable|string|max:1000',
+            'offer_id' => 'nullable|integer|exists:offers,id',
         ]);
+        // سند على حساب وكيل: نربطه بالوكيل نفسه (لكشف «ما ندين به عن العرض»)
+        $validated['agent_id'] = Agent::where('account_id', $validated['account_id'])->value('id');
 
         $validated['exchange_rate'] = self::EXCHANGE_RATE;
 

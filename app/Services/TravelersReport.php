@@ -71,7 +71,8 @@ class TravelersReport
             'phone'   => $i->client_phone ?: $i->client?->phone,
             'trip_date' => $i->trip_date?->toDateString(),
             'agents'  => $i->items->map(fn ($it) => $it->agent?->name)->filter()->unique()->values(),
-            'pax'     => (int) $i->items->sum('quantity'),
+            // فاتورة العرض: مقاعدها؛ بنودها متعددة لكل مسافر (تأشيرة وفندق ونقل) فلا تُجمع كمياتها
+            'pax'     => $i->offer_id ? (int) $i->offer_seats : (int) $i->items->sum('quantity'),
             'total'   => round((float) $i->total_sell_jod, 3),
             'remaining' => $remainingByInvoice[$i->id] ?? round((float) $i->total_sell_jod, 3),
             'employee' => $i->creator?->name ?: '—',

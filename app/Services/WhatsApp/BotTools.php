@@ -136,6 +136,8 @@ class BotTools
                     'type' => 'object',
                     'properties' => [
                         'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه'],
+                        'option_ref' => ['type' => 'string', 'description' => 'قيمة ref للخيار الذي اختاره العميل من options في get_offers أو get_offer_details — انسخها كما هي'],
+                        'supplement_refs' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'قيم ref للإضافات التي طلبها العميل من supplements (مثل باص VIP) — اتركها فارغة إن لم يطلب إضافة'],
                         'hotel' => ['type' => 'string', 'description' => 'الخيار الذي اختاره العميل: اسم الفندق، أو الفندقين معاً في عمرة مكة والمدينة'],
                         'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية'],
                         'adults' => ['type' => 'integer'],
@@ -192,7 +194,7 @@ class BotTools
 
     private static function getOffers(array $in, WaConversation $conv): array
     {
-        $q = Offer::forBot()->with('options.stays')->orderBy('sort_order')->orderByDesc('id');
+        $q = Offer::forBot()->with(['groups.options.stays', 'options.stays'])->orderBy('sort_order')->orderByDesc('id');
         if (!empty($in['category'])) {
             $q->where('category', $in['category']);
             // تصفّح تصنيف بعينه دليل كافٍ على الموضوع — نسم المحادثة بلا انتظار
@@ -209,14 +211,15 @@ class BotTools
             'count' => count($offers),
             'offers' => $offers,
             'note' => $offers
-                ? 'اعرض العروض بإيجاز (الاسم والسعر والمدة). لا تخترع تفاصيل غير مذكورة. اسأل العميل أيّ عرض يهمّه.'
+                ? 'اعرض العروض بإيجاز (الاسم والسعر والمدة، وتاريخ الانطلاق إن وُجد trip_date). لا تخترع تفاصيل غير مذكورة. '
+                    . 'availability تقريبية: قلها كما هي («متوفر» أو «مقاعد محدودة») ولا تذكر عدد مقاعد ولا تؤكّد مقعداً. اسأل العميل أيّ عرض يهمّه.'
                 : 'لا توجد عروض منشورة حالياً — اعتذر واسأل العميل عمّا يبحث عنه بالتحديد، ثم استدعِ request_quote.',
         ];
     }
 
     private static function getOfferDetails(array $in, WaConversation $conv): array
     {
-        $o = Offer::forBot()->with('options.stays')->find($in['offer_id'] ?? 0);
+        $o = Offer::forBot()->with(['groups.options.stays', 'options.stays'])->find($in['offer_id'] ?? 0);
         if (!$o) {
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ هذا العرض غير متاح حالياً واعرض عليه البدائل.'];
         }
@@ -227,7 +230,8 @@ class BotTools
 
         return [
             'offer' => $o->toBotArray(),
-            'note' => 'اعرض التفاصيل بإيجاز. إن أراد الحجز فاستدعِ confirm_booking.',
+            'note' => 'اعرض التفاصيل بإيجاز. إن أراد الحجز فاستدعِ confirm_booking ومرّر ref الخيار الذي اختاره و ref أي إضافة طلبها من supplements. '
+                . 'لا تذكر عدد مقاعد ولا تؤكّد توفّراً غير ما في availability.',
         ];
     }
 
@@ -257,7 +261,7 @@ class BotTools
     /** إرسال بطاقة العرض كصورة — تُولَّد عند الطلب إن لم تكن جاهزة */
     private static function sendOfferCard(array $in, WaConversation $conv): array
     {
-        $offer = Offer::forBot()->with('options.stays')->find($in['offer_id'] ?? 0);
+        $offer = Offer::forBot()->with(['groups.options.stays', 'options.stays'])->find($in['offer_id'] ?? 0);
         if (!$offer) {
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ العرض غير متاح واعرض البدائل.'];
         }
@@ -410,6 +414,8 @@ class BotTools
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ العرض غير متاح واعرض البدائل.'];
         }
 
+        $selection = self::bookingSelection($offer, $in);
+
         $qr = QuoteRequest::create([
             'request_number' => QuoteRequest::nextNumber(),
             'conversation_id' => $conv->id,
@@ -418,13 +424,15 @@ class BotTools
             'phone' => $conv->phone,
             'customer_name' => $conv->display_name,
             'type' => 'package',
-            // التاريخ الذي طلبه العميل إن ذكره — والموظف يثبّته عند التقفيل
-            'depart_date' => self::date($in['travel_date'] ?? null),
-            'return_date' => null,
+            // العرض الجاهز بتاريخه؛ وإلا التاريخ الذي طلبه العميل — والموظف يثبّته عند التقفيل
+            'depart_date' => $offer->is_ready ? $offer->trip_date : self::date($in['travel_date'] ?? null),
+            'return_date' => $offer->is_ready ? $offer->return_date : null,
             'pax_adults' => max(1, (int) ($in['adults'] ?? 1)),
             'pax_children' => max(0, (int) ($in['children'] ?? 0)),
             'pax_infants' => max(0, (int) ($in['infants'] ?? 0)),
-            'details' => self::bookingDetails($offer, $in),
+            'details' => self::bookingDetails($offer, $in, $selection),
+            // اختيار العميل بمراجع الحمولة نفسها — يتحوّل لفاتورة عرض مملوءة بضغطة
+            'offer_selection' => $selection,
             'status' => 'new',
         ]);
 
@@ -438,10 +446,55 @@ class BotTools
         ];
     }
 
+    /**
+     * يترجم option_ref وsupplement_refs من الحمولة إلى خيارات العرض.
+     * مرجع قديم أو غير صالح لا يُسقط الطلب: يبقى النص الحر والموظف يختار.
+     *
+     * @return array{sel: array, room: ?string, pax: int}|null
+     */
+    private static function bookingSelection(Offer $offer, array $in): ?array
+    {
+        $ref = trim((string) ($in['option_ref'] ?? ''));
+        $pax = max(1, (int) ($in['adults'] ?? 1) + max(0, (int) ($in['children'] ?? 0)));
+        if ($offer->isVisa()) {
+            return ['sel' => [], 'room' => null, 'pax' => $pax];
+        }
+
+        $option = $ref !== '' ? $offer->sellOptions()->first(fn ($o) => $o->ref === $ref) : null;
+        if (!$option) {
+            return null;
+        }
+
+        $sel = $option->sel;
+        foreach ((array) ($in['supplement_refs'] ?? []) as $sup) {
+            foreach ($offer->groups->reject->isStay() as $g) {
+                $opt = $g->activeOptions()->firstWhere('id', (int) $sup);
+                if ($opt) {
+                    $sel[$g->id] = $opt->id;
+                }
+            }
+        }
+
+        $room = array_search(trim((string) ($in['room_type'] ?? '')), \App\Models\OfferOption::ROOM_TYPES, true) ?: null;
+        if ($room && (($option->prices[$room] ?? null) === null)) {
+            $room = null;
+        }
+
+        return ['sel' => $sel, 'room' => $room, 'pax' => $pax];
+    }
+
     /** سطر تفاصيل الحجز كما يراه الموظف — الفندق وسعة الغرفة إن اختارهما العميل */
-    private static function bookingDetails(Offer $offer, array $in): string
+    private static function bookingDetails(Offer $offer, array $in, ?array $selection = null): string
     {
         $parts = ['طلب حجز عرض: ' . $offer->title];
+
+        if ($selection && $selection['sel']) {
+            $labels = collect(\App\Services\OfferPricing::selectionLabels($offer, $selection['sel']))
+                ->map(fn ($l) => "{$l['group']}: {$l['option']}")->implode(' — ');
+            if ($labels !== '') {
+                $parts[] = $labels;
+            }
+        }
 
         if (!empty($in['hotel'])) {
             $parts[] = 'الفندق: ' . mb_substr((string) $in['hotel'], 0, 150);

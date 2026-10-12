@@ -54,6 +54,7 @@
                     </div>
                     <div><label class="block text-sm font-medium mb-1">الوصف *</label><input v-model="form.description" type="text" required class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
                     <div><label class="block text-sm font-medium mb-1">ملاحظات</label><textarea v-model="form.notes" rows="2" class="w-full px-4 py-2.5 rounded-xl border text-sm resize-none"></textarea></div>
+                    <div><label for="d-offer" class="block text-sm font-medium mb-1">عن العرض (اختياري)</label><select id="d-offer" v-model="form.offer_id" class="w-full px-4 py-2.5 rounded-xl border text-sm"><option :value="null">— بلا عرض —</option><option v-for="o in offers" :key="o.id" :value="o.id">{{ o.title }}</option></select><p class="mt-1 text-xs text-gray-400">دفعة لوكيل عن عرض بعينه تظهر في صفحة العرض تحت «ما ندين به لكل وكيل».</p></div>
                     <div class="flex gap-3"><button type="submit" :disabled="form.processing" class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 disabled:opacity-50">✅ إنشاء</button><button type="button" @click="showForm=false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button></div>
                 </form>
             </div>
@@ -72,6 +73,7 @@
                     </div>
                     <div><label class="block text-sm font-medium mb-1">الوصف *</label><input v-model="editForm.description" type="text" required class="w-full px-4 py-2.5 rounded-xl border text-sm"/></div>
                     <div><label class="block text-sm font-medium mb-1">ملاحظات</label><textarea v-model="editForm.notes" rows="2" class="w-full px-4 py-2.5 rounded-xl border text-sm resize-none"></textarea></div>
+                    <div><label for="d-offer-e" class="block text-sm font-medium mb-1">عن العرض (اختياري)</label><select id="d-offer-e" v-model="editForm.offer_id" class="w-full px-4 py-2.5 rounded-xl border text-sm"><option :value="null">— بلا عرض —</option><option v-for="o in offers" :key="o.id" :value="o.id">{{ o.title }}</option></select></div>
                     <div class="p-3 bg-blue-50 rounded-xl text-xs text-blue-700">⚠️ بعد التعديل سيتم إرسال السند للاعتماد مرة أخرى</div>
                     <div class="flex gap-3"><button type="submit" :disabled="editForm.processing" class="px-6 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50">📤 حفظ وإرسال للاعتماد</button><button type="button" @click="showEditForm=false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button></div>
                 </form>
@@ -88,7 +90,7 @@ import { usePermissions } from '@/composables/usePermissions';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
 const { isHighlighted } = useHighlight();
-const props = defineProps({ disbursements: Object, filters: Object, accounts: Array });
+const props = defineProps({ disbursements: Object, filters: Object, accounts: Array, offers: { type: Array, default: () => [] } });
 
 const accountOptions = computed(() => props.accounts.map(a => ({
     value: a.id,
@@ -96,8 +98,8 @@ const accountOptions = computed(() => props.accounts.map(a => ({
 })));
 
 const search = ref(''); const showForm = ref(false); const showEditForm = ref(false); let t=null;
-const form = useForm({ account_id:'', amount:'', currency:'JOD', payment_method:'cash', description:'', notes:'' });
-const editForm = useForm({ _editId: null, disbursement_number:'', account_id:'', amount:'', currency:'JOD', payment_method:'cash', description:'', notes:'' });
+const form = useForm({ account_id:'', amount:'', currency:'JOD', payment_method:'cash', description:'', notes:'', offer_id: null });
+const editForm = useForm({ _editId: null, disbursement_number:'', account_id:'', amount:'', currency:'JOD', payment_method:'cash', description:'', notes:'', offer_id: null });
 
 const openForm=()=>{form.reset();showForm.value=true;};
 
@@ -116,6 +118,7 @@ const openEditForm = (d) => {
     editForm.payment_method = d.payment_method;
     editForm.description = d.description;
     editForm.notes = d.notes || '';
+    editForm.offer_id = d.offer_id ?? null;
     showEditForm.value = true;
 };
 

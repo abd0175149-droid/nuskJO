@@ -153,9 +153,7 @@ class ClientController extends Controller
             'employee_id' => 'nullable|exists:employees,id',
         ]);
 
-        $codes = Client::withTrashed()->where('code', 'like', 'CLT-%')->pluck('code')->map(fn($c) => (int)substr($c, 4));
-        $nextNum = $codes->max() ? $codes->max() + 1 : 1;
-        $validated['code'] = 'CLT-' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
+        $validated['code'] = Client::nextCode();
 
         $validated['currency'] = $validated['country'] === 'JO' ? 'JOD' : 'SAR';
         $validated['balance_jod'] = 0;

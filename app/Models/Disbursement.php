@@ -18,6 +18,7 @@ class Disbursement extends Model
         'description', 'notes', 'status', 'rejection_reason',
         'created_by', 'approved_by', 'approved_at',
         'modified_by', 'modified_at', 'original_values',
+        'offer_id', // دفعة لوكيل عن عرض بعينه — تظهر في «ما ندين به عن العرض»
     ];
 
     protected $casts = [

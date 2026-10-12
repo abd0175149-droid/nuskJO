@@ -16,6 +16,8 @@ class InvoiceItem extends Model
         'sell_price_jod',
         'total_cost_sar', 'total_cost_jod', 'total_sell_jod',
         'sort_order', 'created_at',
+        // مصدر البند في العرض (stay | cost | manual) ومبلغه بعملة الوكيل
+        'source_type', 'source_id', 'cost_currency', 'cost_original', 'fx_rate',
     ];
 
     protected $casts = [

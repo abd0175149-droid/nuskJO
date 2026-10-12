@@ -60,7 +60,7 @@
                         <tbody>
                             <tr v-for="(item, i) in page.items" :key="i">
                                 <td class="center">{{ page.startIdx + i + 1 }}</td>
-                                <td>{{ item.item_type === 'service' ? 'خدمة' : 'مخالفة' }}</td>
+                                <td>{{ item.item_type === 'service' ? 'خدمة' : item.item_type === 'offer' ? 'عرض' : item.item_type === 'discount' ? 'خصم' : 'مخالفة' }}</td>
                                 <td>{{ item.description }}</td>
                                 <td class="center mono">{{ item.quantity }}</td>
                                 <td class="mono ltr">{{ fmt(item.sell_price_jod) }}</td>
@@ -107,7 +107,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue';
 
-const props = defineProps({ invoice: Object, templateUrl: String, layout: Object });
+const props = defineProps({ invoice: Object, templateUrl: String, layout: Object, roomTypes: { type: Object, default: () => ({}) } });
 
 const statusLabels = { pending: 'معلقة', approved: 'معتمدة', rejected: 'مرفوضة', editing: 'تحت التعديل' };
 const fmt = (v) => Number(v || 0).toLocaleString('en', { minimumFractionDigits: 3 });
@@ -193,8 +193,29 @@ const tableColors = computed(() => {
 });
 
 // تقسيم البنود على صفحات
+// فاتورة العرض تُطبع من لقطة البيع (العرض والاختيار وسعر الفرد)، لا من بنود التكلفة الداخلية
+// التي تكشف الوكلاء والتكاليف للعميل
+const printItems = computed(() => {
+    const snap = props.invoice?.offer_lines;
+    if (!snap || !Array.isArray(snap.lines)) return props.invoice?.items || [];
+    const rows = snap.lines.map((l) => {
+        const choice = (l.labels || []).map((x) => x.option).join(' · ');
+        const room = l.room ? (props.roomTypes?.[l.room] || l.room) : '';
+        return {
+            item_type: 'offer',
+            description: [snap.offer_title, choice, room].filter(Boolean).join(' — '),
+            quantity: l.pax,
+            sell_price_jod: l.sell_pp,
+            total_sell_jod: Math.round(l.sell_pp * l.pax * 1000) / 1000,
+        };
+    });
+    (snap.extras || []).forEach((e) => rows.push({ item_type: 'service', description: e.description, quantity: e.qty, sell_price_jod: e.sell, total_sell_jod: Math.round(e.sell * e.qty * 1000) / 1000 }));
+    if (Number(snap.discount) > 0) rows.push({ item_type: 'discount', description: 'خصم', quantity: 1, sell_price_jod: -snap.discount, total_sell_jod: -snap.discount });
+    return rows;
+});
+
 const pages = computed(() => {
-    const items = props.invoice?.items || [];
+    const items = printItems.value;
     const rpp = rowsPerPage.value;
     if (items.length <= rpp) {
         return [{ items, startIdx: 0, isLast: true }];

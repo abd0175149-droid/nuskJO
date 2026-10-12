@@ -36,7 +36,7 @@
                         <tr v-for="inv in invoices.data" :key="inv.id" :data-row-id="inv.id"
                             class="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/30"
                             :class="{ 'row-glow': isHighlighted(inv.id) }">
-                            <td data-label="الرقم" class="px-4 py-3 text-right font-mono text-xs text-gold-700">{{ inv.invoice_number }}</td>
+                            <td data-label="الرقم" class="px-4 py-3 text-right font-mono text-xs text-gold-700">{{ inv.invoice_number }}<a v-if="inv.offer" :href="'/offers/' + inv.offer.id + '?tab=sales'" class="block mt-0.5 font-sans text-[11px] font-bold text-gold-800 dark:text-gold-300 hover:underline">🎫 {{ inv.offer.title }}</a></td>
                             <td data-label="العميل" class="px-4 py-3 text-right text-xs font-medium">{{ inv.client?.name||'—' }}</td>
                             <td data-label="الرحلة" class="px-4 py-3 text-right font-mono text-xs text-gray-500 hide-mobile" dir="ltr">{{ inv.trip_date?.split('T')[0] || '—' }}</td>
                             <td data-label="التكلفة" class="px-4 py-3 text-right font-bold font-mono text-xs" dir="ltr">{{ Number(inv.total_cost_jod||0).toLocaleString('en',{minimumFractionDigits:3}) }}</td>
@@ -74,10 +74,22 @@
         <div v-if="showPOS" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showPOS=false">
             <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 p-6 max-h-[95vh] overflow-y-auto modal-responsive" style="overflow: visible auto;">
                 <div class="flex items-center justify-between mb-5">
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ editingInvoiceId ? '✏️ تعديل فاتورة' : '🧾 فاتورة مبيعات جديدة' }}</h3>
-                    <button @click="showPOS=false" class="text-gray-400 dark:text-gray-500 hover:text-red-500 text-xl">&times;</button>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ editingInvoiceId ? '✏️ تعديل فاتورة' : '🧾 فاتورة مبيعات جديدة' }}{{ posMode === 'offer' ? ' — فاتورة عرض' : '' }}</h3>
+                    <button @click="closePOS" class="text-gray-400 dark:text-gray-500 hover:text-red-500 text-xl">&times;</button>
                 </div>
-                <div class="space-y-5">
+                <!-- مفتاح نوع الفاتورة: عادية كما اليوم، أو عرض تُبنى بنودها وسعرها من العرض -->
+                <div class="flex flex-wrap items-center gap-3 mb-5 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">نوع الفاتورة</span>
+                    <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-sm" role="group" aria-label="نوع الفاتورة">
+                        <button type="button" @click="setMode('regular')" :disabled="!!editingInvoiceId || !!quotePrefill" :aria-pressed="posMode === 'regular'" class="px-4 py-2 font-bold disabled:cursor-not-allowed" :class="posMode === 'regular' ? 'bg-gold-100 text-gold-800 dark:bg-gold-900/40 dark:text-gold-200' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'">فاتورة عادية</button>
+                        <button type="button" @click="setMode('offer')" :disabled="!!editingInvoiceId" :aria-pressed="posMode === 'offer'" class="px-4 py-2 font-bold disabled:cursor-not-allowed" :class="posMode === 'offer' ? 'bg-gold-100 text-gold-800 dark:bg-gold-900/40 dark:text-gold-200' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'">🎫 فاتورة عرض</button>
+                    </div>
+                    <span class="text-xs text-gray-500">{{ posMode === 'offer' ? 'البنود والسعر من العرض، والمقاعد تُحجز عند الحفظ.' : 'البنود والسعر يكتبها البائع.' }}</span>
+                </div>
+                <OfferInvoiceForm v-if="posMode === 'offer'" :key="offerFormKey" :catalog="offerCatalog" :room-types="roomTypes" :today="today"
+                                  :clients="clients" :agents="agents" :employees="employees" :current-employee-id="currentEmployeeId"
+                                  :editing="offerEditing" :prefill="quotePrefill" :preset-offer-id="offerPreset" @close="closePOS"/>
+                <div v-else class="space-y-5">
                     <!-- Row 1: Client + Phone + Trip Date + Seller -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -215,8 +227,12 @@ import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
 const { isHighlighted } = useHighlight();
 import SearchableSelect from '@/Components/SearchableSelect.vue';
+import OfferInvoiceForm from '@/Components/Invoices/OfferInvoiceForm.vue';
+import { onMounted } from 'vue';
 
-const props = defineProps({ invoices: Object, filters: Object, agents: Array, clients: Array, services: Array, employees: { type: Array, default: () => [] }, currentEmployeeId: { type: [Number, String], default: null }, exchangeRate: Number });
+const props = defineProps({ invoices: Object, filters: Object, agents: Array, clients: Array, services: Array, employees: { type: Array, default: () => [] }, currentEmployeeId: { type: [Number, String], default: null }, exchangeRate: Number,
+    offerCatalog: { type: Array, default: () => [] }, roomTypes: { type: Object, default: () => ({}) }, today: String,
+    prefill: { type: Object, default: null }, openOffer: { type: Number, default: null }, offerMode: Boolean });
 const search = ref(props.filters?.search||'');
 const statusFilter = ref(props.filters?.status||'');
 const showPOS = ref(false);
@@ -252,12 +268,51 @@ const allItemsHaveAgent = computed(() => pos.items.every(i => i.agent_id));
 
 const editingInvoiceId = ref(null);
 
+// فاتورة العرض
+const posMode = ref('regular');
+const offerEditing = ref(null);
+const offerPreset = ref(null);
+const quotePrefill = ref(null);
+const offerFormKey = ref(0);
+const setMode = (m) => { posMode.value = m; offerFormKey.value++; };
+const closePOS = () => { showPOS.value = false; offerEditing.value = null; offerPreset.value = null; quotePrefill.value = null; editingInvoiceId.value = null; };
+const openOfferPOS = ({ preset = null, prefill = null } = {}) => {
+    editingInvoiceId.value = null;
+    offerEditing.value = null;
+    offerPreset.value = preset;
+    quotePrefill.value = prefill;
+    posMode.value = 'offer';
+    offerFormKey.value++;
+    showPOS.value = true;
+};
+onMounted(() => {
+    if (props.prefill) openOfferPOS({ prefill: props.prefill });
+    else if (props.openOffer) openOfferPOS({ preset: props.openOffer });
+    else if (props.offerMode) openOfferPOS();
+});
+
 const onClientSelect = () => {
     const client = props.clients.find(c => c.id == pos.client_id);
     if (client && client.phone) pos.client_phone = client.phone;
 };
 
 const openPOS = async (inv = null) => {
+    if (inv && inv.id && inv.offer_id) {
+        // فاتورة عرض: تُعدَّل بنموذج العرض وتحتفظ بلقطة تكاليفها
+        try {
+            const res = await fetch('/api/invoices/' + inv.id + '/details');
+            offerEditing.value = await res.json();
+        } catch (e) { return; }
+        editingInvoiceId.value = inv.id;
+        offerPreset.value = null;
+        quotePrefill.value = null;
+        posMode.value = 'offer';
+        offerFormKey.value++;
+        showPOS.value = true;
+        return;
+    }
+    posMode.value = 'regular';
+    offerEditing.value = null;
     if (inv && inv.id) {
         editingInvoiceId.value = inv.id;
         try {

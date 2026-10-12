@@ -332,7 +332,9 @@ const currentPath = computed(() => page.url?.split('?')[0] || '/');
 
 const isActive = (route) => {
     if (route === '/') return currentPath.value === '/';
-    return currentPath.value.startsWith(route);
+    if (!currentPath.value.startsWith(route)) return false;
+    // «/offers/ready» عنصر مستقل في القائمة — لا يُضاء معه «/offers»
+    return !menuGroups.some((g) => g.items.some((it) => it.route !== route && it.route.startsWith(route + '/') && currentPath.value.startsWith(it.route)));
 };
 
 const toggleTheme = () => {
@@ -351,6 +353,7 @@ const menuGroups = [
         { icon: '💬', label: 'محادثات الواتساب', route: '/whatsapp/inbox', permission: 'whatsapp.view' },
         { icon: '💰', label: 'طلبات التسعير', route: '/quote-requests', permission: 'quotes.view' },
         { icon: '📦', label: 'العروض والباقات', route: '/offers', permission: 'offers.view' },
+        { icon: '🎫', label: 'العروض الجاهزة', route: '/offers/ready', permission: 'offers.view' },
         { icon: '🤖', label: 'إعدادات البوت', route: '/whatsapp/settings', permission: 'whatsapp.settings' },
         { icon: '🎯', label: 'توجيه المحادثات', route: '/whatsapp/routing', permission: 'whatsapp.settings' },
         { icon: '📚', label: 'قاعدة معرفة البوت', route: '/whatsapp/knowledge', permission: 'whatsapp.settings' },

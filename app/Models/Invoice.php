@@ -23,6 +23,8 @@ class Invoice extends Model
         'invoice_date', 'due_date', 'notes', 'status', 'rejection_reason',
         'created_by', 'sold_by', 'approved_by', 'approved_at',
         'modified_by', 'modified_at', 'original_values',
+        // فاتورة العرض: العرض، ومقاعدها، ولقطة ما بيع (السطور وأسعارها وتكاليفها وقت البيع)
+        'offer_id', 'offer_seats', 'offer_lines', 'quote_request_id',
     ];
 
     protected $casts = [
@@ -45,6 +47,8 @@ class Invoice extends Model
         'approved_at' => 'datetime',
         'modified_at' => 'datetime',
         'original_values' => 'array',
+        'offer_lines' => 'array',
+        'offer_seats' => 'integer',
     ];
 
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
@@ -52,6 +56,9 @@ class Invoice extends Model
     public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
     // البائع الذي تُنسب إليه أرباح الفاتورة
     public function seller(): BelongsTo { return $this->belongsTo(Employee::class, 'sold_by'); }
+    public function offer(): BelongsTo { return $this->belongsTo(Offer::class); }
+
+    public function isOfferInvoice(): bool { return (bool) $this->offer_id; }
 
     // legacy — للتوافق مع الكود القديم
     public function agent(): BelongsTo { return $this->belongsTo(Agent::class); }
