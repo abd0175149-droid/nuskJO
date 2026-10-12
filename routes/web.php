@@ -121,6 +121,19 @@ Route::middleware('auth')->group(function () {
     Route::put('whatsapp/prices', [\App\Http\Controllers\WhatsAppController::class, 'savePrices'])->name('whatsapp.prices');
     Route::post('api/whatsapp/test-key', [\App\Http\Controllers\WhatsAppController::class, 'testKey']);
 
+    // أرقام الإدارة: المساعد الإداري على واتساب وصلاحيات كل رقم
+    Route::get('whatsapp/admin-numbers', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'index'])->name('whatsapp.admin-numbers');
+    Route::post('whatsapp/admin-numbers', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'store'])->name('whatsapp.admin-numbers.store');
+    Route::put('whatsapp/admin-numbers/{adminNumber}', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'update'])->name('whatsapp.admin-numbers.update');
+    Route::delete('whatsapp/admin-numbers/{adminNumber}', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'destroy'])->name('whatsapp.admin-numbers.destroy');
+
+    // قاعدة معرفة بوت العملاء — معلومات مستقلة
+    Route::get('whatsapp/knowledge', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'index'])->name('whatsapp.knowledge');
+    Route::post('whatsapp/knowledge', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'store'])->name('whatsapp.knowledge.store');
+    Route::post('whatsapp/knowledge/reorder', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'reorder'])->name('whatsapp.knowledge.reorder');
+    Route::put('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'update'])->name('whatsapp.knowledge.update');
+    Route::delete('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'destroy'])->name('whatsapp.knowledge.destroy');
+
     // العروض (يقرأها البوت)
     Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::post('offers/{offer}/toggle-bot', [\App\Http\Controllers\OfferController::class, 'toggleBot'])->name('offers.toggle-bot');

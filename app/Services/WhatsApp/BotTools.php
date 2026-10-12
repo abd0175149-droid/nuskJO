@@ -23,6 +23,21 @@ use Illuminate\Support\Facades\Storage;
  */
 class BotTools
 {
+    /** أسماء أدوات بوت العملاء كما تظهر في الإعدادات وفي أداة «إدارة الأدوات» */
+    public const LABELS = [
+        'get_offers' => 'عرض العروض والباقات',
+        'get_offer_details' => 'تفاصيل عرض',
+        'send_offer_card' => 'إرسال صورة بطاقة العرض',
+        'set_topic' => 'تحديد موضوع المحادثة وتوجيهها',
+        'get_my_balance' => 'رصيد ذمّة العميل',
+        'get_my_invoices' => 'فواتير العميل والمتبقي',
+        'get_my_trips' => 'رحلات العميل القادمة',
+        'request_quote' => 'طلب تسعير ← تحويل لموظف',
+        'confirm_booking' => 'تأكيد حجز ← تحويل لموظف',
+        'save_note' => 'حفظ ملاحظة عن العميل',
+        'handoff_to_human' => 'تحويل لموظف',
+    ];
+
     /** إعلانات الأدوات بصيغة Anthropic tool_use */
     public static function declarations(WaBotSetting $s, WaConversation $conv): array
     {

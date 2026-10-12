@@ -74,6 +74,7 @@
                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="c.bot_enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
                   {{ c.bot_enabled ? (c.paused ? '🤖 موقوف مؤقتاً' : '🤖 بوت') : '👤 بشري' }}
                 </span>
+                <span v-if="c.is_admin" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700" title="رقم إدارة — يخدمه المساعد الإداري">👔 إدارة</span>
                 <span v-if="c.client" class="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">عميل مسجّل</span>
                 <span v-if="!c.window_open" class="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700">نافذة مغلقة</span>
                 <span v-else-if="c.needs_attention && c.window_left !== null && c.window_left <= 360"

@@ -234,16 +234,15 @@
                         </p>
                     </div>
 
-                    <div>
-                        <label for="wa-kb" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">قاعدة المعرفة</label>
-                        <textarea id="wa-kb" v-model="form.knowledge_base" rows="10"
-                                  class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm leading-relaxed focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white resize-y"></textarea>
-                        <p class="text-xs text-gray-500 mt-1">
-                            <span class="font-mono" dir="ltr">{{ kbChars }}</span> حرف
-                        </p>
-                        <p class="text-xs text-amber-700 dark:text-amber-400 mt-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                            سياسات ثابتة فقط (مواعيد العمل، الموقع، طرق الدفع). لا تضع العروض هنا — العروض تُدخل من صفحة العروض ويقرأها البوت عند الحاجة، فقاعدة المعرفة تُرسل مع كل رسالة وتُحاسب كل مرة.
-                        </p>
+                    <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4 flex flex-wrap items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm font-bold text-gray-800 dark:text-gray-100">📚 قاعدة المعرفة</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                صارت معلومات مستقلة تُضاف وتُعدّل وتُحذف من صفحتها، أو من واتساب عبر أرقام الإدارة.
+                                <span v-if="settings.kb_entries !== undefined"><span class="font-mono" dir="ltr">{{ settings.kb_entries }}</span> معلومة فعّالة · <span class="font-mono" dir="ltr">{{ settings.kb_chars }}</span> حرف.</span>
+                            </p>
+                        </div>
+                        <a href="/whatsapp/knowledge" class="shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200 dark:hover:bg-gold-900/50">إدارة قاعدة المعرفة ←</a>
                     </div>
                 </div>
 
@@ -341,7 +340,6 @@ const form = useForm({
     provider: props.settings?.provider || 'google',
     model: props.settings?.model || 'gemini-2.5-flash',
     system_prompt: props.settings?.system_prompt || props.defaultPrompt || '',
-    knowledge_base: props.settings?.knowledge_base || '',
     context_messages: Number(props.settings?.context_messages ?? 12),
     pause_minutes: Number(props.settings?.pause_minutes ?? 60),
     max_tool_loops: Number(props.settings?.max_tool_loops ?? 4),
@@ -393,7 +391,6 @@ const missing = computed(() => {
 });
 
 const promptChars = computed(() => (form.system_prompt || '').length);
-const kbChars = computed(() => (form.knowledge_base || '').length);
 
 const copied = ref(false);
 const copyFailed = ref(false);

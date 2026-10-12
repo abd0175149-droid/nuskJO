@@ -27,7 +27,8 @@ class VoiceTranscriber
     public static function run(WaConversation $conv): void
     {
         $s = WaBotSetting::current();
-        if (!$s->enabled || !$s->llmKey()) {
+        // أرقام الإدارة تُفرَّغ صوتياتها حتى لو كان بوت العملاء موقوفاً
+        if (!$s->llmKey() || (!$s->enabled && !\App\Models\WaAdminNumber::forPhone($conv->phone))) {
             return;
         }
 

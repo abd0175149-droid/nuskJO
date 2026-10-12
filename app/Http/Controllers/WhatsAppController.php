@@ -58,6 +58,8 @@ class WhatsAppController extends Controller
         $filter = $request->get('filter', 'all');
 
         $me = auth()->user();
+        // محادثات أرقام الإدارة تُعلَّم في الصندوق — يخدمها المساعد الإداري لا بوت العملاء
+        $adminPhones = rescue(fn () => \App\Models\WaAdminNumber::where('is_active', true)->pluck('phone')->flip()->all(), [], false);
 
         return WaConversation::query()
             ->with(['client:id,name,code', 'assignee:id,name'])
@@ -96,6 +98,7 @@ class WhatsAppController extends Controller
                 'last_at' => $c->last_message_at?->diffForHumans(),
                 'window_open' => $c->isWindowOpen(),
                 'window_left' => $c->windowMinutesLeft(),
+                'is_admin' => isset($adminPhones[$c->phone]),
                 'assignee' => $c->assignee?->name,
                 'assigned_to' => $c->assigned_to,
                 'topics' => TopicRouter::topicsOf($c),
@@ -136,6 +139,7 @@ class WhatsAppController extends Controller
                 'needs_attention' => (bool) $conversation->needs_attention,
                 'window_open' => $conversation->isWindowOpen(),
                 'window_left' => $conversation->windowMinutesLeft(),
+                'is_admin' => (bool) \App\Models\WaAdminNumber::forPhone($conversation->phone),
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
@@ -291,7 +295,8 @@ class WhatsAppController extends Controller
                 'provider' => $s->provider ?: 'google',
                 'model' => $s->model,
                 'system_prompt' => $s->system_prompt ?: BotEngine::DEFAULT_PROMPT,
-                'knowledge_base' => $s->knowledge_base,
+                'kb_entries' => rescue(fn () => \App\Models\WaKnowledgeEntry::where('is_active', true)->count(), 0, false),
+                'kb_chars' => rescue(fn () => \App\Models\WaKnowledgeEntry::activeChars(), 0, false),
                 'context_messages' => (int) $s->context_messages,
                 'pause_minutes' => (int) $s->pause_minutes,
                 'max_tool_loops' => (int) $s->max_tool_loops,
@@ -309,19 +314,7 @@ class WhatsAppController extends Controller
             'providers' => \App\Services\WhatsApp\Llm\LlmFactory::PROVIDERS,
             'webhookUrl' => url('/api/whatsapp/webhook'),
             'defaultPrompt' => BotEngine::DEFAULT_PROMPT,
-            'toolList' => [
-                'get_offers' => 'عرض العروض والباقات',
-                'get_offer_details' => 'تفاصيل عرض',
-                'send_offer_card' => 'إرسال صورة بطاقة العرض',
-                'set_topic' => 'تحديد موضوع المحادثة وتوجيهها',
-                'get_my_balance' => 'رصيد ذمّة العميل',
-                'get_my_invoices' => 'فواتير العميل والمتبقي',
-                'get_my_trips' => 'رحلات العميل القادمة',
-                'request_quote' => 'طلب تسعير ← تحويل لموظف',
-                'confirm_booking' => 'تأكيد حجز ← تحويل لموظف',
-                'save_note' => 'حفظ ملاحظة عن العميل',
-                'handoff_to_human' => 'تحويل لموظف',
-            ],
+            'toolList' => \App\Services\WhatsApp\BotTools::LABELS,
         ]);
     }
 

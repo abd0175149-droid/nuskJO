@@ -110,7 +110,8 @@ class WhatsAppInbox
         ]);
 
         // إيقاف التسويق بنصّ مطابق
-        if (self::isOptOut($body, $buttonId)) {
+        // رقم الإدارة لا يُسجَّل رافضاً للتسويق: «إيقاف» منه تعني غالباً إيقاف البوت
+        if (self::isOptOut($body, $buttonId) && !\App\Models\WaAdminNumber::forPhone($conv->phone)) {
             WaOptout::updateOrCreate(
                 ['phone' => $conv->phone],
                 ['reason' => 'طلب العميل', 'created_at' => now()]
