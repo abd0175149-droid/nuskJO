@@ -126,6 +126,7 @@ class BotTools
                         'adults' => ['type' => 'integer'],
                         'children' => ['type' => 'integer'],
                         'infants' => ['type' => 'integer'],
+                        'travel_date' => ['type' => 'string', 'description' => 'تاريخ السفر المطلوب إن ذكره العميل YYYY-MM-DD'],
                         'details' => ['type' => 'string', 'description' => 'أي تفاصيل ذكرها العميل (أسماء، ملاحظات، تواريخ مفضّلة)'],
                     ],
                     'required' => ['offer_id', 'details'],
@@ -365,8 +366,9 @@ class BotTools
             'phone' => $conv->phone,
             'customer_name' => $conv->display_name,
             'type' => $in['type'] ?? 'flight',
-            'route_from' => mb_substr((string) ($in['route_from'] ?? ''), 0, 8) ?: null,
-            'route_to' => mb_substr((string) ($in['route_to'] ?? ''), 0, 8) ?: null,
+            // كان القصّ عند 8 أحرف (طول رمز مطار) يقطع أسماء المدن: «المدينة المنورة» ← «المدينة»
+            'route_from' => mb_substr((string) ($in['route_from'] ?? ''), 0, 60) ?: null,
+            'route_to' => mb_substr((string) ($in['route_to'] ?? ''), 0, 60) ?: null,
             'depart_date' => self::date($in['depart_date'] ?? null),
             'return_date' => self::date($in['return_date'] ?? null),
             'pax_adults' => max(1, (int) ($in['adults'] ?? 1)),
@@ -401,8 +403,8 @@ class BotTools
             'phone' => $conv->phone,
             'customer_name' => $conv->display_name,
             'type' => 'package',
-            // العرض لم يعد يحمل تواريخ سفر — الموظف يحدّدها مع العميل عند التقفيل
-            'depart_date' => null,
+            // التاريخ الذي طلبه العميل إن ذكره — والموظف يثبّته عند التقفيل
+            'depart_date' => self::date($in['travel_date'] ?? null),
             'return_date' => null,
             'pax_adults' => max(1, (int) ($in['adults'] ?? 1)),
             'pax_children' => max(0, (int) ($in['children'] ?? 0)),
@@ -495,7 +497,7 @@ class BotTools
 
         return [
             'ok' => true,
-            'note' => 'أبلغ العميل بلطف أنّ موظفاً سيتواصل معه حالاً، ثم توقّف عن الردّ.',
+            'note' => 'أبلغ العميل بلطف أنّ موظفاً سيتواصل معه، وإن كان الوقت خارج الدوام فمع بداية الدوام. جملة واحدة، ثم توقّف عن الردّ.',
         ];
     }
 

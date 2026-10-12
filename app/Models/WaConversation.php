@@ -35,6 +35,16 @@ class WaConversation extends Model
         return $this->last_inbound_at && $this->last_inbound_at->gt(now()->subDay());
     }
 
+    /** الدقائق الباقية قبل إغلاق النافذة — null إن كانت مغلقة */
+    public function windowMinutesLeft(): ?int
+    {
+        if (!$this->isWindowOpen()) {
+            return null;
+        }
+
+        return (int) max(0, now()->diffInMinutes($this->last_inbound_at->copy()->addDay(), false));
+    }
+
     /** هل البوت فعّال لهذه المحادثة الآن؟ */
     public function botActive(): bool
     {

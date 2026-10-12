@@ -76,6 +76,10 @@
                 </span>
                 <span v-if="c.client" class="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">عميل مسجّل</span>
                 <span v-if="!c.window_open" class="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700">نافذة مغلقة</span>
+                <span v-else-if="c.needs_attention && c.window_left !== null && c.window_left <= 360"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                      :class="c.window_left <= 120 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'"
+                      :title="'تُغلق نافذة الرد خلال ' + windowLabel(c.window_left)">⏳ {{ windowLabel(c.window_left) }}</span>
                 <span class="text-[10px] text-gray-400 mr-auto">{{ c.last_at }}</span>
               </div>
             </button>
@@ -170,6 +174,10 @@
               <div v-if="!thread.window_open" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
                 ⚠️ انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.
               </div>
+              <div v-else-if="thread.window_left !== null && thread.window_left <= 360" class="mb-2 text-xs font-bold"
+                   :class="thread.window_left <= 120 ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'">
+                ⏳ تبقّى {{ windowLabel(thread.window_left) }} للرد على هذا العميل، وبعدها لا يمكن مراسلته حتى يكتب لنا من جديد.
+              </div>
               <form v-if="canReply" @submit.prevent="send" class="flex items-end gap-2">
                 <textarea v-model="draft" rows="2" :disabled="!thread.window_open || sending"
                           placeholder="اكتب ردّك..."
@@ -216,6 +224,12 @@ const props = defineProps({
 });
 
 const list = ref([...props.conversations]);
+
+// الوقت الباقي في نافذة الـ24 ساعة بصيغة مقروءة: «5س 20د» أو «40د»
+const windowLabel = (mins) => {
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h ? `${h}س${m ? ' ' + m + 'د' : ''}` : `${m}د`;
+};
 const filter = ref(props.filters?.filter || 'all');
 const search = ref(props.filters?.search || '');
 const topic = ref(props.filters?.topic || '');

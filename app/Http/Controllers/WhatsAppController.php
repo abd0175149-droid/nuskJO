@@ -95,6 +95,7 @@ class WhatsAppController extends Controller
                 'preview' => $c->last_message_preview,
                 'last_at' => $c->last_message_at?->diffForHumans(),
                 'window_open' => $c->isWindowOpen(),
+                'window_left' => $c->windowMinutesLeft(),
                 'assignee' => $c->assignee?->name,
                 'assigned_to' => $c->assigned_to,
                 'topics' => TopicRouter::topicsOf($c),
@@ -134,6 +135,7 @@ class WhatsAppController extends Controller
                 'bot_enabled' => (bool) $conversation->bot_enabled,
                 'needs_attention' => (bool) $conversation->needs_attention,
                 'window_open' => $conversation->isWindowOpen(),
+                'window_left' => $conversation->windowMinutesLeft(),
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
@@ -301,7 +303,7 @@ class WhatsAppController extends Controller
                 'has_token' => !empty($s->token()),
                 'has_app_secret' => !empty($s->appSecret()),
                 'has_api_key' => !empty($s->llmKey()),
-                'env_token' => !empty(env('WA_TOKEN')),
+                'env_token' => !empty(config('services.whatsapp.token')),
                 'env_api_key' => $s->envKeyPresent(),
             ],
             'providers' => \App\Services\WhatsApp\Llm\LlmFactory::PROVIDERS,
@@ -411,9 +413,7 @@ class WhatsAppController extends Controller
 
         $s = WaBotSetting::current();
         // مفتاح جديد من النموذج، وإلا المحفوظ/البيئة للمزوّد المطلوب
-        $key = $data['api_key'] ?: ($data['provider'] === 'anthropic'
-            ? (env('ANTHROPIC_API_KEY') ?: $s->api_key)
-            : (env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY') ?: $s->api_key));
+        $key = $data['api_key'] ?: (WaBotSetting::envKeyFor($data['provider']) ?: $s->api_key);
 
         if (blank($key)) {
             return response()->json(['ok' => false, 'error' => 'لا يوجد مفتاح — أدخل المفتاح أولاً.'], 422);

@@ -3,11 +3,22 @@
 return [
 
     /*
-    | توكن واجهة البوت — تحمله منصّة AiBot في أسرار الأداة المشفَّرة.
-    | غيابه يُغلق الواجهة (503) ولا يفتحها بلا تحقّق.
+    | قناة واتساب ومفاتيح النماذج — تجاوزٌ اختياري لما يُحفظ من صفحة إعدادات البوت.
+    | تُقرأ هنا لا بـ env() في الكود: بعد config:cache لا يُحمَّل ‎.env‎، وphp-fpm
+    | يمسح متغيّرات البيئة، فكان env() يعيد فراغاً في طلبات الويب وحدها.
     */
-    'bot' => [
-        'token' => env('BOT_API_TOKEN'),
+    'whatsapp' => [
+        'token' => env('WA_TOKEN'),
+        'phone_number_id' => env('WA_PHONE_NUMBER_ID'),
+        'verify_token' => env('WA_WEBHOOK_VERIFY_TOKEN'),
+        'app_secret' => env('WA_APP_SECRET'),
+        'graph_version' => env('WA_GRAPH_VERSION', 'v21.0'),
+        'suspended' => (bool) env('WA_SUSPENDED', false),
+    ],
+
+    'llm' => [
+        'anthropic_key' => env('ANTHROPIC_API_KEY'),
+        'google_key' => env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY'),
     ],
 
     /*

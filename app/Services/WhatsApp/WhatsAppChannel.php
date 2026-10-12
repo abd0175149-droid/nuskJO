@@ -22,10 +22,46 @@ class WhatsAppChannel
     public const ERR_SUSPENDED = 'SENDING_SUSPENDED';
     public const ERR_WINDOW = 'WINDOW_EXPIRED';
 
+    private static function graphBase(): string
+    {
+        return 'https://graph.facebook.com/' . (config('services.whatsapp.graph_version') ?: 'v21.0');
+    }
+
     private static function graphUrl(string $phoneNumberId): string
     {
-        $v = env('WA_GRAPH_VERSION', 'v21.0');
-        return "https://graph.facebook.com/{$v}/{$phoneNumberId}/messages";
+        return self::graphBase() . "/{$phoneNumberId}/messages";
+    }
+
+    /**
+     * تنزيل وسائط رسالة واردة (رسالة صوتية مثلاً) بمعرّفها.
+     * ميتا تعيد رابطاً مؤقّتاً لا يُفتح إلا بنفس التوكن، فالتنزيل على خطوتين.
+     *
+     * @return array{bytes:string, mime:string}|null
+     */
+    public static function downloadMedia(string $mediaId, int $maxBytes = 15_000_000): ?array
+    {
+        $token = WaBotSetting::current()->token();
+        if (!$token || $mediaId === '') {
+            return null;
+        }
+
+        $meta = Http::withToken($token)->timeout(20)->acceptJson()->get(self::graphBase() . '/' . rawurlencode($mediaId));
+        $url = $meta->json('url');
+        if (!$meta->successful() || !$url) {
+            Log::warning('WA media lookup failed', ['media' => $mediaId, 'status' => $meta->status()]);
+            return null;
+        }
+        if ((int) $meta->json('file_size', 0) > $maxBytes) {
+            return null;
+        }
+
+        $file = Http::withToken($token)->timeout(40)->get($url);
+        if (!$file->successful() || strlen($file->body()) > $maxBytes) {
+            Log::warning('WA media download failed', ['media' => $mediaId, 'status' => $file->status()]);
+            return null;
+        }
+
+        return ['bytes' => $file->body(), 'mime' => (string) ($meta->json('mime_type') ?: 'audio/ogg')];
     }
 
     /** تحقّق توقيع ميتا على الجسم الخام — إلزامي في الإنتاج */
@@ -163,7 +199,7 @@ class WhatsAppChannel
         }
 
         // ── القفل 2: إيقاف إرسال طارئ
-        if ($s->wa_suspended || env('WA_SUSPENDED')) {
+        if ($s->wa_suspended || config('services.whatsapp.suspended')) {
             return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).');
         }
 

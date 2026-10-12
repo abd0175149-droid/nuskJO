@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\WaConversation;
 use App\Services\WhatsApp\BotEngine;
+use App\Services\WhatsApp\VoiceTranscriber;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Cache;
@@ -53,6 +54,8 @@ class ProcessWhatsAppReply implements ShouldQueue
         try {
             $conv = WaConversation::find($this->conversationId);
             if ($conv) {
+                // الصوتيات تُفرَّغ أولاً، فيقرؤها البوت نصّاً ضمن السياق
+                VoiceTranscriber::run($conv);
                 BotEngine::reply($conv);
             }
         } finally {

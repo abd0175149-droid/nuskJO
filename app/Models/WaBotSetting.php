@@ -44,26 +44,28 @@ class WaBotSetting extends Model
         ]);
     }
 
-    /** أولوية البيئة على القاعدة للأسرار */
-    public function token(): ?string { return env('WA_TOKEN') ?: $this->wa_token; }
-    public function phoneNumberId(): ?string { return env('WA_PHONE_NUMBER_ID') ?: $this->wa_phone_number_id; }
-    public function verifyToken(): ?string { return env('WA_WEBHOOK_VERIFY_TOKEN') ?: $this->wa_verify_token; }
-    public function appSecret(): ?string { return env('WA_APP_SECRET') ?: $this->wa_app_secret; }
+    /** أولوية البيئة (عبر config/services.php) على القاعدة للأسرار */
+    public function token(): ?string { return config('services.whatsapp.token') ?: $this->wa_token; }
+    public function phoneNumberId(): ?string { return config('services.whatsapp.phone_number_id') ?: $this->wa_phone_number_id; }
+    public function verifyToken(): ?string { return config('services.whatsapp.verify_token') ?: $this->wa_verify_token; }
+    public function appSecret(): ?string { return config('services.whatsapp.app_secret') ?: $this->wa_app_secret; }
     /** مفتاح المزوّد — البيئة أولاً ثم المحفوظ، وحسب المزوّد المختار */
     public function llmKey(): ?string
     {
-        if ($this->provider === 'anthropic') {
-            return env('ANTHROPIC_API_KEY') ?: $this->api_key;
-        }
-
-        return env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY') ?: $this->api_key;
+        return self::envKeyFor($this->provider) ?: $this->api_key;
     }
 
     public function envKeyPresent(): bool
     {
-        return $this->provider === 'anthropic'
-            ? !empty(env('ANTHROPIC_API_KEY'))
-            : !empty(env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY'));
+        return !empty(self::envKeyFor($this->provider));
+    }
+
+    /** مفتاح المزوّد من البيئة إن وُجد */
+    public static function envKeyFor(?string $provider): ?string
+    {
+        return $provider === 'anthropic'
+            ? config('services.llm.anthropic_key')
+            : config('services.llm.google_key');
     }
 
     public function channelReady(): bool { return !empty($this->token()) && !empty($this->phoneNumberId()); }

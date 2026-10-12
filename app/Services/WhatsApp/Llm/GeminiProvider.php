@@ -123,6 +123,50 @@ class GeminiProvider implements LlmProvider
         ];
     }
 
+    /**
+     * تفريغ مقطع صوتي إلى نصّ بالنموذج نفسه (Gemini يقبل الصوت مباشرةً).
+     * يُستعمل للرسائل الصوتية في واتساب — ogg/opus غالباً، وصغيرة الحجم.
+     *
+     * @return array{text:string, usage:array{in:int,out:int}}
+     */
+    public function transcribe(string $apiKey, string $model, string $bytes, string $mime): array
+    {
+        $body = [
+            'contents' => [[
+                'role' => 'user',
+                'parts' => [
+                    ['inlineData' => ['mimeType' => $mime, 'data' => base64_encode($bytes)]],
+                    ['text' => 'فرّغ هذه الرسالة الصوتية نصّاً حرفياً بلغتها الأصلية (غالباً عربية بلهجة أردنية). '
+                        . 'اكتب النصّ المنطوق فقط، بلا مقدّمة ولا شرح ولا ترجمة. '
+                        . 'إن كانت صامتة أو غير مفهومة فاكتب: [غير مفهومة]'],
+                ],
+            ]],
+            'generationConfig' => ['temperature' => 0, 'maxOutputTokens' => 1024],
+        ];
+
+        $res = Http::timeout(60)->acceptJson()
+            ->post(self::BASE . "/models/{$model}:generateContent?key=" . urlencode($apiKey), $body);
+
+        if (!$res->successful()) {
+            throw new \RuntimeException('Gemini transcribe HTTP ' . $res->status() . ': '
+                . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300));
+        }
+
+        $text = '';
+        foreach ((array) data_get($res->json(), 'candidates.0.content.parts', []) as $p) {
+            $text .= (string) ($p['text'] ?? '');
+        }
+        $u = (array) data_get($res->json(), 'usageMetadata', []);
+
+        return [
+            'text' => trim($text),
+            'usage' => [
+                'in' => (int) ($u['promptTokenCount'] ?? 0),
+                'out' => (int) ($u['candidatesTokenCount'] ?? 0) + (int) ($u['thoughtsTokenCount'] ?? 0),
+            ],
+        ];
+    }
+
     public function appendAssistant(array &$history, mixed $rawAssistant): void
     {
         $history[] = ['role' => 'model', 'parts' => (array) $rawAssistant];

@@ -51,6 +51,20 @@ class BotEngine
 TXT;
 
     /**
+     * قواعد يفرضها النظام فوق أي شخصية يكتبها المالك.
+     * مكانها الكود لا خانة الشخصية: تعديل الشخصية من الإعدادات لا يُسقطها.
+     */
+    public const SYSTEM_RULES = <<<'TXT'
+=== قواعد ثابتة من النظام (تتقدّم على أي تعليمات أخرى) ===
+- اللغة: ردّ بلغة العميل. إن كتب بالإنجليزية فردّ بالإنجليزية بالقواعد نفسها كلّها، وإن كتب بالعربية فبالعربية.
+- التحويل: لا تقل «تم تحويلك» أو «حوّلتك» أو «سيتواصل معك موظف» إلا إذا استدعيت في الردّ نفسه أداةً تحوّل المحادثة (handoff_to_human أو request_quote أو confirm_booking). وإن طلب العميل موظفاً فاستدعِ handoff_to_human فوراً.
+- الرسائل الصوتية تصلك مفرّغةً نصّاً بعد الرمز «🎤». تعامل معها كأنّها مكتوبة. وإن وصلت «🎤 رسالة صوتية (تعذّر تفريغها)» فاعتذر بلطف أنّك لم تتمكّن من سماعها واطلب منه كتابة طلبه.
+- «📷 صورة» أو «📄 ملف» أو «📍 موقع» أو «🎬 مقطع فيديو»: لا ترى محتواها، فلا تعلّق عليه ولا تخمّنه. اشكره، وإن كانت وثيقة سفر أو كان في مرحلة حجز فحوّله لموظف ليستلمها.
+- الدوام: إن كان الوقت الحالي (في بطاقة العميل) خارج مواعيد الدوام المذكورة في بيانات الشركة وحوّلت المحادثة، فأخبره أنّ الموظف سيتابع معه مع بداية الدوام، ولا تَعِد بردّ فوري.
+- سؤال واحد في كل رسالة، ولا تكرّر الترحيب بعد أوّل ردّ في المحادثة.
+TXT;
+
+    /**
      * توليد ردّ واحد لمحادثة. يُستدعى من الوظيفة المؤجّلة.
      * @return array{sent:bool, reason:?string}
      */
@@ -68,11 +82,18 @@ TXT;
             return self::skip('آخر رسالة ليست من العميل');
         }
 
-        // حدّ المعدّل لكل محادثة
+        $pending = self::pendingCustomerText($conv);
+
+        // ① طلب صريح لموظف: يُحوَّل بالكود، ولا يُترك للنموذج أن يزعم التحويل
+        if (HandoffGuard::wantsHuman($pending)) {
+            return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف');
+        }
+
+        // حدّ المعدّل لكل محادثة — عند بلوغه نحوّل بدل الصمت
         $key = 'wa:rate:' . $conv->id . ':' . now()->format('YmdH');
         $count = (int) Cache::get($key, 0);
         if ($count >= max(1, (int) $s->rate_limit_per_hour)) {
-            return self::skip('تجاوز حدّ المعدّل');
+            return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة');
         }
         Cache::put($key, $count + 1, now()->addHour());
 
@@ -81,6 +102,13 @@ TXT;
 
             if (trim((string) $text) === '') {
                 $text = 'تلقّيت رسالتك. سيتواصل معك أحد موظفينا حالاً.';
+            }
+
+            // ② ردٌّ يَعِد بموظف دون أداة تحويل ← يُنفَّذ التحويل فعلاً
+            $escalated = (bool) array_intersect($usage['tools'], HandoffGuard::ESCALATING_TOOLS);
+            if (!$escalated && HandoffGuard::claimsHandoff($text)) {
+                BotTools::execute('handoff_to_human', ['reason' => 'الردّ وعد بموظف دون تحويل فعلي'], $conv->fresh());
+                $usage['tools'][] = 'handoff_guard';
             }
 
             self::recordUsage($conv->id, $s->model, $usage);
@@ -161,6 +189,7 @@ TXT;
     private static function buildSystem(WaConversation $conv, WaBotSetting $s): array
     {
         $static = trim($s->system_prompt ?: self::DEFAULT_PROMPT);
+        $static .= "\n\n" . self::SYSTEM_RULES;
 
         // هوية الشركة تُقرأ من الإعدادات دائماً — لا تُكتب يدوياً في قاعدة المعرفة
         $static .= "
@@ -258,6 +287,33 @@ TXT;
         $clean = trim(preg_replace('/\s{2,}/', ' ', $clean) ?? $clean);
 
         return mb_strlen($clean) < 8 ? 'تلقّيت رسالتك، وسيتواصل معك أحد موظفينا حالاً.' : $clean;
+    }
+
+    /** نصّ رسائل العميل منذ آخر رسالة صادرة — ما ينتظر الردّ الآن */
+    private static function pendingCustomerText(WaConversation $conv): string
+    {
+        $lastOutId = (int) $conv->messages()->where('direction', 'out')->max('id');
+
+        return $conv->messages()
+            ->where('direction', 'in')->where('id', '>', $lastOutId)
+            ->where('msg_type', '!=', 'reaction')
+            ->orderBy('id')->limit(10)->pluck('body')
+            ->implode("\n");
+    }
+
+    /** تحويل يقرّره الكود: أداة التحويل نفسها + رسالة تأكيد يبنيها الكود بلغة العميل */
+    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason): array
+    {
+        BotTools::execute('handoff_to_human', ['reason' => $reason], $conv);
+
+        self::recordUsage($conv->id, $s->model, [
+            'calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0,
+            'tools' => ['handoff_guard'], 'leaked' => false, 'ms' => 0,
+        ]);
+
+        $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'bot');
+
+        return ['sent' => (bool) $res['ok'], 'reason' => $reason];
     }
 
     /** الفشل الآمن: العميل لا يُترك في صمت */

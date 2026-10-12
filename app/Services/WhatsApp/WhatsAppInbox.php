@@ -21,11 +21,18 @@ class WhatsAppInbox
     public static function handleWebhook(array $payload): array
     {
         $touched = [];
+        // للتطبيق أكثر من رقم، والويبهوك واحد للتطبيق كلّه — نعالج رقمنا وحده
+        $ownId = (string) WaBotSetting::current()->phoneNumberId();
 
         foreach (data_get($payload, 'entry', []) as $entry) {
             foreach (data_get($entry, 'changes', []) as $change) {
                 $field = data_get($change, 'field');
                 $value = data_get($change, 'value', []);
+
+                $to = (string) data_get($value, 'metadata.phone_number_id', '');
+                if ($field === 'messages' && $ownId !== '' && $to !== '' && $to !== $ownId) {
+                    continue;
+                }
 
                 if ($field !== 'messages') {
                     // صحّة الحساب / حالة القوالب → قفل الإرسال احتياطاً
@@ -181,7 +188,8 @@ class WhatsAppInbox
     {
         if ($buttonId === 'optout') return true;
         $t = trim(mb_strtolower((string) $body));
-        return in_array($t, ['stop', 'ايقاف', 'إيقاف', 'الغاء', 'إلغاء', 'الغاء الاشتراك', 'unsubscribe'], true);
+        // «إلغاء» وحدها ليست هنا: من يكتبها يقصد غالباً إلغاء حجز، فتصل للبوت
+        return in_array($t, ['stop', 'ايقاف', 'إيقاف', 'الغاء الاشتراك', 'إلغاء الاشتراك', 'unsubscribe'], true);
     }
 
     /** حالات التسليم: sent / delivered / read / failed */
@@ -204,7 +212,11 @@ class WhatsAppInbox
         ]);
     }
 
-    /** أي حدث على مستوى الحساب → قفل الإرسال فوراً وإشعار الإدارة */
+    /**
+     * أحداث الحساب: الحدث السلبي وحده يقفل الإرسال.
+     * كان أيّ account_update يقفله — ومنها أحداث عادية تصل عند ربط الحساب أو توثيقه —
+     * فيسكت البوت بلا خطأ ظاهر. الأحداث الأخرى تُسجَّل فقط.
+     */
     private static function handleAccountEvent(string $field, array $value): void
     {
         $critical = ['account_update', 'phone_number_quality_update'];
@@ -214,7 +226,8 @@ class WhatsAppInbox
         Log::warning("WA account event [{$field}]: " . json_encode($value));
 
         $bad = ['FLAGGED', 'DOWNGRADE', 'ACCOUNT_VIOLATION', 'ACCOUNT_RESTRICTION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED'];
-        if (in_array(strtoupper((string) $event), $bad, true) || $field === 'account_update') {
+        $violation = data_get($value, 'violation_info') || data_get($value, 'ban_info');
+        if (in_array(strtoupper((string) $event), $bad, true) || $violation) {
             WaBotSetting::current()->update(['wa_suspended' => true]);
             self::notifyAdmins('⛔ إيقاف إرسال الواتساب', "وصل حدث «{$event}» من ميتا، فأُوقف كل الإرسال تلقائياً. راجع صحّة الحساب قبل إعادة التشغيل.");
         }
