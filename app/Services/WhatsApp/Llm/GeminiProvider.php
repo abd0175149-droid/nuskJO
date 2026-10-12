@@ -169,7 +169,17 @@ class GeminiProvider implements LlmProvider
 
     public function appendAssistant(array &$history, mixed $rawAssistant): void
     {
-        $history[] = ['role' => 'model', 'parts' => (array) $rawAssistant];
+        // json_decode يحوّل «args: {}» إلى مصفوفة فارغة فتُرسل «[]»، وGemini يرفض الطلب التالي
+        // («Proto field is not repeating»). نعيدها كائناً — وباقي الجزء كما وصل حرفياً.
+        $parts = array_map(function ($p) {
+            if (is_array($p) && isset($p['functionCall']) && empty($p['functionCall']['args'])) {
+                $p['functionCall']['args'] = new \stdClass();
+            }
+
+            return $p;
+        }, (array) $rawAssistant);
+
+        $history[] = ['role' => 'model', 'parts' => $parts];
     }
 
     public function appendToolResults(array &$history, array $results): void
