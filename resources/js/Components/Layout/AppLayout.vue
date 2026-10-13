@@ -121,6 +121,7 @@
                                 <span class="font-bold text-sm">الإشعارات</span>
                                 <button v-if="notifications.length" @click="markAllRead" class="text-xs text-blue-500 hover:underline">تعليم الكل كمقروء</button>
                             </div>
+                            <PushToggle />
                             <div v-if="notificationsLoading" class="p-6 text-center text-gray-400 text-sm">جاري التحميل...</div>
                             <div v-else-if="!notifications.length" class="p-6 text-center text-gray-400 text-sm">لا يوجد إشعارات</div>
                             <div v-else>
@@ -174,11 +175,11 @@
                                 </button>
                             </div>
                             <div class="border-t py-1" :class="isDark ? 'border-gray-700' : 'border-gray-100'">
-                                <Link href="/logout" method="post" as="button"
+                                <button type="button" @click="logout"
                                    class="w-full text-right flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
                                    :class="isDark ? 'text-red-400 hover:bg-red-900/20' : 'text-red-500 hover:bg-red-50'">
                                     <span>🚪</span><span>تسجيل الخروج</span>
-                                </Link>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -196,7 +197,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { usePage, Link, router } from '@inertiajs/vue3';
-import { requestFirebaseToken } from '../../firebase';
+import { syncPushToken, currentPushToken, forgetPushToken } from '../../firebase';
+import PushToggle from './PushToggle.vue';
 import axios from 'axios';
 
 const page = usePage();
@@ -239,6 +241,9 @@ const openNotification = async (n) => {
     showNotifications.value = false;
     if (n.action_url) router.visit(n.action_url);
 };
+
+// الخروج يحذف توكن هذا الجهاز، فلا تصل إشعارات المستخدم لمن يستعمل الجهاز بعده
+const logout = () => router.post('/logout', { push_token: currentPushToken() }, { onFinish: forgetPushToken });
 
 const markAllRead = async () => {
     try {
@@ -289,10 +294,8 @@ onMounted(() => {
     window.addEventListener('resize', handleResize);
     document.addEventListener('click', handleClickOutside);
     
-    // Request FCM Token for notifications
-    if (user.value) {
-        try { requestFirebaseToken(); } catch(e) {}
-    }
+    // إشعارات الجهاز: يجدّد توكن هذا الجهاز إن كان المستخدم فعّلها (لا يطلب الإذن هنا)
+    if (user.value) syncPushToken();
     
     // WebSocket: إشعارات لحظية عبر Reverb
     if (window.Echo && user.value?.id) {

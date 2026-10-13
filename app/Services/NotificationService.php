@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Events\NewNotification;
+use App\Jobs\SendPushNotification;
 use App\Models\Notification;
 use App\Models\User;
 
@@ -12,7 +14,7 @@ class NotificationService
      */
     public static function send(int $userId, string $title, string $body, array $options = []): Notification
     {
-        return Notification::create([
+        $notification = Notification::create([
             'user_id' => $userId,
             'title' => $title,
             'body' => $body,
@@ -22,6 +24,37 @@ class NotificationService
             'data' => $options['data'] ?? null,
             'is_read' => false,
         ]);
+
+        // الجرس في الصفحات المفتوحة يتحدّث فوراً (Reverb)، والجهاز يتلقى إشعار نظام (FCM).
+        // كلاهما في الطابور وبعد اعتماد المعاملة، وفشلهما لا يُفشل العملية التي أنشأت الإشعار
+        try {
+            event(new NewNotification($userId, self::toBell($notification)));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        try {
+            SendPushNotification::dispatch($userId, $title, $body, $notification->action_url, 'n' . $notification->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $notification;
+    }
+
+    /** بنفس شكل /api/notifications ليُضاف لقائمة الجرس كما هو */
+    private static function toBell(Notification $n): array
+    {
+        return [
+            'id' => $n->id,
+            'title' => $n->title ?? '',
+            'body' => $n->body ?? '',
+            'type' => $n->type ?? 'info',
+            'icon' => $n->icon ?? 'ℹ️',
+            'action_url' => $n->action_url,
+            'is_read' => false,
+            'time_ago' => 'الآن',
+            'created_at' => $n->created_at?->toISOString() ?? now()->toISOString(),
+        ];
     }
 
     /**

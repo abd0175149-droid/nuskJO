@@ -1,60 +1,41 @@
-importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-compat.js');
+// عامل خدمة إشعارات الجهاز (FCM).
+// لا يحمّل مكتبة Firebase: الصفحة تسجّل الجهاز (resources/js/firebase.js)، وهنا العرض وحده.
+// الخادم يرسل رسائل «بيانات فقط» (PushService)، فلا يعرضها أحد غير هذا الملف — فلا تكرار.
+// أي تعديل هنا: ارفع ?v= في SW_URL داخل firebase.js.
 
-const firebaseConfig = {
-    apiKey: "AIzaSyDm_Auuyq1McWdd3bYkCWGD27R-8H2vDoQ",
-    authDomain: "how-diploma-app.firebaseapp.com",
-    projectId: "how-diploma-app",
-    storageBucket: "how-diploma-app.firebasestorage.app",
-    messagingSenderId: "260387617106",
-    appId: "1:260387617106:web:12b5dcea1b82c0de68628b"
-};
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+self.addEventListener('push', (event) => {
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : {};
+    } catch (e) {
+        payload = {};
+    }
+    const d = payload.data || payload.notification || {};
 
-// Retrieve an instance of Firebase Messaging so that it can handle background messages.
-const messaging = firebase.messaging();
-
-// Handle background messages
-messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message ', payload);
-    
-    // Customize notification here
-    const notificationTitle = payload.notification.title || 'إشعار جديد';
-    const notificationOptions = {
-        body: payload.notification.body,
+    event.waitUntil(self.registration.showNotification(d.title || 'إشعار جديد', {
+        body: d.body || '',
         icon: '/images/logo-dark.png',
         badge: '/icons/icon-192.png',
-        data: payload.data, // Contains URL to open on click
         dir: 'rtl',
-        vibrate: [200, 100, 200]
-    };
-
-    self.registration.showNotification(notificationTitle, notificationOptions);
+        lang: 'ar',
+        tag: d.tag || undefined,
+        data: { url: d.url || '/' },
+    }));
 });
 
-// Handle notification clicks
-self.addEventListener('notificationclick', function(event) {
+self.addEventListener('notificationclick', (event) => {
     event.notification.close();
-    
-    // Try to open the URL passed in data, otherwise default to home
-    const urlToOpen = event.notification.data?.url || '/';
-    
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-            // Check if there is already a window/tab open with the target URL
-            for (let i = 0; i < windowClients.length; i++) {
-                const client = windowClients[i];
-                // If so, just focus it.
-                if (client.url === urlToOpen && 'focus' in client) {
-                    return client.focus();
-                }
-            }
-            // If not, then open the target URL in a new window/tab.
-            if (clients.openWindow) {
-                return clients.openWindow(urlToOpen);
-            }
-        })
-    );
+    const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
+
+    event.waitUntil((async () => {
+        const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        const open = windows.find((w) => w.url === url);
+        if (open && 'focus' in open) {
+            return open.focus();
+        }
+        return self.clients.openWindow(url);
+    })());
 });

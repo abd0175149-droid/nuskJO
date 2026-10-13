@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FcmToken;
 use Illuminate\Http\Request;
 
 class FcmTokenController extends Controller
@@ -16,9 +17,12 @@ class FcmTokenController extends Controller
             'device_type' => 'nullable|in:android,ios,web,windows,macos',
         ]);
 
-        $token = $request->user()->fcmTokens()->updateOrCreate(
+        // التوكن يخصّ الجهاز لا المستخدم: إن سجّل غيره الدخول على نفس الجهاز ينتقل إليه
+        // (التوكن فريد في الجدول — والبحث داخل علاقة المستخدم كان يصطدم بالقيد)
+        $token = FcmToken::updateOrCreate(
             ['token' => $request->token],
             [
+                'user_id' => $request->user()->id,
                 'device_type' => $request->device_type ?? 'web',
                 'last_used_at' => now(),
             ]

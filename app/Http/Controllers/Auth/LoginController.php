@@ -45,6 +45,11 @@ class LoginController extends Controller
 
     public function logout(Request $request)
     {
+        // توكن إشعارات هذا الجهاز: لا تصل إشعارات المستخدم بعد خروجه
+        if ($token = $request->input('push_token')) {
+            \App\Models\FcmToken::where('token', $token)->where('user_id', Auth::id())->delete();
+        }
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
