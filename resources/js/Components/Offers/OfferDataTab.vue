@@ -50,7 +50,7 @@
                 </div>
                 <div>
                     <label for="f-vto" :class="lbl">يُعرض للبوت حتى<UseTags tags="bot"/></label>
-                    <input id="f-vto" v-model="form.valid_to" type="date" dir="ltr" :class="inp"/>
+                    <input id="f-vto" v-model="form.valid_to" type="date" dir="ltr" :min="form.valid_from || undefined" :class="inp"/>
                     <p :class="hint">للعرض المفتوح: هي أيضاً الفترة التي يُباع فيها بفاتورة عرض.</p>
                 </div>
                 <div>
@@ -76,7 +76,7 @@
                     <div class="space-y-2">
                         <div v-for="(it, i) in form[key]" :key="key + i" class="flex items-center gap-2">
                             <label class="sr-only" :for="'f-' + key + '-' + i">{{ key === 'includes' ? 'بند يشمله العرض' : 'بند لا يشمله العرض' }} {{ i + 1 }}</label>
-                            <input :id="'f-' + key + '-' + i" v-model="form[key][i]" :class="inp"/>
+                            <input :id="'f-' + key + '-' + i" v-model="form[key][i]" maxlength="120" :class="inp"/>
                             <button type="button" @click="form[key] = form[key].filter((_, j) => j !== i)" class="px-2.5 py-2 rounded-xl text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" :aria-label="'حذف البند ' + (i + 1)">&times;</button>
                         </div>
                         <p v-if="!form[key]?.length" class="text-xs text-gray-400">لا توجد بنود.</p>

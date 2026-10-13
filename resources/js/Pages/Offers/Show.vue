@@ -163,7 +163,8 @@ const save = () => {
             })),
         })),
     }));
-    const opts = { preserveScroll: true, preserveState: false };
+    // عند رفض الخادم تبقى المدخلات وتظهر الأخطاء؛ عند النجاح تُبنى الصفحة من النسخة المحفوظة
+    const opts = { preserveScroll: true, preserveState: 'errors' };
     isNew.value ? form.post('/offers?tab=' + tab.value, opts) : form.put('/offers/' + props.offer.id, opts);
 };
 </script>
