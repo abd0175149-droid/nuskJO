@@ -81,6 +81,7 @@ Route::middleware('auth')->group(function () {
     // API: FCM Tokens
     Route::post('api/fcm-token', [\App\Http\Controllers\FcmTokenController::class, 'store']);
     Route::delete('api/fcm-token', [\App\Http\Controllers\FcmTokenController::class, 'destroy']);
+    Route::post('api/fcm-token/test', [\App\Http\Controllers\FcmTokenController::class, 'test']);
 
     // API: Notifications
     Route::get('api/notifications', [\App\Http\Controllers\NotificationController::class, 'index']);

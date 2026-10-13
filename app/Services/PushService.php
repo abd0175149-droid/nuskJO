@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\FcmToken;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Messaging\CloudMessage;
+use Kreait\Firebase\Messaging\MulticastSendReport;
 use Kreait\Firebase\Messaging\WebPushConfig;
 
 /**
@@ -23,6 +24,12 @@ class PushService
             return 0;
         }
 
+        return self::toTokens($tokens, $title, $body, $url, $tag)->successes()->count();
+    }
+
+    /** الإرسال لتوكنات بعينها (الإشعار التجريبي يرسل لتوكن جهاز واحد) */
+    public static function toTokens(array $tokens, string $title, string $body, ?string $url = null, ?string $tag = null): MulticastSendReport
+    {
         $message = CloudMessage::new()
             ->withData(array_filter([
                 'title' => $title,
@@ -41,7 +48,7 @@ class PushService
             FcmToken::whereIn('token', $dead)->delete();
         }
 
-        return $report->successes()->count();
+        return $report;
     }
 
     /** ملف حساب الخدمة موجود؟ بدونه لا إرسال — والإشعار يبقى في الجرس */

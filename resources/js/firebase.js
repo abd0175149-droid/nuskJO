@@ -61,6 +61,27 @@ const getMessagingInstance = () => {
     return messagingPromise;
 };
 
+const keyBytes = (b64url) => {
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    return Uint8Array.from(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+};
+const sameKey = (buffer, b64url) => {
+    const a = new Uint8Array(buffer);
+    const b = keyBytes(b64url);
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+};
+
+// Firebase يعيد استعمال أي اشتراك قائم في النطاق مهما كان مفتاحه، فيُصدر توكناً لا تصله رسالة.
+// الكود السابق كان يطلب الإذن تلقائياً ويشترك هنا بمفتاح Firebase الافتراضي — حال أغلب أجهزة الكمبيوتر.
+// اشتراك بمفتاح غير مفتاحنا يُلغى، و reset يلغيه في كل حال (زر «إعادة المحاولة»)
+const dropStaleSubscription = async (reg, reset) => {
+    const sub = await reg.pushManager.getSubscription();
+    const key = sub?.options?.applicationServerKey;
+    if (sub && (reset || (key && !sameKey(key, vapidKey)))) {
+        await sub.unsubscribe();
+    }
+};
+
 // الاشتراك يحتاج عامل خدمة نشطاً، والتسجيل الأول يعيده وهو ما زال يُثبَّت
 const registerWorker = async () => {
     const reg = await navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE });
@@ -74,21 +95,30 @@ const registerWorker = async () => {
 };
 
 let syncPromise = null;
+let lastError = null;
 
 /**
  * يسجّل توكن هذا الجهاز عند الخادم. لا يطلب الإذن: يعمل فقط إن كان ممنوحاً من قبل.
  * مرة واحدة لكل تحميل للتطبيق، لا مع كل تنقل بين الصفحات.
+ * reset: اشتراك وتوكن جديدان من الصفر — لجهاز لا تصله الإشعارات رغم تفعيلها.
  */
-export const syncPushToken = ({ force = false } = {}) => {
+export const syncPushToken = ({ force = false, reset = false } = {}) => {
     if (pushStatus() !== 'granted') return Promise.resolve(null);
     if (syncPromise && !force) return syncPromise;
 
     syncPromise = (async () => {
+        lastError = null;
         const messaging = await getMessagingInstance();
-        if (!messaging) return null;
+        if (!messaging) {
+            lastError = 'هذا المتصفح لا يدعم إشعارات Firebase';
+            syncPromise = null;
+            return null;
+        }
         try {
             const { getToken } = await import('firebase/messaging');
-            const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: await registerWorker() });
+            const reg = await registerWorker();
+            await dropStaleSubscription(reg, reset);
+            const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: reg });
             if (!token) return null;
             if (force || store.get() !== token) {
                 await axios.post('/api/fcm-token', { token, device_type: deviceType() });
@@ -97,6 +127,7 @@ export const syncPushToken = ({ force = false } = {}) => {
             return token;
         } catch (e) {
             console.warn('FCM token request failed:', e.message);
+            lastError = e.message;
             syncPromise = null; // يُعاد المحاولة في التحميل التالي
             return null;
         }
@@ -106,12 +137,22 @@ export const syncPushToken = ({ force = false } = {}) => {
 };
 
 /** يطلب الإذن (يجب أن يُستدعى من ضغطة المستخدم — شرط Safari والآيفون) ثم يسجّل التوكن */
-export const enablePush = async () => {
+export const enablePush = async ({ reset = false } = {}) => {
     const status = pushStatus();
     if (status === 'unsupported' || status === 'unconfigured') return status;
     const permission = status === 'granted' ? 'granted' : await Notification.requestPermission();
     if (permission !== 'granted') return permission;
-    return (await syncPushToken({ force: true })) ? 'granted' : 'error';
+    return (await syncPushToken({ force: true, reset })) ? 'granted' : 'error';
+};
+
+/** سبب فشل آخر محاولة تسجيل (نص المتصفح أو Firebase) — يُعرض تحت «إعادة المحاولة» */
+export const pushError = () => lastError;
+
+/** إشعار تجريبي لهذا الجهاز وحده؛ يرمي خطأ axios برسالة الخادم إن رفضه FCM */
+export const sendTestPush = async () => {
+    const token = await syncPushToken();
+    if (!token) throw new Error(lastError || 'هذا الجهاز غير مسجّل للإشعارات');
+    return axios.post('/api/fcm-token/test', { token });
 };
 
 /** توكن هذا الجهاز إن سُجّل في هذه الجلسة — يُرسل مع تسجيل الخروج ليُحذف */
