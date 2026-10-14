@@ -55,7 +55,7 @@ class ProcessWhatsAppReplyTest extends TestCase
         return WaMessage::where('direction', 'out')->count();
     }
 
-    public function test_job_with_current_token_runs_the_bot_and_releases_the_lock(): void
+    public function test_job_with_current_token_runs_the_bot_and_clears_its_running_mark(): void
     {
         Cache::put(ProcessWhatsAppReply::debounceKey($this->conv->id), 'tok-current', now()->addMinutes(5));
 
@@ -66,7 +66,7 @@ class ProcessWhatsAppReplyTest extends TestCase
         $this->assertSame(1, $this->outboundCount());
         $this->assertSame(self::BOT_REPLY, WaMessage::where('direction', 'out')->sole()->body);
 
-        $this->assertTrue(Cache::lock("wa:conv:{$this->conv->id}", 1)->get(), 'قفل المحادثة يجب أن يُحرَّر بعد المعالجة');
+        $this->assertNull(Cache::get(ProcessWhatsAppReply::runningKey($this->conv->id)), 'علامة «قيد المعالجة» تُحذف بعد المعالجة');
     }
 
     #[Group('INV-14')]
@@ -81,12 +81,13 @@ class ProcessWhatsAppReplyTest extends TestCase
     }
 
     #[Group('INV-14')]
-    public function test_job_whose_token_expired_from_cache_does_not_call_the_bot(): void
+    public function test_job_whose_token_expired_still_replies_and_only_once(): void
     {
+        // الرمز يعيش 60 دقيقة؛ غيابه لا يُسقط وظيفة حيّة (أُعيدت بعد قتل العامل مثلاً)، والبوابة تمنع الرد الثاني
+        $this->jobWithToken('tok-expired')->handle();
         $this->jobWithToken('tok-expired')->handle();
 
-        Http::assertNothingSent();
-        $this->assertSame(0, $this->outboundCount());
+        $this->assertSame(1, $this->outboundCount());
     }
 
     #[Group('INV-14')]
@@ -120,15 +121,21 @@ class ProcessWhatsAppReplyTest extends TestCase
         $this->assertSame(1, $this->outboundCount());
     }
 
-    public function test_job_does_not_run_while_conversation_is_locked(): void
+    #[Group('INV-15')]
+    public function test_job_waits_while_the_conversation_is_being_processed(): void
     {
         Cache::put(ProcessWhatsAppReply::debounceKey($this->conv->id), 'tok-current', now()->addMinutes(5));
-        $held = Cache::lock("wa:conv:{$this->conv->id}", 90);
+        $held = Cache::lock('laravel-queue-overlap:'.ProcessWhatsAppReply::class.":wa-conv:{$this->conv->id}", ProcessWhatsAppReply::LOCK_SECONDS);
         $this->assertTrue($held->get());
 
-        $this->jobWithToken('tok-current')->handle();
+        // عبر الطابور (الوسيط يعمل): تُعاد إلى الطابور بدل الخروج بصمت، ولا ترد الآن
+        dispatch_sync($this->jobWithToken('tok-current'));
 
         Http::assertNothingSent();
         $this->assertSame(0, $this->outboundCount());
+
+        $held->release();
+        dispatch_sync($this->jobWithToken('tok-current'));
+        $this->assertSame(1, $this->outboundCount());
     }
 }

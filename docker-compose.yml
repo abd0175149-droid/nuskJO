@@ -13,6 +13,8 @@ services:
         - vite_env
     container_name: nuskjo-app
     restart: unless-stopped
+    # يتسع لـ stopwaitsecs=130 لعامل الطابور: وظيفة رد جارية تكتمل بدل أن تُقتل عند كل نشر
+    stop_grace_period: 140s
     ports:
       # NUSKJO_BIND_ADDRESS=127.0.0.1 (في /opt/nuskJO/.env لتعويض compose) يقصر المنفذ على المضيف بعد تحويل قاعدة النفق
       # إلى http://127.0.0.1:4020 (docs/RELEASE.md «ربط المنفذ»). بلا قيمة: كل الواجهات كما اليوم
