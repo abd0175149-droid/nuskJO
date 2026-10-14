@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# نشر nuskJO على mafia-prod ببوابة اختبار إلزامية.
+# نشر nuskJO على خادم الإنتاج ببوابة اختبار إلزامية.
 #
 #   cd /opt/nuskJO && bash scripts/deploy.sh
 #
