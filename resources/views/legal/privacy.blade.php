@@ -53,6 +53,7 @@
     <li><strong>المحادثات:</strong> حتى 24 شهراً من آخر تواصل.</li>
     <li><strong>السجلات المالية (الفواتير والسندات):</strong> للمدّة التي يفرضها القانون الأردني، ولا يمكن حذفها قبلها.</li>
     <li><strong>بيانات التعريف:</strong> طوال كونك عميلاً لدينا.</li>
+    <li><strong>النسخ الاحتياطية:</strong> مشفّرة، وتُحفظ 6 أشهر كحدّ أقصى ثم تُتلف.</li>
 </ul>
 
 <h2>٦ · حقوقك</h2>
@@ -87,7 +88,7 @@
     <h3>Sharing</h3>
     <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider solely to generate replies (not used to train general models), and with authorities where legally required.</p>
     <h3>Retention</h3>
-    <p>Conversations: up to 24 months after last contact. Financial records: for the period required by Jordanian law. </p>
+    <p>Conversations: up to 24 months after last contact. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
     <h3>Your rights</h3>
     <p>You may access, correct or request deletion of your data — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>
     <h3>Contact</h3>

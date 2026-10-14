@@ -38,6 +38,9 @@
 <h2>لماذا تبقى السجلات المالية؟</h2>
 <p>يُلزمنا القانون الأردني بالاحتفاظ بالسجلات المحاسبية (الفواتير وسندات القبض والصرف) لمدّة محدّدة لأغراض ضريبية وتدقيقية. لا يمكننا حذفها قبل انقضاء هذه المدّة، وبعدها تُحذف تلقائياً. وفي جميع الأحوال <strong>لا تُستخدم هذه السجلات لمراسلتك بعد طلب الحذف</strong>.</p>
 
+<h2>النسخ الاحتياطية</h2>
+<p>نحتفظ بنسخ احتياطية مشفّرة لمدّة أقصاها 6 أشهر. قد تبقى بياناتك المحذوفة فيها حتى انقضاء مدّتها ثم تُتلف، لكنها <strong>لا تُستعاد إلى أنظمتنا العاملة</strong>: إن احتجنا إلى استعادة نسخة، نعيد تطبيق كل طلبات الحذف السابقة قبل العودة إلى العمل.</p>
+
 <h2>المدّة الزمنية</h2>
 <ul>
     <li>نؤكّد استلام طلبك خلال <strong>يومي عمل</strong>.</li>
@@ -70,6 +73,8 @@
     <p>Your WhatsApp conversations (inbound and outbound messages), stored notes about you, incomplete quotation requests, and your contact details — unless they are attached to existing invoices.</p>
     <h3>What is retained</h3>
     <p>Invoices and financial vouchers are retained for the period required by Jordanian tax and audit law, after which they are deleted. They are never used to contact you after a deletion request.</p>
+    <h3>Backups</h3>
+    <p>We keep encrypted backups for at most 6 months. Deleted data may remain in them until they expire and are destroyed, but it is <strong>never restored to our live systems</strong>: if we ever restore a backup, all earlier deletion requests are re-applied before we resume operation.</p>
     <h3>Timeframe</h3>
     <p>We acknowledge your request within <strong>2 business days</strong> and complete deletion within <strong>30 days</strong> of verifying your identity, then notify you.</p>
     <h3>Opt out only</h3>

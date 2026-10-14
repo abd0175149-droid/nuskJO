@@ -7,6 +7,13 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## التشغيل (nuskJO)
+
+- النشر: [docs/RELEASE.md](docs/RELEASE.md) و`scripts/deploy.sh`.
+- النسخ الاحتياطي: [docs/BACKUP.md](docs/BACKUP.md).
+- الاستعادة: [docs/RESTORE.md](docs/RESTORE.md).
+- التغييرات وملاحظات الترقية: [CHANGELOG.md](CHANGELOG.md).
+
 ## الاختبار (nuskJO)
 
 ```bash

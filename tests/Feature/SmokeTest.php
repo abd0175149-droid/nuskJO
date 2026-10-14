@@ -30,4 +30,10 @@ class SmokeTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->component('WhatsApp/Inbox', false));
     }
+
+    public function test_public_legal_pages_state_backup_retention(): void
+    {
+        $this->get('/privacy')->assertOk()->assertSee('6 أشهر')->assertSee('at most 6 months');
+        $this->get('/data-deletion')->assertOk()->assertSee('لا تُستعاد إلى أنظمتنا العاملة', false);
+    }
 }
