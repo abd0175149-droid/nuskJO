@@ -53,7 +53,17 @@ if docker ps --format '{{.Names}}' | grep -qx "$APP_CONTAINER"; then
     fi
 fi
 
-# 4) البناء والتشغيل
+# 4) حارس فصل الحجم: compose بالتخطيط الجديد قبل نقل القاعدة يُقلع على حجم فارغ (فيرفض الإقلاع)
+DB_VOLUME="${DB_VOLUME:-nuskjo_nuskjo-dbdata}"
+if docker compose config 2>/dev/null | grep -q '/var/www/html/database/data' \
+    && ! docker volume inspect "$DB_VOLUME" >/dev/null 2>&1; then
+    docker compose build --build-arg GIT_COMMIT="$SHA" "$APP_CONTAINER"
+    log "sha=$SHA built; database volume not split yet: run scripts/backup/move-db-volume.sh (docs/RELEASE.md)"
+    echo "التالي: bash scripts/backup/move-db-volume.sh --compose-dir $REPO_DIR --project nuskjo --service $APP_CONTAINER --old nuskjo_nuskjo-database --new $DB_VOLUME --check-only" >&2
+    exit 1
+fi
+
+# 5) البناء والتشغيل
 docker compose build --build-arg GIT_COMMIT="$SHA" "$APP_CONTAINER"
 docker compose up -d "$APP_CONTAINER"
 
@@ -64,7 +74,7 @@ for _ in $(seq 1 30); do
 done
 log "sha=$SHA container health=${status:-unknown}"
 
-# 5) تنظيف الصور المعلّقة (القرص ممتلئ بنحو 85%)
+# 6) تنظيف الصور المعلّقة (القرص ممتلئ بنحو 85%)
 docker image prune -f --filter dangling=true >/dev/null
 
 [[ "${status:-}" == "healthy" ]] || { log "sha=$SHA NOT healthy after deploy"; exit 1; }

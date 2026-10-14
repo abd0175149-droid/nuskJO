@@ -28,8 +28,11 @@ ARCHIVE="$BASE/archive"
 mkdir -p "$ARCHIVE"
 chmod 700 "$BASE" "$ARCHIVE"
 
-exec 9>"$BASE/.lock"
-flock -n 9 || { log "مجمّع آخر يعمل؛ خروج"; exit 0; }
+# BACKUP_LOCK_HELD=1 حين يستدعيه سكربت يحمل القفل نفسه (move-db-volume.sh)
+if [[ "${BACKUP_LOCK_HELD:-0}" != 1 ]]; then
+    exec 9>"$BASE/.lock"
+    flock -n 9 || { log "مجمّع آخر يعمل؛ خروج"; exit 0; }
+fi
 
 current_step="البداية"
 on_error() {

@@ -48,3 +48,19 @@ bash scripts/deploy.sh
 | الكود والصورة | `docker tag nuskjo-nuskjo-app:backup-pre-$NAME nuskjo-nuskjo-app:latest && docker compose up -d nuskjo-app`، ثم أعِد الفرع إلى الوسم `backup/pre-$NAME-$DATE`. |
 | القاعدة (إن أفسدتها هجرة) | `bash scripts/backup/restore.sh --from-spool <لقطة pre-migrate> --force`، ثم خطوات [RESTORE.md](RESTORE.md). |
 | إعداد | أعِد قيمة المتغير في `.env.production` ثم `docker compose up -d nuskjo-app`. |
+
+## فصل حجم القاعدة (مرة واحدة)
+
+قبل الفصل، حجم القاعدة يغطي مجلد `database/` كله فيحجب ملفات الهجرات في الصورة الجديدة (فكانت تُنسخ يدوياً بـ docker cp). بعده تعيش القاعدة وحدها في `database/data/` على الحجم `nuskjo_nuskjo-dbdata`.
+
+حين يصل تغيير `docker-compose.yml` الخاص بالفصل، يتوقف `scripts/deploy.sh` بعد البناء ويطلب هذه الخطوات بدل الإقلاع على حجم فارغ:
+
+```bash
+cd /opt/nuskJO
+M=scripts/backup/move-db-volume.sh
+ARGS="--compose-dir /opt/nuskJO --project nuskjo --service nuskjo-app --old nuskjo_nuskjo-database --new nuskjo_nuskjo-dbdata"
+bash $M $ARGS --check-only     # (أ) هجرات ستعمل عند الإقلاع، (ب) هجرات دخلت بـ docker cp ولم تُحفظ، (ج) نسخ قديمة في الحجم (تُشفَّر ولا تُحذف)
+bash $M $ARGS                  # في نافذة هادئة: نسخة وسحب مشفّر، إيقاف، نسخ القاعدة، مقارنة الأعداد، إقلاع، فحص
+```
+
+الحجم القديم يبقى كما هو 30 يوماً على الأقل. الرجوع (يحمل معه ما كُتب بعد التبديل): `bash $M $ARGS --reverse`، ثم `git revert` لتغيير الحجم في `docker-compose.yml` و`docker compose up -d nuskjo-app`. السكربت نفسه يعمل لمشاريع أخرى بالتخطيط نفسه بتغيير `--compose-dir --project --service --old --new`؛ وابدأ بالأقل أهمية.
