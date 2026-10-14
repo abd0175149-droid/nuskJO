@@ -16,7 +16,7 @@ class WaConversation extends Model
         'phone', 'wa_phone', 'display_name', 'client_id', 'user_id',
         'bot_enabled', 'bot_paused_until', 'last_inbound_at', 'last_outbound_at',
         'last_message_at', 'last_message_preview', 'unread_count',
-        'needs_attention', 'assigned_to', 'status',
+        'needs_attention', 'assigned_to', 'status', 'bot_answered_in_id', 'attention_reason',
     ];
 
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)

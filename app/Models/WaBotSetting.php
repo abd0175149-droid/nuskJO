@@ -14,6 +14,15 @@ class WaBotSetting extends Model
         'provider', 'model', 'api_key', 'system_prompt', 'knowledge_base',
         'context_messages', 'pause_minutes', 'max_tool_loops', 'rate_limit_per_hour',
         'fail_message', 'fail_handoff', 'tools_config', 'model_prices', 'cache_discount',
+        'max_reply_age_minutes', 'reliability',
+    ];
+
+    /** أعلام موثوقية الرد (E07) وقيمها الافتراضية؛ تُبدَّل وقت التشغيل بـ whatsapp:reliability */
+    public const RELIABILITY_FLAGS = [
+        'watermark' => true,     // بوابة «وارد بعد آخر ما خُدم» بدل «آخر رسالة من العميل»
+        'stale_gate' => true,    // لا رد آلي على وارد أقدم من max_reply_age_minutes
+        'reconcile' => false,    // المُصالِح كل دقيقة
+        'webhook_5xx' => false,  // 503 لأعطال القاعدة في الويبهوك (بعد WAL)
     ];
 
     protected $casts = [
@@ -22,6 +31,7 @@ class WaBotSetting extends Model
         'fail_handoff' => 'boolean',
         'tools_config' => 'array',
         'model_prices' => 'array',
+        'reliability' => 'array',
         'wa_token' => 'encrypted',
         'wa_app_secret' => 'encrypted',
         'api_key' => 'encrypted',
@@ -76,6 +86,11 @@ class WaBotSetting extends Model
 
     public function channelReady(): bool { return !empty($this->token()) && !empty($this->phoneNumberId()); }
     public function botReady(): bool { return $this->enabled && $this->channelReady() && !empty($this->llmKey()); }
+
+    public function flag(string $key): bool
+    {
+        return (bool) (($this->reliability ?? [])[$key] ?? self::RELIABILITY_FLAGS[$key] ?? false);
+    }
 
     public function toolEnabled(string $key): bool
     {

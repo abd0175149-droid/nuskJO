@@ -12,10 +12,11 @@ class WaMessage extends Model
 
     protected $fillable = [
         'conversation_id', 'wamid', 'direction', 'source', 'msg_type',
-        'body', 'payload', 'status', 'error_message', 'staff_id', 'meta_code', 'fbtrace_id',
+        'body', 'payload', 'status', 'error_message', 'staff_id', 'meta_code', 'fbtrace_id', 'meta_at',
     ];
 
-    protected $casts = ['payload' => 'array'];
+    // meta_at: وقت ميتا للوارد (timestamp الويبهوك)، لا وقت وصوله إلينا
+    protected $casts = ['payload' => 'array', 'meta_at' => 'datetime'];
 
     public function conversation(): BelongsTo { return $this->belongsTo(WaConversation::class, 'conversation_id'); }
 

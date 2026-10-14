@@ -137,6 +137,33 @@ Schedule::command('whatsapp:graph-version-check')
     ->dailyAt('08:00')
     ->withoutOverlapping();
 
+// أعلام موثوقية الرد (E07) وقت التشغيل، بلا نشر: whatsapp:reliability [flag] [on|off]
+Artisan::command('whatsapp:reliability {flag?} {state?}', function () {
+    $settings = \App\Models\WaBotSetting::current();
+    $flag = $this->argument('flag');
+
+    if ($flag !== null) {
+        if (!array_key_exists($flag, \App\Models\WaBotSetting::RELIABILITY_FLAGS)) {
+            $this->error("علم غير معروف: {$flag}");
+
+            return 1;
+        }
+        $state = $this->argument('state');
+        if (!in_array($state, ['on', 'off'], true)) {
+            $this->error('الحالة on أو off');
+
+            return 1;
+        }
+        $settings->update(['reliability' => array_merge($settings->reliability ?? [], [$flag => $state === 'on'])]);
+        \App\Services\WhatsApp\WaLog::warning('reliability.flag', ['field' => $flag, 'status' => $state]);
+    }
+
+    $this->table(['العلم', 'الحالة', 'الافتراضي'], collect(\App\Models\WaBotSetting::RELIABILITY_FLAGS)
+        ->map(fn ($default, $name) => [$name, $settings->fresh()->flag($name) ? 'on' : 'off', $default ? 'on' : 'off'])->values()->all());
+
+    return 0;
+})->purpose('عرض أعلام موثوقية رد الواتساب أو تبديلها: whatsapp:reliability [flag] [on|off]');
+
 Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
