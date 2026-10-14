@@ -27,6 +27,12 @@ class WaBotSetting extends Model
         'api_key' => 'encrypted',
     ];
 
+    protected static function booted(): void
+    {
+        // المنقّح يحفظ الأسرار المعروفة في الذاكرة؛ سرّ جديد يجب أن يُنقّح من أول سجل بعده
+        static::saved(fn () => \App\Support\SecretRedactor::forget());
+    }
+
     /** الصف الوحيد — يُنشأ بقيم افتراضية آمنة عند أول استدعاء */
     public static function current(): self
     {
