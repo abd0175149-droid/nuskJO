@@ -34,6 +34,9 @@ class WhatsAppController extends Controller
                 'bot_ready' => $s->botReady(),
                 'bot_enabled' => $s->enabled,
                 'suspended' => $s->wa_suspended,
+                // شريط عام بلا تفاصيل: التفاصيل في بطاقة صحة القناة لمن يملك whatsapp.settings
+                'meta_blocked' => data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED'
+                    || data_get($s->wa_credentials_status, 'state') === 'critical',
             ],
             'canReply' => auth()->user()->can('whatsapp.reply'),
             'canAssign' => auth()->user()->can('whatsapp.assign'),
@@ -399,6 +402,9 @@ class WhatsAppController extends Controller
                 'has_api_key' => !empty($s->llmKey()),
                 'env_token' => !empty(config('services.whatsapp.token')),
                 'env_api_key' => $s->envKeyPresent(),
+                // معرّف التطبيق عام لا سري؛ من البيئة يُعطَّل الحقل
+                'wa_app_id' => $s->wa_app_id,
+                'env_app_id' => !empty(config('services.whatsapp.app_id')),
             ],
             'providers' => \App\Services\WhatsApp\Llm\LlmFactory::PROVIDERS,
             'webhookUrl' => url('/api/whatsapp/webhook'),
@@ -406,7 +412,33 @@ class WhatsAppController extends Controller
             'toolList' => \App\Services\WhatsApp\BotTools::LABELS,
             'graph' => \App\Services\WhatsApp\GraphVersions::panel(),
             'health' => \App\Services\WhatsApp\ChannelDoctor::checks(),
+            'ops' => app(\App\Services\Ops\OpsHealth::class)->snapshot(),
+            'meta' => $this->metaSummary($s),
         ]);
+    }
+
+    /** ملخصات آخر فحوص ميتا وآخر خطأ اعتماد عند الإرسال (لا رمز ولا سر) */
+    private function metaSummary(WaBotSetting $s): array
+    {
+        return [
+            'enabled' => (bool) config('ops.meta_checks'),
+            'ready' => $s->metaChecksReady(),
+            'credentials' => $s->wa_credentials_status,
+            'channel' => $s->wa_channel_health,
+            'last_account_error' => \Illuminate\Support\Facades\Cache::get('wa:last_account_error'),
+        ];
+    }
+
+    /** «افحص الآن» في بطاقة صحة القناة: الفحصان معاً، ويُرجع الملخص المحفوظ فقط */
+    public function metaCheck()
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        $health = app(\App\Services\WhatsApp\MetaHealth::class);
+        $health->credentials();
+        $health->channel();
+
+        return response()->json(['meta' => $this->metaSummary(WaBotSetting::current()->fresh())]);
     }
 
     public function updateSettings(Request $request)
@@ -424,6 +456,7 @@ class WhatsAppController extends Controller
             )],
             'wa_token' => 'nullable|string',
             'wa_app_secret' => 'nullable|string',
+            'wa_app_id' => ['nullable', 'string', 'regex:/^\d{5,20}$/'],
             'api_key' => 'nullable|string',
             'provider' => 'nullable|in:google,anthropic',
             'model' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/'],
@@ -441,6 +474,7 @@ class WhatsAppController extends Controller
             // اسم النموذج يدخل مسار رابط المزوّد
             'model.regex' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط',
             'wa_verify_token.min' => 'رمز التحقق 16 حرفاً على الأقل',
+            'wa_app_id.regex' => 'معرّف التطبيق أرقام فقط (من App settings › Basic)',
         ]);
 
         // الأسرار الفارغة لا تمسح المحفوظ

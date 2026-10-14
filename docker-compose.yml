@@ -45,9 +45,9 @@ services:
       - DB_BUSY_TIMEOUT=60000
       - DB_SYNCHRONOUS=normal
       - DB_TRANSACTION_MODE=DEFERRED
-      # E08: فحص /up الحقيقي وفحوص ميتا. false في النشر الأول، ثم true مرحلةً مرحلة (docs/RELEASE.md)
-      - OPS_HEALTH_CHECKS=false
-      - WA_META_CHECKS=false
+      # E08: فحص /up الحقيقي وفحوص ميتا. مطفآن حتى يُضبطا في /opt/nuskJO/.env (تعويض compose)، مرحلةً مرحلة (docs/RELEASE.md)
+      - OPS_HEALTH_CHECKS=${OPS_HEALTH_CHECKS:-false}
+      - WA_META_CHECKS=${WA_META_CHECKS:-false}
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database
@@ -61,12 +61,13 @@ services:
         max-size: "10m"
         max-file: "5"
     healthcheck:
-      # /up يمرّ بإقلاع Laravel فعلاً؛ / كان ينجح بمجرد التحويل إلى صفحة الدخول
-      test: ["CMD", "curl", "-fsS", "http://localhost:4020/up"]
+      # /up يفحص القاعدة والمجدول والعاملين (OPS_HEALTH_CHECKS)؛ / كان ينجح بمجرد التحويل إلى صفحة الدخول.
+      # start_period: أول نبضة بعد الإقلاع. unhealthy للرؤية والتنبيه فقط، لا إعادة تشغيل آلية
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "-H", "Accept: application/json", "http://localhost:4020/up"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 120s
 
   # تمرين الاستعادة المعزول (scripts/backup/drill.sh): لا شبكة، ولا أي حجم إنتاجي، ونظام ملفات للقراءة فقط.
   # لا يعمل مع «docker compose up»؛ فقط: docker compose --profile drill run --rm -T nuskjo-drill

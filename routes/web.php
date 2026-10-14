@@ -146,6 +146,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::get('api/whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analyticsData'])->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/prices', [\App\Http\Controllers\WhatsAppController::class, 'savePrices'])->name('whatsapp.prices')->middleware('perm:whatsapp.settings');
     Route::post('api/whatsapp/test-key', [\App\Http\Controllers\WhatsAppController::class, 'testKey'])->middleware('perm:whatsapp.settings');
+    // فحص ميتا يدوياً (رمز الوصول وصحة القناة): 6 في الدقيقة
+    Route::post('api/whatsapp/meta-check', [\App\Http\Controllers\WhatsAppController::class, 'metaCheck'])->middleware(['perm:whatsapp.settings', 'throttle:6,1']);
 
     // أرقام الإدارة: المساعد الإداري على واتساب وصلاحيات كل رقم
     Route::get('whatsapp/admin-numbers', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'index'])->name('whatsapp.admin-numbers')->middleware('perm:whatsapp.settings');

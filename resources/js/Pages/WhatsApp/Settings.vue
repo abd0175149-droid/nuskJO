@@ -81,6 +81,77 @@
                     </div>
                 </div>
 
+                <!-- ================= صحة النظام والقناة ================= -->
+                <div id="ops" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6 scroll-mt-20">
+                    <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                        <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">🩺 صحة النظام والقناة</h3>
+                        <button type="button" @click="checkMeta" :disabled="metaChecking || !meta.ready"
+                                class="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gold-50 dark:hover:bg-gold-900/20 disabled:opacity-40 disabled:cursor-not-allowed">
+                            {{ metaChecking ? '⏳ جارٍ الفحص…' : '🔄 افحص الآن' }}
+                        </button>
+                    </div>
+                    <p v-if="metaMsg" role="status" class="text-xs mb-3" :class="metaMsgOk ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'">{{ metaMsg }}</p>
+
+                    <!-- النظام -->
+                    <p class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">النظام</p>
+                    <ul class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-1 text-sm">
+                        <li v-for="c in opsComponents" :key="c.code" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+                            <span class="dark:text-gray-200">{{ c.label }}</span>
+                            <span class="text-xs">
+                                <span class="font-bold" :class="c.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'">{{ c.ok ? '🟢 يعمل' : '🔴 متوقف' }}</span>
+                                <span v-if="c.age !== undefined" class="text-gray-500 dark:text-gray-400"> · {{ ageText(c.age) }}</span>
+                            </span>
+                        </li>
+                    </ul>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        مهام فاشلة خلال 24 ساعة: <span class="font-bold">{{ ops.failed_24h ?? '؟' }}</span>
+                        <template v-if="!ops.enabled"> · فحص /up مطفأ (OPS_HEALTH_CHECKS)</template>
+                    </p>
+
+                    <!-- رمز ميتا -->
+                    <p class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">رمز ميتا</p>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm mb-4 space-y-1">
+                        <p v-if="!meta.ready" class="text-gray-500 dark:text-gray-400">غير مهيّأ — يلزم Access Token وApp Secret وApp ID (في «ربط قناة ميتا»).</p>
+                        <p v-else-if="!meta.credentials" class="text-gray-500 dark:text-gray-400">لم يُفحص بعد{{ meta.enabled ? '' : ' (الفحوص المجدولة مطفأة: WA_META_CHECKS)' }}.</p>
+                        <template v-else>
+                            <p class="font-bold" :class="stateClass(meta.credentials.state)">{{ stateLabel(meta.credentials.state) }}
+                                <span v-if="meta.credentials.reasons?.length" class="font-normal"> — {{ meta.credentials.reasons.map(reasonLabel).join('، ') }}</span></p>
+                            <p v-if="meta.credentials.state !== 'not_configured'" class="text-xs text-gray-600 dark:text-gray-400">
+                                الانتهاء: <bdi dir="ltr">{{ meta.credentials.never_expires ? 'لا ينتهي' : (meta.credentials.expires_at || '—') }}</bdi>
+                                <template v-if="meta.credentials.days_left != null"> (بعد {{ meta.credentials.days_left }} يوماً)</template>
+                                <template v-if="meta.credentials.missing_scopes?.length"> · ناقص: <bdi dir="ltr" class="font-mono">{{ meta.credentials.missing_scopes.join(', ') }}</bdi></template>
+                                <template v-if="meta.credentials.app_matches === false"> · الرمز من تطبيق آخر</template>
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">آخر فحص: <bdi dir="ltr">{{ when(meta.credentials.checked_at) }}</bdi></p>
+                        </template>
+                    </div>
+
+                    <!-- صحة القناة -->
+                    <p class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">صحة القناة عند ميتا</p>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm space-y-2">
+                        <p v-if="!meta.channel" class="text-gray-500 dark:text-gray-400">لم تُفحص بعد.</p>
+                        <template v-else>
+                            <p class="font-bold" :class="stateClass(meta.channel.state)">{{ stateLabel(meta.channel.state) }}
+                                <span v-if="meta.channel.can_send_message" class="font-mono font-normal" dir="ltr"> {{ meta.channel.can_send_message }}</span>
+                                <span v-if="meta.channel.quality_rating" class="font-normal"> · الجودة: <bdi dir="ltr">{{ meta.channel.quality_rating }}</bdi></span></p>
+                            <ul v-if="meta.channel.entities?.length" class="space-y-1.5">
+                                <li v-for="e in meta.channel.entities" :key="e.entity_type" class="text-xs">
+                                    <span class="font-mono" dir="ltr">{{ e.entity_type }}</span>:
+                                    <span class="font-bold" :class="e.can_send_message === 'AVAILABLE' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'" dir="ltr">{{ e.can_send_message }}</span>
+                                    <p v-for="(err, i) in e.errors" :key="i" class="text-gray-600 dark:text-gray-400 mt-0.5" dir="ltr">
+                                        {{ err.error_description }}<template v-if="err.possible_solution"> — {{ err.possible_solution }}</template>
+                                    </p>
+                                    <p v-for="(info, i) in e.additional_info" :key="'i' + i" class="text-gray-600 dark:text-gray-400 mt-0.5" dir="ltr">{{ info }}</p>
+                                </li>
+                            </ul>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">آخر فحص: <bdi dir="ltr">{{ when(meta.channel.checked_at) }}</bdi></p>
+                        </template>
+                        <p v-if="meta.last_account_error" class="text-xs font-bold text-red-700 dark:text-red-400">
+                            آخر خطأ اعتماد عند الإرسال: <bdi dir="ltr">[{{ meta.last_account_error.code }}]</bdi> — <bdi dir="ltr">{{ when(meta.last_account_error.at * 1000) }}</bdi>
+                        </p>
+                    </div>
+                </div>
+
                 <!-- ================= 2. ربط قناة ميتا ================= -->
                 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6">
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">🔗 ربط قناة ميتا</h3>
@@ -166,6 +237,16 @@
                                    :placeholder="secretPlaceholder"
                                    class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
                             <p class="text-xs text-gray-500 mt-1">يُستخدم للتحقق من توقيع الـ Webhook القادم من Meta.</p>
+                        </div>
+
+                        <!-- App ID (عام، لفحص الرمز اليومي) -->
+                        <div>
+                            <label for="wa-app-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">App ID (WA_APP_ID)</label>
+                            <input id="wa-app-id" v-model="form.wa_app_id" type="text" dir="ltr" inputmode="numeric" autocomplete="off"
+                                   :disabled="settings.env_app_id"
+                                   :placeholder="settings.env_app_id ? 'مضبوط من بيئة الخادم' : 'من App settings › Basic'"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white disabled:opacity-40 disabled:cursor-not-allowed"/>
+                            <p class="text-xs text-gray-500 mt-1">معرّف عام لا سري. به يُفحص رمز الوصول يومياً (صلاحيته وانتهاؤه).</p>
                         </div>
                     </div>
 
@@ -395,7 +476,62 @@ const props = defineProps({
     providers: { type: Object, default: () => ({ google: 'Google Gemini', anthropic: 'Anthropic Claude' }) },
     graph: Object,
     health: { type: Array, default: () => [] },
+    ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
+    meta: { type: Object, default: () => ({}) },
 });
+
+// ===== صحة النظام والقناة =====
+const meta = ref({ ...props.meta });
+const metaChecking = ref(false);
+const metaMsg = ref('');
+const metaMsgOk = ref(false);
+
+const opsComponents = computed(() => {
+    const codes = props.ops?.codes || [];
+    const queues = props.ops?.queues || {};
+    return [
+        { code: 'db', label: 'القاعدة', ok: !codes.includes('db') },
+        { code: 'schedule_stale', label: 'المجدول', ok: !codes.includes('schedule_stale'), age: props.ops?.schedule_age },
+        { code: 'queue_stale', label: 'العامل الخلفي', ok: !codes.includes('queue_stale'), age: queues.default },
+        { code: 'reply_queue_stale', label: 'عامل ردود البوت', ok: !codes.includes('reply_queue_stale'), age: queues['wa-replies'] },
+        { code: 'backlog', label: 'الطابور', ok: !codes.includes('backlog') },
+    ];
+});
+
+const ageText = (seconds) => {
+    if (seconds === null) return 'لا نبضة';
+    return seconds < 60 ? 'آخر نبضة قبل أقل من دقيقة' : `آخر نبضة قبل ${Math.floor(seconds / 60)} د`;
+};
+const STATES = { ok: '✅ سليم', warn: '⚠️ تحذير', critical: '⛔ حرج', unreachable: '📡 تعذّر الوصول إلى ميتا', not_configured: '— غير مهيّأ' };
+const stateLabel = (state) => STATES[state] || state;
+const stateClass = (state) => ({
+    'text-green-700 dark:text-green-400': state === 'ok',
+    'text-amber-700 dark:text-amber-400': state === 'warn' || state === 'unreachable',
+    'text-red-700 dark:text-red-400': state === 'critical',
+    'text-gray-500 dark:text-gray-400': state === 'not_configured',
+});
+const REASONS = {
+    token_invalid: 'الرمز غير صالح', app_credentials_invalid: 'معرّف التطبيق أو سرّه خطأ', missing_scopes: 'صلاحيات ناقصة',
+    app_mismatch: 'الرمز من تطبيق آخر', expiring: 'ينتهي قريباً', blocked: 'الإرسال موقوف', limited: 'الإرسال مقيّد', quality_red: 'جودة حمراء',
+};
+const reasonLabel = (reason) => REASONS[reason] || reason;
+const when = (value) => (value ? new Date(value).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+
+const checkMeta = async () => {
+    metaChecking.value = true;
+    metaMsg.value = '';
+    try {
+        const { data } = await axios.post('/api/whatsapp/meta-check', {}, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        meta.value = data.meta;
+        metaMsgOk.value = true;
+        metaMsg.value = '✅ تم الفحص';
+    } catch (e) {
+        metaMsgOk.value = false;
+        metaMsg.value = e.response?.status === 429 ? '❌ فحوص كثيرة — انتظر دقيقة' : '❌ تعذّر الفحص';
+    } finally {
+        metaChecking.value = false;
+    }
+};
 
 // رمز تحقق عشوائي: 32 خانة hex من مولّد المتصفح الآمن
 const verifyGenerated = ref(false);
@@ -430,6 +566,7 @@ const form = useForm({
     wa_verify_token: props.settings?.wa_verify_token || '',
     wa_token: '',
     wa_app_secret: '',
+    wa_app_id: props.settings?.wa_app_id || '',
     api_key: '',
     provider: props.settings?.provider || 'google',
     model: props.settings?.model || 'gemini-2.5-flash',

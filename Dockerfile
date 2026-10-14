@@ -118,5 +118,8 @@ ENV APP_COMMIT=$GIT_COMMIT
 
 EXPOSE 4020
 
+# للتشغيل بلا compose (compose يتقدّم عليه): /up يفحص القاعدة والمجدول والعاملين
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 CMD curl -fsS -o /dev/null http://localhost:4020/up || exit 1
+
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

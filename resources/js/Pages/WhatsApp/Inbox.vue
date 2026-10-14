@@ -23,6 +23,12 @@
         <a href="/whatsapp/settings" class="text-gold-700 dark:text-gold-400 font-bold text-xs hover:underline mr-auto">⚙️ الإعدادات</a>
       </div>
 
+      <!-- ميتا أوقفت القناة (فحص صحة القناة أو الرمز): عام بلا تفاصيل، والتفاصيل في الإعدادات -->
+      <div v-if="status.meta_blocked" role="alert"
+           class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3.5 text-sm font-bold text-red-700 dark:text-red-300">
+        ⛔ القناة متوقفة من جهة ميتا — أبلغ المدير.
+      </div>
+
       <!-- محادثة لم تعد ضمن نطاقك -->
       <div v-if="notice" role="alert"
            class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm text-amber-800 dark:text-amber-300 flex items-start gap-3">

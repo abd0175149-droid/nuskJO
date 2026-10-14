@@ -133,6 +133,25 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 
 لا تنشر أثناء نسخة يدوية جارية من صفحة النسخ: عامل default ينتظر 40 ثانية فقط عند الإيقاف.
 
+## فحص الصحة وتنبيهات ميتا (مرة واحدة، على مراحل)
+
+العلَمان في `/opt/nuskJO/.env` (ملف تعويض compose، لا `.env.production`)، وكل تغيير بعده `docker compose up -d nuskjo-app`.
+
+1. **نشر صامت:** انشر كالمعتاد؛ العلَمان مطفآن، والهجرة `2026_10_14_000008` تعمل في الإقلاع. تحقق:
+   - `docker exec -u www-data nuskjo-app php artisan ops:status`: نبضة المجدول ونبضتا العاملين أحدث من دقيقتين.
+   - `docker exec -u www-data nuskjo-app php artisan schedule:list | grep -E "ops:|credentials|health-status"`.
+2. **فحص الصحة:** `OPS_HEALTH_CHECKS=true` ثم `up -d`. تحقق:
+   - `docker exec nuskjo-app curl -fsS -o /dev/null -w '%{http_code}\n' localhost:4020/up` يطبع 200.
+   - بعد دقيقتين، `docker inspect -f '{{.State.Health.Status}}' nuskjo-app` يطبع healthy.
+   - في وقت هادئ: `docker exec nuskjo-app supervisorctl stop laravel-queue`. خلال 7 دقائق تقريباً تصير الحالة unhealthy ويصل إشعار واحد «⛔ العامل الخلفي متوقف». ثم `supervisorctl start laravel-queue`.
+3. **فحوص ميتا:** أدخل App ID في **الواتساب › الإعدادات › ربط قناة ميتا** (App settings › Basic في لوحة ميتا)، ثم `WA_META_CHECKS=true` و`up -d`. شغّل يدوياً:
+   - `docker exec -u www-data nuskjo-app php artisan whatsapp:credentials-check`
+   - `docker exec -u www-data nuskjo-app php artisan whatsapp:health-status`
+   راجع بطاقة «🩺 صحة النظام والقناة». إن ظهر «معرّف التطبيق أو سرّه خطأ»، فتأكد أن App Secret المحفوظ للتطبيق نفسه الذي وُلّد منه رمز مستخدم النظام.
+4. **المراقب الخارجي:** حين تتوقف القاعدة أو الحاوية كلها لا يستطيع التطبيق التنبيه. يطرق المراقب `https://nuskjo.grade.sbs/up` كل 5 دقائق ويرسل بريداً عند الفشل. لا يرى إلا up أو down.
+
+**التراجع:** `OPS_HEALTH_CHECKS=false` و/أو `WA_META_CHECKS=false` ثم `up -d`. بعدها يعود /up إلى 200 دائماً، وتتوقف نداءات ميتا المجدولة. تنبيه أخطاء الاعتماد عند الإرسال يبقى، فهو من E06.
+
 ## مغادرة موظف
 
 بالترتيب، في اليوم نفسه:
