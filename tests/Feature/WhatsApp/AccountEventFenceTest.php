@@ -6,8 +6,8 @@ use App\Models\User;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
@@ -18,6 +18,7 @@ use Tests\TestCase;
  */
 class AccountEventFenceTest extends TestCase
 {
+    use CapturesLogs;
     use ConfiguresWhatsApp;
     use RefreshDatabase;
     use SignsMetaWebhooks;
@@ -62,12 +63,12 @@ class AccountEventFenceTest extends TestCase
     public function test_quality_warning_for_another_number_is_ignored(): void
     {
         $this->learnOurNumber();
-        Log::spy();
+        $this->captureLogs();
 
         $this->postMetaWebhook('quality_update_other_number.json')->assertOk();
 
         $this->assertFalse(WaBotSetting::current()->wa_suspended);
-        Log::shouldHaveReceived('warning')->with('WA account event for another number ignored', \Mockery::any());
+        $this->assertLogged('warning', 'account.event.other_number', ['field' => 'phone_number_quality_update', 'event' => 'FLAGGED', 'entry' => self::OUR_ACCOUNT]);
     }
 
     public function test_quality_warning_for_our_number_suspends_sending(): void

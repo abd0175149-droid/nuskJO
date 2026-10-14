@@ -15,6 +15,20 @@ final class SecretRedactor
     /** @var list<string>|null */
     private static ?array $known = null;
 
+    /** أشكال الأسرار المعروفة بالقيمة، أينما ظهرت */
+    private const VALUE_PATTERNS = [
+        '/AIza[0-9A-Za-z_\-]{35}/' => '***',                                   // مفتاح Google
+        '/sk-ant-[A-Za-z0-9_\-]{16,}/' => '***',                               // مفتاح Anthropic
+        '/\bEAA[A-Za-z0-9]{20,}/' => '***',                                     // رمز ميتا
+        '/(Bearer\s+)[^\s"\',;]+/i' => '$1***',
+        '/([?&](?:key|access_token|token|client_secret|appsecret_proof|hub[._]verify_token)=)[^&\s"\'<>]+/i' => '$1***',
+        '/base64:[A-Za-z0-9+\/]{43}=/' => 'base64:***',                         // APP_KEY
+        '/-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----/s' => '[PRIVATE KEY]',
+    ];
+
+    /** مفاتيح المصفوفات التي تُحجب قيمتها كلها (prompt_tokens وأمثالها لا تُحجب) */
+    private const SECRET_KEY = '/^(password|secret|token|api_key|authorization|app_key|access_token|verify_token|wa_token|wa_app_secret)$|_secret$|_token$/i';
+
     /** @param  list<?string>  $also  أسرار يعرفها المستدعي ولم تُحفظ بعد (مفتاح يُفحص قبل حفظه) */
     public static function clean(string $text, array $also = []): string
     {
@@ -23,8 +37,7 @@ final class SecretRedactor
         }
 
         try {
-            $text = preg_replace('/([?&](?:key|access_token|appsecret_proof)=)[^&\s"\']+/i', '$1***', $text) ?? $text;
-            $text = preg_replace('/Bearer\s+[^\s"\',;]+/i', 'Bearer ***', $text) ?? $text;
+            $text = preg_replace(array_keys(self::VALUE_PATTERNS), array_values(self::VALUE_PATTERNS), $text) ?? $text;
 
             $known = self::knownSecrets();
             $also = array_filter($also, fn ($v) => is_string($v) && strlen($v) >= 8);
@@ -36,6 +49,22 @@ final class SecretRedactor
         } catch (Throwable) {
             return $text;
         }
+    }
+
+    /** مصفوفة سياق: النصوص تُنقّح، وقيم المفاتيح السرية بالاسم تُحجب كلها، بالتكرار */
+    public static function cleanArray(array $data, int $depth = 0): array
+    {
+        foreach ($data as $key => $value) {
+            if (is_string($key) && preg_match(self::SECRET_KEY, $key) && $value !== null && $value !== '' && !is_array($value)) {
+                $data[$key] = '***';
+            } elseif (is_string($value)) {
+                $data[$key] = self::clean($value);
+            } elseif (is_array($value) && $depth < 5) {
+                $data[$key] = self::cleanArray($value, $depth + 1);
+            }
+        }
+
+        return $data;
     }
 
     /** يُستدعى عند تغيّر الأسرار المحفوظة (العامل الطويل يحتفظ بالقائمة بين المهام) */

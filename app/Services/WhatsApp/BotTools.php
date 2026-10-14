@@ -10,7 +10,6 @@ use App\Models\WaConversation;
 use App\Models\WaCustomerNote;
 use App\Services\OfferCardService;
 use App\Services\TravelersReport;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -273,9 +272,7 @@ class BotTools
             try {
                 $path = OfferCardService::generate($offer);
             } catch (\Throwable $e) {
-                Log::error('تعذّر توليد بطاقة العرض للبوت', [
-                    'offer_id' => $offer->id, 'error' => $e->getMessage(),
-                ]);
+                WaLog::error('bot.card.render_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'exception' => $e]);
 
                 return [
                     'sent' => false,
@@ -292,7 +289,7 @@ class BotTools
         );
 
         if (!$res['ok']) {
-            Log::warning('فشل إرسال بطاقة العرض', ['offer_id' => $offer->id, 'error' => $res['error']]);
+            WaLog::warning('bot.card.send_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $res['code']]);
 
             return [
                 'sent' => false,

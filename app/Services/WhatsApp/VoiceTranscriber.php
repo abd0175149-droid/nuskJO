@@ -8,7 +8,6 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Llm\GeminiProvider;
 use App\Services\WhatsApp\Llm\LlmFactory;
-use Illuminate\Support\Facades\Log;
 
 /**
  * تفريغ الرسائل الصوتية الواردة إلى نصّ قبل أن يقرأها البوت.
@@ -89,7 +88,7 @@ class VoiceTranscriber
             }
         } catch (\Throwable $e) {
             // error لا warning: الإنتاج يسجّل من error فما فوق، فكان الفشل يختفي
-            Log::error('WA voice transcription failed', ['message' => $m->id, 'error' => \App\Support\SecretRedactor::clean($e->getMessage())]);
+            WaLog::error('voice.transcription_failed', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'exception' => $e]);
         }
 
         $payload['_transcribed'] = true;

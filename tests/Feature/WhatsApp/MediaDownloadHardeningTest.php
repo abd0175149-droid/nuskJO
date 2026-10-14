@@ -10,7 +10,7 @@ use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
@@ -20,6 +20,7 @@ use Tests\TestCase;
  */
 class MediaDownloadHardeningTest extends TestCase
 {
+    use CapturesLogs;
     use ConfiguresWhatsApp;
     use RefreshDatabase;
 
@@ -53,11 +54,11 @@ class MediaDownloadHardeningTest extends TestCase
 
     public function test_unknown_host_is_logged_in_log_mode_and_refused_in_enforce_mode(): void
     {
-        Log::spy();
+        $this->captureLogs();
         $this->fakeMedia('https://cdn.example.org/x');
 
         $this->assertTrue(WhatsAppChannel::fetchMedia(self::MEDIA_ID)['ok']);
-        Log::shouldHaveReceived('error')->with('WA media host outside allowlist', ['host' => 'cdn.example.org']);
+        $this->assertLogged('error', 'media.host.outside_allowlist', ['host' => 'cdn.example.org']);
 
         config(['services.whatsapp.media_host_mode' => 'enforce']);
         $this->assertSame(WhatsAppChannel::ERR_MEDIA_HOST, WhatsAppChannel::fetchMedia(self::MEDIA_ID)['code']);
@@ -121,7 +122,7 @@ class MediaDownloadHardeningTest extends TestCase
 
     public function test_log_mode_follows_one_https_redirect_and_records_its_host(): void
     {
-        Log::spy();
+        $this->captureLogs();
         Http::fake([
             'graph.facebook.com/*' => Http::response(['url' => 'https://lookaside.fbsbx.com/x', 'mime_type' => 'audio/ogg', 'sha256' => hash('sha256', 'MEDIA-BYTES')]),
             'lookaside.fbsbx.com/*' => Http::response('', 302, ['Location' => 'https://mmg.whatsapp.net/y']),
@@ -129,7 +130,7 @@ class MediaDownloadHardeningTest extends TestCase
         ]);
 
         $this->assertTrue(WhatsAppChannel::fetchMedia(self::MEDIA_ID)['ok']);
-        Log::shouldHaveReceived('error')->with('WA media download redirected', ['host' => 'mmg.whatsapp.net']);
+        $this->assertLogged('error', 'media.download.redirected', ['host' => 'mmg.whatsapp.net']);
     }
 
     public function test_voice_message_is_transcribed_end_to_end_and_records_the_host(): void

@@ -4,38 +4,30 @@ namespace App\Logging;
 
 use App\Support\SecretRedactor;
 use Illuminate\Log\Logger;
+use Monolog\Handler\FormattableHandlerInterface;
 use Monolog\LogRecord;
-use Throwable;
 
 /**
- * tap لقنوات السجل: الرسالة وقيم السياق النصية تمر على SecretRedactor قبل الكتابة.
- * الاستثناء في السياق يُكتب نصاً منقّحاً (الصنف والرسالة والموضع والتتبّع)، لأن رسالته قد تحوي رابطاً بمفتاح.
+ * tap لقنوات السجل، طبقتان:
+ *  - معالج ينقّح الرسالة والسياق والإضافات (النصوص، وقيم المفاتيح السرية بالاسم) قبل التنسيق؛
+ *  - غلاف لمنسّق كل handler ينقّح النص النهائي، ومعه رسالة الاستثناء وتتبّعه.
  */
 class RedactSecrets
 {
     public function __invoke(Logger $logger): void
     {
-        $logger->getLogger()->pushProcessor(fn (LogRecord $record): LogRecord => $record->with(
-            message: SecretRedactor::clean($record->message),
-            context: self::cleanValue($record->context, 0),
-        ));
-    }
+        $monolog = $logger->getLogger();
 
-    private static function cleanValue(mixed $value, int $depth): mixed
-    {
-        if (is_string($value)) {
-            return SecretRedactor::clean($value);
-        }
-        if ($value instanceof Throwable) {
-            return SecretRedactor::clean(sprintf("%s: %s at %s:%d\n%s",
-                $value::class, $value->getMessage(), $value->getFile(), $value->getLine(), $value->getTraceAsString()));
-        }
-        if (is_array($value) && $depth < 5) {
-            foreach ($value as $key => $item) {
-                $value[$key] = self::cleanValue($item, $depth + 1);
+        $monolog->pushProcessor(fn (LogRecord $record): LogRecord => $record->with(
+            message: SecretRedactor::clean($record->message),
+            context: SecretRedactor::cleanArray($record->context),
+            extra: SecretRedactor::cleanArray($record->extra),
+        ));
+
+        foreach ($monolog->getHandlers() as $handler) {
+            if ($handler instanceof FormattableHandlerInterface && !$handler->getFormatter() instanceof RedactingFormatter) {
+                $handler->setFormatter(new RedactingFormatter($handler->getFormatter()));
             }
         }
-
-        return $value;
     }
 }

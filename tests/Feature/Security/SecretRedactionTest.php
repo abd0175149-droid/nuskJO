@@ -82,6 +82,45 @@ class SecretRedactionTest extends TestCase
         foreach (['AIzaSyFAKE-123', 'EAAB123', 'EAAGm0PX4ZCpsBA', 'db-llm-key-789'] as $secret) {
             $this->assertStringNotContainsString($secret, $written);
         }
-        $this->assertStringContainsString('RuntimeException: cURL error 6', $written);
+        $this->assertStringContainsString('RuntimeException(code: 0): cURL error 6', $written);
+    }
+
+    public function test_known_secret_shapes_are_masked_by_value(): void
+    {
+        $key = 'AIza'.str_repeat('B', 35);
+        $text = "g={$key} a=sk-ant-api03-abcdefghijklmnop m=EAAGm0PX4ZCpsBAabcdefghij app=base64:".str_repeat('A', 43).'= '
+            ."/webhook?hub.mode=subscribe&hub.verify_token=letmein&client_secret=s3cr3t\n-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----";
+
+        $clean = SecretRedactor::clean($text);
+
+        foreach ([$key, 'sk-ant-api03', 'EAAGm0PX4ZCpsBA', str_repeat('A', 43), 'letmein', 's3cr3t', 'MIIE'] as $secret) {
+            $this->assertStringNotContainsString($secret, $clean);
+        }
+        $this->assertStringContainsString('[PRIVATE KEY]', $clean);
+    }
+
+    public function test_secret_keys_are_masked_by_name_but_token_counts_are_kept(): void
+    {
+        $this->assertSame(
+            ['password' => '***', 'wa_app_secret' => '***', 'remember_token' => '***', 'nested' => ['api_key' => '***', 'Authorization' => '***'],
+                'prompt_tokens' => 120, 'tokens_out' => 9, 'note' => 'ok'],
+            SecretRedactor::cleanArray(['password' => 'p', 'wa_app_secret' => 's', 'remember_token' => 'r', 'nested' => ['api_key' => 'k', 'Authorization' => 'Bearer x'],
+                'prompt_tokens' => 120, 'tokens_out' => 9, 'note' => 'ok']),
+        );
+    }
+
+    public function test_whatsapp_log_keeps_only_allowed_keys_and_the_phone_tail(): void
+    {
+        $this->assertSame(
+            ['conv_id' => 7, 'phone_tail' => '1234', 'meta_code' => 131047],
+            \App\Services\WhatsApp\WaLog::filter(['conv_id' => 7, 'phone_tail' => '+962 79 000 1234', 'meta_code' => 131047, 'body' => 'نص العميل', 'name' => 'اسم', 'phone' => '962790001234']),
+        );
+    }
+
+    public function test_whatsapp_channel_writes_json_lines(): void
+    {
+        $this->assertSame(['wa_json', 'single'], config('logging.channels.whatsapp.channels'));
+        $this->assertSame(\Monolog\Formatter\JsonFormatter::class, config('logging.channels.wa_json.formatter'));
+        $this->assertContains(RedactSecrets::class, config('logging.channels.wa_json.tap'));
     }
 }

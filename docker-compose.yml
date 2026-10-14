@@ -25,7 +25,12 @@ services:
       - APP_URL=https://nuskjo.grade.sbs
       - APP_LOCALE=ar
       - LOG_CHANNEL=stack
-      - LOG_LEVEL=error
+      # warning لا error: تحذيرات الواتساب (حدث حساب، توقيع خاطئ) كانت تسقط. يومي بـ 14 يوماً
+      - LOG_LEVEL=warning
+      - LOG_STACK=daily
+      - LOG_DAILY_DAYS=14
+      # أحداث الواتساب في storage/logs/whatsapp-*.log (JSON، بلا بيانات عملاء)
+      - WA_LOG_LEVEL=info
       - DB_CONNECTION=sqlite
       - DB_DATABASE=/var/www/html/database/data/database.sqlite
       - SESSION_DRIVER=database

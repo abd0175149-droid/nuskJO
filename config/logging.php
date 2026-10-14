@@ -58,12 +58,30 @@ return [
             'ignore_exceptions' => false,
         ],
 
+        // أحداث الواتساب (App\Services\WhatsApp\WaLog): JSON يومي بمستواه، ومعه سجل التطبيق بمستواه
+        'whatsapp' => [
+            'driver' => 'stack',
+            'channels' => array_merge(['wa_json'], explode(',', (string) env('LOG_STACK', 'single'))),
+            'ignore_exceptions' => true,
+        ],
+
+        'wa_json' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/whatsapp.log'),
+            'formatter' => Monolog\Formatter\JsonFormatter::class,
+            'level' => env('WA_LOG_LEVEL', 'info'),
+            'days' => env('WA_LOG_DAYS', 30),
+            'permission' => 0664,
+            'tap' => [App\Logging\RedactSecrets::class],
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
-            'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05)
+            'permission' => 0664,   // يكتب www-data حتى لو أنشأ root الملف أولاً
+            'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05/E06)
         ],
 
         'daily' => [
@@ -72,7 +90,8 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
-            'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05)
+            'permission' => 0664,   // يكتب www-data حتى لو أنشأ root الملف أولاً
+            'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05/E06)
         ],
 
         'slack' => [

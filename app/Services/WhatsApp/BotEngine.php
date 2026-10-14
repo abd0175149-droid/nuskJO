@@ -9,7 +9,6 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Llm\LlmFactory;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 
 /**
  * محرّك الوكيل: حلقة أدوات صغيرة محاطة بحواجز حتمية.
@@ -141,7 +140,7 @@ TXT;
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
         } catch (\Throwable $e) {
-            Log::error('BotEngine failed conv=' . $conv->id . ': ' . \App\Support\SecretRedactor::clean($e->getMessage()));
+            WaLog::error('bot.failed', ['conv_id' => $conv->id, 'exception' => $e]);
             return self::failSafe($conv, $s);
         }
     }
@@ -194,7 +193,7 @@ TXT;
                         ? $exec($tc['name'], $tc['input'], $conv->fresh())
                         : BotTools::execute($tc['name'], $tc['input'], $conv->fresh());
                 } catch (\Throwable $e) {
-                    Log::error("tool {$tc['name']} failed: " . \App\Support\SecretRedactor::clean($e->getMessage()));
+                    WaLog::error('bot.tool.failed', ['tool' => $tc['name'], 'conv_id' => $conv->id, 'exception' => $e]);
                     $out = ['error' => 'تعذّر تنفيذ العملية', 'note' => 'اعتذر بإيجاز واقترح تحويل المحادثة لموظف.'];
                 }
                 $usage['tools'][] = $tc['name'];
@@ -369,7 +368,7 @@ TXT;
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
         } catch (\Throwable $e) {
-            Log::error('Admin assistant failed conv=' . $conv->id . ': ' . \App\Support\SecretRedactor::clean($e->getMessage()));
+            WaLog::error('admin_assistant.failed', ['conv_id' => $conv->id, 'exception' => $e]);
             WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system');
 
             return ['sent' => true, 'reason' => 'admin-fail'];

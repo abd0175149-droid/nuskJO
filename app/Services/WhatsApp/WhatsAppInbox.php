@@ -6,7 +6,6 @@ use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Models\WaOptout;
-use Illuminate\Support\Facades\Log;
 
 /**
  * طبقة الإنبوكس: خزّن أولاً ثمّ قرّر من يردّ.
@@ -42,7 +41,7 @@ class WhatsAppInbox
                 $to = (string) data_get($value, 'metadata.phone_number_id', '');
                 if ($ownId !== '' && $to !== $ownId) {
                     if ($to === '') {
-                        Log::warning('WA messages change without phone_number_id ignored', ['entry' => $entryId]);
+                        WaLog::warning('webhook.messages.no_phone_number_id', ['entry' => $entryId]);
                     }
                     continue;
                 }
@@ -271,14 +270,13 @@ class WhatsAppInbox
         $otherNumber = $field === 'phone_number_quality_update' && $ours !== '' && $theirs !== '' && $theirs !== $ours;
         $otherAccount = $field === 'account_update' && (string) $settings->wa_waba_id !== '' && $entryId !== '' && $entryId !== (string) $settings->wa_waba_id;
         if ($otherNumber || $otherAccount) {
-            Log::warning('WA account event for another number ignored', [
-                'field' => $field, 'event' => data_get($value, 'event'), 'entry' => $entryId,
-            ]);
+            WaLog::warning('account.event.other_number', ['field' => $field, 'event' => data_get($value, 'event'), 'entry' => $entryId]);
             return;
         }
 
         $event = data_get($value, 'event') ?: data_get($value, 'current_limit') ?: $field;
-        Log::warning("WA account event [{$field}]: " . json_encode($value));
+        // الحقل والحدث فقط: الحمولة فيها أرقام معروضة وبيانات حساب
+        WaLog::warning('account.event', ['field' => $field, 'event' => (string) $event, 'entry' => $entryId]);
 
         $bad = ['FLAGGED', 'DOWNGRADE', 'ACCOUNT_VIOLATION', 'ACCOUNT_RESTRICTION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED'];
         $violation = data_get($value, 'violation_info') || data_get($value, 'ban_info');
@@ -298,7 +296,7 @@ class WhatsAppInbox
                 ]);
             }
         } catch (\Throwable $e) {
-            Log::error('WA notify failed: ' . $e->getMessage());
+            WaLog::error('notify.failed', ['exception' => $e]);
         }
     }
 }

@@ -7,7 +7,6 @@ use App\Models\WaBotSetting;
 use App\Services\WhatsApp\WhatsAppChannel;
 use App\Services\WhatsApp\WhatsAppInbox;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 /**
  * ويبهوك ميتا — خارج auth وخارج CSRF.
@@ -39,7 +38,7 @@ class WhatsAppWebhookController extends Controller
 
         // التوقيع إلزامي — لا استثناء في الإنتاج
         if (!WhatsAppChannel::verifySignature($raw, $request->header('X-Hub-Signature-256'), $s->appSecret())) {
-            Log::warning('WA webhook: bad signature');
+            \App\Services\WhatsApp\WaLog::warning('webhook.bad_signature');
             return response()->json(['ok' => false], 403);
         }
 
@@ -53,7 +52,7 @@ class WhatsAppWebhookController extends Controller
             }
         } catch (\Throwable $e) {
             // لا نُفشل الويبهوك أبداً — نسجّل ونردّ 200
-            Log::error('WA webhook error: ' . \App\Support\SecretRedactor::clean($e->getMessage()));
+            \App\Services\WhatsApp\WaLog::error('webhook.error', ['exception' => $e]);
         }
 
         return response()->json(['ok' => true], 200);

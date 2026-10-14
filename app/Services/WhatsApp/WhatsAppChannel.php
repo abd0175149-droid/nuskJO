@@ -11,7 +11,6 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 /**
  * بوّابة الإرسال الوحيدة إلى ميتا — كل صادر (بوت/موظف/نظام) يمرّ من هنا.
@@ -121,7 +120,7 @@ class WhatsAppChannel
     private static function mapGraphError(Response $res): array
     {
         $e = self::graphError($res);
-        Log::error('WA graph error', ['code' => $e['code'], 'http' => $e['status'], 'fbtrace_id' => $e['trace']]);
+        WaLog::error('graph.error', ['meta_code' => $e['code'], 'http' => $e['status'], 'fbtrace_id' => $e['trace']]);
 
         if ($e['code'] === null) {
             return ['META_ERROR', $e['message']];
@@ -182,13 +181,13 @@ class WhatsAppChannel
         try {
             $meta = self::graph($s, 20)->get($lookupUrl, array_filter(['phone_number_id' => $s->phoneNumberId()]));
         } catch (\Throwable $e) {
-            Log::error('WA media lookup connection failed: ' . SecretRedactor::clean($e->getMessage()));
+            WaLog::error('media.lookup.connection_failed', ['exception' => $e]);
 
             return self::mediaFail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
         }
         $url = (string) $meta->json('url', '');
         if (!$meta->successful() || $url === '') {
-            Log::error('WA media lookup failed', ['status' => $meta->status(), 'code' => data_get($meta->json(), 'error.code')]);
+            WaLog::error('media.lookup.failed', ['http' => $meta->status(), 'meta_code' => data_get($meta->json(), 'error.code')]);
 
             return self::mediaFail('META_ERROR', 'تعذّر جلب بيانات الوسائط من ميتا.');
         }
@@ -204,7 +203,7 @@ class WhatsAppChannel
         $enforce = config('services.whatsapp.media_host_mode') === 'enforce';
         $sha = strtolower((string) $meta->json('sha256', ''));
         if (!preg_match('/^[a-f0-9]{64}$/', $sha)) {
-            Log::error('WA media without a valid sha256');
+            WaLog::error('media.sha256.invalid');
             if ($enforce) {
                 return self::mediaFail(self::ERR_MEDIA_INTEGRITY, 'بصمة الملف من ميتا غير صالحة.');
             }
@@ -215,12 +214,12 @@ class WhatsAppChannel
         $parts = parse_url($url) ?: [];
         $host = strtolower((string) ($parts['host'] ?? ''));
         if (($parts['scheme'] ?? '') !== 'https' || $host === '') {
-            Log::error('WA media url is not https', ['host' => $host]);
+            WaLog::error('media.url.not_https', ['host' => $host]);
 
             return self::mediaFail(self::ERR_MEDIA_HOST, 'رابط الوسائط ليس https.');
         }
         if (!self::isMetaMediaHost($host)) {
-            Log::error('WA media host outside allowlist', ['host' => $host]);
+            WaLog::error('media.host.outside_allowlist', ['host' => $host]);
             if ($enforce) {
                 return self::mediaFail(self::ERR_MEDIA_HOST, 'مضيف الوسائط خارج قائمة ميتا.');
             }
@@ -230,19 +229,19 @@ class WhatsAppChannel
         // (د) التنزيل بقطع 64KB مع سقف أثناء القراءة
         $redirects = $enforce ? false : [
             'max' => 1, 'strict' => true, 'protocols' => ['https'],
-            'on_redirect' => fn ($request, $response, $uri) => Log::error('WA media download redirected', ['host' => $uri->getHost()]),
+            'on_redirect' => fn ($request, $response, $uri) => WaLog::error('media.download.redirected', ['host' => $uri->getHost()]),
         ];
         try {
             $file = Http::withToken($token)->connectTimeout(10)->timeout(40)
                 ->withOptions(['stream' => true, 'allow_redirects' => $redirects])
                 ->get($url);
         } catch (\Throwable $e) {
-            Log::error('WA media download connection failed: ' . SecretRedactor::clean($e->getMessage()));
+            WaLog::error('media.download.connection_failed', ['exception' => $e]);
 
             return self::mediaFail('HTTP_ERROR', 'تعذّر تنزيل الوسائط (مهلة أو شبكة).');
         }
         if (!$file->successful()) {
-            Log::error('WA media download failed', ['status' => $file->status(), 'host' => $host]);
+            WaLog::error('media.download.failed', ['http' => $file->status(), 'host' => $host]);
 
             return self::mediaFail('META_ERROR', 'تعذّر تنزيل الوسائط.');
         }
@@ -263,7 +262,7 @@ class WhatsAppChannel
         // (هـ) البصمة
         $shaOk = $sha === '' ? null : hash_equals($sha, hash('sha256', $bytes));
         if ($shaOk === false) {
-            Log::error('WA media sha256 mismatch', ['host' => $host]);
+            WaLog::error('media.sha256.mismatch', ['host' => $host]);
             if ($enforce) {
                 return self::mediaFail(self::ERR_MEDIA_INTEGRITY, 'الملف المنزَّل لا يطابق بصمة ميتا.');
             }
@@ -306,7 +305,7 @@ class WhatsAppChannel
         try {
             $res = self::graph($s, 20)->get($url, ['fields' => 'id,display_phone_number,quality_rating,verified_name']);
         } catch (\Throwable $e) {
-            Log::error('WA graph smoke connection failed: ' . SecretRedactor::clean($e->getMessage()));
+            WaLog::error('graph.smoke.connection_failed', ['exception' => $e]);
 
             return ['ok' => false, 'code' => 'HTTP_ERROR', 'status' => null];
         }
@@ -492,7 +491,7 @@ class WhatsAppChannel
         try {
             $url = self::graphPath((string) $s->phoneNumberId(), 'messages');
         } catch (\InvalidArgumentException $e) {
-            Log::error('WA graph config invalid', ['reason' => $e->getMessage()]);
+            WaLog::error('graph.config.invalid', ['reason' => $e->getMessage()]);
 
             return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
         }
@@ -501,7 +500,7 @@ class WhatsAppChannel
             $res = self::graph($s, 25)->post($url, $payload);
         } catch (\Throwable $e) {
             // نص الاستثناء يحمل الرابط: للسجل منقّحاً، لا للواجهة
-            Log::error('WA send connection failed: ' . SecretRedactor::clean($e->getMessage()));
+            WaLog::error('send.connection_failed', ['conv_id' => $conv->id, 'exception' => $e]);
 
             return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
         }

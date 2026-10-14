@@ -15,7 +15,6 @@ use App\Models\WaConversation;
 use App\Models\WaKnowledgeEntry;
 use App\Services\TravelersReport;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 
 /**
  * أدوات المساعد الإداري — لأرقام الإدارة وحدها، وكلٌّ بما سُمح له.
@@ -185,7 +184,7 @@ class AdminTools
             return $out;
         } catch (\Throwable $e) {
             $error = \App\Support\SecretRedactor::clean($e->getMessage());
-            Log::error("admin tool {$name} failed: " . $error);
+            WaLog::error('admin.tool.failed', ['tool' => $name, 'conv_id' => $conv->id, 'exception' => $e]);
             self::log($a, $conv, $name, $action ?: null, 'error', mb_substr($error, 0, 300), $in);
 
             return ['error' => 'تعذّر تنفيذ الطلب', 'note' => 'اعتذر بإيجاز واقترح المحاولة من لوحة التحكم.'];
@@ -674,7 +673,7 @@ class AdminTools
                 'created_at' => now(),
             ]);
         } catch (\Throwable $e) {
-            Log::warning('admin action log failed: ' . $e->getMessage());
+            WaLog::warning('admin.action_log.failed', ['exception' => $e]);
         }
     }
 
