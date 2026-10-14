@@ -9,6 +9,8 @@ BASE="${BASE:-$HOME/backups/$PROJECT}"
 CFG="${CFG:-$HOME/.config/$PROJECT-backup}"
 SPOOL="${SPOOL:-/var/www/html/storage/app/backups}"
 DISK_WARN_PCT="${DISK_WARN_PCT:-90}"
+# سقف صلب: لا أرشيف جديد فوقه (الخادم مشترك؛ امتلاؤه يوقف كل المشاريع)
+DISK_HARD_PCT="${DISK_HARD_PCT:-95}"
 BASE_MAX_MB="${BASE_MAX_MB:-20480}"
 
 # اسم مجلد نسخة صالح فقط: يمنع أي حقن في أوامر docker exec

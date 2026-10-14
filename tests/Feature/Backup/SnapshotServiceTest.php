@@ -135,6 +135,31 @@ class SnapshotServiceTest extends TestCase
         $this->assertTrue(collect($names)->contains(fn ($n) => str_ends_with($n, '-d')));
     }
 
+    public function test_media_over_the_cap_is_skipped_but_database_is_backed_up(): void
+    {
+        config(['backup.media_max_mb' => 0]);
+
+        $result = $this->service()->run('manual');
+
+        $this->assertTrue($result['manifest']['media_skipped']);
+        $this->assertFileDoesNotExist($result['path'].'/storage-public.tar.gz');
+        $this->assertFileExists($result['path'].'/database.sqlite');
+        $this->assertSame(20, $result['manifest']['row_counts']['invoices']);
+    }
+
+    public function test_refuses_when_backup_would_eat_the_disk_floor(): void
+    {
+        config(['backup.disk_min_free_mb' => PHP_INT_MAX >> 21]);
+
+        try {
+            $this->service()->run('manual');
+            $this->fail('كان يجب أن يرفض');
+        } catch (BackupFailed $e) {
+            $this->assertStringContainsString('المساحة', $e->getMessage());
+        }
+        $this->assertSame([], glob($this->spool.'/*') ?: []);
+    }
+
     public function test_unknown_reason_is_refused(): void
     {
         $this->artisan('backup:run', ['--reason' => 'whenever'])->assertFailed();

@@ -45,7 +45,8 @@ class SnapshotService
         try {
             $this->assertRealDatabase();
             File::ensureDirectoryExists($this->spool, 0700);
-            $this->assertDiskSpace();
+            $mediaSize = $this->mediaBytesWithinCap();
+            $this->assertDiskSpace($mediaSize ?? 0);
 
             $live = new SqliteInspector($this->dbPath);
             $liveAppendOnly = $live->rowCounts(config('backup.append_only', []));
@@ -67,11 +68,11 @@ class SnapshotService
             $counts = $snap->rowCounts(array_values(array_unique(array_merge($coreTables, config('backup.append_only', [])))));
             $this->assertNotWrongDatabase($counts, $liveAppendOnly, $allowShrink);
 
-            $mediaBytes = $this->archiveMedia("{$partial}/storage-public.tar.gz");
+            $mediaBytes = $mediaSize === null ? 0 : $this->archiveMedia("{$partial}/storage-public.tar.gz");
             $journalMode = $live->journalMode();
             unset($snap, $live);
 
-            $manifest = $this->describe($partial, $reason, $label, $journalMode);
+            $manifest = $this->describe($partial, $reason, $label, $journalMode, $mediaSize === null);
             $migrations = $manifest['migrations'];
 
             $final = "{$this->spool}/{$name}";
@@ -114,7 +115,7 @@ class SnapshotService
      * يكتب manifest.json لمجلد فيه database.sqlite (وربما storage-public.tar.gz) ويعيده.
      * يستعمله run() ولقطة ما قبل الاستعادة (backup:manifest) لتكون أي لقطة قابلة للفحص والاستعادة.
      */
-    public function describe(string $dir, string $reason, ?string $label = null, ?string $journalMode = null): array
+    public function describe(string $dir, string $reason, ?string $label = null, ?string $journalMode = null, bool $mediaSkipped = false): array
     {
         $db = new SqliteInspector("{$dir}/database.sqlite");
         $tables = array_values(array_unique(array_merge(config('backup.core_tables', []), config('backup.append_only', []))));
@@ -132,6 +133,7 @@ class SnapshotService
             'row_counts' => $db->rowCounts($tables),
             'migrations' => $db->migrations(),
             'files' => $this->hashes($dir),
+            'media_skipped' => $mediaSkipped,
         ];
         unset($db);
 
@@ -173,13 +175,35 @@ class SnapshotService
         }
     }
 
-    private function assertDiskSpace(): void
+    private function assertDiskSpace(int $mediaBytes): void
     {
         $free = @disk_free_space($this->spool);
-        $need = 3 * filesize($this->dbPath);
-        if ($free !== false && $free < $need) {
-            throw new BackupFailed('المساحة الحرة أقل من ثلاثة أضعاف حجم القاعدة');
+        if ($free === false) {
+            return;
         }
+
+        $need = 3 * filesize($this->dbPath) + $mediaBytes;
+        $floor = (int) config('backup.disk_min_free_mb', 5120) * 1024 * 1024;
+        if ($free - $need < $floor) {
+            throw new BackupFailed('المساحة الحرة لا تكفي للنسخة مع إبقاء الحد الأدنى فارغاً على القرص');
+        }
+    }
+
+    /** حجم ملفات الوسائط بالبايت، وnull إن تجاوز السقف (فتُتخطى ويُنبَّه). */
+    private function mediaBytesWithinCap(): ?int
+    {
+        $cap = (int) config('backup.media_max_mb', 1024) * 1024 * 1024;
+        $total = 0;
+        foreach (array_filter(config('backup.media_dirs', []), 'is_dir') as $dir) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $file) {
+                $total += $file->isFile() ? $file->getSize() : 0;
+                if ($total > $cap) {
+                    return null;
+                }
+            }
+        }
+
+        return $total;
     }
 
     private function snapshotDatabase(string $dest): void

@@ -36,7 +36,7 @@ class BackupAlert extends Command
             return self::SUCCESS;
         }
 
-        WhatsAppInbox::notifyAdmins('⚠️ النسخ الاحتياطي', $message, '/settings');
+        WhatsAppInbox::notifyAdmins('⚠️ النسخ الاحتياطي', $message, '/settings/backups');
         $this->info('أُرسل التنبيه');
 
         return self::SUCCESS;

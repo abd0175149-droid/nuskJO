@@ -63,6 +63,13 @@ for snap in "${snaps[@]}"; do
         continue
     fi
 
+    current_step="فحص القرص قبل $snap"
+    used_now="$(df -P "$BASE" | awk 'NR==2 {gsub("%", "", $5); print $5}')"
+    if (( used_now >= DISK_HARD_PCT )); then
+        alert "collect.sh ($PROJECT): القرص ${used_now}% — أُوقف السحب حتى لا يمتلئ (الحد ${DISK_HARD_PCT}%)"
+        exit 1
+    fi
+
     current_step="تشفير $snap"
     part="$ARCHIVE/$name.part"
     docker exec -u www-data "$CONTAINER" tar -C "$SPOOL" -czf - "$snap" \

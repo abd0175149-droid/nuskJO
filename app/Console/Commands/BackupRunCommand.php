@@ -37,12 +37,15 @@ class BackupRunCommand extends Command
             $result = $snapshots->run($reason, $this->option('label') ?: null, (bool) $this->option('allow-shrink'));
         } catch (BackupFailed $e) {
             $this->error('فشل النسخ: '.$e->getMessage());
-            WhatsAppInbox::notifyAdmins('⚠️ فشل النسخ الاحتياطي', $e->getMessage(), '/settings');
+            WhatsAppInbox::notifyAdmins('⚠️ فشل النسخ الاحتياطي', $e->getMessage(), '/settings/backups');
 
             return self::FAILURE;
         }
 
         $m = $result['manifest'];
+        if (!empty($m['media_skipped'])) {
+            WhatsAppInbox::notifyAdmins('⚠️ النسخ الاحتياطي بلا وسائط', 'تجاوزت ملفات الوسائط سقف النسخ؛ نُسخت القاعدة وحدها', '/settings/backups');
+        }
         if ($this->option('json')) {
             $this->line(json_encode([
                 'name' => $result['name'],
