@@ -1,0 +1,20 @@
+# صورة الاختبار لبوابة النشر (scripts/deploy.sh).
+# نفس أساس الإنتاج لتُشارَك الطبقات، دون كروميوم ولا nginx.
+# تُشغَّل بـ --network none: لا شيء يخرج إلى ميتا أو النموذج أو FCM.
+FROM php:8.3-fpm-alpine
+
+RUN apk add --no-cache sqlite-dev icu-dev libzip-dev libpng-dev oniguruma-dev \
+    && docker-php-ext-install pdo_sqlite mbstring intl bcmath gd zip
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-interaction --prefer-dist --no-progress --no-scripts --no-autoloader
+
+COPY . .
+RUN composer dump-autoload --optimize \
+    && cp .env.example .env \
+    && php artisan key:generate --force
+
+CMD ["php", "artisan", "test"]

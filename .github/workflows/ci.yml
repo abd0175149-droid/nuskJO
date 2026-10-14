@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # TODO(E26): تثبيت الإجراءات بالـ SHA بدل الوسم
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, sqlite3, mbstring, intl, bcmath, gd, zip
+          coverage: none
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Migrations run on a fresh database
+        run: |
+          touch "$RUNNER_TEMP/fresh.sqlite"
+          DB_CONNECTION=sqlite DB_DATABASE="$RUNNER_TEMP/fresh.sqlite" php artisan migrate --force
+
+      - name: Tests
+        run: php artisan test
+
+      - name: Code style (changed files only)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: vendor/bin/pint --test --diff=origin/${{ github.base_ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Dependency audit (non-blocking)
+        continue-on-error: true
+        run: |
+          composer audit --locked
+          npm audit --omit=dev

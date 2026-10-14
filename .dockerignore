@@ -1,6 +1,19 @@
-# Context & docs
+# Context & docs (قاعدة *.md تطابق الجذر فقط، فتُستثنى المجلدات صراحة)
 context/
+docs/
 *.md
+**/*.md
+
+# سكربتات تجريب لا مكان لها في صورة الإنتاج
+check_admin.php
+test.php
+test_request.php
+scratch/
+docker-compose.yml.bak
+Dockerfile.test
+Dockerfile.test.dockerignore
+scripts/
+.github/
 
 # Development
 .env

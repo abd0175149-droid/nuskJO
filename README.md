@@ -7,6 +7,20 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## الاختبار (nuskJO)
+
+```bash
+composer install
+cp .env.example .env && php artisan key:generate
+composer test          # أو: php artisan test
+```
+
+- **لا طلبات حقيقية:** `tests/TestCase.php` يفعّل `Http::preventStrayRequests()`، فكل نداء لميتا أو للنموذج يجب أن يُزيَّف بـ `Http::fake()` (الأدوات في `tests/Concerns/ConfiguresWhatsApp.php`). و`phpunit.xml` يفرض مفاتيح فارغة لواتساب والنماذج وFirebase.
+- **تحقق إيجابي:** كل اختبار يثبت ما حدث (`Http::assertSent` أو حالة الرسالة أو الوظيفة المجدولة)، لأن الكود يبتلع الاستثناءات في مواضع عدة، فطلب نُسي تزييفه قد يُمنع بصمت ويبدو الاختبار ناجحاً.
+- **حمولات ميتا:** في `tests/Fixtures/whatsapp/` بأرقام ميتا النموذجية فقط (مصادرها في `PROVENANCE.txt`). المستودع عام، فلا تُنسخ أي حمولة من الإنتاج؛ واختبار `FixturePiiGuardTest` يرفض أي رقم أردني أو جواز.
+- **الثوابت:** قواعد سلوك البوت والقناة في `tests/Invariants.php` بمعرّفات `INV-xx`. ثابت جديد يُضاف هناك مع شرح «لماذا الإصلاح الظاهر خاطئ»، ويُوسم اختباره بـ `#[Group('INV-xx')]`؛ و`InvariantCatalogTest` يفشل إن بقي معرّف بلا اختبار.
+- **النشر:** `scripts/deploy.sh` يبني `Dockerfile.test` ويشغّل الاختبارات بلا شبكة قبل أي بناء للإنتاج.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
