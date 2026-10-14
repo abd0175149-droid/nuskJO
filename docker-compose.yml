@@ -15,8 +15,9 @@ services:
     volumes:
       # Persist storage (uploads, logs)
       - nuskjo-storage:/var/www/html/storage
-      # Persist SQLite database
-      - nuskjo-database:/var/www/html/database
+      # القاعدة وحدها في حجمها (database/data)، فتصل هجرات الصورة الجديدة بالبناء دون docker cp.
+      # الانتقال من الحجم القديم بـ scripts/backup/move-db-volume.sh (docs/RELEASE.md)، لا بإعادة التشغيل.
+      - nuskjo-dbdata:/var/www/html/database/data
     environment:
       - APP_NAME=NUSKJO
       - APP_ENV=production
@@ -26,6 +27,7 @@ services:
       - LOG_CHANNEL=stack
       - LOG_LEVEL=error
       - DB_CONNECTION=sqlite
+      - DB_DATABASE=/var/www/html/database/data/database.sqlite
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database
@@ -68,5 +70,7 @@ services:
 volumes:
   nuskjo-storage:
     driver: local
-  nuskjo-database:
+  nuskjo-dbdata:
     driver: local
+  # الحجم القديم nuskjo_nuskjo-database غير معلن هنا عن قصد: يبقى كما هو للرجوع، ولا يحذفه «docker compose down -v».
+  # حذفه يدوياً بعد 30 يوماً على الأقل وبقرار المالك.
