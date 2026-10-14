@@ -129,6 +129,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { usePage, Link, router } from '@inertiajs/vue3';
 import { syncPushToken, currentPushToken, forgetPushToken } from '../../firebase';
+import { clearStoredDrafts } from '@/composables/useDrafts';
 import PushToggle from './PushToggle.vue';
 import axios from 'axios';
 
@@ -175,7 +176,10 @@ const openNotification = async (n) => {
 };
 
 // الخروج يحذف توكن هذا الجهاز، فلا تصل إشعارات المستخدم لمن يستعمل الجهاز بعده
-const logout = () => router.post('/logout', { push_token: currentPushToken() }, { onFinish: forgetPushToken });
+const logout = () => {
+    clearStoredDrafts(); // مسودات الردود لا تبقى بعد الخروج
+    router.post('/logout', { push_token: currentPushToken() }, { onFinish: forgetPushToken });
+};
 
 const markAllRead = async () => {
     try {

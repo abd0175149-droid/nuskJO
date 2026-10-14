@@ -211,6 +211,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
+import { useDrafts } from '@/composables/useDrafts';
 
 const props = defineProps({
   title: String,
@@ -239,7 +240,12 @@ const activeId = ref(null);
 const thread = ref(null);
 const messages = ref([]);
 const notes = ref([]);
-const draft = ref('');
+// مسودة لكل محادثة: النص يتبع المحادثة المفتوحة ولا ينتقل إلى غيرها
+const drafts = useDrafts();
+const draft = computed({
+  get: () => drafts.get(activeId.value),
+  set: (text) => drafts.set(activeId.value, text),
+});
 const sending = ref(false);
 const sendError = ref('');
 const scroller = ref(null);
@@ -296,13 +302,15 @@ const open = async (id) => {
 };
 
 const send = async () => {
-  const body = draft.value.trim();
-  if (!body || sending.value) return;
+  // رقم المحادثة يُثبَّت لحظة الضغط، فلو انتقل الموظف لمحادثة أخرى أثناء الطلب لا يُنسب النص لها
+  const id = activeId.value;
+  const body = drafts.get(id).trim();
+  if (!id || !body || sending.value) return;
   sending.value = true; sendError.value = '';
   try {
-    await axios.post(`/api/whatsapp/conversations/${activeId.value}/send`, { body }, api);
-    draft.value = '';
-    await open(activeId.value);
+    await axios.post(`/api/whatsapp/conversations/${id}/send`, { body }, api);
+    drafts.clear(id);
+    if (activeId.value === id) await open(id);
   } catch (e) {
     sendError.value = e.response?.data?.error || 'تعذّر الإرسال';
   } finally { sending.value = false; }
