@@ -152,13 +152,20 @@ TXT;
             return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف', $run);
         }
 
+        // ② قاطع المزوّد (E12): أثناء العطل لا نداء للنموذج، بل الاحتياطي إن ضُبط، وإلا تحويل برسالة ثابتة.
+        //    قبل حدّ المعدّل كي لا يستهلك الانقطاع حصة العميل في الساعة
+        $route = self::route($s);
+        if ($route === null) {
+            return self::outageHandoff($conv, $s, $pending, $run);
+        }
+
         // حدّ المعدّل لكل محادثة — عند بلوغه نحوّل بدل الصمت. يُزاد بعد الإرسال الناجح وحده، فالإعادة لا تستهلكه
         if (self::rateLimited($conv, $s)) {
             return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run);
         }
 
         try {
-            [$text, $usage] = self::runLoop($conv, $s, null, null, null, $run);
+            [$text, $usage] = self::runLoop($conv, $s, null, null, null, $run, $route);
 
             // نفد الوقت قبل رد كامل: موظف يكمل، لا رد مبتور ولا صمت
             if ($run->abort === 'budget' && !$run->escalated) {
@@ -178,7 +185,7 @@ TXT;
                 $usage['tools'][] = 'handoff_guard';
             }
 
-            self::recordUsage($conv->id, $s->model, $usage);
+            self::recordUsage($conv->id, $route['model'], $usage);
 
             // ② قبل الإرسال: ردّ موظف أو أطفأ البوت أو أوقفه أثناء التوليد؟ يُسقط الرد
             if ($drop = $run->mayDeliver($conv)) {
@@ -190,10 +197,93 @@ TXT;
             }
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
+        } catch (LlmException $e) {
+            WaLog::error('bot.failed', ['conv_id' => $conv->id, 'exception' => $e]);
+            // إخفاق المزوّد النهائي (بعد الإعادة الداخلية): يُعدّ في القاطع؛ وفي الوضع on تحويل برسالة ثابتة
+            // بدل رسالة الخلل وإيقاف الساعة. في shadow وoff يبقى السلوك القديم
+            if ($e->counts()) {
+                LlmCircuitBreaker::recordFailure($route['provider'], $e, $route['model']);
+                if (LlmCircuitBreaker::mode($s) === 'on') {
+                    $isolated = LlmCircuitBreaker::status($route['provider'])['state'] === 'closed';
+
+                    return self::outageHandoff($conv, $s, $pending, $run, $isolated, $route['provider']);
+                }
+            }
+
+            return self::failSafe($conv, $s, $run);
         } catch (\Throwable $e) {
             WaLog::error('bot.failed', ['conv_id' => $conv->id, 'exception' => $e]);
             return self::failSafe($conv, $s, $run);
         }
+    }
+
+    /**
+     * المزوّد الذي يُستدعى: الأساسي إن سمح قاطعه (أو حان اختباره)، وإلا الاحتياطي إن ضُبط وسمح قاطعه، وإلا null.
+     *
+     * @return array{provider: string, model: string, key: string}|null
+     */
+    private static function route(WaBotSetting $s): ?array
+    {
+        $primary = (string) $s->provider;
+        if (LlmCircuitBreaker::allow($primary) !== LlmCircuitBreaker::BLOCK) {
+            return ['provider' => $primary, 'model' => (string) $s->model, 'key' => (string) $s->llmKey()];
+        }
+        if ($s->fallbackReady() && LlmCircuitBreaker::allow((string) $s->fallback_provider) !== LlmCircuitBreaker::BLOCK) {
+            return ['provider' => (string) $s->fallback_provider, 'model' => (string) $s->fallback_model, 'key' => (string) $s->fallbackKey()];
+        }
+
+        return null;
+    }
+
+    /**
+     * وضع التحويل (E12): رسالة تحويل يبنيها الكود مرة واحدة لكل حادثة ومحادثة، داخل النافذة وحدها (أقفال
+     * القناة)، ثم «تدخّل» وتوكيل بالموضوع وإسكات البوت حتى نهاية الفتح. bot_enabled لا يتغيّر، فيعود البوت
+     * بعد التعافي وحده. لا إشعار لكل محادثة، إلا إخفاقاً منفرداً والقاطع مغلق (مرة في 30 دقيقة للمحادثة).
+     */
+    private static function outageHandoff(WaConversation $conv, WaBotSetting $s, string $pending, ?ReplyRun $run, bool $isolated = false, ?string $provider = null): array
+    {
+        $provider ??= (string) $s->provider;
+        $incident = LlmCircuitBreaker::incidentId($provider);
+        if ($run) {
+            $run->escalated = true;
+        }
+
+        $sent = false;
+        if (Cache::add('wa:llm:outage:'.($incident ?? 'isolated').':'.$conv->id, 1, now()->addHours($incident ? 6 : 1))) {
+            $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'system');
+            $sent = (bool) $res['ok'];
+            // خنق من ميتا: إعادة واحدة مؤجلة؛ 368 و131047 و190 لا يُعاد عليها أبداً
+            if (!$res['ok'] && in_array($res['meta_code'] ?? null, \App\Jobs\SendOutageNotice::RETRY_META_CODES, true)) {
+                \App\Jobs\SendOutageNotice::dispatch($conv->id, false)->delay(now()->addSeconds(30));
+            }
+        }
+
+        $until = LlmCircuitBreaker::openUntil($provider);
+        $pause = now()->addMinutes(max(1, (int) $s->pause_minutes));
+        $conv->update([
+            'needs_attention' => true,
+            'bot_paused_until' => $until && $until->greaterThan($pause) ? $until : $pause,
+            'assigned_to' => TopicRouter::assigneeFor($conv),
+        ] + (ReplyState::available() ? ['attention_reason' => 'llm_outage'] : []));
+        // ما وصل قبل التحويل صار للموظف: لا يجيب البوت عنه بعد التعافي
+        ReplyState::advanceToNewest($conv);
+
+        self::recordUsage($conv->id, $s->model, [
+            'calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0,
+            'tools' => ['outage_handoff'], 'leaked' => false, 'ms' => 0,
+        ], 'outage');
+        LlmCircuitBreaker::countHandoff($incident);
+
+        if ($isolated && Cache::add("wa:llm:isolated:{$conv->id}", 1, now()->addMinutes(30))) {
+            $assignee = $conv->fresh()?->assigned_to;
+            $title = '⚠️ تعذّر رد البوت';
+            $body = 'خلل عابر عند مزوّد الذكاء. حُوّلت المحادثة إليكم — ردّوا على العميل يدوياً.';
+            $assignee
+                ? \App\Services\NotificationService::send((int) $assignee, $title, $body, ['type' => 'whatsapp', 'icon' => '💬', 'action_url' => "/whatsapp/inbox?conv={$conv->id}"])
+                : WhatsAppInbox::notifyAdmins($title, $body, "/whatsapp/inbox?conv={$conv->id}");
+        }
+
+        return ['sent' => $sent, 'reason' => 'llm_outage'];
     }
 
     // ==================== الحلقة ====================
@@ -202,11 +292,13 @@ TXT;
      * حلقة النموذج والأدوات — واحدة للمسارين.
      * بلا وسائط إضافية: بوت العملاء بشخصيته وأدواته. ومع $system و$tools و$exec: المساعد الإداري.
      */
-    private static function runLoop(WaConversation $conv, WaBotSetting $s, ?array $system = null, ?array $tools = null, ?callable $exec = null, ?ReplyRun $run = null): array
+    private static function runLoop(WaConversation $conv, WaBotSetting $s, ?array $system = null, ?array $tools = null, ?callable $exec = null, ?ReplyRun $run = null, ?array $route = null): array
     {
-        $provider = LlmFactory::make($s->provider);
-        $apiKey = (string) $s->llmKey();
-        $model = (string) $s->model;
+        // المسار محسوم مسبقاً (الأساسي أو الاحتياطي، E12)
+        $route ??= ['provider' => (string) $s->provider, 'model' => (string) $s->model, 'key' => (string) $s->llmKey()];
+        $provider = LlmFactory::make($route['provider']);
+        $apiKey = $route['key'];
+        $model = $route['model'];
 
         $system ??= self::buildSystem($conv, $s);                         // مصفوفة نصوص
         $history = $provider->buildHistory(self::buildMessages($conv, $s, $run));
@@ -279,7 +371,10 @@ TXT;
     private static function generate(LlmProvider $provider, #[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, WaConversation $conv, ?ReplyRun $run): array
     {
         try {
-            return $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
+            $out = $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
+            LlmCircuitBreaker::recordSuccess($provider->key());
+
+            return $out;
         } catch (LlmException $e) {
             if (!$e->retryable() || ($run && $run->remaining() <= ReplyRun::RETRY_MIN_SECONDS)) {
                 throw $e;
@@ -287,7 +382,10 @@ TXT;
             WaLog::warning('bot.llm.retry', ['conv_id' => $conv->id, 'exception' => $e]);
             Sleep::for(ReplyRun::RETRY_DELAY_MS)->milliseconds();
 
-            return $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
+            $out = $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
+            LlmCircuitBreaker::recordSuccess($provider->key());
+
+            return $out;
         }
     }
 
@@ -470,6 +568,12 @@ TXT;
             return self::skip('لا وارد من الموظف بعد آخر رد');
         }
 
+        // قاطع المزوّد (E12): نص ثابت مرة لكل حادثة، ولا أداة إدارية تُنفَّذ
+        $route = self::route($s);
+        if ($route === null) {
+            return self::adminOutage($conv, (string) $s->provider);
+        }
+
         $key = 'wa:rate:admin:' . $conv->id . ':' . now()->format('YmdH');
         $count = (int) Cache::get($key, 0);
         if ($count >= 60) {
@@ -482,7 +586,7 @@ TXT;
 
         try {
             [$text, $usage] = self::runLoop($conv, $s, $system, $tools,
-                fn (string $name, array $in, WaConversation $c) => AdminTools::execute($name, $in, $c, $admin), $run);
+                fn (string $name, array $in, WaConversation $c) => AdminTools::execute($name, $in, $c, $admin), $run, $route);
 
             if ($run->abort === 'budget') {
                 $text = 'استغرق الطلب وقتاً أطول من المسموح فلم يكتمل. أعد المحاولة أو جزّئه إلى طلبات أقصر.';
@@ -498,12 +602,37 @@ TXT;
             }
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
+        } catch (LlmException $e) {
+            WaLog::error('admin_assistant.failed', ['conv_id' => $conv->id, 'exception' => $e]);
+            if ($e->counts()) {
+                LlmCircuitBreaker::recordFailure($route['provider'], $e, $route['model']);
+                if (LlmCircuitBreaker::mode($s) === 'on' && LlmCircuitBreaker::status($route['provider'])['state'] !== 'closed') {
+                    return self::adminOutage($conv, $route['provider']);
+                }
+            }
+            WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system');
+
+            return ['sent' => true, 'reason' => 'admin-fail'];
         } catch (\Throwable $e) {
             WaLog::error('admin_assistant.failed', ['conv_id' => $conv->id, 'exception' => $e]);
             WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system');
 
             return ['sent' => true, 'reason' => 'admin-fail'];
         }
+    }
+
+    /** المساعد الإداري أثناء العطل: نص ثابت واحد لكل حادثة ومحادثة، بلا «تدخّل» (محادثة موظف لا عميل) */
+    private static function adminOutage(WaConversation $conv, string $provider): array
+    {
+        $incident = LlmCircuitBreaker::incidentId($provider);
+        if (!Cache::add('wa:llm:admin-outage:'.($incident ?? 'x').':'.$conv->id, 1, now()->addHours(6))) {
+            return self::skip('llm_outage');
+        }
+        $since = LlmCircuitBreaker::status($provider)['opened_at'];
+        $at = $since ? \Illuminate\Support\Carbon::parse($since)->timezone(config('app.timezone'))->format('H:i') : now()->format('H:i');
+        $res = WhatsAppChannel::sendText($conv, "المساعد الإداري متوقف مؤقتاً لتعطّل مزوّد الذكاء الاصطناعي منذ {$at}. استعمل لوحة التحكم، وسأعود تلقائياً عند التعافي.", 'system');
+
+        return ['sent' => (bool) $res['ok'], 'reason' => 'llm_outage'];
     }
 
     private static function adminCard(WaAdminNumber $a): string

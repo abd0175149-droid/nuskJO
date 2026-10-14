@@ -71,6 +71,11 @@ final class LlmCircuitBreaker
         if (self::mode() === 'off') {
             return;
         }
+        // المسار الشائع (مغلق بلا إخفاقات) بلا قفل: نداء ناجح لكل رد
+        $peek = self::state($provider);
+        if ($peek['state'] === 'closed' && $peek['failures'] === []) {
+            return;
+        }
         self::locked(function () use ($provider) {
             $st = self::state($provider);
             if ($st['state'] === 'closed') {

@@ -88,6 +88,7 @@ class MetaErrorHandlingTest extends TestCase
             'error' => $stored,
             'code' => $code,
             'message_id' => null,
+            'meta_code' => $error['code'],
         ], $result);
 
         Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v25.0/106540352242922/messages');

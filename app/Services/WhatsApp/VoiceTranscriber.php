@@ -39,6 +39,10 @@ class VoiceTranscriber
             ->where('msg_type', 'audio')
             ->orderByDesc('id')->limit(3)->get()
             ->filter(fn (WaMessage $m) => !data_get($m->payload, '_transcribed'));
+        // قاطع المزوّد مفتوح (E12): لا نداء، وتبقى بلا _transcribed فتُفرَّغ بعد التعافي
+        if ($pending->isNotEmpty() && LlmCircuitBreaker::allow((string) $s->provider) === LlmCircuitBreaker::BLOCK) {
+            return;
+        }
 
         foreach ($pending as $m) {
             if ($run && !$run->hasAtLeast(ReplyRun::VOICE_MIN_SECONDS)) {
@@ -86,6 +90,7 @@ class VoiceTranscriber
                 if ($media) {
                     $mime = explode(';', $media['mime'])[0] ?: 'audio/ogg';
                     $r = $provider->transcribe((string) $s->llmKey(), (string) $s->model, $media['bytes'], $mime, $run?->voiceTimeout());
+                    LlmCircuitBreaker::recordSuccess($provider->key());
                     $text = $r['text'] !== '' && $r['text'] !== '[غير مفهومة]' ? $r['text'] : null;
 
                     WaBotUsage::create([
@@ -107,6 +112,10 @@ class VoiceTranscriber
         } catch (\Throwable $e) {
             // error لا warning: الإنتاج يسجّل من error فما فوق، فكان الفشل يختفي
             WaLog::error('voice.transcription_failed', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'exception' => $e]);
+            // خطأ المزوّد يُعدّ في القاطع قبل ابتلاعه (E12)
+            if ($e instanceof \App\Services\WhatsApp\Llm\LlmException) {
+                LlmCircuitBreaker::recordFailure((string) $s->provider, $e, (string) $s->model);
+            }
         }
 
         $payload['_transcribed'] = true;

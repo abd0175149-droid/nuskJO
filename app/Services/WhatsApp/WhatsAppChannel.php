@@ -604,12 +604,18 @@ class WhatsAppChannel
             self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload, $metaCode, $trace, $code, $s->phoneNumberId());
             WaLog::warning('wa.send.failed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType, 'code' => $code, 'meta_code' => $metaCode, 'fbtrace_id' => $trace]);
 
-            return self::fail($code, $err);
+            return self::fail($code, $err, $metaCode);
         }
 
+        // 200 بلا معرّف رسالة: قبلتها ميتا ولا دليل على الإرسال، فلا تُعرض «أُرسلت» (E12.8)
         $wamid = data_get($json, 'messages.0.id');
-        self::store($conv, $wamid, $displayBody, $msgType, $source, 'sent', null, $staffId, $payload, phoneNumberId: $s->phoneNumberId());
-        WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType]);
+        $status = is_string($wamid) && $wamid !== '' ? 'sent' : 'unconfirmed';
+        self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $payload, phoneNumberId: $s->phoneNumberId());
+        if ($status === 'unconfirmed') {
+            WaLog::warning('wa.send.unconfirmed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType]);
+        } else {
+            WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType]);
+        }
 
         // ردّ الموظف يُوقف البوت مؤقتاً ويصفّر المؤشرات
         $update = [
@@ -632,7 +638,7 @@ class WhatsAppChannel
             ReplyState::advanceToNewest($conv);
         }
 
-        return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $wamid];
+        return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $status === 'sent' ? $wamid : null] + ($status === 'unconfirmed' ? ['unconfirmed' => true] : []);
     }
 
     private static ?bool $hasMetaColumns = null;
@@ -667,8 +673,9 @@ class WhatsAppChannel
         ]);
     }
 
-    private static function fail(string $code, string $msg): array
+    /** meta_code: رقم ميتا إن ردّت بخطأ (لإعادة مؤجلة على الخنق وحده) */
+    private static function fail(string $code, string $msg, ?int $metaCode = null): array
     {
-        return ['ok' => false, 'error' => $msg, 'code' => $code, 'message_id' => null];
+        return ['ok' => false, 'error' => $msg, 'code' => $code, 'message_id' => null, 'meta_code' => $metaCode];
     }
 }

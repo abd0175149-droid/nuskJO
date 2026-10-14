@@ -206,6 +206,7 @@
                     <span dir="ltr">{{ m.at }}</span>
                     <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
                     <span v-if="m.status === 'failed'" class="text-red-200" :title="m.error || ''">· فشل</span>
+                    <span v-else-if="m.status === 'unconfirmed'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
                   </div>
                   <p v-if="m.status === 'failed' && m.error" class="mt-0.5 text-[10px] leading-4 opacity-80 break-words">{{ m.error }}</p>
                 </div>

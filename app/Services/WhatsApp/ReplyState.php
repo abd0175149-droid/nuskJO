@@ -31,6 +31,7 @@ final class ReplyState
         'no_phone' => '📵 رقم غير ظاهر',
         'identity_conflict' => '🔀 محادثتان لعميل واحد',
         'identity_change' => '🔄 غيّر العميل رقمه',
+        'llm_outage' => '🔌 تعطّل مزوّد الذكاء',
     ];
 
     private static ?bool $available = null;

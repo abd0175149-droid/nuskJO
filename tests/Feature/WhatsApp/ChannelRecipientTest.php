@@ -60,6 +60,16 @@ class ChannelRecipientTest extends TestCase
         $this->assertSame([self::TEST_PHONE_NUMBER_ID, 'WINDOW_EXPIRED', 131047], [$failed->phone_number_id, $failed->error_code, $failed->meta_code]);
     }
 
+    public function test_a_200_without_a_message_id_is_stored_as_unconfirmed(): void
+    {
+        Http::fake(['graph.facebook.com/*' => Http::response(['messaging_product' => 'whatsapp'])]);
+
+        $result = WhatsAppChannel::sendText(WaConversation::factory()->windowOpen()->create(), 'أهلاً');
+
+        $this->assertSame([true, true, null], [$result['ok'], $result['unconfirmed'], $result['message_id']]);
+        $this->assertSame(['unconfirmed', null], [WaMessage::sole()->status, WaMessage::sole()->wamid]);
+    }
+
     public function test_the_contact_request_button_is_built_for_meta_and_labelled_in_the_inbox(): void
     {
         $this->fakeGraph();
