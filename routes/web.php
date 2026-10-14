@@ -139,6 +139,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     // توجيه المحادثات بالموضوع
     Route::post('api/whatsapp/conversations/{conversation}/topic', [\App\Http\Controllers\WhatsAppController::class, 'toggleTopic'])->middleware('perm:whatsapp.reply');
     Route::post('api/whatsapp/conversations/{conversation}/assign', [\App\Http\Controllers\WhatsAppController::class, 'assign'])->middleware('perm:whatsapp.assign');
+    Route::post('api/whatsapp/conversations/{conversation}/read', [\App\Http\Controllers\WhatsAppController::class, 'markRead'])->middleware('perm:whatsapp.reply');
     Route::get('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'routing'])->name('whatsapp.routing')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'saveRouting'])->name('whatsapp.routing.save')->middleware('perm:whatsapp.settings');
     Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'settings'])->name('whatsapp.settings')->middleware('perm:whatsapp.settings');

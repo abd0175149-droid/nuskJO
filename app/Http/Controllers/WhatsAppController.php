@@ -37,10 +37,15 @@ class WhatsAppController extends Controller
             ],
             'canReply' => auth()->user()->can('whatsapp.reply'),
             'canAssign' => auth()->user()->can('whatsapp.assign'),
+            'canToggleBot' => auth()->user()->can('whatsapp.bot_toggle'),
             'seesAll' => auth()->user()->can('whatsapp.view_all'),
+            'canSeeAdminChats' => auth()->user()->can('whatsapp.admin_chats'),
             'topics' => TopicRouter::TOPICS,
+            // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
             'staff' => auth()->user()->can('whatsapp.assign')
-                ? \App\Models\User::where('is_active', true)->orderBy('name')->get(['id', 'name'])->all()
+                ? \App\Models\User::with('role.permissions')->where('is_active', true)->orderBy('name')->get()
+                    ->filter(fn ($u) => $u->can('whatsapp.view'))
+                    ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()->all()
                 : [],
         ]);
     }
@@ -52,7 +57,7 @@ class WhatsAppController extends Controller
 
         return response()->json([
             'conversations' => $this->conversationList($request),
-            'unread_total' => WaConversation::sum('unread_count'),
+            'unread_total' => (int) WaConversation::query()->visibleTo(auth()->user())->sum('unread_count'),
         ]);
     }
 
@@ -66,8 +71,8 @@ class WhatsAppController extends Controller
 
         return WaConversation::query()
             ->with(['client:id,name,code', 'assignee:id,name'])
-            // الموظف لا يرى إلا ما يحمل وسماً من اختصاصه أو ما وُكّل له
-            ->tap(fn ($q) => TopicRouter::scopeVisible($q, $me))
+            // السياج: محادثات الإدارة، ثم الاختصاص والتوكيل (الشروط أدناه تضيّق ولا توسّع)
+            ->visibleTo($me)
             ->when($request->topic, fn ($q, $t) => $q->whereExists(function ($sub) use ($t) {
                 $sub->selectRaw(1)->from('wa_conversation_topics')
                     ->whereColumn('wa_conversation_topics.conversation_id', 'wa_conversations.id')
@@ -101,38 +106,79 @@ class WhatsAppController extends Controller
                 'last_at' => $c->last_message_at?->diffForHumans(),
                 'window_open' => $c->isWindowOpen(),
                 'window_left' => $c->windowMinutesLeft(),
-                'is_admin' => isset($adminPhones[$c->phone]),
+                'is_admin' => (bool) $c->is_admin_chat || isset($adminPhones[$c->phone]),
                 'assignee' => $c->assignee?->name,
                 'assigned_to' => $c->assigned_to,
                 'topics' => TopicRouter::topicsOf($c),
             ])->all();
     }
 
-    public function messages(WaConversation $conversation)
+    /**
+     * خيط المحادثة بمؤشر keyset على الفهرس [conversation_id, id]:
+     *   بلا مؤشر: أحدث 100 · before=<id>: الأقدم منه · after=<id>&since=<وقت>: الجديد وتحديثات حالة الصادر.
+     * طلب GET بلا آثار جانبية: التصفير صار POST /read صريحاً.
+     */
+    public function messages(Request $request, WaConversation $conversation)
     {
         abort_unless(auth()->user()->can('whatsapp.view'), 403);
 
+        $v = $request->validate([
+            'before' => 'nullable|integer|min:1|prohibits:after',
+            'after' => 'nullable|integer|min:0|prohibits:before',
+            'since' => 'nullable|date',
+            'limit' => 'nullable|integer|min:1',
+        ]);
+        $syncedAt = now()->subSeconds(5)->format('Y-m-d H:i:s');   // تداخل مقصود؛ تطبيق التحديثات بالمعرّف idempotent
+        $limit = min((int) ($v['limit'] ?? 100), 100);
+        $columns = ['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'staff_id', 'created_at'];
+
+        $hasMore = false;
+        $gap = false;
+        $updates = [];
+
+        if (isset($v['after'])) {
+            $rows = $conversation->messages()->with('staff:id,name')
+                ->where('id', '>', $v['after'])->orderBy('id')->limit(200)->get($columns);
+            $gap = $rows->count() >= 200;
+
+            if (!empty($v['since'])) {
+                $updates = $conversation->messages()
+                    ->where('direction', 'out')->where('id', '<=', $v['after'])
+                    ->where('updated_at', '>=', $v['since'])
+                    ->orderByDesc('id')->limit(100)
+                    ->get(['id', 'status', 'error_message'])
+                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message])
+                    ->all();
+            }
+        } else {
+            $rows = $conversation->messages()->with('staff:id,name')
+                ->when(isset($v['before']), fn ($q) => $q->where('id', '<', $v['before']))
+                ->orderByDesc('id')->limit($limit + 1)->get($columns);
+            $hasMore = $rows->count() > $limit;
+            $rows = $rows->take($limit)->reverse()->values();
+        }
+
         // staff_id كان يُحفظ ولا يُرسل للواجهة، فلم يكن يظهر من أرسل الرسالة
-        $msgs = $conversation->messages()
-            ->with('staff:id,name')
-            ->orderBy('id')->limit(300)
-            ->get(['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'staff_id', 'created_at'])
-            ->map(fn ($m) => [
-                'id' => $m->id,
-                'direction' => $m->direction,
-                'source' => $m->source,
-                'type' => $m->msg_type,
-                'body' => $m->body,
-                'status' => $m->status,
-                'error' => $m->error_message,
-                'sender' => $m->source === 'staff' ? ($m->staff?->name ?: 'موظف') : null,
-                'at' => $m->created_at?->format('Y-m-d H:i'),
-            ]);
+        $msgs = $rows->map(fn ($m) => [
+            'id' => $m->id,
+            'direction' => $m->direction,
+            'source' => $m->source,
+            'type' => $m->msg_type,
+            'body' => $m->body,
+            'status' => $m->status,
+            'error' => $m->error_message,
+            'sender' => $m->source === 'staff' ? ($m->staff?->name ?: 'موظف') : null,
+            'at' => $m->created_at?->format('Y-m-d H:i'),
+        ])->values();
 
-        $conversation->update(['unread_count' => 0]);
+        $first = !isset($v['before']) && !isset($v['after']);
 
-        return response()->json([
+        return response()->json(array_filter([
             'messages' => $msgs,
+            'has_more' => $hasMore,
+            'gap' => $gap,
+            'updates' => $updates,
+            'synced_at' => $syncedAt,
             'conversation' => [
                 'id' => $conversation->id,
                 'name' => $conversation->display_name ?: $conversation->phone,
@@ -140,15 +186,16 @@ class WhatsAppController extends Controller
                 'client' => $conversation->client?->name,
                 'bot_enabled' => (bool) $conversation->bot_enabled,
                 'needs_attention' => (bool) $conversation->needs_attention,
+                'unread' => (int) $conversation->unread_count,
                 'window_open' => $conversation->isWindowOpen(),
                 'window_left' => $conversation->windowMinutesLeft(),
-                'is_admin' => (bool) \App\Models\WaAdminNumber::forPhone($conversation->phone),
+                'is_admin' => (bool) $conversation->is_admin_chat || (bool) \App\Models\WaAdminNumber::forPhone($conversation->phone),
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
             ],
-            'notes' => $conversation->notes()->orderByDesc('id')->limit(10)->pluck('note'),
-        ]);
+            'notes' => $first ? $conversation->notes()->orderByDesc('id')->limit(10)->pluck('note') : null,
+        ], fn ($value) => $value !== null));
     }
 
     // ==================== المواضيع والتوجيه ====================
@@ -163,13 +210,22 @@ class WhatsAppController extends Controller
             'attach' => 'required|boolean',
         ]);
 
+        $me = auth()->user();
         if ($data['attach']) {
-            TopicRouter::tag($conversation, $data['topic'], 'manual', auth()->id());
+            // التوجيه مسموح؛ والتوكيل الصامت يذهب للمختص الأساسي لا للموظف نفسه
+            TopicRouter::tag($conversation, $data['topic'], 'manual', $me->id);
         } else {
+            // إزالة وسم خارج اختصاصك تخفي المحادثة عن مختصه: للمسؤول عن التوزيع وحده
+            $mine = in_array($data['topic'], TopicRouter::topicsForUser($me->id), true);
+            abort_unless($mine || $me->can('whatsapp.assign') || $me->can('whatsapp.view_all'), 403, 'لا يمكنك إزالة وسم خارج اختصاصك');
             TopicRouter::untag($conversation, $data['topic']);
         }
 
-        return back()->with('success', $data['attach'] ? 'أُضيف الوسم' : 'أُزيل الوسم');
+        $message = $data['attach'] ? 'أُضيف الوسم' : 'أُزيل الوسم';
+
+        return $request->expectsJson()
+            ? response()->json(['message' => $message, 'topics' => TopicRouter::topicsOf($conversation)])
+            : back()->with('success', $message);
     }
 
     /** نقل المحادثة لموظف آخر */
@@ -177,7 +233,15 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.assign'), 403);
 
-        $data = $request->validate(['user_id' => 'nullable|exists:users,id']);
+        $data = $request->validate(['user_id' => 'nullable|integer|exists:users,id']);
+
+        // لا توكيل لمن لا يستطيع فتح المحادثة: مستخدم فعّال يملك whatsapp.view
+        if (!empty($data['user_id'])) {
+            $assignee = \App\Models\User::find($data['user_id']);
+            if (!$assignee?->is_active || !$assignee->can('whatsapp.view')) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['user_id' => 'هذا المستخدم لا يستطيع فتح محادثات الواتساب']);
+            }
+        }
 
         $conversation->update(['assigned_to' => $data['user_id'] ?: null]);
 
@@ -194,7 +258,9 @@ class WhatsAppController extends Controller
             }
         }
 
-        return back()->with('success', 'تم تحديث التوكيل');
+        return $request->expectsJson()
+            ? response()->json(['message' => 'تم تحديث التوكيل', 'assigned_to' => $conversation->assigned_to])
+            : back()->with('success', 'تم تحديث التوكيل');
     }
 
     /** شاشة توجيه المواضيع — المدير يحدّد مختصّي كل موضوع */
@@ -246,6 +312,16 @@ class WhatsAppController extends Controller
         });
 
         return back()->with('success', 'حُفظ التوجيه');
+    }
+
+    /** التصفير صريح عند فتح المحادثة، لا جانبياً مع كل استطلاع للرسائل */
+    public function markRead(WaConversation $conversation)
+    {
+        abort_unless(auth()->user()->can('whatsapp.reply'), 403);
+
+        $conversation->update(['unread_count' => 0]);
+
+        return response()->json(['ok' => true]);
     }
 
     /** ردّ الموظف — يوقف البوت مؤقتاً تلقائياً داخل بوّابة الإرسال */
@@ -374,10 +450,12 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
+        [$usage, $quality] = $this->maskAdminChats(\App\Services\WhatsApp\BotAnalytics::usage(), \App\Services\WhatsApp\BotAnalytics::quality());
+
         return Inertia::render('WhatsApp/Analytics', [
             'title' => 'استهلاك البوت وجودته',
-            'usage' => \App\Services\WhatsApp\BotAnalytics::usage(),
-            'quality' => \App\Services\WhatsApp\BotAnalytics::quality(),
+            'usage' => $usage,
+            'quality' => $quality,
         ]);
     }
 
@@ -385,10 +463,39 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
-        return response()->json([
-            'usage' => \App\Services\WhatsApp\BotAnalytics::usage(),
-            'quality' => \App\Services\WhatsApp\BotAnalytics::quality(),
-        ]);
+        [$usage, $quality] = $this->maskAdminChats(\App\Services\WhatsApp\BotAnalytics::usage(), \App\Services\WhatsApp\BotAnalytics::quality());
+
+        return response()->json(['usage' => $usage, 'quality' => $quality]);
+    }
+
+    /**
+     * محادثات أرقام الإدارة في التحليلات: «محادثة إدارة» بلا رابط ولا نص لمن لا يملك whatsapp.admin_chats.
+     * الأرقام المجمّعة تبقى كما هي.
+     */
+    private function maskAdminChats(array $usage, array $quality): array
+    {
+        if (auth()->user()->can('whatsapp.admin_chats')) {
+            return [$usage, $quality];
+        }
+
+        $ids = collect($usage['top_conversations'] ?? [])->pluck('id')
+            ->merge(collect($quality['attention'] ?? [])->pluck('conversation_id'))
+            ->filter()->unique()->values();
+        $adminIds = $ids->isEmpty() ? [] : WaConversation::whereIn('id', $ids)
+            ->where(fn ($q) => $q->where('is_admin_chat', true)
+                ->orWhereIn('phone', \App\Models\WaAdminNumber::select('phone')))
+            ->pluck('id')->flip()->all();
+
+        $usage['top_conversations'] = array_map(
+            fn ($row) => isset($adminIds[$row['id']]) ? array_merge($row, ['id' => null, 'name' => 'محادثة إدارة']) : $row,
+            $usage['top_conversations'] ?? []
+        );
+        $quality['attention'] = array_map(
+            fn ($row) => isset($adminIds[$row['conversation_id'] ?? 0]) ? array_merge($row, ['conversation_id' => null, 'question' => 'محادثة إدارة']) : $row,
+            $quality['attention'] ?? []
+        );
+
+        return [$usage, $quality];
     }
 
     public function savePrices(Request $request)

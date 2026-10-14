@@ -6,6 +6,7 @@ use App\Models\Offer;
 use App\Models\User;
 use App\Models\WaConversation;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * توجيه المحادثات بالموضوع.
@@ -143,14 +144,68 @@ class TopicRouter
      */
     public static function scopeVisible($query, User $user)
     {
+        // ثلاثة أسوار بالترتيب. كل الأعمدة مؤهَّلة باسم الجدول لأن الاستعلام يُستعمل داخل whereHas من quote_requests
+        self::fenceAdminChats($query, $user);
+        self::fenceNumbers($query, $user);
+        self::fenceTopics($query, $user);
+
+        return $query;
+    }
+
+    /** هل يرى المستخدم هذه المحادثة؟ (القاعدة نفسها التي تفرضها القائمة والربط المقيّد) */
+    public static function canSee(WaConversation $conversation, User $user): bool
+    {
+        return WaConversation::whereKey($conversation->id)->visibleTo($user)->exists();
+    }
+
+    /** الأرقام الرسمية المسموحة للمستخدم؛ null = كلها (رقم واحد اليوم). نقطة التمديد لرقم ثانٍ. */
+    public static function allowedNumberIds(User $user): ?array
+    {
+        return null;
+    }
+
+    private static ?bool $hasAdminFlag = null;
+
+    private static ?bool $hasAdminNumbers = null;
+
+    /** محادثات أرقام الإدارة (تقارير وإيرادات) لمن يملك whatsapp.admin_chats وحده، حتى مع view_all */
+    private static function fenceAdminChats($query, User $user): void
+    {
+        if ($user->can('whatsapp.admin_chats')) {
+            return;
+        }
+
+        self::$hasAdminFlag ??= Schema::hasColumn('wa_conversations', 'is_admin_chat');
+        self::$hasAdminNumbers ??= Schema::hasTable('wa_admin_numbers');
+
+        if (self::$hasAdminFlag) {
+            $query->where('wa_conversations.is_admin_chat', false);
+        }
+        if (self::$hasAdminNumbers) {
+            // كل أرقام الإدارة فعّالة أو لا: سجل رقم عُطّل يبقى محجوباً
+            $query->whereNotIn('wa_conversations.phone', fn ($s) => $s->select('phone')->from('wa_admin_numbers'));
+        }
+    }
+
+    private static function fenceNumbers($query, User $user): void
+    {
+        $ids = self::allowedNumberIds($user);
+        if ($ids !== null) {
+            $query->whereIn('wa_conversations.phone_number_id', $ids);
+        }
+    }
+
+    /** من يملك whatsapp.view_all يرى الكل؛ وغيره ما يحمل وسماً من اختصاصه أو ما وُكّل له صراحةً */
+    private static function fenceTopics($query, User $user): void
+    {
         if ($user->can('whatsapp.view_all')) {
-            return $query;
+            return;
         }
 
         $topics = self::topicsForUser($user->id);
 
-        return $query->where(function ($q) use ($topics, $user) {
-            $q->where('assigned_to', $user->id);
+        $query->where(function ($q) use ($topics, $user) {
+            $q->where('wa_conversations.assigned_to', $user->id);
 
             if ($topics) {
                 $q->orWhereExists(function ($sub) use ($topics) {

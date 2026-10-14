@@ -30,6 +30,23 @@ class WaAdminNumber extends Model
         'last_used_at' => 'datetime',
     ];
 
+    /**
+     * علَم لاصق: محادثة رقم الإدارة (والرقم السابق إن تغيّر) تبقى محجوبة عمن لا يملك whatsapp.admin_chats،
+     * حتى بعد تعطيل الرقم أو حذفه، فسجل التقارير والإيرادات لا ينكشف. لا يوجد مسار يزيل العلَم.
+     */
+    protected static function booted(): void
+    {
+        $mark = function (array $phones): void {
+            $phones = array_values(array_filter(array_unique($phones)));
+            if ($phones && \Illuminate\Support\Facades\Schema::hasColumn('wa_conversations', 'is_admin_chat')) {
+                WaConversation::whereIn('phone', $phones)->update(['is_admin_chat' => true]);
+            }
+        };
+
+        static::saved(fn (self $n) => $mark([$n->phone, $n->getOriginal('phone')]));
+        static::deleting(fn (self $n) => $mark([$n->phone]));
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

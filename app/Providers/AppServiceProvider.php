@@ -33,6 +33,29 @@ class AppServiceProvider extends ServiceProvider
         $this->guardDestructiveDatabaseCommands();
         $this->definePermissionGate();
         $this->defineLoginRateLimit();
+        $this->bindVisibleConversations();
+    }
+
+    /**
+     * سياج المحادثات (E04): كل مسار فيه {conversation} يحلّ المحادثة من نطاق المستخدم وحده،
+     * و404 خارجه (لا 403، حتى لا يكشف الرد وجود المعرّف). الويبهوك والطابور بلا {conversation}.
+     */
+    private function bindVisibleConversations(): void
+    {
+        \Illuminate\Support\Facades\Route::bind('conversation', function ($value) {
+            $user = auth()->user();
+            if (!$user || !ctype_digit((string) $value)) {
+                abort(404);
+            }
+
+            $conversation = \App\Models\WaConversation::query()->visibleTo($user)->whereKey((int) $value)->first();
+            if (!$conversation) {
+                \Illuminate\Support\Facades\Log::notice('wa.fence.denied', ['user' => $user->id, 'conversation' => (int) $value]);
+                abort(404);
+            }
+
+            return $conversation;
+        });
     }
 
     /**

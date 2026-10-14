@@ -36,7 +36,7 @@ class RolePermissionSeeder extends Seeder
             'receipts' => ['view', 'create', 'approve', 'reject'],
             'invoices' => ['view', 'create', 'update', 'submit', 'approve', 'reject'],
             'reports' => ['view', 'employee_profit', 'trip_date'],
-            'whatsapp' => ['view', 'view_all', 'reply', 'assign', 'bot_toggle', 'settings'],
+            'whatsapp' => ['view', 'view_all', 'reply', 'assign', 'bot_toggle', 'settings', 'admin_chats'],
             'offers' => ['view', 'create', 'update', 'delete', 'view_cost'],
             'quotes' => ['view', 'price'],
             'settings' => ['view', 'update'],
@@ -78,6 +78,7 @@ class RolePermissionSeeder extends Seeder
             'price' => 'التسعير والإرسال', 'view_cost' => 'عرض تكاليف',
             'run' => 'تشغيل نسخة الآن', 'restore_ack' => 'اعتماد مراجعة ما بعد الاستعادة',
             'manage' => 'إدارة', 'close' => 'إقفال الفترات والسنة',
+            'admin_chats' => 'محادثات أرقام الإدارة',
         ];
 
         $allPermissions = [];

@@ -21,6 +21,7 @@ class WhatsAppChannel
     public const ERR_NOT_CONFIGURED = 'CHANNEL_NOT_CONFIGURED';
     public const ERR_SUSPENDED = 'SENDING_SUSPENDED';
     public const ERR_WINDOW = 'WINDOW_EXPIRED';
+    public const ERR_OUT_OF_SCOPE = 'OUT_OF_SCOPE';
 
     private static function graphBase(): string
     {
@@ -191,6 +192,15 @@ class WhatsAppChannel
         string $source,
         ?int $staffId = null
     ): array {
+        // ── القفل 0: الموظف يرى المحادثة (سياج E04). يغطي الرد من الصندوق وإرسال السعر معاً.
+        //    رسائل البوت والنظام لا تمر به: الويبهوك والطابور والمساعد الإداري بلا مستخدم.
+        if ($source === 'staff') {
+            $staff = $staffId ? \App\Models\User::find($staffId) : null;
+            if (!$staff || !TopicRouter::canSee($conv, $staff)) {
+                return self::fail(self::ERR_OUT_OF_SCOPE, 'هذه المحادثة خارج نطاقك — لا يمكنك مراسلة هذا العميل.');
+            }
+        }
+
         $s = WaBotSetting::current();
 
         // ── القفل 1: القناة مهيّأة؟

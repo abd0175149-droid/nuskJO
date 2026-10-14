@@ -145,7 +145,11 @@ class WhatsAppChannelGateTest extends TestCase
     {
         $conv = WaConversation::factory()->windowClosed()->create();
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا', $source);
+        // مرسل «موظف» يرى المحادثة، حتى يُختبر قفل النافذة لا قفل السياج
+        $staffId = $source === 'staff'
+            ? \App\Models\User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create()->id
+            : null;
+        $result = WhatsAppChannel::sendText($conv, 'مرحبا', $source, $staffId);
 
         $this->assertBlocked($result, WhatsAppChannel::ERR_WINDOW, $conv);
     }

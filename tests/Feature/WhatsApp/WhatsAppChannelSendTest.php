@@ -111,7 +111,8 @@ class WhatsAppChannelSendTest extends TestCase
     public function test_staff_reply_pauses_bot_and_clears_attention(): void
     {
         $this->freezeSecond();
-        $staff = User::factory()->create();
+        // موظف يرى المحادثة (القفل 0 في WhatsAppChannel يرفض غيره)
+        $staff = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create();
         $conv = WaConversation::factory()->windowOpen()->create([
             'needs_attention' => true,
             'unread_count' => 4,
@@ -141,7 +142,7 @@ class WhatsAppChannelSendTest extends TestCase
         $this->configureChannel(['pause_minutes' => 45]);
         $conv = WaConversation::factory()->windowOpen()->create();
 
-        WhatsAppChannel::sendText($conv, 'معك فريق المبيعات', 'staff', User::factory()->create()->id);
+        WhatsAppChannel::sendText($conv, 'معك فريق المبيعات', 'staff', User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create()->id);
 
         Http::assertSentCount(1);
         $this->assertTrue($conv->fresh()->bot_paused_until->equalTo(now()->addMinutes(45)));

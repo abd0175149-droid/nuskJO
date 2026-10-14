@@ -19,9 +19,11 @@ use Tests\TestCase;
  */
 class InvariantCatalogTest extends TestCase
 {
-    public function test_catalog_lists_inv_01_to_inv_16_each_with_rule_and_why(): void
+    public function test_catalog_ids_are_contiguous_each_with_rule_and_why(): void
     {
-        $expected = array_map(fn (int $n) => sprintf('INV-%02d', $n), range(1, 16));
+        // متتالية من INV-01 بلا ثغرات؛ الثابت لا يُحذف ولا يُعاد ترقيمه (الاختبارات تشير إليه برقمه)
+        $this->assertGreaterThanOrEqual(17, count(Invariants::ids()));
+        $expected = array_map(fn (int $n) => sprintf('INV-%02d', $n), range(1, count(Invariants::ids())));
 
         $this->assertSame($expected, Invariants::ids());
 

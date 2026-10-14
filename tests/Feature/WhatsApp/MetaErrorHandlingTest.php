@@ -94,7 +94,7 @@ class MetaErrorHandlingTest extends TestCase
             'unread_count' => 2,
         ]);
 
-        $result = WhatsAppChannel::sendText($conv, 'معك فريق المبيعات', 'staff', User::factory()->create()->id);
+        $result = WhatsAppChannel::sendText($conv, 'معك فريق المبيعات', 'staff', User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create()->id);
 
         $this->assertSame('META_ERROR', $result['code']);
         Http::assertSentCount(1);

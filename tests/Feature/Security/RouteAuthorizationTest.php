@@ -182,6 +182,15 @@ class RouteAuthorizationTest extends TestCase
 
     public function test_conversation_routes_use_scoped_binding(): void
     {
-        $this->markTestSkipped('ربط المحادثة المقيّد بالمستخدم يُسلَّم في E04 (IDOR)؛ يُفعَّل معه.');
+        // التفصيل لكل مسار في tests/Feature/WhatsApp/ConversationScopeTest و ConversationRouteCoverageTest
+        $binder = Router::getBindingCallback('conversation');
+        $this->assertNotNull($binder, 'المحادثة تُجلب عبر Route::bind المقيّد بنطاق المستخدم');
+
+        $agent = User::factory()->withPermissions(['whatsapp.view'], 'agent')->create();
+        $conversation = \App\Models\WaConversation::factory()->create();
+        $this->actingAs($agent);
+
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class);
+        $binder((string) $conversation->id, null);
     }
 }

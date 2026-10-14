@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,14 +19,25 @@ class WaConversation extends Model
         'needs_attention', 'assigned_to', 'status',
     ];
 
+    // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
     protected $casts = [
         'bot_enabled' => 'boolean',
         'needs_attention' => 'boolean',
+        'is_admin_chat' => 'boolean',
         'bot_paused_until' => 'datetime',
         'last_inbound_at' => 'datetime',
         'last_outbound_at' => 'datetime',
         'last_message_at' => 'datetime',
     ];
+
+    /**
+     * المحادثات التي يراها المستخدم (السياج في TopicRouter::scopeVisible).
+     * scope محلي عن قصد، لا global scope: الويبهوك والطابور والبوت يعملون بلا مستخدم.
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        return \App\Services\WhatsApp\TopicRouter::scopeVisible($query, $user);
+    }
 
     public function messages(): HasMany { return $this->hasMany(WaMessage::class, 'conversation_id'); }
     public function notes(): HasMany { return $this->hasMany(WaCustomerNote::class, 'conversation_id'); }
