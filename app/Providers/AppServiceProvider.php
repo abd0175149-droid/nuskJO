@@ -31,6 +31,30 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\Attendance::observe(\App\Observers\AttendanceObserver::class);
 
         $this->guardDestructiveDatabaseCommands();
+        $this->definePermissionGate();
+    }
+
+    /**
+     * مسار واحد لكل فحوص الصلاحية (E03): المعطّل مرفوض دائماً، والمدير مسموح دائماً،
+     * وغيرهما بصلاحيات دوره. القدرة «admin» للمسارات الخاصة بالمدير وحده.
+     */
+    private function definePermissionGate(): void
+    {
+        \Illuminate\Support\Facades\Gate::before(function ($user, string $ability) {
+            if (!$user instanceof \App\Models\User) {
+                return null;
+            }
+            if (!$user->is_active) {
+                return false;
+            }
+            if ($user->isAdmin()) {
+                return true;
+            }
+
+            return in_array($ability, $user->permissionSlugs(), true) ? true : null;
+        });
+
+        \Illuminate\Support\Facades\Gate::define('admin', fn (\App\Models\User $user) => $user->isAdmin());
     }
 
     /**

@@ -44,15 +44,19 @@ class User extends Authenticatable implements WebAuthnAuthenticatable
         return $this->hasMany(FcmToken::class);
     }
 
-    public function can($ability, $arguments = []): bool
+    /** صلاحيات الدور بمعرّفاتها النصية، تُحمَّل مرة لكل دور في الطلب (Gate::before يقرؤها لكل فحص) */
+    private ?array $permissionSlugsCache = null;
+
+    public function permissionSlugs(): array
     {
-        if ($this->role && $this->role->slug === 'admin') {
-            return true;
+        if (($this->permissionSlugsCache['role_id'] ?? false) !== $this->role_id) {
+            $this->permissionSlugsCache = [
+                'role_id' => $this->role_id,
+                'slugs' => $this->role?->permissions->pluck('slug')->all() ?? [],
+            ];
         }
-        if ($this->role && $this->role->hasPermission($ability)) {
-            return true;
-        }
-        return parent::can($ability, $arguments);
+
+        return $this->permissionSlugsCache['slugs'];
     }
 
     public function isAdmin(): bool

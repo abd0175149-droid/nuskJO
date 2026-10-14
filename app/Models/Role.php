@@ -25,6 +25,9 @@ class Role extends Model
 
     public function hasPermission(string $slug): bool
     {
-        return $this->permissions()->where('slug', $slug)->exists();
+        // العلاقة المحمّلة أصلاً (HandleInertiaRequests وGate::before) تغني عن استعلام لكل فحص
+        return $this->relationLoaded('permissions')
+            ? $this->permissions->contains('slug', $slug)
+            : $this->permissions()->where('slug', $slug)->exists();
     }
 }

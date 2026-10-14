@@ -118,7 +118,7 @@ class UserManagementTest extends TestCase
     public function test_last_active_admin_cannot_be_demoted_deactivated_or_deleted(): void
     {
         $last = User::factory()->admin()->create();
-        // مدير معطّل ما زالت جلسته مفتوحة: الحالة الوحيدة التي يصل فيها طلب لإسقاط آخر مدير نشط
+        // مدير معطّل ما زالت جلسته مفتوحة: Gate::before يرفض كل فحوصه قبل الوصول إلى ثابت «آخر مدير»
         $stale = User::factory()->admin()->inactive()->create();
         $sales = $this->roleWith(['clients.view'], 'sales');
 
@@ -126,18 +126,34 @@ class UserManagementTest extends TestCase
 
         $this->put("/users/{$last->id}", [
             'name' => $last->name, 'email' => $last->email, 'role_id' => $last->role_id, 'is_active' => false,
-        ])->assertSessionHas('error');
+        ])->assertForbidden();
 
         $this->put("/users/{$last->id}", [
             'name' => $last->name, 'email' => $last->email, 'role_id' => $sales->id, 'is_active' => true,
-        ])->assertSessionHas('error');
+        ])->assertForbidden();
 
-        $this->delete("/users/{$last->id}")->assertSessionHas('error');
+        $this->delete("/users/{$last->id}")->assertForbidden();
 
         $fresh = $last->fresh();
         $this->assertNotNull($fresh);
         $this->assertTrue($fresh->isAdmin());
         $this->assertTrue($fresh->is_active);
+    }
+
+    public function test_invariant_message_reaches_the_admin_when_the_write_is_blocked(): void
+    {
+        // الطلب يمرّ الفحوص لكن الكتابة نفسها ترفض (سباق بين مديرين): الرسالة تصل ولا يتغير شيء
+        $actor = User::factory()->admin()->create();
+        $target = User::factory()->admin()->create();
+        $actor->forceFill(['is_active' => false])->saveQuietly();   // صار الهدف آخر مدير نشط بعد فحص الطلب
+        $actor->is_active = true;   // النسخة في الذاكرة ما زالت ترى نفسها نشطة كما في منتصف الطلب
+        $actor->syncOriginal();
+
+        $this->actingAs($actor)->put("/users/{$target->id}", [
+            'name' => $target->name, 'email' => $target->email, 'role_id' => $target->role_id, 'is_active' => false,
+        ])->assertSessionHas('error', AdminInvariant::BLOCKED_MESSAGE);
+
+        $this->assertTrue($target->fresh()->is_active);
     }
 
     public function test_admin_invariant_is_checked_inside_the_write(): void
