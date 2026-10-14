@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,6 +27,21 @@ class QuoteRequest extends Model
         'quoted_price_jod' => 'decimal:3',
         'offer_selection' => 'array',
     ];
+
+    /**
+     * الطلبات التي يراها المستخدم حين يُفعَّل services.whatsapp.fence_quotes: الموكَل له، أو ما سعّره،
+     * أو ما محادثته في نطاقه. ومن يملك whatsapp.view_all يرى الكل. المفتاح مطفأ: الكل كما اليوم.
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if (!config('services.whatsapp.fence_quotes') || $user->can('whatsapp.view_all')) {
+            return $query;
+        }
+
+        return $query->where(fn ($w) => $w->where('quote_requests.assigned_to', $user->id)
+            ->orWhere('quote_requests.quoted_by', $user->id)
+            ->orWhereHas('conversation', fn ($c) => $c->visibleTo($user)));
+    }
 
     public function conversation(): BelongsTo
     {

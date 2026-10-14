@@ -150,7 +150,7 @@ class InvoiceController extends Controller
     /** تحويل طلب حجز من البوت إلى فاتورة عرض مملوءة */
     private function quotePrefill(int $id): ?array
     {
-        $q = QuoteRequest::with('offer.groups.options')->find($id);
+        $q = QuoteRequest::query()->visibleTo(auth()->user())->with('offer.groups.options')->find($id);
         if (!$q || !$q->offer) {
             return null;
         }
@@ -303,6 +303,15 @@ class InvoiceController extends Controller
      */
     private function saveOfferInvoice(array $v, ?Invoice $invoice): Invoice
     {
+        // طلب خارج نطاق الموظف لا يُربط بفاتورته (المرتبط بهذه الفاتورة أصلاً يبقى)
+        if (!empty($v['quote_request_id'])
+            && !QuoteRequest::query()->visibleTo(auth()->user())->whereKey($v['quote_request_id'])->exists()
+            && !($invoice && QuoteRequest::whereKey($v['quote_request_id'])->where('invoice_id', $invoice->id)->exists())) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'quote_request_id' => 'طلب التسعير خارج نطاقك',
+            ]);
+        }
+
         return DB::transaction(function () use ($v, $invoice) {
             DB::table('offers')->where('id', $v['offer_id'])->increment('seats_version');
 

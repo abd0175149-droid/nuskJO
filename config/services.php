@@ -16,6 +16,8 @@ return [
         // للتراجع: WA_GRAPH_VERSION=v21.0 في .env (صالح حتى 2027-01-21).
         'graph_version' => env('WA_GRAPH_VERSION', 'v25.0'),
         'suspended' => (bool) env('WA_SUSPENDED', false),
+        // طلبات التسعير بنطاق المحادثات نفسه (E04). يُفعَّل بعد ملء /whatsapp/routing ومراجعة whatsapp:fence-report
+        'fence_quotes' => (bool) env('WA_FENCE_QUOTES', false),
     ],
 
     'llm' => [

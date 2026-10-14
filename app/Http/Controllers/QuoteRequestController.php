@@ -47,7 +47,10 @@ class QuoteRequestController extends Controller
 
         $status = $request->get('status', 'open');
 
+        $me = auth()->user();
+
         $requests = QuoteRequest::query()
+            ->visibleTo($me)
             ->with(['client:id,name,code', 'offer.groups.options.stays', 'quoter:id,name', 'conversation:id,phone,display_name,bot_enabled,last_inbound_at'])
             ->when($status === 'open', fn ($q) => $q->whereIn('status', ['new', 'priced']))
             ->when(in_array($status, ['new', 'priced', 'sent', 'won', 'lost', 'cancelled'], true),
@@ -97,8 +100,8 @@ class QuoteRequestController extends Controller
             'requests' => $requests,
             'filters' => ['status' => $status, 'search' => $request->search],
             'counts' => [
-                'new' => QuoteRequest::where('status', 'new')->count(),
-                'priced' => QuoteRequest::where('status', 'priced')->count(),
+                'new' => QuoteRequest::query()->visibleTo($me)->where('status', 'new')->count(),
+                'priced' => QuoteRequest::query()->visibleTo($me)->where('status', 'priced')->count(),
             ],
             'canReply' => auth()->user()->can('whatsapp.reply'),
         ]);

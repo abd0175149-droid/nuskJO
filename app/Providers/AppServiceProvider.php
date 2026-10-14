@@ -56,6 +56,16 @@ class AppServiceProvider extends ServiceProvider
 
             return $conversation;
         });
+
+        // طلبات التسعير بالنطاق نفسه حين يُفعَّل fence_quotes (وإلا كالربط الضمني)
+        \Illuminate\Support\Facades\Route::bind('quoteRequest', function ($value) {
+            $user = auth()->user();
+            if (!$user || !ctype_digit((string) $value)) {
+                abort(404);
+            }
+
+            return \App\Models\QuoteRequest::query()->visibleTo($user)->whereKey((int) $value)->first() ?? abort(404);
+        });
     }
 
     /**
