@@ -8,7 +8,7 @@ use RecursiveIteratorIterator;
 
 /**
  * حدود طبقة الإعدادات (E10): env() داخل config/ وحدها (يعمل بعد config:cache)، وكل كتابة على صف إعدادات
- * البوت عبر SettingsWriter (يرفع النسخة ويدقّق).
+ * البوت عبر SettingsWriter (يرفع النسخة ويدقّق)، ولا قيم افتراضية رقمية مكررة في صفحة الإعدادات.
  */
 class ArchitectureSettingsTest extends TestCase
 {
@@ -48,5 +48,14 @@ class ArchitectureSettingsTest extends TestCase
             $this->assertDoesNotMatchRegularExpression('/\$(settings|setting|s|current)\s*->\s*(update|save|increment|decrement)\(/', $code, $path);
             $this->assertDoesNotMatchRegularExpression("/DB::table\\('wa_bot_settings'\\)\\s*->[^;]*->\\s*update\\(/", $code, $path);
         }
+    }
+
+    public function test_the_settings_page_has_no_numeric_fallback_defaults(): void
+    {
+        $vue = file_get_contents(dirname(__DIR__, 2).'/resources/js/Pages/WhatsApp/Settings.vue');
+
+        $this->assertDoesNotMatchRegularExpression('/\?\?\s*\d+/', $vue, 'القيم الافتراضية من SettingsSchema (props.defaults وprops.fields) لا من الصفحة');
+        $this->assertStringNotContainsString("put('/whatsapp/settings'", $vue);
+        $this->assertStringNotContainsString('wa_token:', $vue, 'لا حقول أسرار في نموذج الحفظ');
     }
 }

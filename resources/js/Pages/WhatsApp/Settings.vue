@@ -3,7 +3,6 @@
         <template #header>إعدادات بوت الواتساب</template>
 
         <div class="space-y-6 pb-4">
-            <!-- ===== رسائل Flash ===== -->
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
             <div v-if="$page.props.flash?.error" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">❌ {{ $page.props.flash.error }}</div>
             <!-- صحة القناة (whatsapp:doctor): الرسالة والنصيحة فقط، بلا أي قيمة سرية -->
@@ -14,71 +13,42 @@
                 </ul>
             </div>
 
-            <div v-if="Object.keys(form.errors).length" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">
-                ❌ تحقّق من الحقول التالية:
-                <ul class="list-disc mt-1 pr-5 space-y-0.5">
-                    <li v-for="(msg, key) in form.errors" :key="key">{{ msg }}</li>
-                </ul>
+            <ConflictBanner :fields="conflict.fields" :others="conflict.others" @dismiss="conflict = { fields: [], others: [] }"/>
+            <div v-if="Object.keys(errors).length" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300">
+                ❌ لم يُحفظ شيء — تحقّق من:
+                <ul class="list-disc mt-1 pr-5 space-y-0.5"><li v-for="(msg, key) in errors" :key="key">{{ msg }}</li></ul>
             </div>
 
-            <form @submit.prevent="save" class="space-y-6">
+            <form @submit.prevent="save()" class="space-y-6">
 
                 <!-- ================= 1. حالة التشغيل ================= -->
                 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6">
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">🚦 حالة التشغيل</h3>
 
-                    <!-- البانر -->
-                    <div
-                        class="rounded-xl border p-4 mb-5"
-                        :class="isLive
-                            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                            : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'"
-                    >
+                    <div class="rounded-xl border p-4 mb-4"
+                         :class="isLive ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'">
                         <p class="font-bold text-sm" :class="isLive ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'">
-                            <template v-if="isLive">✅ البوت يعمل ويستقبل الرسائل</template>
-                            <template v-else>⚠️ البوت غير جاهز للعمل</template>
+                            {{ isLive ? '✅ البوت يعمل ويستقبل الرسائل' : '⚠️ البوت غير جاهز للعمل' }}
                         </p>
                         <ul v-if="!isLive" class="mt-2 space-y-1 text-xs text-amber-800 dark:text-amber-300 list-disc pr-5">
                             <li v-for="(m, idx) in missing" :key="idx">{{ m }}</li>
                         </ul>
-                        <p v-if="settings.wa_suspended" class="mt-2 text-xs font-bold text-red-600 dark:text-red-400">
-                            🛑 الإرسال موقوف حاليًا بمفتاح الإيقاف الطارئ — لن تُرسل أي رسالة حتى إلغاؤه.
-                        </p>
                     </div>
 
-                    <!-- المفاتيح -->
-                    <div class="space-y-3">
-                        <label class="flex items-start gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer">
-                            <span class="relative inline-flex items-center shrink-0 mt-0.5">
-                                <input v-model="form.enabled" type="checkbox" class="sr-only peer"/>
-                                <span class="block w-11 h-6 rounded-full bg-gray-300 dark:bg-gray-600 peer-checked:bg-green-500 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-gold-500"></span>
-                                <span class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5"></span>
-                            </span>
-                            <span class="min-w-0">
-                                <span class="block text-sm font-bold text-gray-800 dark:text-gray-100">تشغيل البوت</span>
-                                <span class="block text-xs text-gray-500 mt-0.5">عند الإيقاف تُستقبل الرسائل وتُحفظ في صندوق الوارد لكن لا يردّ البوت.</span>
-                            </span>
-                        </label>
+                    <label class="flex items-start gap-3 p-4 mb-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer"
+                           :class="isDirty('enabled') ? 'ring-1 ring-gold-400' : ''">
+                        <span class="relative inline-flex items-center shrink-0 mt-0.5">
+                            <input v-model="form.enabled" type="checkbox" class="sr-only peer"/>
+                            <span class="block w-11 h-6 rounded-full bg-gray-300 dark:bg-gray-600 peer-checked:bg-green-500 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-gold-500"></span>
+                            <span class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5"></span>
+                        </span>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-bold text-gray-800 dark:text-gray-100">تشغيل البوت</span>
+                            <span class="block text-xs text-gray-500 mt-0.5">عند الإيقاف تُستقبل الرسائل وتُحفظ في صندوق الوارد لكن لا يردّ البوت.</span>
+                        </span>
+                    </label>
 
-                        <label class="flex items-start gap-3 p-4 rounded-xl border cursor-pointer"
-                               :class="form.wa_suspended
-                                   ? 'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20'
-                                   : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40'">
-                            <span class="relative inline-flex items-center shrink-0 mt-0.5">
-                                <input v-model="form.wa_suspended" type="checkbox" class="sr-only peer"/>
-                                <span class="block w-11 h-6 rounded-full bg-gray-300 dark:bg-gray-600 peer-checked:bg-red-600 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-red-500"></span>
-                                <span class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5"></span>
-                            </span>
-                            <span class="min-w-0">
-                                <span class="block text-sm font-bold text-red-700 dark:text-red-400">🛑 إيقاف كل الإرسال (طارئ)</span>
-                                <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">يمنع أي رسالة صادرة فورًا — للاستخدام عند وجود خلل أو تجاوز في الفواتير.</span>
-                            </span>
-                        </label>
-                        <p v-if="form.errors.wa_suspended" class="px-1 text-xs font-bold text-red-600 dark:text-red-400">
-                            {{ form.errors.wa_suspended }} —
-                            <Link href="/settings/backups" class="underline">النسخ الاحتياطي</Link>
-                        </p>
-                    </div>
+                    <KillSwitchPanel :state="killSwitch" :can="can" @changed="(v) => { killSwitch = v; refreshVersion(); }"/>
                 </div>
 
                 <!-- ================= صحة النظام والقناة ================= -->
@@ -156,17 +126,11 @@
                 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6">
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">🔗 ربط قناة ميتا</h3>
 
-                    <!-- Webhook URL -->
                     <div class="mb-5">
                         <label for="wa-webhook" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رابط الـ Webhook (انسخه إلى لوحة Meta)</label>
                         <div class="flex flex-col sm:flex-row gap-2">
-                            <input
-                                id="wa-webhook"
-                                :value="webhookUrl"
-                                readonly
-                                dir="ltr"
-                                class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm font-mono text-gray-700 dark:text-gray-200 focus:outline-none"
-                            />
+                            <input id="wa-webhook" :value="webhookUrl" readonly dir="ltr"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm font-mono text-gray-700 dark:text-gray-200 focus:outline-none"/>
                             <button type="button" @click="copyWebhook"
                                     class="shrink-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gold-50 dark:hover:bg-gold-900/20">
                                 {{ copied ? '✅ تم النسخ' : '📋 نسخ' }}
@@ -177,10 +141,16 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label for="wa-pnid" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone Number ID</label>
-                            <input id="wa-pnid" v-model="form.wa_phone_number_id" dir="ltr" placeholder="مثال: 123456789012345"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">معرّف رقم الواتساب في حساب WhatsApp Business على Meta.</p>
+                            <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                <label for="wa-pnid" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number ID</label>
+                                <SourceBadge :source="sources.wa_phone_number_id"/>
+                            </div>
+                            <input id="wa-pnid" v-model="form.wa_phone_number_id" dir="ltr" inputmode="numeric" placeholder="مثال: 123456789012345"
+                                   :disabled="sources.wa_phone_number_id?.source === 'env'"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white disabled:opacity-40"
+                                   :class="isDirty('wa_phone_number_id') ? 'ring-1 ring-gold-400' : ''"/>
+                            <p v-if="errors.wa_phone_number_id" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.wa_phone_number_id }}</p>
+                            <p v-else class="text-xs text-gray-500 mt-1">معرّف رقم الواتساب عند Meta. تغييره يحتاج تأكيداً ويُفحص عند ميتا قبل الحفظ: معرّف خاطئ يُسقط كل الوارد.</p>
                         </div>
 
                         <div>
@@ -195,64 +165,50 @@
                                     <dd class="font-mono dark:text-white" dir="ltr">{{ settings.wa_display_phone || '—' }}</dd>
                                 </div>
                             </dl>
-                            <p class="text-xs text-gray-500 mt-1">للقراءة فقط: يُعرفان من أول رسالة تصل لرقمنا، وبهما تُتجاهل تنبيهات ميتا لأرقام أخرى على التطبيق نفسه. قبل ذلك يوقف أي تنبيه خطير الإرسال احتياطاً.</p>
+                            <p class="text-xs text-gray-500 mt-1">للقراءة فقط: يُعرفان من أول رسالة تصل لرقمنا، وبهما تُتجاهل تنبيهات ميتا لأرقام أخرى على التطبيق نفسه.</p>
                         </div>
 
-                        <div>
-                            <label for="wa-verify" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Verify Token</label>
-                            <div class="flex gap-2">
-                                <input id="wa-verify" v-model="form.wa_verify_token" dir="ltr" placeholder="نص تختاره أنت ويُكتب نفسه في لوحة Meta"
-                                       class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                                <button type="button" @click="generateVerifyToken"
-                                        class="shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gold-50 dark:hover:bg-gold-900/20">
-                                    🎲 توليد رمز
-                                </button>
+                        <!-- رمز التحقق: يُولَّد ولا يُكتب يدوياً، ويُعرض مرة واحدة -->
+                        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-100">Verify Token</p>
+                                <SourceBadge :source="{ source: verify.source, env_var: 'WA_WEBHOOK_VERIFY_TOKEN' }"/>
                             </div>
-                            <p v-if="form.errors.wa_verify_token" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ form.errors.wa_verify_token }}</p>
-                            <p v-if="verifyGenerated" class="text-xs font-bold text-amber-700 dark:text-amber-400 mt-1">احفظ هنا أولاً، ثم حدّث الرمز في لوحة Meta.</p>
-                            <p class="text-xs text-gray-500 mt-1">يجب أن يطابق ما تكتبه في خانة Verify Token عند إعداد الـ Webhook (16 حرفاً على الأقل).</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                آخر توليد: <bdi dir="ltr">{{ when(verify.rotated_at) }}</bdi> · آخر مصافحة ناجحة: <bdi dir="ltr">{{ when(verify.last_handshake_at) }}</bdi>
+                            </p>
+                            <p v-if="verify.legacy_plain && verify.source !== 'env'" class="text-xs text-amber-700 dark:text-amber-400 mt-1">رمز قديم مكتوب يدوياً ما زال يعمل؛ يُستحسن توليد رمز عشوائي.</p>
+                            <button v-if="verify.source !== 'env'" type="button" @click="rotateVerify" :disabled="rotating"
+                                    class="mt-3 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gold-50 dark:hover:bg-gold-900/20 disabled:opacity-40">
+                                {{ rotating ? '⏳' : '🎲 توليد رمز جديد' }}
+                            </button>
+                            <p v-else class="text-xs text-blue-700 dark:text-blue-300 mt-2">مضبوط من بيئة الخادم.</p>
+                            <p v-if="verifyError" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ verifyError }}</p>
                         </div>
 
-                        <!-- WA Token -->
                         <div>
                             <div class="flex items-center gap-2 mb-1 flex-wrap">
-                                <label for="wa-token" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Access Token (WA_TOKEN)</label>
-                                <span v-if="settings.has_token" class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">✅ محفوظ</span>
+                                <label for="wa-app-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">App ID</label>
+                                <SourceBadge :source="sources.wa_app_id"/>
                             </div>
-                            <input id="wa-token" v-model="form.wa_token" type="password" dir="ltr" autocomplete="new-password"
-                                   :disabled="settings.env_token"
-                                   :placeholder="settings.env_token ? 'مضبوط من بيئة الخادم' : secretPlaceholder"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white disabled:opacity-40 disabled:cursor-not-allowed"/>
-                            <p v-if="settings.env_token" class="text-xs text-blue-600 dark:text-blue-400 mt-1">🔒 مضبوط من بيئة الخادم (له الأولوية) — هذا الحقل اختياري ومعطّل.</p>
-                            <p v-else class="text-xs text-gray-500 mt-1">توكن دائم من تطبيق Meta لإرسال الرسائل.</p>
-                        </div>
-
-                        <!-- App Secret -->
-                        <div>
-                            <div class="flex items-center gap-2 mb-1 flex-wrap">
-                                <label for="wa-secret" class="block text-sm font-medium text-gray-700 dark:text-gray-300">App Secret</label>
-                                <span v-if="settings.has_app_secret" class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">✅ محفوظ</span>
-                            </div>
-                            <input id="wa-secret" v-model="form.wa_app_secret" type="password" dir="ltr" autocomplete="new-password"
-                                   :placeholder="secretPlaceholder"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">يُستخدم للتحقق من توقيع الـ Webhook القادم من Meta.</p>
-                        </div>
-
-                        <!-- App ID (عام، لفحص الرمز اليومي) -->
-                        <div>
-                            <label for="wa-app-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">App ID (WA_APP_ID)</label>
                             <input id="wa-app-id" v-model="form.wa_app_id" type="text" dir="ltr" inputmode="numeric" autocomplete="off"
-                                   :disabled="settings.env_app_id"
-                                   :placeholder="settings.env_app_id ? 'مضبوط من بيئة الخادم' : 'من App settings › Basic'"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white disabled:opacity-40 disabled:cursor-not-allowed"/>
-                            <p class="text-xs text-gray-500 mt-1">معرّف عام لا سري. به يُفحص رمز الوصول يومياً (صلاحيته وانتهاؤه).</p>
+                                   :disabled="sources.wa_app_id?.source === 'env'" placeholder="من App settings › Basic"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white disabled:opacity-40"
+                                   :class="isDirty('wa_app_id') ? 'ring-1 ring-gold-400' : ''"/>
+                            <p v-if="errors.wa_app_id" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.wa_app_id }}</p>
+                            <p v-else class="text-xs text-gray-500 mt-1">معرّف عام لا سري. به يُفحص رمز الوصول يومياً (صلاحيته وانتهاؤه).</p>
                         </div>
-                    </div>
 
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-4 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700">
-                        ℹ️ ترك أي حقل سري فارغًا يُبقي القيمة المحفوظة كما هي — لا تُمحى أبدًا بالحفظ.
-                    </p>
+                        <SecretCard name="wa_token" :secret="secrets.wa_token" @changed="(v) => { secrets.wa_token = v; refreshVersion(); }">
+                            <template #hint><span class="block">توكن مستخدم النظام الدائم لإرسال الرسائل. بعد تغييره: «🔄 افحص الآن» في صحة القناة.</span></template>
+                        </SecretCard>
+                        <SecretCard name="wa_app_secret" :secret="secrets.wa_app_secret" warn-clear="بلا App Secret يُرفض كل وارد من ميتا (لا يُتحقق من التوقيع)."
+                                    @changed="(v) => { secrets.wa_app_secret = v; refreshVersion(); }">
+                            <template #hint>
+                                <span class="block">آخر توقيع صحيح: <bdi dir="ltr">{{ when(signature.last_ok_at) }}</bdi> · مرفوض هذه الساعة: <b>{{ signature.failures_last_hour }}</b></span>
+                            </template>
+                        </SecretCard>
+                    </div>
 
                     <!-- الإصدارات والحماية (للقراءة فقط: تُضبط من بيئة الخادم) -->
                     <div v-if="graph" class="mt-4 rounded-xl border p-4 text-sm"
@@ -298,12 +254,11 @@
                         <div>
                             <label for="wa-provider" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المزوّد</label>
                             <select id="wa-provider" v-model="form.provider" @change="models = []; modelsMsg = ''"
-                                    class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white">
+                                    class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"
+                                    :class="isDirty('provider') ? 'ring-1 ring-gold-400' : ''">
                                 <option v-for="(label, key) in providers" :key="key" :value="key">{{ label }}</option>
                             </select>
-                            <p class="text-xs text-gray-500 mt-1">
-                                {{ form.provider === 'google' ? 'Gemini: طبقة مجانية سخيّة — الأنسب للحجم العالي.' : 'Claude: جودة أعلى وتخزين مؤقّت للموجّه.' }}
-                            </p>
+                            <p class="text-xs text-gray-500 mt-1">تغيير المزوّد يحتاج تأكيداً ومفتاحه الخاص.</p>
                         </div>
 
                         <div>
@@ -313,62 +268,24 @@
                                 <option v-for="m in models" :key="m.id" :value="m.id">{{ m.id }}<span v-if="m.label && m.label !== m.id"> — {{ m.label }}</span></option>
                             </select>
                             <input v-else id="wa-model" v-model="form.model" dir="ltr"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"
+                                   :class="isDirty('model') ? 'ring-1 ring-gold-400' : ''"/>
                             <button type="button" @click="fetchModels" :disabled="loadingModels"
                                     class="mt-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gold-400 text-gold-700 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20 disabled:opacity-50">
-                                {{ loadingModels ? '⏳ جاري الفحص…' : '🔄 فحص المفتاح وجلب النماذج المتاحة' }}
+                                {{ loadingModels ? '⏳ جاري الفحص…' : '🔄 فحص المفتاح المحفوظ وجلب النماذج' }}
                             </button>
-                            <p v-if="modelsMsg" class="text-xs mt-1" :class="modelsOk ? 'text-green-600' : 'text-red-600'">{{ modelsMsg }}</p>
-                            <p v-else class="text-xs text-gray-500 mt-1">أسماء النماذج تتغيّر — اضغط الفحص لتختار من المتاح فعلياً لمفتاحك.</p>
+                            <p v-if="errors.model" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.model }}</p>
+                            <p v-else-if="modelsMsg" class="text-xs mt-1" :class="modelsOk ? 'text-green-600' : 'text-red-600'">{{ modelsMsg }}</p>
                         </div>
 
-                        <div>
-                            <div class="flex items-center gap-2 mb-1 flex-wrap">
-                                <label for="wa-apikey" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    مفتاح الـ API ({{ form.provider === 'google' ? 'Google AI Studio' : 'Anthropic' }})
-                                </label>
-                                <span v-if="settings.has_api_key" class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">✅ محفوظ</span>
-                            </div>
-                            <input id="wa-apikey" v-model="form.api_key" type="password" dir="ltr" autocomplete="new-password"
-                                   :disabled="settings.env_api_key"
-                                   :placeholder="settings.env_api_key ? 'مضبوط من بيئة الخادم' : secretPlaceholder"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white disabled:opacity-40 disabled:cursor-not-allowed"/>
-                            <p v-if="settings.env_api_key" class="text-xs text-blue-600 dark:text-blue-400 mt-1">🔒 مضبوط من بيئة الخادم (له الأولوية) — هذا الحقل اختياري ومعطّل.</p>
-                            <p v-else class="text-xs text-gray-500 mt-1">ترك الحقل فارغًا يُبقي المفتاح المحفوظ كما هو.</p>
-                        </div>
+                        <SecretCard name="api_key" :secret="secrets.api_key" @changed="(v) => { secrets.api_key = v; refreshVersion(); }">
+                            <template #hint><span class="block">مفتاح {{ form.provider === 'google' ? 'Google AI Studio' : 'Anthropic' }}.</span></template>
+                        </SecretCard>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
-                        <div>
-                            <label for="wa-ctx" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عدد رسائل السياق</label>
-                            <input id="wa-ctx" v-model.number="form.context_messages" type="number" min="4" max="60" dir="ltr"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">كم رسالة سابقة يتذكّرها البوت (4–60) — الأكثر أدقّ وأغلى.</p>
-                        </div>
-                        <div>
-                            <label for="wa-loops" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">أقصى عدد دورات الأدوات</label>
-                            <input id="wa-loops" v-model.number="form.max_tool_loops" type="number" min="1" max="8" dir="ltr"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">كم مرة يستدعي البوت الأدوات قبل الرد النهائي (1–8).</p>
-                        </div>
-                        <div>
-                            <label for="wa-pause" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">مدة إيقاف البوت بعد تدخّل موظف (دقيقة)</label>
-                            <input id="wa-pause" v-model.number="form.pause_minutes" type="number" min="1" max="1440" dir="ltr"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">يصمت البوت في المحادثة بعد ردّ موظف (1–1440).</p>
-                        </div>
-                        <div>
-                            <label for="wa-max-age" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">أقصى عمر للرسالة كي يرد البوت (دقيقة)</label>
-                            <input id="wa-max-age" v-model.number="form.max_reply_age_minutes" type="number" min="2" max="120" dir="ltr"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">الرسالة الأقدم من هذا لا يرد عليها البوت، بل تُحوَّل لموظف (2–120).</p>
-                        </div>
-                        <div>
-                            <label for="wa-rate" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">حدّ الرسائل للعميل في الساعة</label>
-                            <input id="wa-rate" v-model.number="form.rate_limit_per_hour" type="number" min="1" max="200" dir="ltr"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">حماية من الاستهلاك الزائد لكل رقم (1–200).</p>
-                        </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mt-4">
+                        <SettingField v-for="f in fields" :key="f.key" :field="f" v-model="form[f.key]"
+                                      :default-value="defaults[f.key]" :error="errors[f.key]" :dirty="isDirty(f.key)"/>
                     </div>
                 </div>
 
@@ -378,17 +295,20 @@
 
                     <div class="mb-6">
                         <div class="flex items-center justify-between gap-3 mb-1 flex-wrap">
-                            <label for="wa-prompt" class="block text-sm font-medium text-gray-700 dark:text-gray-300">نص الشخصية (System Prompt)</label>
-                            <button type="button" @click="restorePrompt"
+                            <label for="wa-prompt" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                نص الشخصية (System Prompt)
+                                <span v-if="form.system_prompt === null" class="mr-2 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">النص الافتراضي من النظام — يتحدّث تلقائياً</span>
+                            </label>
+                            <button v-if="form.system_prompt !== null" type="button" @click="form.system_prompt = null"
                                     class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gold-50 dark:hover:bg-gold-900/20">
                                 ↺ استعادة النص الافتراضي
                             </button>
                         </div>
-                        <textarea id="wa-prompt" v-model="form.system_prompt" rows="14"
-                                  class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm leading-relaxed font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white resize-y"></textarea>
-                        <p class="text-xs text-gray-500 mt-1">
-                            <span class="font-mono" dir="ltr">{{ promptChars }}</span> حرف — يحدّد نبرة البوت وحدوده وما يُمنع عليه قوله.
-                        </p>
+                        <textarea id="wa-prompt" v-model="promptText" rows="14"
+                                  class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm leading-relaxed font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white resize-y"
+                                  :class="isDirty('system_prompt') ? 'ring-1 ring-gold-400' : ''"></textarea>
+                        <p v-if="errors.system_prompt" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.system_prompt }}</p>
+                        <p v-else class="text-xs text-gray-500 mt-1"><span class="font-mono" dir="ltr">{{ promptText.length }}</span> حرف — يحدّد نبرة البوت وحدوده وما يُمنع عليه قوله.</p>
                     </div>
 
                     <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4 flex flex-wrap items-center justify-between gap-3">
@@ -410,14 +330,13 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <label v-for="(label, key) in toolList" :key="key"
-                               class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer hover:bg-gold-50 dark:hover:bg-gold-900/20">
-                            <input type="checkbox" v-model="form.tools_config[key]"
-                                   class="mt-0.5 w-4 h-4 rounded text-gold-500 focus:ring-gold-500 shrink-0"/>
+                               class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer hover:bg-gold-50 dark:hover:bg-gold-900/20"
+                               :class="toolDirty(key) ? 'ring-1 ring-gold-400' : ''">
+                            <input type="checkbox" v-model="form.tools[key]" class="mt-0.5 w-4 h-4 rounded text-gold-500 focus:ring-gold-500 shrink-0"/>
                             <span class="min-w-0">
                                 <span class="flex items-center gap-2 flex-wrap">
                                     <span class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ label }}</span>
-                                    <span v-if="handoffTools.includes(key)"
-                                          class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">يحوّل لموظف</span>
+                                    <span v-if="handoffTools.includes(key)" class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">يحوّل لموظف</span>
                                 </span>
                                 <span class="block text-xs font-mono text-gray-500 dark:text-gray-400 mt-0.5" dir="ltr">{{ key }}</span>
                             </span>
@@ -428,16 +347,16 @@
                 <!-- ================= 6. الفشل الآمن ================= -->
                 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6">
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">🛟 الفشل الآمن</h3>
-
                     <div>
                         <label for="wa-fail" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رسالة الاعتذار عند فشل البوت</label>
                         <textarea id="wa-fail" v-model="form.fail_message" rows="2"
-                                  placeholder="مثال: نعتذر، حدث خلل مؤقت — سيتواصل معك أحد موظفينا قريبًا."
-                                  class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white resize-none"></textarea>
-                        <p class="text-xs text-gray-500 mt-1">تُرسل للعميل إذا تعذّر توليد رد (انقطاع API أو خطأ غير متوقع).</p>
+                                  class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white resize-none"
+                                  :class="isDirty('fail_message') ? 'ring-1 ring-gold-400' : ''"></textarea>
+                        <p v-if="errors.fail_message" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.fail_message }}</p>
+                        <p v-else class="text-xs text-gray-500 mt-1">تُرسل للعميل إذا تعذّر توليد رد (انقطاع API أو خطأ غير متوقع).</p>
                     </div>
-
-                    <label class="flex items-start gap-3 mt-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer">
+                    <label class="flex items-start gap-3 mt-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer"
+                           :class="isDirty('fail_handoff') ? 'ring-1 ring-gold-400' : ''">
                         <input type="checkbox" v-model="form.fail_handoff" class="mt-0.5 w-4 h-4 rounded text-gold-500 focus:ring-gold-500 shrink-0"/>
                         <span class="min-w-0">
                             <span class="block text-sm font-medium text-gray-800 dark:text-gray-100">عند الفشل: أوقف البوت ساعة وأشعر الإدارة</span>
@@ -446,38 +365,243 @@
                     </label>
                 </div>
 
+                <FeatureFlagsPanel :flags="flags"/>
+
                 <!-- ================= شريط الحفظ ================= -->
                 <div class="sticky bottom-0 z-10 -mx-1 px-1 py-3">
                     <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur shadow-md p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">الحقول السرية الفارغة لا تُلغي القيم المحفوظة.</p>
-                        <button type="submit" :disabled="form.processing"
+                        <p class="text-xs" :class="dirtyCount ? 'font-bold text-gold-700 dark:text-gold-400' : 'text-gray-500 dark:text-gray-400'">
+                            <template v-if="conflict.fields.length || conflict.others.length">⚠️ تغيّرت الإعدادات عند غيرك — راجع الشريط أعلى الصفحة ثم احفظ · </template>
+                            {{ savedMsg || (dirtyCount ? `${dirtyCount} تغييرات غير محفوظة` : 'لا تغييرات') }}
+                        </p>
+                        <button type="submit" :disabled="saving || !dirtyCount"
                                 class="w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
-                            {{ form.processing ? '⏳ جارٍ الحفظ…' : '💾 حفظ الإعدادات' }}
+                            {{ saving ? '⏳ جارٍ الحفظ…' : '💾 حفظ التغييرات' }}
                         </button>
                     </div>
                 </div>
             </form>
         </div>
+
+        <OneTimeSecretModal :token="oneTimeToken" @close="oneTimeToken = null"/>
     </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { Link, useForm } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { router } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
+import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
+import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
+import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
+import SecretCard from '@/Components/WhatsApp/SecretCard.vue';
+import SettingField from '@/Components/WhatsApp/SettingField.vue';
+import SourceBadge from '@/Components/WhatsApp/SourceBadge.vue';
+import { when } from '@/utils/waSettings.js';
 
+// الحفظ جزئي (E10): يُرسل ما تغيّر عن آخر قيم محمّلة فقط مع رمز النسخة؛ 409 يعني أن غيرك حفظ بعدك،
+// فتُجلب القيم الجديدة وتبقى تعديلاتك فوقها. الأسرار والإيقاف لها أزرارها ولا تمر من هنا.
 const props = defineProps({
     title: String,
     settings: Object,
+    version: Number,
+    fields: { type: Array, default: () => [] },
+    defaults: { type: Object, default: () => ({}) },
+    sources: { type: Object, default: () => ({}) },
+    secrets: { type: Object, default: () => ({}) },
+    verify: { type: Object, default: () => ({}) },
+    signature: { type: Object, default: () => ({}) },
+    killSwitch: { type: Object, default: () => ({}) },
+    flags: { type: Array, default: () => [] },
+    can: { type: Object, default: () => ({}) },
     webhookUrl: String,
     defaultPrompt: String,
     toolList: Object,
-    providers: { type: Object, default: () => ({ google: 'Google Gemini', anthropic: 'Anthropic Claude' }) },
+    providers: { type: Object, default: () => ({}) },
     graph: Object,
     health: { type: Array, default: () => [] },
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
+});
+
+// ===== الحالة المحلية (تتحدّث من ردود الخادم دون إعادة تحميل الصفحة) =====
+const settings = ref({ ...props.settings });
+const version = ref(props.version);
+const sources = ref({ ...props.sources });
+const secrets = ref(JSON.parse(JSON.stringify(props.secrets)));
+const verify = ref({ ...props.verify });
+const signature = ref({ ...props.signature });
+const killSwitch = ref({ ...props.killSwitch });
+const flags = ref([...props.flags]);
+watch(() => props.sources, (v) => { sources.value = { ...v }; });
+
+const LABELS = {
+    enabled: 'تشغيل البوت', wa_phone_number_id: 'Phone Number ID', wa_app_id: 'App ID', provider: 'المزوّد', model: 'الموديل',
+    system_prompt: 'نص الشخصية', fail_message: 'رسالة الاعتذار', fail_handoff: 'التحويل عند الفشل',
+};
+props.fields.forEach((f) => { LABELS[f.key] = f.label; });
+const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff'];
+const SENSITIVE = ['wa_phone_number_id', 'provider'];
+const handoffTools = ['request_quote', 'confirm_booking'];
+
+// القيم القابلة للحفظ من صف الإعدادات؛ الأدوات: غياب المفتاح = مفعّلة
+const editable = (s) => {
+    const out = {};
+    SCALARS.forEach((k) => { out[k] = s[k] ?? null; });
+    out.enabled = !!s.enabled;
+    out.fail_handoff = !!s.fail_handoff;
+    out.tools = {};
+    Object.keys(props.toolList || {}).forEach((k) => {
+        const v = (s.tools_config || {})[k];
+        out.tools[k] = v === undefined ? true : !!v;
+    });
+    return out;
+};
+const clone = (v) => JSON.parse(JSON.stringify(v));
+const baseline = ref(editable(props.settings));
+const form = reactive(clone(baseline.value));
+
+const norm = (v) => (v === '' ? null : v);
+const isDirty = (k) => norm(form[k]) !== norm(baseline.value[k]);
+const toolDirty = (k) => form.tools[k] !== baseline.value.tools[k];
+const changes = computed(() => {
+    const c = {};
+    SCALARS.forEach((k) => { if (isDirty(k)) c[k] = norm(form[k]); });
+    const tools = {};
+    Object.keys(form.tools).forEach((k) => { if (toolDirty(k)) tools[k] = form.tools[k]; });
+    if (Object.keys(tools).length) c.tools_config = tools;
+    return c;
+});
+const dirtyCount = computed(() => SCALARS.filter(isDirty).length + Object.keys(form.tools).filter(toolDirty).length);
+
+// الموجّه: null = النص الافتراضي الحي، فلا يتجمّد في القاعدة إن لم يُعدَّل
+const promptText = computed({
+    get: () => form.system_prompt ?? props.defaultPrompt ?? '',
+    set: (v) => { form.system_prompt = v === props.defaultPrompt ? null : v; },
+});
+
+// ===== الحفظ =====
+const saving = ref(false);
+const errors = ref({});
+const savedMsg = ref('');
+const conflict = ref({ fields: [], others: [] });
+
+const adopt = (data) => {
+    version.value = data.version;
+    settings.value = { ...data.settings };
+    if (data.sources) sources.value = { ...data.sources };
+    if (data.secrets) secrets.value = clone(data.secrets);
+    if (data.verify) verify.value = { ...data.verify };
+    if (data.signature) signature.value = { ...data.signature };
+    if (data.killSwitch) killSwitch.value = { ...data.killSwitch };
+    if (data.flags) flags.value = [...data.flags];
+};
+
+// تعارض أو تغيير من نفس الصفحة رفع النسخة: نجلب الحالي، ونأخذ ما غيّره غيرنا، ونُبقي تعديلاتنا فوقه
+const reconcile = async () => {
+    const { data } = await axios.get('/api/whatsapp/settings');
+    const fresh = editable(data.settings);
+    const mine = changes.value;
+    const fields = [];
+    const others = [];
+    SCALARS.forEach((k) => {
+        if (norm(fresh[k]) === norm(baseline.value[k])) return;
+        if (k in mine) fields.push(LABELS[k]);
+        else { others.push(LABELS[k]); form[k] = fresh[k]; }
+    });
+    Object.keys(fresh.tools).forEach((k) => {
+        if (fresh.tools[k] === baseline.value.tools[k]) return;
+        if (mine.tools_config && k in mine.tools_config) fields.push(props.toolList[k]);
+        else { others.push(props.toolList[k]); form.tools[k] = fresh.tools[k]; }
+    });
+    baseline.value = fresh;
+    adopt(data);
+    if (fields.length || others.length) conflict.value = { fields, others };
+};
+const refreshVersion = () => reconcile().catch(() => {});
+
+const save = async (confirmed = false) => {
+    const c = changes.value;
+    if (!Object.keys(c).length) return;
+    const sensitive = Object.keys(c).filter((k) => SENSITIVE.includes(k));
+    if (sensitive.length && !confirmed) {
+        if (!window.confirm(`تغيير ${sensitive.map((k) => LABELS[k]).join(' و')} يؤثر على كل الرسائل. متابعة؟`)) return;
+        confirmed = true;
+    }
+    saving.value = true;
+    errors.value = {};
+    savedMsg.value = '';
+    try {
+        const { data } = await axios.patch('/whatsapp/settings', { version: version.value, changes: c, confirm: confirmed });
+        adopt(data);
+        baseline.value = editable(data.settings);
+        Object.assign(form, clone(baseline.value));
+        conflict.value = { fields: [], others: [] };
+        savedMsg.value = '✅ حُفظت التغييرات';
+        setTimeout(() => { savedMsg.value = ''; }, 3000);
+        router.reload({ only: ['sources', 'health', 'meta'] });
+    } catch (e) {
+        const status = e.response?.status;
+        if (status === 422) {
+            const out = {};
+            Object.entries(e.response.data.errors || {}).forEach(([key, msgs]) => {
+                out[key.replace(/^changes\./, '').replace(/\..*$/, '')] = msgs[0];
+            });
+            errors.value = out;
+        } else if (status === 409) {
+            await reconcile();
+            // الشريط أعلى الصفحة والمستخدم عند زر الحفظ أسفلها
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            errors.value = { general: e.response?.data?.message || 'تعذّر الحفظ — حاول مرة أخرى' };
+        }
+    } finally {
+        saving.value = false;
+    }
+};
+
+// تنبيه قبل مغادرة الصفحة بتعديلات غير محفوظة
+const beforeUnload = (e) => { if (dirtyCount.value) { e.preventDefault(); e.returnValue = ''; } };
+let removeNavGuard = null;
+onMounted(() => {
+    window.addEventListener('beforeunload', beforeUnload);
+    removeNavGuard = router.on('before', (event) => {
+        if (dirtyCount.value && event.detail.visit.method === 'get' && !window.confirm('لديك تغييرات غير محفوظة. مغادرة الصفحة؟')) return false;
+    });
+});
+onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload); removeNavGuard?.(); });
+
+// ===== رمز التحقق: يُولَّد ويُعرض مرة واحدة =====
+const oneTimeToken = ref(null);
+const rotating = ref(false);
+const verifyError = ref('');
+const rotateVerify = async () => {
+    if (!window.confirm('الرمز الجديد يُبطل الحالي عند المصافحة التالية. ولّده ثم حدّثه فوراً في لوحة ميتا؟')) return;
+    rotating.value = true;
+    verifyError.value = '';
+    try {
+        const { data } = await axios.post('/api/whatsapp/settings/verify-token', { reason: verify.value.has ? 'routine' : 'setup' });
+        oneTimeToken.value = data.token;
+        await refreshVersion();
+    } catch (e) {
+        verifyError.value = e.response?.data?.message || 'تعذّر التوليد';
+    } finally {
+        rotating.value = false;
+    }
+};
+
+// ===== الجاهزية =====
+const isLive = computed(() => !!(settings.value.enabled && secrets.value.wa_token?.has && secrets.value.api_key?.has && !killSwitch.value.effective));
+const missing = computed(() => {
+    const list = [];
+    if (!settings.value.enabled) list.push('البوت مُعطَّل — شغّل مفتاح «تشغيل البوت» ثم احفظ.');
+    if (!secrets.value.wa_token?.has) list.push('لا يوجد رمز ميتا (WA_TOKEN) — أدخله في «ربط قناة ميتا».');
+    if (!secrets.value.api_key?.has) list.push('لا يوجد مفتاح للمزوّد — أدخله في قسم «الذكاء».');
+    if (!settings.value.wa_phone_number_id && sources.value.wa_phone_number_id?.source !== 'env') list.push('لم يُضبط Phone Number ID — لن يُعرف الرقم المُرسِل.');
+    if (killSwitch.value.effective) list.push('كل الإرسال موقوف (انظر الإيقاف الطارئ أدناه).');
+    return list;
 });
 
 // ===== صحة النظام والقناة =====
@@ -485,6 +609,7 @@ const meta = ref({ ...props.meta });
 const metaChecking = ref(false);
 const metaMsg = ref('');
 const metaMsgOk = ref(false);
+watch(() => props.meta, (v) => { meta.value = { ...v }; });
 
 const opsComponents = computed(() => {
     const codes = props.ops?.codes || [];
@@ -515,13 +640,12 @@ const REASONS = {
     app_mismatch: 'الرمز من تطبيق آخر', expiring: 'ينتهي قريباً', blocked: 'الإرسال موقوف', limited: 'الإرسال مقيّد', quality_red: 'جودة حمراء',
 };
 const reasonLabel = (reason) => REASONS[reason] || reason;
-const when = (value) => (value ? new Date(value).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 const checkMeta = async () => {
     metaChecking.value = true;
     metaMsg.value = '';
     try {
-        const { data } = await axios.post('/api/whatsapp/meta-check', {}, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        const { data } = await axios.post('/api/whatsapp/meta-check', {}, { headers: { Accept: 'application/json' } });
         meta.value = data.meta;
         metaMsgOk.value = true;
         metaMsg.value = '✅ تم الفحص';
@@ -533,15 +657,6 @@ const checkMeta = async () => {
     }
 };
 
-// رمز تحقق عشوائي: 32 خانة hex من مولّد المتصفح الآمن
-const verifyGenerated = ref(false);
-const generateVerifyToken = () => {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    form.wa_verify_token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-    verifyGenerated.value = true;
-};
-
 // أسوأ حالة بين إصدار الطلبات وإصدار الويبهوك
 const graphAlert = computed(() => {
     const levels = [props.graph?.requests?.level, props.graph?.webhook?.level];
@@ -549,59 +664,20 @@ const graphAlert = computed(() => {
     return levels.includes('warn') ? 'amber' : null;
 });
 
-const handoffTools = ['request_quote', 'confirm_booking'];
-const secretPlaceholder = 'اتركه فارغًا للإبقاء على القيمة المحفوظة';
-
-// الأدوات: مفعّلة افتراضيًا إن لم يكن المفتاح محفوظًا
-const savedTools = props.settings?.tools_config || {};
-const toolsConfig = {};
-Object.keys(props.toolList || {}).forEach((key) => {
-    toolsConfig[key] = savedTools[key] === undefined ? true : !!savedTools[key];
-});
-
-const form = useForm({
-    enabled: !!props.settings?.enabled,
-    wa_suspended: !!props.settings?.wa_suspended,
-    wa_phone_number_id: props.settings?.wa_phone_number_id || '',
-    wa_verify_token: props.settings?.wa_verify_token || '',
-    wa_token: '',
-    wa_app_secret: '',
-    wa_app_id: props.settings?.wa_app_id || '',
-    api_key: '',
-    provider: props.settings?.provider || 'google',
-    model: props.settings?.model || 'gemini-2.5-flash',
-    system_prompt: props.settings?.system_prompt || props.defaultPrompt || '',
-    context_messages: Number(props.settings?.context_messages ?? 12),
-    pause_minutes: Number(props.settings?.pause_minutes ?? 60),
-    max_reply_age_minutes: Number(props.settings?.max_reply_age_minutes ?? 10),
-    max_tool_loops: Number(props.settings?.max_tool_loops ?? 4),
-    rate_limit_per_hour: Number(props.settings?.rate_limit_per_hour ?? 30),
-    fail_message: props.settings?.fail_message || '',
-    fail_handoff: !!props.settings?.fail_handoff,
-    tools_config: toolsConfig,
-});
-
-// جلب النماذج المتاحة حيّاً من المزوّد — أسماء النماذج تتغيّر فلا نثبّتها
+// جلب النماذج المتاحة حيّاً بالمفتاح المحفوظ — أسماء النماذج تتغيّر فلا نثبّتها
 const models = ref([]);
 const loadingModels = ref(false);
 const modelsMsg = ref('');
 const modelsOk = ref(false);
-
 const fetchModels = async () => {
     loadingModels.value = true;
     modelsMsg.value = '';
     try {
-        const { data } = await axios.post('/api/whatsapp/test-key', {
-            provider: form.provider,
-            api_key: form.api_key || undefined,
-        }, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-
+        const { data } = await axios.post('/api/whatsapp/test-key', { provider: form.provider }, { headers: { Accept: 'application/json' } });
         models.value = data.models || [];
         modelsOk.value = true;
         modelsMsg.value = `✅ المفتاح صالح — ${data.count} نموذجاً متاحاً`;
-        if (models.value.length && !models.value.some((m) => m.id === form.model)) {
-            form.model = models.value[0].id;
-        }
+        if (models.value.length && !models.value.some((m) => m.id === form.model)) form.model = models.value[0].id;
     } catch (e) {
         modelsOk.value = false;
         models.value = [];
@@ -611,22 +687,8 @@ const fetchModels = async () => {
     }
 };
 
-const isLive = computed(() => !!(props.settings?.enabled && props.settings?.has_token && props.settings?.has_api_key));
-
-const missing = computed(() => {
-    const list = [];
-    if (!props.settings?.enabled) list.push('البوت مُعطَّل — شغّل مفتاح «تشغيل البوت» ثم احفظ.');
-    if (!props.settings?.has_token) list.push('لا يوجد Access Token للواتساب — أضِفه في قسم «ربط قناة ميتا».');
-    if (!props.settings?.has_api_key) list.push('لا يوجد مفتاح API للذكاء — أضِفه في قسم «الذكاء».');
-    if (!props.settings?.wa_phone_number_id) list.push('لم يُضبط Phone Number ID — لن يُعرف الرقم المُرسِل.');
-    return list;
-});
-
-const promptChars = computed(() => (form.system_prompt || '').length);
-
 const copied = ref(false);
 const copyFailed = ref(false);
-
 const copyWebhook = async () => {
     copyFailed.value = false;
     try {
@@ -636,13 +698,5 @@ const copyWebhook = async () => {
     } catch (e) {
         copyFailed.value = true;
     }
-};
-
-const restorePrompt = () => {
-    form.system_prompt = props.defaultPrompt || '';
-};
-
-const save = () => {
-    form.put('/whatsapp/settings', { preserveScroll: true });
 };
 </script>

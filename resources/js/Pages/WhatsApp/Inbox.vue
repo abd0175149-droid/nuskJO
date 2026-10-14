@@ -10,7 +10,7 @@
              : (status.bot_ready ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800')">
         <span class="font-bold">
-          <template v-if="status.suspended">⛔ الإرسال موقوف (قفل طارئ)</template>
+          <template v-if="status.suspended">⛔ الإرسال موقوف — {{ SUSPEND_SOURCES[status.suspended_source] || 'قفل طارئ' }}</template>
           <template v-else-if="status.bot_ready">🟢 البوت يعمل</template>
           <template v-else-if="status.channel_ready">🟡 القناة مهيّأة والبوت مطفأ</template>
           <template v-else>🟡 القناة غير مهيّأة</template>
@@ -241,6 +241,8 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { useDrafts } from '@/composables/useDrafts';
+import { SUSPEND_SOURCES } from '@/utils/waSettings.js';
+
 
 const props = defineProps({
   title: String,
