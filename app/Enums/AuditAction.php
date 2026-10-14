@@ -111,11 +111,7 @@ enum AuditAction: string
     case ConfigExport = 'config.export';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [
-        // مؤقت أثناء بناء E13 على دفعات؛ يُحذف كل سطر مع الدفعة التي تكتبه
-        'ClientDataExport' => 'E13.8 قيد البناء',
-        'ConfigExport' => 'E13.8 قيد البناء',
-    ];
+    public const INTENTIONALLY_UNEMITTED = [];
 
     public function severity(): AuditSeverity
     {

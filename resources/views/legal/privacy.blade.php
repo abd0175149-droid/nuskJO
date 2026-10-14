@@ -50,7 +50,9 @@
 
 <h2>٥ · مدّة الاحتفاظ</h2>
 <ul>
-    <li><strong>المحادثات:</strong> حتى 24 شهراً من آخر تواصل.</li>
+    <li><strong>المحادثات:</strong> حتى 24 شهراً من آخر تواصل، ما لم ترتبط بفاتورة.</li>
+    <li><strong>إحصاءات استعمال المساعد الآلي:</strong> 12 شهراً، ثم تُجمَّع شهرياً بلا ربط بشخص.</li>
+    <li><strong>الإشعارات الداخلية للموظفين:</strong> حتى 6 أشهر.</li>
     <li><strong>السجلات المالية (الفواتير والسندات):</strong> للمدّة التي يفرضها القانون الأردني، ولا يمكن حذفها قبلها.</li>
     <li><strong>بيانات التعريف:</strong> طوال كونك عميلاً لدينا.</li>
     <li><strong>النسخ الاحتياطية:</strong> مشفّرة، وتُحفظ 6 أشهر كحدّ أقصى ثم تُتلف.</li>
@@ -58,7 +60,7 @@
 
 <h2>٦ · حقوقك</h2>
 <ul>
-    <li>الاطّلاع على البيانات التي نحتفظ بها عنك.</li>
+    <li>الاطّلاع على البيانات التي نحتفظ بها عنك: نرسل لك نسخة منها خلال 30 يوماً بعد التحقّق من هويتك.</li>
     <li>تصحيح أي بيان غير دقيق.</li>
     <li>طلب حذف بياناتك — راجع صفحة <a href="/data-deletion">حذف البيانات</a>.</li>
     <li>الاعتراض على تلقّي أي رسائل منا.</li>
@@ -88,9 +90,9 @@
     <h3>Sharing</h3>
     <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider{{ count($aiProviders ?? []) > 1 ? 's' : '' }} ({{ implode(', ', $aiProviders ?? ['Google Gemini']) }}) solely to generate replies (not used to train general models), and with authorities where legally required.</p>
     <h3>Retention</h3>
-    <p>Conversations: up to 24 months after last contact. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
+    <p>Conversations: up to 24 months after last contact, unless attached to an invoice. Assistant usage statistics: 12 months, then aggregated monthly without any link to a person. Internal staff notifications: up to 6 months. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
     <h3>Your rights</h3>
-    <p>You may access, correct or request deletion of your data — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>
+    <p>You may access your data (we send you a copy within 30 days after verifying your identity), correct it, or request its deletion — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>
     <h3>Contact</h3>
     <p>NUSK Travel &amp; Tourism, Jordan — <a href="mailto:info@nusuk-jo.com">info@nusuk-jo.com</a></p>
 </div>

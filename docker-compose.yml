@@ -51,6 +51,8 @@ services:
       # E09: أحداث التدقيق غير المالية وصفحة /audit-logs (مطفآن حتى يُضبطا في /opt/nuskJO/.env)
       - AUDIT_EXTENDED=${AUDIT_EXTENDED:-false}
       - AUDIT_PAGE=${AUDIT_PAGE:-false}
+      # E13: مدة الاحتفاظ بالمحادثات (0 = لا تقليم) حتى يقرّرها المالك في /opt/nuskJO/.env
+      - WA_RETENTION_DAYS=${WA_RETENTION_DAYS:-0}
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database

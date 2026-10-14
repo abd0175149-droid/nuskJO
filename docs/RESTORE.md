@@ -49,7 +49,11 @@ docker exec -u www-data nuskjo-app php artisan backup:diff-report /tmp/pre-resto
 **6. المراجعة والاعتماد** في صفحة النسخ الاحتياطي، بنداً بنداً:
 - أرقام الإدارة في المساعد الإداري.
 - المستخدمون والأدوار وكلمات المرور ومفاتيح الدخول التي سُحبت بعد وقت النسخة (عادت مع الاستعادة).
-- طلبات حذف بيانات العملاء المنفّذة بعد النسخة: نفّذها من جديد.
+- طلبات حذف بيانات العملاء: أعد تطبيقها من سجل المحو الخارجي (لا تمحوه الاستعادة)، بلا نداءات لميتا:
+  ```bash
+  docker exec -u www-data nuskjo-app php artisan whatsapp:erasure-reapply --dry-run
+  docker exec -u www-data nuskjo-app php artisan whatsapp:erasure-reapply
+  ```
 - إدخال ما في تقرير الفرق.
 
 بعد الاعتماد: ارفع قفل الإرسال وشغّل البوت من **الواتساب › الإعدادات**.
