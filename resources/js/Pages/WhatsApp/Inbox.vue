@@ -217,9 +217,10 @@
                     <span dir="ltr">{{ m.at }}</span>
                     <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
                     <span v-if="m.status === 'failed'" class="text-red-200" :title="m.error || ''">· فشل</span>
+                    <span v-else-if="m.status === 'blocked'" class="px-1.5 rounded bg-red-600 text-white font-bold" :title="m.error || ''">🛡️ حُجبت</span>
                     <span v-else-if="m.status === 'unconfirmed'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
                   </div>
-                  <p v-if="m.status === 'failed' && m.error" class="mt-0.5 text-[10px] leading-4 opacity-80 break-words">{{ m.error }}</p>
+                  <p v-if="(m.status === 'failed' || m.status === 'blocked') && m.error" class="mt-0.5 text-[10px] leading-4 opacity-80 break-words">{{ m.error }}</p>
                 </div>
               </div>
               <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>
@@ -587,7 +588,14 @@ const send = async () => {
   if (!id || !body || sending.value) return;
   sending.value = true; sendError.value = '';
   try {
-    await axios.post(threadUrl(id, 'send'), { body }, api);
+    try {
+      await axios.post(threadUrl(id, 'send'), { body }, api);
+    } catch (e) {
+      // ما يشبه رقم بطاقة أو هوية (E15.9): تأكيد صريح ثم الإرسال مع ack_warnings، والتجاوز يُسجَّل في التدقيق
+      if (e?.response?.status !== 409 || e.response.data?.code !== 'POLICY_WARN') throw e;
+      if (!window.confirm(e.response.data.error)) { sendError.value = 'لم تُرسل الرسالة.'; return; }
+      await axios.post(threadUrl(id, 'send'), { body, ack_warnings: true }, api);
+    }
     drafts.clear(id);
     if (activeId.value === id) {
       await poll();
@@ -683,6 +691,7 @@ const unlinkClient = async () => {
 
 const bubble = (m) => {
   if (m.direction === 'in') return 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm';
+  if (m.status === 'blocked') return 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-br-sm';
   if (m.source === 'bot') return 'bg-emerald-600 text-white rounded-br-sm';
   if (m.source === 'system') return 'bg-gray-400 text-white rounded-br-sm';
   return 'bg-gold-500 text-black rounded-br-sm';   // staff

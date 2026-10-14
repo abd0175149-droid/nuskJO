@@ -94,6 +94,7 @@ enum AuditAction: string
     case WaMediaRefetch = 'wa.media_refetch';
     case WaMediaPurge = 'wa.media_purge';
     case WaMediaConsent = 'wa.media_consent';
+    case WaPolicyOverride = 'wa.policy_override';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -134,7 +135,7 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -241,6 +242,7 @@ enum AuditAction: string
             self::WaMediaRefetch => 'تنزيل يدوي لمرفق',
             self::WaMediaPurge => 'حذف مرفقات عميل',
             self::WaMediaConsent => 'اختيار العميل حفظ ملفاته',
+            self::WaPolicyOverride => 'إرسال رغم تحذير بيانات حساسة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

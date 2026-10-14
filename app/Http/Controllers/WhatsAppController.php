@@ -399,9 +399,22 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.reply'), 403);
 
-        $data = $request->validate(['body' => 'required|string|max:4000']);
+        $data = $request->validate(['body' => 'required|string|max:4000', 'ack_warnings' => 'sometimes|boolean']);
+
+        // بيانات حساسة في رد الموظف (E15.9): تحذير يؤكده، لا منع. التأكيد يُدقَّق بالفاعل
+        $warnings = \App\Services\WhatsApp\Outbound\OutboundPolicy::evaluate($conversation, ['text' => ['body' => $data['body']]], $data['body'], 'staff')->warnings;
+        if ($warnings && !$request->boolean('ack_warnings')) {
+            return response()->json([
+                'ok' => false, 'code' => 'POLICY_WARN', 'reasons' => $warnings,
+                'error' => 'الرسالة تحوي ما يشبه '.\App\Services\WhatsApp\Outbound\OutboundPolicy::describe($warnings)
+                    .'. سياسة واتساب تمنع طلب هذه الأرقام أو مشاركتها. أرسل رغم ذلك؟',
+            ], 409);
+        }
 
         $res = WhatsAppChannel::sendText($conversation, $data['body'], 'staff', auth()->id());
+        if ($warnings && $res['ok']) {
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaPolicyOverride, 'wa_conversation', $conversation->id, null, ['reasons' => $warnings]);
+        }
 
         return response()->json($res, $res['ok'] ? 200 : 422);
     }

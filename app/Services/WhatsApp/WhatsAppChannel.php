@@ -477,14 +477,14 @@ class WhatsAppChannel
      * إرسال رسالة نصية.
      * @return array{ok:bool, error:?string, code:?string, message_id:?string}
      */
-    public static function sendText(WaConversation $conv, string $text, string $source = 'bot', ?int $staffId = null): array
+    public static function sendText(WaConversation $conv, string $text, string $source = 'bot', ?int $staffId = null, string $context = 'reply'): array
     {
         return self::dispatch($conv, [
             'messaging_product' => 'whatsapp',
             'recipient_type' => 'individual',
             'type' => 'text',
             'text' => ['preview_url' => false, 'body' => mb_substr($text, 0, 4096)],
-        ], $text, 'text', $source, $staffId);
+        ], $text, 'text', $source, $staffId, $context);
     }
 
     /**
@@ -615,7 +615,8 @@ class WhatsAppChannel
         string $displayBody,
         string $msgType,
         string $source,
-        ?int $staffId = null
+        ?int $staffId = null,
+        string $context = 'reply'
     ): array {
         // ── القفل 0: الموظف يرى المحادثة (سياج E04). يغطي الرد من الصندوق وإرسال السعر معاً.
         //    رسائل البوت والنظام لا تمر به: الويبهوك والطابور والمساعد الإداري بلا مستخدم.
@@ -650,6 +651,18 @@ class WhatsAppChannel
         }
         $payload = ['messaging_product' => 'whatsapp'] + $target + $payload;
 
+        // ── البوابة 5: سياسة المحتوى الصادر (E15.9). القرار يُحفظ مع الرسالة (payload._policy) ولا يُرسل لميتا
+        $decision = Outbound\OutboundPolicy::evaluate($conv, $payload, $displayBody, $source, $context);
+        $stored = $payload;
+        if ($decision->reasons || $decision->warnings) {
+            $enforce = $source !== 'staff' && Outbound\OutboundPolicy::enforced();
+            WaLog::warning('wa.policy', ['conv_id' => $conv->id, 'source' => $source, 'policy_reason' => implode(',', $decision->reasons ?: $decision->warnings)]);
+            if ($enforce && $decision->blocks()) {
+                return self::blockByPolicy($conv, $decision, $payload, $displayBody, $msgType, $source, $staffId, $s->phoneNumberId());
+            }
+            $stored['_policy'] = ['mode' => $enforce ? 'enforce' : 'log', 'context' => $context] + $decision->toArray();
+        }
+
         try {
             $url = self::graphPath((string) $s->phoneNumberId(), 'messages');
         } catch (\InvalidArgumentException $e) {
@@ -666,7 +679,7 @@ class WhatsAppChannel
             $ref = \App\Support\ErrorRef::log($e, 'wa.send.connection_failed', ['conv_id' => $conv->id]);
             // رسالة الموظف تترك أثراً «غير مؤكد»: المهلة قد تقع بعد أن سلّمتها ميتا، فلا يعيد كتابتها دون أن يرى ذلك
             if ($source === 'staff') {
-                self::store($conv, null, $displayBody, $msgType, $source, 'unconfirmed', "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}", $staffId, $payload, errorCode: 'HTTP_ERROR', phoneNumberId: $s->phoneNumberId());
+                self::store($conv, null, $displayBody, $msgType, $source, 'unconfirmed', "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}", $staffId, $stored, errorCode: 'HTTP_ERROR', phoneNumberId: $s->phoneNumberId());
             }
 
             return self::fail('HTTP_ERROR', "تعذّر الاتصال بميتا (مهلة أو شبكة). رقم المرجع: {$ref}");
@@ -676,7 +689,7 @@ class WhatsAppChannel
 
         if (!$res->successful()) {
             [$code, $err, $metaCode, $trace] = self::mapGraphError($res);
-            self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload, $metaCode, $trace, $code, $s->phoneNumberId());
+            self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $stored, $metaCode, $trace, $code, $s->phoneNumberId());
             WaLog::warning('wa.send.failed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType, 'code' => $code, 'meta_code' => $metaCode, 'fbtrace_id' => $trace]);
 
             return self::fail($code, $err, $metaCode);
@@ -685,7 +698,7 @@ class WhatsAppChannel
         // 200 بلا معرّف رسالة: قبلتها ميتا ولا دليل على الإرسال، فلا تُعرض «أُرسلت» (E12.8)
         $wamid = data_get($json, 'messages.0.id');
         $status = is_string($wamid) && $wamid !== '' ? 'sent' : 'unconfirmed';
-        self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $payload, phoneNumberId: $s->phoneNumberId());
+        self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $stored, phoneNumberId: $s->phoneNumberId());
         if ($status === 'unconfirmed') {
             WaLog::warning('wa.send.unconfirmed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType]);
         } else {
@@ -714,6 +727,24 @@ class WhatsAppChannel
         }
 
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $status === 'sent' ? $wamid : null] + ($status === 'unconfirmed' ? ['unconfirmed' => true] : []);
+    }
+
+    /**
+     * رسالة آلية حجبتها السياسة: لا نداء لميتا، والمحفوظ نص بديل وبصمة sha256 للأصل وحدها (لا يبقى المحتوى المحجوب)،
+     * والمحادثة «تحتاج تدخّلاً» لموظف. المتصل لا يرسل بديلاً (BotEngine لا يستدعي failSafe لفشل الإرسال).
+     */
+    private static function blockByPolicy(WaConversation $conv, Outbound\Decision $decision, array $payload, string $displayBody,
+        string $msgType, string $source, ?int $staffId, ?string $phoneNumberId): array
+    {
+        $label = Outbound\OutboundPolicy::describe($decision->reasons);
+        $hash = hash('sha256', implode("\n", Outbound\OutboundPolicy::texts($payload, $displayBody)));
+        self::store($conv, null, "[حُجبت رسالة آلية: {$label}]", $msgType, $source, 'blocked',
+            "حُجبت قبل الإرسال بسياسة المحتوى الصادر ({$label})، ولم تصل العميل.", $staffId,
+            ['_policy' => ['mode' => 'enforce', 'reasons' => $decision->reasons, 'sha256' => $hash]],
+            errorCode: $decision->errorCode(), phoneNumberId: $phoneNumberId);
+        ReplyState::markUnserved($conv, 'policy_block');
+
+        return self::fail('POLICY_BLOCKED', 'حُجبت الرسالة قبل الإرسال بسياسة المحتوى الصادر.');
     }
 
     private static ?bool $hasMetaColumns = null;

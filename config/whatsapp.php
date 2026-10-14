@@ -6,6 +6,11 @@
 */
 
 return [
+    // بوابة المحتوى الصادر (E15.9): حسابات الشركة المسموح ظهورها في الرسائل الآلية (IBAN بلا مسافات، مفصولة بفواصل)
+    'outbound_policy' => [
+        'allow_ibans' => array_values(array_filter(array_map(fn ($i) => strtoupper(str_replace(' ', '', trim($i))), explode(',', (string) env('WA_POLICY_ALLOW_IBANS', ''))))),
+    ],
+
     'media' => [
         // R2/S3 لاحقاً بقرار المالك (يُذكر المزوّد في /privacy)
         'disk' => env('WA_MEDIA_DISK', 'wa_media'),

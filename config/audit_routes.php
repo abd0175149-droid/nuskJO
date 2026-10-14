@@ -108,7 +108,7 @@ return [
     'WhatsAppController@toggleBot' => 'wa.bot_toggle',
     'WhatsAppController@toggleTopic' => 'wa.topic',
     'WhatsAppController@assign' => 'wa.assign',
-    'WhatsAppController@send' => 'none: wa_messages.staff_id يحفظ المرسل',
+    'WhatsAppController@send' => 'wa.policy_override',
     'WhatsAppController@requestContact' => 'none: رسالة صادرة كالرد، وwa_messages.staff_id يحفظ المرسل',
     'WhatsAppController@linkClient' => 'wa.link_client',
     'WhatsAppErasureController@verify' => 'wa.erasure_verify',

@@ -167,7 +167,8 @@ class QuoteRequestController extends Controller
             }
             $lines[] = 'للتأكيد أو أي استفسار، نحن معك هنا.';
 
-            $res = WhatsAppChannel::sendText($quoteRequest->conversation, implode("\n", $lines), 'staff', auth()->id());
+            // رسالة يبنيها الكود (context=code): تحذيرات السياسة تُسجَّل ولا تطلب تأكيداً (E15.9)
+            $res = WhatsAppChannel::sendText($quoteRequest->conversation, implode("\n", $lines), 'staff', auth()->id(), 'code');
             self::auditPrice($quoteRequest, $data, $res['ok']);
 
             if ($res['ok']) {
