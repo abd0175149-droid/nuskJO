@@ -4,11 +4,13 @@ namespace Tests\Feature\Security;
 
 use App\Logging\RedactSecrets;
 use App\Models\WaBotSetting;
+use App\Services\WhatsApp\WaLog;
 use App\Support\SecretRedactor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Monolog\Formatter\JsonFormatter;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -113,14 +115,14 @@ class SecretRedactionTest extends TestCase
     {
         $this->assertSame(
             ['conv_id' => 7, 'phone_tail' => '1234', 'meta_code' => 131047],
-            \App\Services\WhatsApp\WaLog::filter(['conv_id' => 7, 'phone_tail' => '+962 79 000 1234', 'meta_code' => 131047, 'body' => 'نص العميل', 'name' => 'اسم', 'phone' => '962790001234']),
+            WaLog::filter(['conv_id' => 7, 'phone_tail' => '+962 79 000 1234', 'meta_code' => 131047, 'body' => 'نص العميل', 'name' => 'اسم', 'phone' => '962790001234']),
         );
     }
 
     public function test_whatsapp_channel_writes_json_lines(): void
     {
         $this->assertSame(['wa_json', 'single'], config('logging.channels.whatsapp.channels'));
-        $this->assertSame(\Monolog\Formatter\JsonFormatter::class, config('logging.channels.wa_json.formatter'));
+        $this->assertSame(JsonFormatter::class, config('logging.channels.wa_json.formatter'));
         $this->assertContains(RedactSecrets::class, config('logging.channels.wa_json.tap'));
     }
 }

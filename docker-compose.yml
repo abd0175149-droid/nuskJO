@@ -39,6 +39,12 @@ services:
       - SAR_TO_JOD=0.19
     env_file:
       - .env.production
+    # سجلات الحاوية مدوّرة: 5 ملفات × 10MB (nginx وphp-fpm يكتبان إلى stdout/stderr)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       # /up يمرّ بإقلاع Laravel فعلاً؛ / كان ينجح بمجرد التحويل إلى صفحة الدخول
       test: ["CMD", "curl", "-fsS", "http://localhost:4020/up"]
