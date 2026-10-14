@@ -55,7 +55,7 @@ fi
 
 # 4) حارس فصل الحجم: compose بالتخطيط الجديد قبل نقل القاعدة يُقلع على حجم فارغ (فيرفض الإقلاع)
 DB_VOLUME="${DB_VOLUME:-nuskjo_nuskjo-dbdata}"
-if docker compose config 2>/dev/null | grep -q '/var/www/html/database/data' \
+if grep -q '^ *- nuskjo-dbdata:/var/www/html/database/data' docker-compose.yml \
     && ! docker volume inspect "$DB_VOLUME" >/dev/null 2>&1; then
     docker compose build --build-arg GIT_COMMIT="$SHA" "$APP_CONTAINER"
     log "sha=$SHA built; database volume not split yet: run scripts/backup/move-db-volume.sh (docs/RELEASE.md)"
