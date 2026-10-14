@@ -5,6 +5,7 @@ namespace Tests\Feature\Backup;
 use App\Models\BackupRun;
 use App\Services\Backup\BackupFailed;
 use App\Services\Backup\SnapshotService;
+use App\Support\Retention;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use PDO;
@@ -122,12 +123,12 @@ class SnapshotServiceTest extends TestCase
         config(['retention.shrink_ledger' => $this->dir.'/shrink.json']);
         $this->service()->run('manual', 'a');
         (new PDO('sqlite:'.$this->db))->exec('DELETE FROM journal_entries WHERE id > 10');
-        \App\Support\Retention::recordShrink(['journal_entries' => 30]);
+        Retention::recordShrink(['journal_entries' => 30]);
 
         $this->service()->run('manual', 'b');
 
         $this->assertCount(2, $this->service()->snapshots(), 'الحذف المسجّل لا يُعدّ «قاعدة خطأ»');
-        $this->assertSame([], \App\Support\Retention::shrinkAllowance(), 'يُمسح بعد نسخة ناجحة');
+        $this->assertSame([], Retention::shrinkAllowance(), 'يُمسح بعد نسخة ناجحة');
     }
 
     public function test_the_erasure_ledger_travels_with_the_snapshot(): void
@@ -135,7 +136,7 @@ class SnapshotServiceTest extends TestCase
         config(['retention.erasure_ledger' => $this->dir.'/erasure-ledger.jsonl']);
         $this->assertArrayNotHasKey('erasure-ledger.jsonl', $this->service()->run('manual', 'a')['manifest']['files']);
 
-        \App\Support\Retention::appendErasureLedger(['subject_hmac' => 'abc', 'done_at' => '2026-10-14T10:00:00Z']);
+        Retention::appendErasureLedger(['subject_hmac' => 'abc', 'done_at' => '2026-10-14T10:00:00Z']);
         $result = $this->service()->run('manual', 'b');
 
         $this->assertSame(hash_file('sha256', $this->dir.'/erasure-ledger.jsonl'), $result['manifest']['files']['erasure-ledger.jsonl']['sha256']);

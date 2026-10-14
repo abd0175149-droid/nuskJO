@@ -3,6 +3,7 @@
 namespace App\Services\Backup;
 
 use App\Models\BackupRun;
+use App\Support\Retention;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use PDO;
@@ -92,7 +93,7 @@ class SnapshotService
             $this->lockDown($final);
             $this->rotate();
 
-            \App\Support\Retention::clearShrinkAllowance();
+            Retention::clearShrinkAllowance();
             $this->finishRun($run, [
                 'status' => 'ok',
                 'snapshot_name' => $name,
@@ -252,7 +253,7 @@ class SnapshotService
         $previous = $this->latestManifest()['row_counts'] ?? [];
         $tolerance = (float) config('backup.shrink_tolerance', 0.9);
         // ما حذفه prune وforget منذ آخر نسخة انكماش مقصود (E13): يُطرح من المرجع
-        $allowed = \App\Support\Retention::shrinkAllowance();
+        $allowed = Retention::shrinkAllowance();
         foreach (config('backup.core_tables', []) as $table) {
             $before = isset($previous[$table]) ? max(0, $previous[$table] - ($allowed[$table] ?? 0)) : null;
             if ($before && ($counts[$table] ?? 0) < $before * $tolerance) {
