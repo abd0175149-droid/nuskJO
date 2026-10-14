@@ -32,6 +32,8 @@ RUN apk add --no-cache \
     oniguruma-dev \
     curl \
     bash \
+    # تشفير الأرشيفات على المضيف بلا أدوات إضافية (scripts/backup)
+    age \
     # ── توليد بطاقات العروض: كروميوم بلا واجهة + خطوط عربية ──
     # gd لا يُشكّل الحروف العربية ولا يضبط اتجاه النصّ، فالتصيير يتم عبر
     # كروميوم من قالب HTML. الخطوط إلزامية: الصورة الأساسية بلا أي خطّ.
@@ -83,11 +85,11 @@ RUN mkdir -p \
     storage/framework/sessions \
     storage/framework/views \
     storage/logs \
-    database \
+    storage/app/backups \
+    database/data \
     bootstrap/cache
 
-# Create SQLite database if not exists
-RUN touch database/database.sqlite
+# لا قاعدة داخل الصورة: تأتي من الحجم، والإقلاع يرفض غيابها في الإنتاج (docker/entrypoint.sh)
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
@@ -106,6 +108,10 @@ COPY docker/supervisord.conf /etc/supervisord.conf
 # ---- Entrypoint Script ----
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# رقم الإصدار في manifest النسخ الاحتياطية (يمرّره scripts/deploy.sh)
+ARG GIT_COMMIT=unknown
+ENV APP_COMMIT=$GIT_COMMIT
 
 EXPOSE 4020
 

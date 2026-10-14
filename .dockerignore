@@ -47,6 +47,13 @@ phpunit.xml
 .DS_Store
 Thumbs.db
 
+# قواعد ونسخ وأسرار لا تدخل الصورة أبداً (COPY . . ينسخ كل ما في /opt/nuskJO)
+database/*.sqlite*
+database/data/
+storage/app/backups/
+storage/app/firebase-auth.json
+*.age
+
 # Misc
 *.png
 auth.json

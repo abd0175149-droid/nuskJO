@@ -9,6 +9,9 @@ return [
     'enabled' => (bool) env('BACKUP_ENABLED', false),
     'pre_migrate' => (bool) env('BACKUP_PRE_MIGRATE', false),
 
+    // يضبطه Dockerfile من ARG GIT_COMMIT؛ يُقرأ هنا لأن env() خارج الإعداد لا يعمل بعد config:cache
+    'app_commit' => env('APP_COMMIT'),
+
     'spool_path' => env('BACKUP_SPOOL_PATH', storage_path('app/backups')),
     'media_dirs' => [storage_path('app/public')],
 

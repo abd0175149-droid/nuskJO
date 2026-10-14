@@ -18,6 +18,7 @@ use Symfony\Component\Process\Process;
 class SnapshotService
 {
     private string $dbPath;
+
     private string $spool;
 
     public function __construct(?string $dbPath = null, ?string $spool = null)
@@ -33,7 +34,7 @@ class SnapshotService
      */
     public function run(string $reason, ?string $label = null, bool $allowShrink = false, ?int $userId = null): array
     {
-        if (! in_array($reason, BackupRun::REASONS, true)) {
+        if (!in_array($reason, BackupRun::REASONS, true)) {
             throw new BackupFailed("سبب غير معروف: {$reason}");
         }
 
@@ -74,7 +75,7 @@ class SnapshotService
                 'created_at' => now()->utc()->toIso8601String(),
                 'reason' => $reason,
                 'label' => $label,
-                'app_commit' => env('APP_COMMIT'),
+                'app_commit' => config('backup.app_commit'),
                 'sqlite_version' => $snap->sqliteVersion(),
                 'journal_mode' => $live->journalMode(),
                 'integrity' => $integrity,
@@ -92,7 +93,7 @@ class SnapshotService
                 $final .= '-'.substr(bin2hex(random_bytes(3)), 0, 6);
                 $name = basename($final);
             }
-            if (! rename($partial, $final)) {
+            if (!rename($partial, $final)) {
                 throw new BackupFailed('تعذّرت إعادة تسمية النسخة');
             }
             $partial = null;
@@ -139,11 +140,11 @@ class SnapshotService
     /** مجلدات النسخ المكتملة، الأحدث أولاً. */
     public function snapshots(): array
     {
-        if (! is_dir($this->spool)) {
+        if (!is_dir($this->spool)) {
             return [];
         }
 
-        $dirs = array_filter(glob("{$this->spool}/*", GLOB_ONLYDIR) ?: [], fn ($d) => ! str_ends_with($d, '.partial'));
+        $dirs = array_filter(glob("{$this->spool}/*", GLOB_ONLYDIR) ?: [], fn ($d) => !str_ends_with($d, '.partial'));
         rsort($dirs);
 
         return array_values($dirs);
@@ -151,7 +152,7 @@ class SnapshotService
 
     private function assertRealDatabase(): void
     {
-        if ($this->dbPath === '' || $this->dbPath === ':memory:' || ! is_file($this->dbPath)) {
+        if ($this->dbPath === '' || $this->dbPath === ':memory:' || !is_file($this->dbPath)) {
             throw new BackupFailed('لا توجد قاعدة SQLite على ملف لنسخها');
         }
     }
@@ -177,7 +178,7 @@ class SnapshotService
             @unlink($dest);
             $p = new Process(['sqlite3', '-init', '/dev/null', '-cmd', '.timeout 30000', $this->dbPath, ".backup '{$dest}'"]);
             $p->setTimeout(600)->run();
-            if (! $p->isSuccessful() || ! is_file($dest)) {
+            if (!$p->isSuccessful() || !is_file($dest)) {
                 throw new BackupFailed('تعذّر أخذ اللقطة: '.$e->getMessage());
             }
         }
@@ -215,7 +216,7 @@ class SnapshotService
     private function archiveMedia(string $dest): int
     {
         $dirs = array_filter(config('backup.media_dirs', []), 'is_dir');
-        if (! $dirs) {
+        if (!$dirs) {
             return 0;
         }
 
@@ -228,7 +229,7 @@ class SnapshotService
 
         $p = new Process($args);
         $p->setTimeout(1800)->run();
-        if (! $p->isSuccessful()) {
+        if (!$p->isSuccessful()) {
             throw new BackupFailed('تعذّر أرشفة الوسائط: '.trim($p->getErrorOutput()));
         }
 
@@ -279,7 +280,7 @@ class SnapshotService
         }
 
         foreach (array_slice($all, $keep) as $dir) {
-            if (! in_array($dir, $protected, true)) {
+            if (!in_array($dir, $protected, true)) {
                 File::deleteDirectory($dir);
             }
         }
@@ -288,7 +289,7 @@ class SnapshotService
     private function startRun(string $reason, ?int $userId): ?BackupRun
     {
         try {
-            if (! Schema::hasTable('backup_runs')) {
+            if (!Schema::hasTable('backup_runs')) {
                 return null;
             }
 

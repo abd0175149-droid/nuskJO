@@ -54,7 +54,7 @@ if docker ps --format '{{.Names}}' | grep -qx "$APP_CONTAINER"; then
 fi
 
 # 4) البناء والتشغيل
-docker compose build "$APP_CONTAINER"
+docker compose build --build-arg GIT_COMMIT="$SHA" "$APP_CONTAINER"
 docker compose up -d "$APP_CONTAINER"
 
 for _ in $(seq 1 30); do

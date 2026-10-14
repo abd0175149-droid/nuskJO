@@ -2,6 +2,4 @@
 
 namespace App\Services\Backup;
 
-class BackupFailed extends \RuntimeException
-{
-}
+class BackupFailed extends \RuntimeException {}

@@ -27,7 +27,7 @@ class BackupRunCommand extends Command
     {
         $reason = (string) $this->option('reason');
 
-        if (! in_array($reason, BackupRun::REASONS, true)) {
+        if (!in_array($reason, BackupRun::REASONS, true)) {
             $this->error('سبب غير معروف. القيم: '.implode('|', BackupRun::REASONS));
 
             return self::FAILURE;

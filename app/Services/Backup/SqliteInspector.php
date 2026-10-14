@@ -11,7 +11,7 @@ class SqliteInspector
 
     public function __construct(string $path)
     {
-        if (! is_file($path)) {
+        if (!is_file($path)) {
             throw new BackupFailed("ملف القاعدة غير موجود: {$path}");
         }
 
@@ -56,7 +56,7 @@ class SqliteInspector
     /** @return array{count:int,last:?string} */
     public function migrations(): array
     {
-        if (! $this->hasTable('migrations')) {
+        if (!$this->hasTable('migrations')) {
             return ['count' => 0, 'last' => null];
         }
 
