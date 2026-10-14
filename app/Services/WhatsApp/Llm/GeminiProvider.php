@@ -2,6 +2,9 @@
 
 namespace App\Services\WhatsApp\Llm;
 
+use App\Support\SecretRedactor;
+use App\Support\UrlPath;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -21,11 +24,32 @@ class GeminiProvider implements LlmProvider
         return 'google';
     }
 
+    /** المفتاح في الترويسة لا في الرابط (الرابط يصل إلى السجلات ورسائل الأخطاء)، ولا تحويل يحمله لمضيف آخر */
+    private function client(string $apiKey, int $timeout): PendingRequest
+    {
+        return Http::withHeaders(['x-goog-api-key' => $apiKey])
+            ->withoutRedirecting()
+            ->connectTimeout(10)
+            ->timeout($timeout)
+            ->acceptJson();
+    }
+
+    private function generateUrl(string $model): string
+    {
+        return self::BASE . '/models/' . UrlPath::segment($model) . ':generateContent';
+    }
+
+    private static function failure(string $prefix, \Illuminate\Http\Client\Response $res, string $apiKey): \RuntimeException
+    {
+        return new \RuntimeException(SecretRedactor::clean($prefix . ' HTTP ' . $res->status() . ': '
+            . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300), [$apiKey]));
+    }
+
     public function models(string $apiKey): array
     {
-        $res = Http::timeout(20)->acceptJson()->get(self::BASE . '/models', ['key' => $apiKey]);
+        $res = $this->client($apiKey, 20)->get(self::BASE . '/models');
         if (!$res->successful()) {
-            throw new \RuntimeException('Google: ' . data_get($res->json(), 'error.message', 'HTTP ' . $res->status()));
+            throw new \RuntimeException(SecretRedactor::clean('Google: ' . data_get($res->json(), 'error.message', 'HTTP ' . $res->status()), [$apiKey]));
         }
 
         $out = [];
@@ -79,12 +103,10 @@ class GeminiProvider implements LlmProvider
             $body['tools'] = [['functionDeclarations' => array_map([$this, 'declaration'], $tools)]];
         }
 
-        $res = Http::timeout(40)->acceptJson()
-            ->post(self::BASE . "/models/{$model}:generateContent?key=" . urlencode($apiKey), $body);
+        $res = $this->client($apiKey, 40)->post($this->generateUrl($model), $body);
 
         if (!$res->successful()) {
-            throw new \RuntimeException('Gemini HTTP ' . $res->status() . ': '
-                . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300));
+            throw self::failure('Gemini', $res, $apiKey);
         }
 
         $json = $res->json() ?? [];
@@ -144,12 +166,10 @@ class GeminiProvider implements LlmProvider
             'generationConfig' => ['temperature' => 0, 'maxOutputTokens' => 1024],
         ];
 
-        $res = Http::timeout(60)->acceptJson()
-            ->post(self::BASE . "/models/{$model}:generateContent?key=" . urlencode($apiKey), $body);
+        $res = $this->client($apiKey, 60)->post($this->generateUrl($model), $body);
 
         if (!$res->successful()) {
-            throw new \RuntimeException('Gemini transcribe HTTP ' . $res->status() . ': '
-                . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300));
+            throw self::failure('Gemini transcribe', $res, $apiKey);
         }
 
         $text = '';

@@ -413,7 +413,7 @@ class WhatsAppController extends Controller
             'wa_app_secret' => 'nullable|string',
             'api_key' => 'nullable|string',
             'provider' => 'nullable|in:google,anthropic',
-            'model' => 'nullable|string|max:64',
+            'model' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/'],
             'system_prompt' => 'nullable|string|max:20000',
             'knowledge_base' => 'nullable|string|max:40000',
             'context_messages' => 'integer|min:4|max:60',
@@ -423,6 +423,9 @@ class WhatsAppController extends Controller
             'fail_message' => 'nullable|string|max:500',
             'fail_handoff' => 'boolean',
             'tools_config' => 'nullable|array',
+        ], [
+            // اسم النموذج يدخل مسار رابط المزوّد
+            'model.regex' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط',
         ]);
 
         // الأسرار الفارغة لا تمسح المحفوظ
@@ -543,8 +546,16 @@ class WhatsAppController extends Controller
 
         try {
             $models = \App\Services\WhatsApp\Llm\LlmFactory::make($data['provider'])->models($key);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            // نص استثناء الاتصال يحمل الرابط كاملاً: لا يُعاد للواجهة
+            \Illuminate\Support\Facades\Log::error('LLM key test: connection failed: ' . \App\Support\SecretRedactor::clean($e->getMessage(), [$key]));
+
+            return response()->json(['ok' => false, 'error' => 'تعذّر الاتصال بالمزوّد (مهلة أو شبكة) — حاول لاحقاً.'], 422);
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+            $error = \App\Support\SecretRedactor::clean(mb_substr($e->getMessage(), 0, 300), [$key]);
+            \Illuminate\Support\Facades\Log::error('LLM key test failed: ' . $error);
+
+            return response()->json(['ok' => false, 'error' => $error], 422);
         }
 
         return response()->json([

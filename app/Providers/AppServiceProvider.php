@@ -34,6 +34,11 @@ class AppServiceProvider extends ServiceProvider
         $this->definePermissionGate();
         $this->defineLoginRateLimit();
         $this->bindVisibleConversations();
+
+        // لا يتبع أي نداء Http تحويلاً ما لم يطلبه صراحة (المفاتيح في الترويسات قد تُحمل لمضيف آخر)
+        if (config('services.outbound.block_redirects')) {
+            \Illuminate\Support\Facades\Http::globalOptions(['allow_redirects' => false]);
+        }
     }
 
     /**

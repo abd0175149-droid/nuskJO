@@ -184,8 +184,9 @@ class AdminTools
 
             return $out;
         } catch (\Throwable $e) {
-            Log::error("admin tool {$name} failed: " . $e->getMessage());
-            self::log($a, $conv, $name, $action ?: null, 'error', mb_substr($e->getMessage(), 0, 300), $in);
+            $error = \App\Support\SecretRedactor::clean($e->getMessage());
+            Log::error("admin tool {$name} failed: " . $error);
+            self::log($a, $conv, $name, $action ?: null, 'error', mb_substr($error, 0, 300), $in);
 
             return ['error' => 'تعذّر تنفيذ الطلب', 'note' => 'اعتذر بإيجاز واقترح المحاولة من لوحة التحكم.'];
         }

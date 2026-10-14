@@ -15,7 +15,8 @@ final class SecretRedactor
     /** @var list<string>|null */
     private static ?array $known = null;
 
-    public static function clean(string $text): string
+    /** @param  list<?string>  $also  أسرار يعرفها المستدعي ولم تُحفظ بعد (مفتاح يُفحص قبل حفظه) */
+    public static function clean(string $text, array $also = []): string
     {
         if ($text === '') {
             return $text;
@@ -26,6 +27,10 @@ final class SecretRedactor
             $text = preg_replace('/Bearer\s+[^\s"\',;]+/i', 'Bearer ***', $text) ?? $text;
 
             $known = self::knownSecrets();
+            $also = array_filter($also, fn ($v) => is_string($v) && strlen($v) >= 8);
+            if ($also) {
+                $known = array_merge(array_values($also), $known);
+            }
 
             return $known ? str_replace($known, '***', $text) : $text;
         } catch (Throwable) {

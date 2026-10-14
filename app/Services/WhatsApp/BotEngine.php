@@ -141,7 +141,7 @@ TXT;
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
         } catch (\Throwable $e) {
-            Log::error('BotEngine failed conv=' . $conv->id . ': ' . $e->getMessage());
+            Log::error('BotEngine failed conv=' . $conv->id . ': ' . \App\Support\SecretRedactor::clean($e->getMessage()));
             return self::failSafe($conv, $s);
         }
     }
@@ -194,7 +194,7 @@ TXT;
                         ? $exec($tc['name'], $tc['input'], $conv->fresh())
                         : BotTools::execute($tc['name'], $tc['input'], $conv->fresh());
                 } catch (\Throwable $e) {
-                    Log::error("tool {$tc['name']} failed: " . $e->getMessage());
+                    Log::error("tool {$tc['name']} failed: " . \App\Support\SecretRedactor::clean($e->getMessage()));
                     $out = ['error' => 'تعذّر تنفيذ العملية', 'note' => 'اعتذر بإيجاز واقترح تحويل المحادثة لموظف.'];
                 }
                 $usage['tools'][] = $tc['name'];
@@ -369,7 +369,7 @@ TXT;
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
         } catch (\Throwable $e) {
-            Log::error('Admin assistant failed conv=' . $conv->id . ': ' . $e->getMessage());
+            Log::error('Admin assistant failed conv=' . $conv->id . ': ' . \App\Support\SecretRedactor::clean($e->getMessage()));
             WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system');
 
             return ['sent' => true, 'reason' => 'admin-fail'];

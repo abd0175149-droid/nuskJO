@@ -78,7 +78,8 @@ class VoiceTranscriber
                 }
             }
         } catch (\Throwable $e) {
-            Log::warning('WA voice transcription failed', ['message' => $m->id, 'error' => $e->getMessage()]);
+            // error لا warning: الإنتاج يسجّل من error فما فوق، فكان الفشل يختفي
+            Log::error('WA voice transcription failed', ['message' => $m->id, 'error' => \App\Support\SecretRedactor::clean($e->getMessage())]);
         }
 
         $payload['_transcribed'] = true;

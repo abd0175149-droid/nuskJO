@@ -20,6 +20,11 @@ return [
         'fence_quotes' => (bool) env('WA_FENCE_QUOTES', false),
     ],
 
+    // شبكة أمان لكل نداء Http جديد: لا تحويل يحمل ترويسة سرية إلى مضيف آخر (E05)
+    'outbound' => [
+        'block_redirects' => (bool) env('OUTBOUND_HTTP_NO_REDIRECTS', true),
+    ],
+
     'llm' => [
         'anthropic_key' => env('ANTHROPIC_API_KEY'),
         'google_key' => env('GOOGLE_API_KEY') ?: env('GEMINI_API_KEY'),

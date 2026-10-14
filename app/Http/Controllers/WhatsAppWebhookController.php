@@ -53,7 +53,7 @@ class WhatsAppWebhookController extends Controller
             }
         } catch (\Throwable $e) {
             // لا نُفشل الويبهوك أبداً — نسجّل ونردّ 200
-            Log::error('WA webhook error: ' . $e->getMessage());
+            Log::error('WA webhook error: ' . \App\Support\SecretRedactor::clean($e->getMessage()));
         }
 
         return response()->json(['ok' => true], 200);
