@@ -6,6 +6,7 @@ use App\Enums\AuditAction;
 use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Disbursement;
+use App\Models\Employee;
 use App\Models\Invoice;
 use App\Models\QuoteRequest;
 use App\Models\Receipt;
@@ -18,6 +19,8 @@ use App\Models\WaKnowledgeEntry;
 use App\Services\TravelersReport;
 use App\Services\WhatsApp\Settings\SettingsWriter;
 use App\Support\AuditActor;
+use App\Support\ErrorRef;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -36,123 +39,218 @@ class AdminTools
 {
     /** الصلاحيات كما تظهر في لوحة التحكم — مجموعة، اسم، وصف، وهل تُعدّل */
     public const CATALOG = [
-        'report.daily'     => ['group' => 'التقارير', 'label' => 'ملخّص اليوم', 'desc' => 'مبيعات اليوم والمقبوضات وما ينتظر الاعتماد ومسافرو اليوم والمحادثات.', 'write' => false],
-        'report.sales'     => ['group' => 'التقارير', 'label' => 'تقرير المبيعات والأرباح', 'desc' => 'المبيعات المعتمدة والربح لفترة، وأعلى البائعين.', 'write' => false],
+        'report.daily' => ['group' => 'التقارير', 'label' => 'ملخّص اليوم', 'desc' => 'مبيعات اليوم والمقبوضات وما ينتظر الاعتماد ومسافرو اليوم والمحادثات.', 'write' => false],
+        'report.sales' => ['group' => 'التقارير', 'label' => 'تقرير المبيعات والأرباح', 'desc' => 'المبيعات المعتمدة والربح لفترة، وأعلى البائعين.', 'write' => false],
         'report.travelers' => ['group' => 'التقارير', 'label' => 'المسافرون بتاريخ', 'desc' => 'المسافرون في يوم محدّد مع المتبقي على كل فاتورة.', 'write' => false],
         'report.approvals' => ['group' => 'التقارير', 'label' => 'ما ينتظر الاعتماد', 'desc' => 'الفواتير وسندات القبض والصرف المعلّقة.', 'write' => false],
-        'report.quotes'    => ['group' => 'التقارير', 'label' => 'طلبات التسعير المفتوحة', 'desc' => 'طلبات التسعير التي لم تُرسل بعد ومن تُسند إليه.', 'write' => false],
-        'report.client'    => ['group' => 'التقارير', 'label' => 'بحث عن عميل ورصيده', 'desc' => 'بالاسم أو الهاتف أو الرمز: الرصيد وآخر الفواتير.', 'write' => false],
-        'kb.view'          => ['group' => 'قاعدة المعرفة', 'label' => 'استعراض المعرفة', 'desc' => 'قائمة المعلومات، وعرض معلومة، والبحث فيها.', 'write' => false],
-        'kb.add'           => ['group' => 'قاعدة المعرفة', 'label' => 'إضافة معلومة', 'desc' => 'يضيف معلومة يقرؤها بوت العملاء فوراً.', 'write' => true],
-        'kb.update'        => ['group' => 'قاعدة المعرفة', 'label' => 'تعديل معلومة', 'desc' => 'يغيّر عنوان معلومة أو نصّها أو يوقفها مؤقّتاً.', 'write' => true],
-        'kb.delete'        => ['group' => 'قاعدة المعرفة', 'label' => 'حذف معلومة', 'desc' => 'يحذف معلومة نهائياً (تبقى نسختها في سجلّ الإجراءات).', 'write' => true],
-        'tools.view'       => ['group' => 'إدارة الأدوات', 'label' => 'عرض أدوات بوت العملاء', 'desc' => 'أيّ الأدوات مفعّلة لبوت العملاء الآن.', 'write' => false],
-        'tools.toggle'     => ['group' => 'إدارة الأدوات', 'label' => 'تفعيل أو إيقاف أداة', 'desc' => 'يشغّل أو يوقف أداة لبوت العملاء (مثل إرسال البطاقات).', 'write' => true],
-        'bot.toggle'       => ['group' => 'إدارة الأدوات', 'label' => 'تشغيل أو إيقاف بوت العملاء', 'desc' => 'يوقف ردود البوت على كل العملاء أو يعيدها.', 'write' => true],
+        'report.quotes' => ['group' => 'التقارير', 'label' => 'طلبات التسعير المفتوحة', 'desc' => 'طلبات التسعير التي لم تُرسل بعد ومن تُسند إليه.', 'write' => false],
+        'report.client' => ['group' => 'التقارير', 'label' => 'بحث عن عميل ورصيده', 'desc' => 'بالاسم أو الهاتف أو الرمز: الرصيد وآخر الفواتير.', 'write' => false],
+        'kb.view' => ['group' => 'قاعدة المعرفة', 'label' => 'استعراض المعرفة', 'desc' => 'قائمة المعلومات، وعرض معلومة، والبحث فيها.', 'write' => false],
+        'kb.add' => ['group' => 'قاعدة المعرفة', 'label' => 'إضافة معلومة', 'desc' => 'يضيف معلومة يقرؤها بوت العملاء فوراً.', 'write' => true],
+        'kb.update' => ['group' => 'قاعدة المعرفة', 'label' => 'تعديل معلومة', 'desc' => 'يغيّر عنوان معلومة أو نصّها أو يوقفها مؤقّتاً.', 'write' => true],
+        'kb.delete' => ['group' => 'قاعدة المعرفة', 'label' => 'حذف معلومة', 'desc' => 'يحذف معلومة نهائياً (تبقى نسختها في سجلّ الإجراءات).', 'write' => true],
+        'tools.view' => ['group' => 'إدارة الأدوات', 'label' => 'عرض أدوات بوت العملاء', 'desc' => 'أيّ الأدوات مفعّلة لبوت العملاء الآن.', 'write' => false],
+        'tools.toggle' => ['group' => 'إدارة الأدوات', 'label' => 'تفعيل أو إيقاف أداة', 'desc' => 'يشغّل أو يوقف أداة لبوت العملاء (مثل إرسال البطاقات).', 'write' => true],
+        'bot.toggle' => ['group' => 'إدارة الأدوات', 'label' => 'تشغيل أو إيقاف بوت العملاء', 'desc' => 'يوقف ردود البوت على كل العملاء أو يعيدها.', 'write' => true],
     ];
 
-    /** أسماء الأدوات التي يراها النموذج — لحارس تسريب الأسماء في النصّ */
-    public const TOOL_NAMES = [
-        'get_daily_summary', 'get_sales_report', 'get_travelers', 'get_pending_approvals',
-        'get_open_quotes', 'find_client', 'manage_knowledge', 'manage_bot_tools', 'set_customer_bot',
+    /**
+     * سجل أدوات المساعد الإداري (E15): المصدر الوحيد للإعلانات والصلاحيات والكتابة والتسميات. لكل أداة أفعالها
+     * (_ لأداة بلا فعل) ولكل فعل الصلاحية المطلوبة (نص أو أيٌّ من قائمة) وهل يكتب. لقطة tests/Snapshots/admin_*.json.
+     */
+    public const TOOLS = [
+        'get_daily_summary' => [
+            'label' => 'ملخّص اليوم', 'handler' => 'dailySummary',
+            'description' => 'ملخّص اليوم: المبيعات المعتمدة اليوم، والمقبوضات، وما ينتظر الاعتماد، ومسافرو اليوم، ومحادثات واتساب وطلبات التسعير الجديدة.',
+            'properties' => [], 'required' => [], 'rules' => [],
+            'actions' => ['_' => ['perm' => 'report.daily', 'write' => false]],
+        ],
+        'get_sales_report' => [
+            'label' => 'تقرير المبيعات', 'handler' => 'salesReport',
+            'description' => 'تقرير المبيعات المعتمدة لفترة: العدد والإجمالي والربح وأعلى البائعين. الافتراضي: الشهر الحالي.',
+            'properties' => [
+                'from' => ['type' => 'string', 'description' => 'من تاريخ YYYY-MM-DD'],
+                'to' => ['type' => 'string', 'description' => 'إلى تاريخ YYYY-MM-DD'],
+            ],
+            'required' => [], 'rules' => ['from' => 'nullable|date', 'to' => 'nullable|date'],
+            'actions' => ['_' => ['perm' => 'report.sales', 'write' => false]],
+        ],
+        'get_travelers' => [
+            'label' => 'المسافرون', 'handler' => 'travelers',
+            'description' => 'المسافرون في تاريخ محدّد مع المتبقي على كل فاتورة. الافتراضي: اليوم.',
+            'properties' => ['date' => ['type' => 'string', 'description' => 'التاريخ YYYY-MM-DD']],
+            'required' => [], 'rules' => ['date' => 'nullable|date'],
+            'actions' => ['_' => ['perm' => 'report.travelers', 'write' => false]],
+        ],
+        'get_pending_approvals' => [
+            'label' => 'ما ينتظر الاعتماد', 'handler' => 'pendingApprovals',
+            'description' => 'الفواتير وسندات القبض وسندات الصرف التي تنتظر الاعتماد.',
+            'properties' => [], 'required' => [], 'rules' => [],
+            'actions' => ['_' => ['perm' => 'report.approvals', 'write' => false]],
+        ],
+        'get_open_quotes' => [
+            'label' => 'طلبات التسعير', 'handler' => 'openQuotes',
+            'description' => 'طلبات التسعير المفتوحة (جديدة أو مسعّرة لم تُرسل) ومن تُسند إليه.',
+            'properties' => [], 'required' => [], 'rules' => [],
+            'actions' => ['_' => ['perm' => 'report.quotes', 'write' => false]],
+        ],
+        'find_client' => [
+            'label' => 'بحث عن عميل', 'handler' => 'findClient',
+            'description' => 'ابحث عن عميل بالاسم أو الهاتف أو الرمز، واعرض رصيده وآخر فواتيره.',
+            'properties' => ['query' => ['type' => 'string', 'description' => 'اسم أو جزء منه، أو رقم هاتف، أو رمز مثل CLT-041', 'maxLength' => 60]],
+            'required' => ['query'], 'rules' => ['query' => 'required|string|max:60'],
+            'actions' => ['_' => ['perm' => 'report.client', 'write' => false]],
+        ],
+        'manage_knowledge' => [
+            'label' => 'قاعدة المعرفة', 'handler' => 'knowledge',
+            'description' => 'إدارة قاعدة معرفة بوت العملاء (ما يقرؤه البوت مع كل رسالة). '
+                .'list: قائمة المعلومات بأرقامها. view: نصّ معلومة برقمها. search: بحث بكلمة. '
+                .'add / update / delete: تعديلات تمرّ بمعاينة ثم تأكيد من الموظف (confirm=true بعد موافقته فقط).',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => '{actions}'],
+                'id' => ['type' => 'integer', 'description' => 'رقم المعلومة (view/update/delete)', 'minimum' => 1],
+                'query' => ['type' => 'string', 'description' => 'كلمة البحث (search)', 'maxLength' => 100],
+                'title' => ['type' => 'string', 'description' => 'عنوان المعلومة (add/update)', 'maxLength' => WaKnowledgeEntry::MAX_TITLE],
+                'content' => ['type' => 'string', 'description' => 'نصّ المعلومة كاملاً (add/update)', 'maxLength' => WaKnowledgeEntry::MAX_CONTENT],
+                'is_active' => ['type' => 'boolean', 'description' => 'إيقاف المعلومة مؤقّتاً أو إعادتها (update)'],
+                'confirm' => ['type' => 'boolean', 'description' => 'true فقط بعد أن يوافق الموظف على المعاينة'],
+            ],
+            'required' => ['action'],
+            'rules' => ['action' => 'required|string', 'id' => 'nullable|integer|min:1', 'query' => 'nullable|string|max:100',
+                'title' => 'nullable|string|max:'.WaKnowledgeEntry::MAX_TITLE, 'content' => 'nullable|string|max:'.WaKnowledgeEntry::MAX_CONTENT,
+                'is_active' => 'nullable|boolean', 'confirm' => 'nullable|boolean'],
+            'actions' => [
+                'list' => ['perm' => ['kb.view', 'kb.add', 'kb.update', 'kb.delete'], 'write' => false, 'label' => 'قائمة'],
+                'view' => ['perm' => ['kb.view', 'kb.add', 'kb.update', 'kb.delete'], 'write' => false, 'label' => 'عرض'],
+                'search' => ['perm' => ['kb.view', 'kb.add', 'kb.update', 'kb.delete'], 'write' => false, 'label' => 'بحث'],
+                'add' => ['perm' => 'kb.add', 'write' => true, 'label' => 'إضافة'],
+                'update' => ['perm' => 'kb.update', 'write' => true, 'label' => 'تعديل'],
+                'delete' => ['perm' => 'kb.delete', 'write' => true, 'label' => 'حذف'],
+            ],
+        ],
+        'manage_bot_tools' => [
+            'label' => 'أدوات البوت', 'handler' => 'botTools',
+            'description' => 'عرض أدوات بوت العملاء وحالتها، أو تفعيل أداة أو إيقافها (بمعاينة ثم تأكيد).',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => '{actions}'],
+                'tool' => ['type' => 'string', 'description' => 'مفتاح الأداة كما يظهر في القائمة', 'maxLength' => 40],
+                'confirm' => ['type' => 'boolean', 'description' => 'true فقط بعد موافقة الموظف'],
+            ],
+            'required' => ['action'],
+            'rules' => ['action' => 'required|string', 'tool' => 'nullable|string|max:40', 'confirm' => 'nullable|boolean'],
+            'actions' => [
+                'list' => ['perm' => ['tools.view', 'tools.toggle'], 'write' => false, 'label' => 'قائمة'],
+                'enable' => ['perm' => 'tools.toggle', 'write' => true, 'label' => 'تفعيل'],
+                'disable' => ['perm' => 'tools.toggle', 'write' => true, 'label' => 'إيقاف'],
+            ],
+        ],
+        'set_customer_bot' => [
+            'label' => 'بوت العملاء', 'handler' => 'customerBot',
+            'description' => 'حالة بوت العملاء، أو تشغيله أو إيقافه لكل العملاء (بمعاينة ثم تأكيد).',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => '{actions}'],
+                'confirm' => ['type' => 'boolean', 'description' => 'true فقط بعد موافقة الموظف'],
+            ],
+            'required' => ['action'],
+            'rules' => ['action' => 'required|string', 'confirm' => 'nullable|boolean'],
+            'actions' => [
+                'status' => ['perm' => 'bot.toggle', 'write' => false, 'label' => 'الحالة'],
+                'on' => ['perm' => 'bot.toggle', 'write' => true, 'label' => 'تشغيل'],
+                'off' => ['perm' => 'bot.toggle', 'write' => true, 'label' => 'إيقاف'],
+            ],
+        ],
     ];
+
+    /** سقف نتيجة أداة إدارية (E15.7) */
+    public const DEFAULT_MAX_RESULT_BYTES = 8000;
 
     private const PENDING_TTL_MINUTES = 10;
 
+    /** @return list<string> */
+    public static function names(): array
+    {
+        return array_keys(self::TOOLS);
+    }
+
+    /** للواجهة: تسميات الأدوات وأفعالها @return array{tools: array<string, string>, actions: array<string, string>} */
+    public static function labels(): array
+    {
+        $actions = [];
+        foreach (self::TOOLS as $t) {
+            foreach ($t['actions'] as $key => $a) {
+                if ($key !== '_' && isset($a['label'])) {
+                    $actions[$key] ??= $a['label'];
+                }
+            }
+        }
+
+        return ['tools' => array_map(fn ($t) => $t['label'], self::TOOLS), 'actions' => $actions];
+    }
+
+    /** الصلاحية المطلوبة لكل أداة/فعل — null = غير معروفة فتُرفض. أداة بلا أفعال (_) لا يهمها الفعل */
+    public static function permissionFor(string $name, string $action): string|array|null
+    {
+        $actions = self::TOOLS[$name]['actions'] ?? null;
+        if ($actions === null) {
+            return null;
+        }
+
+        return isset($actions['_']) ? $actions['_']['perm'] : ($actions[$action]['perm'] ?? null);
+    }
+
+    public static function isWrite(string $name, string $action): bool
+    {
+        return (bool) (self::TOOLS[$name]['actions'][$action]['write'] ?? false);
+    }
+
+    /** الأدوات وأفعالها التي تكتب (E13): بها يحفظ التقليم الكتابات المنفّذة أطول @return array<string, list<string>> */
+    public static function writes(): array
+    {
+        $out = [];
+        foreach (self::TOOLS as $name => $t) {
+            $w = array_keys(array_filter($t['actions'], fn ($a) => $a['write']));
+            if ($w) {
+                $out[$name] = $w;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, string> */
+    public static function rules(string $name): array
+    {
+        return self::TOOLS[$name]['rules'] ?? [];
+    }
+
+    public static function maxResultBytes(string $name): int
+    {
+        return (int) (self::TOOLS[$name]['max_result_bytes'] ?? self::DEFAULT_MAX_RESULT_BYTES);
+    }
+
     // ==================== الإعلانات ====================
 
-    /** الأدوات المسموحة لهذا الرقم فقط — الباقي لا يعلم النموذج بوجوده */
+    /** الأدوات وأفعالها المسموحة لهذا الرقم فقط — الباقي لا يعلم النموذج بوجوده */
     public static function declarations(WaAdminNumber $a): array
     {
-        $t = [];
-
-        if ($a->allows('report.daily')) {
-            $t[] = self::decl('get_daily_summary', 'ملخّص اليوم: المبيعات المعتمدة اليوم، والمقبوضات، وما ينتظر الاعتماد، ومسافرو اليوم، ومحادثات واتساب وطلبات التسعير الجديدة.', []);
-        }
-        if ($a->allows('report.sales')) {
-            $t[] = self::decl('get_sales_report', 'تقرير المبيعات المعتمدة لفترة: العدد والإجمالي والربح وأعلى البائعين. الافتراضي: الشهر الحالي.', [
-                'from' => ['type' => 'string', 'description' => 'من تاريخ YYYY-MM-DD'],
-                'to' => ['type' => 'string', 'description' => 'إلى تاريخ YYYY-MM-DD'],
-            ]);
-        }
-        if ($a->allows('report.travelers')) {
-            $t[] = self::decl('get_travelers', 'المسافرون في تاريخ محدّد مع المتبقي على كل فاتورة. الافتراضي: اليوم.', [
-                'date' => ['type' => 'string', 'description' => 'التاريخ YYYY-MM-DD'],
-            ]);
-        }
-        if ($a->allows('report.approvals')) {
-            $t[] = self::decl('get_pending_approvals', 'الفواتير وسندات القبض وسندات الصرف التي تنتظر الاعتماد.', []);
-        }
-        if ($a->allows('report.quotes')) {
-            $t[] = self::decl('get_open_quotes', 'طلبات التسعير المفتوحة (جديدة أو مسعّرة لم تُرسل) ومن تُسند إليه.', []);
-        }
-        if ($a->allows('report.client')) {
-            $t[] = self::decl('find_client', 'ابحث عن عميل بالاسم أو الهاتف أو الرمز، واعرض رصيده وآخر فواتيره.', [
-                'query' => ['type' => 'string', 'description' => 'اسم أو جزء منه، أو رقم هاتف، أو رمز مثل CLT-041'],
-            ], ['query']);
+        $out = [];
+        foreach (self::TOOLS as $name => $t) {
+            $allowed = array_keys(array_filter($t['actions'], fn ($act) => $a->allowsAny((array) $act['perm'])));
+            if ($allowed === []) {
+                continue;
+            }
+            $props = $t['properties'];
+            if (isset($props['action'])) {
+                $props['action']['enum'] = $allowed;
+            }
+            $schema = ['type' => 'object', 'properties' => $props];
+            if ($t['required']) {
+                $schema['required'] = $t['required'];
+            }
+            $out[] = ['name' => $name, 'description' => $t['description'], 'input_schema' => $schema];
         }
 
-        $kbActions = self::kbActions($a);
-        if ($kbActions) {
-            $t[] = self::decl('manage_knowledge',
-                'إدارة قاعدة معرفة بوت العملاء (ما يقرؤه البوت مع كل رسالة). '
-                . 'list: قائمة المعلومات بأرقامها. view: نصّ معلومة برقمها. search: بحث بكلمة. '
-                . 'add / update / delete: تعديلات تمرّ بمعاينة ثم تأكيد من الموظف (confirm=true بعد موافقته فقط).', [
-                    'action' => ['type' => 'string', 'enum' => $kbActions],
-                    'id' => ['type' => 'integer', 'description' => 'رقم المعلومة (view/update/delete)'],
-                    'query' => ['type' => 'string', 'description' => 'كلمة البحث (search)'],
-                    'title' => ['type' => 'string', 'description' => 'عنوان المعلومة (add/update)'],
-                    'content' => ['type' => 'string', 'description' => 'نصّ المعلومة كاملاً (add/update)'],
-                    'is_active' => ['type' => 'boolean', 'description' => 'إيقاف المعلومة مؤقّتاً أو إعادتها (update)'],
-                    'confirm' => ['type' => 'boolean', 'description' => 'true فقط بعد أن يوافق الموظف على المعاينة'],
-                ], ['action']);
-        }
-
-        $toolActions = array_merge(
-            $a->allows('tools.view') || $a->allows('tools.toggle') ? ['list'] : [],
-            $a->allows('tools.toggle') ? ['enable', 'disable'] : [],
-        );
-        if ($toolActions) {
-            $t[] = self::decl('manage_bot_tools', 'عرض أدوات بوت العملاء وحالتها، أو تفعيل أداة أو إيقافها (بمعاينة ثم تأكيد).', [
-                'action' => ['type' => 'string', 'enum' => $toolActions],
-                'tool' => ['type' => 'string', 'description' => 'مفتاح الأداة كما يظهر في القائمة'],
-                'confirm' => ['type' => 'boolean', 'description' => 'true فقط بعد موافقة الموظف'],
-            ], ['action']);
-        }
-
-        if ($a->allows('bot.toggle')) {
-            $t[] = self::decl('set_customer_bot', 'حالة بوت العملاء، أو تشغيله أو إيقافه لكل العملاء (بمعاينة ثم تأكيد).', [
-                'action' => ['type' => 'string', 'enum' => ['status', 'on', 'off']],
-                'confirm' => ['type' => 'boolean', 'description' => 'true فقط بعد موافقة الموظف'],
-            ], ['action']);
-        }
-
-        return $t;
-    }
-
-    private static function kbActions(WaAdminNumber $a): array
-    {
-        if (!$a->allowsAny(['kb.view', 'kb.add', 'kb.update', 'kb.delete'])) {
-            return [];
-        }
-
-        // التعديل يحتاج رؤية ما يُعدَّل — فأيّ صلاحية معرفة تتضمّن الاستعراض
-        return array_merge(
-            ['list', 'view', 'search'],
-            $a->allows('kb.add') ? ['add'] : [],
-            $a->allows('kb.update') ? ['update'] : [],
-            $a->allows('kb.delete') ? ['delete'] : [],
-        );
-    }
-
-    private static function decl(string $name, string $desc, array $props, array $required = []): array
-    {
-        $schema = ['type' => 'object', 'properties' => $props];
-        if ($required) {
-            $schema['required'] = $required;
-        }
-
-        return ['name' => $name, 'description' => $desc, 'input_schema' => $schema];
+        return $out;
     }
 
     // ==================== التنفيذ ====================
@@ -169,17 +267,7 @@ class AdminTools
                 return ['error' => 'غير مسموح', 'note' => 'أخبر الموظف أنّ هذا غير مسموح لرقمه، وأنّ المدير يستطيع منحه الصلاحية من لوحة التحكم.'];
             }
 
-            $out = match ($name) {
-                'get_daily_summary' => self::dailySummary(),
-                'get_sales_report' => self::salesReport($in),
-                'get_travelers' => self::travelers($in),
-                'get_pending_approvals' => self::pendingApprovals(),
-                'get_open_quotes' => self::openQuotes(),
-                'find_client' => self::findClient($in),
-                'manage_knowledge' => self::knowledge($in, $conv, $a),
-                'manage_bot_tools' => self::botTools($in, $conv, $a),
-                'set_customer_bot' => self::customerBot($in, $conv, $a),
-            };
+            $out = self::{self::TOOLS[$name]['handler']}($in, $conv, $a);
 
             // التعديلات تُسجَّل بتفاصيلها داخل دوالّها؛ القراءات تُسجَّل هنا
             if (!self::isWrite($name, $action)) {
@@ -190,55 +278,16 @@ class AdminTools
         } catch (\Throwable $e) {
             WaLog::error('admin.tool.failed', ['tool' => $name, 'conv_id' => $conv->id, 'exception' => $e]);
             // نص الاستثناء لا يُحفظ في wa_admin_actions (تعرضه صفحة أرقام الإدارة)
-            $ref = \App\Support\ErrorRef::log($e, 'admin.tool.failed', ['conv_id' => $conv->id]);
+            $ref = ErrorRef::log($e, 'admin.tool.failed', ['conv_id' => $conv->id]);
             self::log($a, $conv, $name, $action ?: null, 'error', "خطأ داخلي — المرجع: {$ref}", $in);
 
             return ['error' => 'تعذّر تنفيذ الطلب', 'note' => 'اعتذر بإيجاز واقترح المحاولة من لوحة التحكم.'];
         }
     }
 
-    /** الصلاحية المطلوبة لكل أداة/فعل — null = غير معروفة فتُرفض */
-    private static function permissionFor(string $name, string $action): string|array|null
-    {
-        return match ($name) {
-            'get_daily_summary' => 'report.daily',
-            'get_sales_report' => 'report.sales',
-            'get_travelers' => 'report.travelers',
-            'get_pending_approvals' => 'report.approvals',
-            'get_open_quotes' => 'report.quotes',
-            'find_client' => 'report.client',
-            'manage_knowledge' => match ($action) {
-                'list', 'view', 'search' => ['kb.view', 'kb.add', 'kb.update', 'kb.delete'],
-                'add' => 'kb.add',
-                'update' => 'kb.update',
-                'delete' => 'kb.delete',
-                default => null,
-            },
-            'manage_bot_tools' => match ($action) {
-                'list' => ['tools.view', 'tools.toggle'],
-                'enable', 'disable' => 'tools.toggle',
-                default => null,
-            },
-            'set_customer_bot' => in_array($action, ['status', 'on', 'off'], true) ? 'bot.toggle' : null,
-            default => null,
-        };
-    }
-
-    /** الأدوات وأفعالها التي تكتب (E13): منها وحدها يُعرف الإجراء الكاتب، وبها يحفظ التقليم الكتابات المنفّذة أطول */
-    public const WRITES = [
-        'manage_knowledge' => ['add', 'update', 'delete'],
-        'manage_bot_tools' => ['enable', 'disable'],
-        'set_customer_bot' => ['on', 'off'],
-    ];
-
-    private static function isWrite(string $name, string $action): bool
-    {
-        return in_array($action, self::WRITES[$name] ?? [], true);
-    }
-
     // ==================== التقارير ====================
 
-    private static function dailySummary(): array
+    private static function dailySummary(array $in, WaConversation $conv, WaAdminNumber $a): array
     {
         $today = now()->toDateString();
         $approvedToday = Invoice::where('status', 'approved')->whereDate('approved_at', $today);
@@ -264,7 +313,7 @@ class AdminTools
         ];
     }
 
-    private static function salesReport(array $in): array
+    private static function salesReport(array $in, WaConversation $conv, WaAdminNumber $a): array
     {
         $from = self::date($in['from'] ?? null) ?? now()->startOfMonth()->toDateString();
         $to = self::date($in['to'] ?? null) ?? now()->toDateString();
@@ -273,12 +322,12 @@ class AdminTools
             ->whereBetween('invoice_date', [$from, $to])
             ->get(['id', 'total_sell_jod', 'profit_jod', 'sold_by']);
 
-        $names = \App\Models\Employee::with('user:id,name')->whereIn('id', $rows->pluck('sold_by')->filter()->unique())
-            ->get()->mapWithKeys(fn ($e) => [$e->id => $e->user?->name ?? ('موظف #' . $e->id)]);
+        $names = Employee::with('user:id,name')->whereIn('id', $rows->pluck('sold_by')->filter()->unique())
+            ->get()->mapWithKeys(fn ($e) => [$e->id => $e->user?->name ?? ('موظف #'.$e->id)]);
 
         $bySeller = $rows->groupBy(fn ($r) => $r->sold_by ?: 0)
             ->map(fn ($g, $k) => [
-                'seller' => $k ? ($names[$k] ?? 'موظف #' . $k) : 'غير محدّد',
+                'seller' => $k ? ($names[$k] ?? 'موظف #'.$k) : 'غير محدّد',
                 'invoices' => $g->count(),
                 'sales_jod' => round((float) $g->sum('total_sell_jod'), 3),
                 'profit_jod' => round((float) $g->sum('profit_jod'), 3),
@@ -294,7 +343,7 @@ class AdminTools
         ];
     }
 
-    private static function travelers(array $in): array
+    private static function travelers(array $in, WaConversation $conv, WaAdminNumber $a): array
     {
         $date = self::date($in['date'] ?? null) ?? now()->toDateString();
         $rows = TravelersReport::rowsForDate($date);
@@ -311,7 +360,7 @@ class AdminTools
         ];
     }
 
-    private static function pendingApprovals(): array
+    private static function pendingApprovals(array $in, WaConversation $conv, WaAdminNumber $a): array
     {
         $inv = Invoice::with('client:id,name')->where('status', 'pending')->orderBy('id')->limit(8)->get();
         $rec = Receipt::with('client:id,name')->where('status', 'pending')->orderBy('id')->limit(8)->get();
@@ -334,7 +383,7 @@ class AdminTools
         ];
     }
 
-    private static function openQuotes(): array
+    private static function openQuotes(array $in, WaConversation $conv, WaAdminNumber $a): array
     {
         $rows = QuoteRequest::whereIn('status', ['new', 'priced'])->orderBy('id')->limit(15)->get();
         $users = User::whereIn('id', $rows->pluck('assigned_to')->filter()->unique())->pluck('name', 'id');
@@ -353,7 +402,7 @@ class AdminTools
         ];
     }
 
-    private static function findClient(array $in): array
+    private static function findClient(array $in, WaConversation $conv, WaAdminNumber $a): array
     {
         $q = trim((string) ($in['query'] ?? ''));
         if (mb_strlen($q) < 2) {
@@ -365,7 +414,7 @@ class AdminTools
             ->where(function ($w) use ($q, $digits) {
                 $w->where('name', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%");
                 if (strlen($digits) >= 6) {
-                    $w->orWhere('phone', 'like', '%' . substr($digits, -9) . '%');
+                    $w->orWhere('phone', 'like', '%'.substr($digits, -9).'%');
                 }
             })
             ->limit(5)->get();
@@ -416,7 +465,7 @@ class AdminTools
 
                 return $e
                     ? ['id' => $e->id, 'title' => $e->title, 'active' => $e->is_active, 'content' => $e->content,
-                       'updated' => $e->updated_at?->diffForHumans(), 'note' => 'اعرض النصّ كما هو.']
+                        'updated' => $e->updated_at?->diffForHumans(), 'note' => 'اعرض النصّ كما هو.']
                     : ['error' => 'لا توجد معلومة بهذا الرقم', 'note' => 'اعرض القائمة ليختار الرقم الصحيح.'];
 
             case 'search':
@@ -456,9 +505,15 @@ class AdminTools
                 }
 
                 $preview = "تعديل المعلومة #{$e->id} «{$e->title}»";
-                if ($title !== $e->title) $preview .= "\nالعنوان الجديد: «{$title}»";
-                if ($content !== $e->content) $preview .= "\nالنصّ الجديد:\n{$content}";
-                if ($active !== $e->is_active) $preview .= $active ? "\nإعادة تفعيلها" : "\nإيقافها مؤقّتاً (لا يقرؤها البوت)";
+                if ($title !== $e->title) {
+                    $preview .= "\nالعنوان الجديد: «{$title}»";
+                }
+                if ($content !== $e->content) {
+                    $preview .= "\nالنصّ الجديد:\n{$content}";
+                }
+                if ($active !== $e->is_active) {
+                    $preview .= $active ? "\nإعادة تفعيلها" : "\nإيقافها مؤقّتاً (لا يقرؤها البوت)";
+                }
 
                 return self::stage($conv, $a, 'manage_knowledge', 'update',
                     ['id' => $e->id, 'title' => $title, 'content' => $content, 'is_active' => $active], $preview);
@@ -483,10 +538,10 @@ class AdminTools
             return ['error' => 'العنوان والنصّ مطلوبان', 'note' => 'اطلب منه العنوان والنصّ.'];
         }
         if (mb_strlen($title) > WaKnowledgeEntry::MAX_TITLE || mb_strlen($content) > WaKnowledgeEntry::MAX_CONTENT) {
-            return ['error' => 'المعلومة أطول من المسموح', 'note' => 'العنوان حتى ' . WaKnowledgeEntry::MAX_TITLE . ' حرفاً والنصّ حتى ' . WaKnowledgeEntry::MAX_CONTENT . '. اقترح تقسيمها.'];
+            return ['error' => 'المعلومة أطول من المسموح', 'note' => 'العنوان حتى '.WaKnowledgeEntry::MAX_TITLE.' حرفاً والنصّ حتى '.WaKnowledgeEntry::MAX_CONTENT.'. اقترح تقسيمها.'];
         }
         if ($active && WaKnowledgeEntry::activeChars($exceptId) + mb_strlen($title) + mb_strlen($content) > WaKnowledgeEntry::MAX_TOTAL) {
-            return ['error' => 'قاعدة المعرفة ممتلئة', 'note' => 'الحدّ الكلّي ' . WaKnowledgeEntry::MAX_TOTAL . ' حرف لأنها تُرسل مع كل رسالة. اقترح اختصار معلومات أخرى أو حذفها.'];
+            return ['error' => 'قاعدة المعرفة ممتلئة', 'note' => 'الحدّ الكلّي '.WaKnowledgeEntry::MAX_TOTAL.' حرف لأنها تُرسل مع كل رسالة. اقترح اختصار معلومات أخرى أو حذفها.'];
         }
 
         return null;
@@ -505,23 +560,27 @@ class AdminTools
 
         if ($action === 'list') {
             return [
-                'tools' => collect(BotTools::LABELS)->map(fn ($label, $key) => [
-                    'key' => $key, 'label' => $label, 'enabled' => $s->toolEnabled($key),
+                'tools' => collect(BotTools::labels())->map(fn ($label, $key) => [
+                    'key' => $key, 'label' => $label, 'enabled' => BotTools::isEnabled($s, $key), 'disableable' => BotTools::disableable($key),
                 ])->values()->all(),
             ];
         }
 
         $key = (string) ($in['tool'] ?? '');
-        if (!array_key_exists($key, BotTools::LABELS)) {
+        if (!in_array($key, BotTools::names(), true)) {
             return ['error' => 'أداة غير معروفة', 'note' => 'اعرض القائمة ليختار المفتاح الصحيح.'];
+        }
+        // التحويل لموظف لا يُطفأ (E15.4): بلا معاينة
+        if ($action === 'disable' && !BotTools::disableable($key)) {
+            return ['error' => 'هذه الأداة لا تُطفأ', 'note' => 'سياسة واتساب تشترط مسار تحويل بشري دائماً.'];
         }
         $enable = $action === 'enable';
         if ($s->toolEnabled($key) === $enable) {
-            return ['error' => 'لا تغيير', 'note' => 'الأداة ' . ($enable ? 'مفعّلة' : 'موقوفة') . ' أصلاً.'];
+            return ['error' => 'لا تغيير', 'note' => 'الأداة '.($enable ? 'مفعّلة' : 'موقوفة').' أصلاً.'];
         }
 
         return self::stage($conv, $a, 'manage_bot_tools', $action, ['tool' => $key, 'enabled' => $enable],
-            ($enable ? 'تفعيل' : 'إيقاف') . ' أداة «' . BotTools::LABELS[$key] . "» لبوت العملاء.");
+            ($enable ? 'تفعيل' : 'إيقاف').' أداة «'.BotTools::labels()[$key].'» لبوت العملاء.');
     }
 
     private static function customerBot(array $in, WaConversation $conv, WaAdminNumber $a): array
@@ -536,7 +595,7 @@ class AdminTools
             return ['enabled' => (bool) $s->enabled, 'sending_suspended' => $s->sendingSuspended(), 'suspended_source' => $s->suspendSource(), 'model' => $s->model];
         }
         if ((bool) $s->enabled === ($action === 'on')) {
-            return ['error' => 'لا تغيير', 'note' => 'البوت ' . ($s->enabled ? 'يعمل' : 'موقوف') . ' أصلاً.'];
+            return ['error' => 'لا تغيير', 'note' => 'البوت '.($s->enabled ? 'يعمل' : 'موقوف').' أصلاً.'];
         }
 
         return self::stage($conv, $a, 'set_customer_bot', $action, ['enabled' => $action === 'on'],
@@ -569,7 +628,7 @@ class AdminTools
             'needs_confirmation' => true,
             'preview' => $preview,
             'note' => 'لم يُنفَّذ شيء بعد. اعرض المعاينة على الموظف كما هي، واطلب منه الردّ بكلمة «تأكيد» للتنفيذ أو «إلغاء». '
-                . 'لا تستدعِ الأداة مع confirm=true قبل أن يردّ بالموافقة في رسالة جديدة. المعاينة صالحة ' . self::PENDING_TTL_MINUTES . ' دقائق.',
+                .'لا تستدعِ الأداة مع confirm=true قبل أن يردّ بالموافقة في رسالة جديدة. المعاينة صالحة '.self::PENDING_TTL_MINUTES.' دقائق.',
         ];
     }
 
@@ -616,7 +675,7 @@ class AdminTools
     {
         $d = $p['payload'];
 
-        switch ($p['tool'] . ':' . $p['action']) {
+        switch ($p['tool'].':'.$p['action']) {
             case 'manage_knowledge:add':
                 $e = WaKnowledgeEntry::create([
                     'title' => $d['title'], 'content' => $d['content'], 'is_active' => true,
@@ -653,7 +712,7 @@ class AdminTools
                 SettingsWriter::apply(['tools_config' => [$d['tool'] => (bool) $d['enabled']]], null, AuditAction::WaToolsToggle,
                     ['tool' => $d['tool'], 'enabled' => (bool) $d['enabled']]);
 
-                return ['summary' => ($d['enabled'] ? 'فُعّلت' : 'أُوقفت') . ' أداة «' . BotTools::LABELS[$d['tool']] . '» لبوت العملاء.'];
+                return ['summary' => ($d['enabled'] ? 'فُعّلت' : 'أُوقفت').' أداة «'.BotTools::labels()[$d['tool']].'» لبوت العملاء.'];
 
             case 'set_customer_bot:on':
             case 'set_customer_bot:off':
@@ -698,14 +757,16 @@ class AdminTools
         $pos = $q !== '' ? mb_stripos($content, $q) : false;
         $start = $pos === false ? 0 : max(0, $pos - 40);
 
-        return ($start > 0 ? '…' : '') . mb_substr($content, $start, 160) . (mb_strlen($content) > $start + 160 ? '…' : '');
+        return ($start > 0 ? '…' : '').mb_substr($content, $start, 160).(mb_strlen($content) > $start + 160 ? '…' : '');
     }
 
     private static function date(?string $d): ?string
     {
-        if (!$d) return null;
+        if (!$d) {
+            return null;
+        }
         try {
-            return \Illuminate\Support\Carbon::parse($d)->toDateString();
+            return Carbon::parse($d)->toDateString();
         } catch (\Throwable $e) {
             return null;
         }

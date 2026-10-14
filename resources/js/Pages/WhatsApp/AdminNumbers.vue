@@ -171,6 +171,7 @@ const props = defineProps({
     actions: { type: Array, default: () => [] },
     botPhone: { type: String, default: null },
     botReady: { type: Boolean, default: true },
+    toolLabels: { type: Object, default: () => ({ tools: {}, actions: {} }) },
 });
 
 const showForm = ref(false);
@@ -217,15 +218,9 @@ const remove = (n) => {
     router.delete('/whatsapp/admin-numbers/' + n.id, { preserveScroll: true });
 };
 
-const TOOL_LABELS = {
-    get_daily_summary: 'ملخّص اليوم', get_sales_report: 'تقرير المبيعات', get_travelers: 'المسافرون',
-    get_pending_approvals: 'ما ينتظر الاعتماد', get_open_quotes: 'طلبات التسعير', find_client: 'بحث عن عميل',
-    manage_knowledge: 'قاعدة المعرفة', manage_bot_tools: 'أدوات البوت', set_customer_bot: 'بوت العملاء',
-};
-const ACTION_LABELS = {
-    list: 'قائمة', view: 'عرض', search: 'بحث', add: 'إضافة', update: 'تعديل', delete: 'حذف',
-    enable: 'تفعيل', disable: 'إيقاف', status: 'الحالة', on: 'تشغيل', off: 'إيقاف',
-};
+// من سجل أدوات المساعد في الخادم (AdminTools::labels)
+const TOOL_LABELS = props.toolLabels?.tools || {};
+const ACTION_LABELS = props.toolLabels?.actions || {};
 const actionLabel = (a) => (TOOL_LABELS[a.tool] || a.tool) + (a.action ? ' · ' + (ACTION_LABELS[a.action] || a.action) : '');
 const statusLabel = { done: 'نُفّذ', preview: 'معاينة', denied: 'مرفوض', error: 'خطأ' };
 const statusClass = {

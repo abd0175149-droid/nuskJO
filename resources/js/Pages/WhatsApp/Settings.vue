@@ -361,13 +361,17 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <label v-for="(label, key) in toolList" :key="key"
-                               class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer hover:bg-gold-50 dark:hover:bg-gold-900/20"
-                               :class="toolDirty(key) ? 'ring-1 ring-gold-400' : ''">
-                            <input type="checkbox" v-model="form.tools[key]" class="mt-0.5 w-4 h-4 rounded text-gold-500 focus:ring-gold-500 shrink-0"/>
+                               class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 hover:bg-gold-50 dark:hover:bg-gold-900/20"
+                               :class="[toolDirty(key) ? 'ring-1 ring-gold-400' : '', lockedTools.includes(key) ? 'cursor-not-allowed' : 'cursor-pointer']"
+                               :title="lockedTools.includes(key) ? 'لا تُطفأ — سياسة واتساب تشترط مسار تحويل بشري دائماً' : ''">
+                            <input v-if="lockedTools.includes(key)" type="checkbox" checked disabled class="mt-0.5 w-4 h-4 rounded text-gold-500 shrink-0 opacity-60"
+                                   :aria-label="label + ' (لا تُطفأ)'"/>
+                            <input v-else type="checkbox" v-model="form.tools[key]" class="mt-0.5 w-4 h-4 rounded text-gold-500 focus:ring-gold-500 shrink-0"/>
                             <span class="min-w-0">
                                 <span class="flex items-center gap-2 flex-wrap">
                                     <span class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ label }}</span>
                                     <span v-if="handoffTools.includes(key)" class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">يحوّل لموظف</span>
+                                    <span v-if="lockedTools.includes(key)" class="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">🔒 لا تُطفأ</span>
                                 </span>
                                 <span class="block text-xs font-mono text-gray-500 dark:text-gray-400 mt-0.5" dir="ltr">{{ key }}</span>
                             </span>
@@ -489,6 +493,7 @@ const props = defineProps({
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
     mediaArchive: { type: Object, default: null },
+    toolMeta: { type: Array, default: () => [] },
 });
 
 // ===== الحالة المحلية (تتحدّث من ردود الخادم دون إعادة تحميل الصفحة) =====
@@ -514,7 +519,9 @@ props.fields.forEach((f) => { LABELS[f.key] = f.label; });
 const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff',
     'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes', 'fallback_provider', 'fallback_model'];
 const SENSITIVE = ['wa_phone_number_id', 'provider', 'fallback_provider'];
-const handoffTools = ['request_quote', 'confirm_booking'];
+// من سجل الأدوات في الخادم (E15): ما يحوّل لموظف، وما لا يُطفأ
+const handoffTools = (props.toolMeta || []).filter((t) => t.escalates).map((t) => t.key);
+const lockedTools = (props.toolMeta || []).filter((t) => !t.disableable).map((t) => t.key);
 
 // القيم القابلة للحفظ من صف الإعدادات؛ الأدوات: غياب المفتاح = مفعّلة
 const editable = (s) => {

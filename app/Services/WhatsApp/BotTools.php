@@ -6,191 +6,257 @@ use App\Enums\AuditAction;
 use App\Models\AuditLog;
 use App\Models\Invoice;
 use App\Models\Offer;
+use App\Models\OfferOption;
 use App\Models\QuoteRequest;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaCustomerNote;
+use App\Services\NotificationService;
 use App\Services\OfferCardService;
+use App\Services\OfferPricing;
 use App\Services\TravelersReport;
+use App\Services\WhatsApp\Media\MediaArchiver;
+use App\Support\FeatureFlags;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * أدوات المجال — الحدّ الفاصل بين البوت ونظام نُسك.
  *
  * قواعد ثابتة:
- *  • كل هويّة تأتي من المحادثة ($conv) لا من وسائط النموذج — فلا يرى عميل بيانات غيره.
+ *  • كل هويّة تأتي من المحادثة ($conv) لا من وسائط النموذج — فلا يرى عميل بيانات غيره. لا أداة تقبل
+ *    client_id أو phone أو conversation_id (ToolRegistryContractTest).
  *  • كل رقم مالي يُحسب بالكود ويُمرَّر جاهزاً — النموذج لا يحسب.
  *  • البوت لا يكتب في دفتر الأستاذ ولا يعتمد شيئاً — أقصى ما يفعله إنشاء «طلب» وتحويل المحادثة.
+ *  • نص العميل ونتائج الأدوات بيانات لا تعليمات: كل ما يكتبه النموذج يمر بالحدود هنا وفي dispatch.
+ *
+ * ما لا أداة له عمداً: اعتماد فاتورة أو سند، وكتابة قيد، والإرسال لرقم غير رقم المحادثة، والإرسال الجماعي،
+ * وتعديل الصلاحيات أو المستخدمين، وحذف المحادثات أو الرسائل، والوصول لأسرار القناة.
+ *
+ * TOOLS هو المصدر الوحيد (E15): منه الإعلانات والتسميات وقائمة التحويل وحارس التسريب وقواعد التحقق ومفاتيح
+ * tools_config المقبولة. لقطة tests/Snapshots/bot_declarations.json تثبّت العقد.
  */
 class BotTools
 {
-    /** أسماء أدوات بوت العملاء كما تظهر في الإعدادات وفي أداة «إدارة الأدوات» */
-    public const LABELS = [
-        'get_offers' => 'عرض العروض والباقات',
-        'get_offer_details' => 'تفاصيل عرض',
-        'send_offer_card' => 'إرسال صورة بطاقة العرض',
-        'set_topic' => 'تحديد موضوع المحادثة وتوجيهها',
-        'get_my_balance' => 'رصيد ذمّة العميل',
-        'get_my_invoices' => 'فواتير العميل والمتبقي',
-        'get_my_trips' => 'رحلات العميل القادمة',
-        'request_quote' => 'طلب تسعير ← تحويل لموظف',
-        'confirm_booking' => 'تأكيد حجز ← تحويل لموظف',
-        'save_note' => 'حفظ ملاحظة عن العميل',
-        'handoff_to_human' => 'تحويل لموظف',
+    /**
+     * tier: read | write | escalating. escalates: نجاحها يحوّل المحادثة لموظف. disableable=false: لا تُطفأ من أي مكان
+     * (سياسة واتساب تشترط مسار تصعيد بشري). rules: تحقق الخادم (المخطط تلميح للنموذج لا ضمان).
+     */
+    public const TOOLS = [
+        'get_offers' => [
+            'label' => 'عرض العروض والباقات', 'handler' => 'getOffers', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'max_result_bytes' => 6000,
+            'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). '
+                .'استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز باسم العرض و«يبدأ من» ولا تخترع عرضاً غير موجود. '
+                .'انتبه: شكل العرض يختلف بتصنيفه — عروض الفنادق تأتي بخيارات لكل خيار أسعار للفرد حسب سعة الغرفة، '
+                .'وعمرة «مكة والمدينة» يشمل خيارها فندقين بسعر واحد لهما معاً، والتأشيرات لها سعر واحد للفرد بلا فنادق. '
+                .'التزم دائماً بحقل pricing_note المرافق لكل عرض ولا تصف التسعير بغيره.',
+            'properties' => [
+                'category' => ['type' => 'string', 'description' => 'تصنيف اختياري: umrah|hajj|flight|visa|hotel|transport|tour|package', 'maxLength' => 20],
+            ],
+            'required' => [],
+            'rules' => ['category' => 'nullable|string|max:20'],
+        ],
+        'get_offer_details' => [
+            'label' => 'تفاصيل عرض', 'handler' => 'getOfferDetails', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله وخياراته وأسعارها، أو شروط التأشيرة ومدّة إصدارها إن كان تأشيرة. '
+                .'استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
+            'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض', 'minimum' => 1]],
+            'required' => ['offer_id'],
+            'rules' => ['offer_id' => 'required|integer|min:1'],
+        ],
+        'send_offer_card' => [
+            'label' => 'إرسال صورة بطاقة العرض', 'handler' => 'sendOfferCard', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'أرسل للعميل صورة بطاقة العرض (تحوي الفنادق والأسعار حسب سعة الغرفة وما يشمله العرض). '
+                .'استدعِها بعد أن يختار العميل عرضاً محدّداً أو يطلب تفاصيله أو صورته أو «التفاصيل كاملة». '
+                .'أرسل البطاقة مرّة واحدة لكل عرض في المحادثة، ولا تصف محتوى الصورة بعدها — جملة قصيرة تكفي.',
+            'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض', 'minimum' => 1]],
+            'required' => ['offer_id'],
+            'rules' => ['offer_id' => 'required|integer|min:1'],
+        ],
+        'set_topic' => [
+            'label' => 'تحديد موضوع المحادثة وتوجيهها', 'handler' => 'setTopic', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'سجّل موضوع المحادثة فور اتّضاحه — حتى قبل أي تحويل لموظف. '
+                .'هذا يربط المحادثة بالموظف المختصّ فيتابعها من البداية. '
+                .'استدعِها مرّة واحدة لكل موضوع، وإن تعدّدت اهتمامات العميل سجّلها كلها. '
+                .'لا تُخبر العميل بذلك ولا تذكره في ردّك إطلاقاً.',
+            'properties' => [
+                'topics' => ['type' => 'array', 'description' => 'موضوع أو أكثر من: {topics}', 'items' => ['type' => 'string', 'maxLength' => 40], 'maxItems' => 4],
+            ],
+            'required' => ['topics'],
+            'rules' => ['topics' => 'required|array|max:4', 'topics.*' => 'string|max:40'],
+        ],
+        'get_my_balance' => [
+            'label' => 'رصيد ذمّة العميل', 'handler' => 'getBalance', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'رصيد ذمّة العميل الحالي (كم عليه من مبالغ). تعمل فقط إن كان رقم المحادثة مربوطاً بحساب عميل مسجّل.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'get_my_invoices' => [
+            'label' => 'فواتير العميل والمتبقي', 'handler' => 'getInvoices', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'فواتير العميل الحالي المعتمدة مع المبلغ المتبقي على كل فاتورة. استدعِها إذا سأل عن فواتيره أو ما تبقّى عليه.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'get_my_trips' => [
+            'label' => 'رحلات العميل القادمة', 'handler' => 'getTrips', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'رحلات العميل الحالي القادمة (تواريخ السفر المسجّلة على فواتيره المعتمدة).',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'request_quote' => [
+            'label' => 'طلب تسعير ← تحويل لموظف', 'handler' => 'requestQuote', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => false,
+            'escalates' => true, 'disableable' => true,
+            'description' => 'أنشئ طلب تسعير وحوّل المحادثة لموظف. استدعِها عندما يطلب العميل سعراً نهائياً لرحلة طيران أو خدمة، أو يسأل عن توفّر المقاعد. اجمع أولاً بالحوار: المسار (من/إلى) وتاريخ السفر وعدد المسافرين. لا تذكر أي سعر من عندك أبداً — الموظف هو من يسعّر.',
+            'properties' => [
+                'type' => ['type' => 'string', 'description' => 'flight|package|visa|hotel|transport|other', 'enum' => ['flight', 'package', 'visa', 'hotel', 'transport', 'other']],
+                'route_from' => ['type' => 'string', 'description' => 'مدينة/مطار المغادرة', 'maxLength' => 60],
+                'route_to' => ['type' => 'string', 'description' => 'مدينة/مطار الوصول', 'maxLength' => 60],
+                'depart_date' => ['type' => 'string', 'description' => 'تاريخ السفر YYYY-MM-DD'],
+                'return_date' => ['type' => 'string', 'description' => 'تاريخ العودة إن وُجد YYYY-MM-DD'],
+                'adults' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 99],
+                'children' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 99],
+                'infants' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 20],
+                'details' => ['type' => 'string', 'description' => 'ملخّص ما طلبه العميل بكلماته', 'maxLength' => 2000],
+            ],
+            'required' => ['type', 'details'],
+            'rules' => [
+                'type' => 'required|string|in:flight,package,visa,hotel,transport,other', 'route_from' => 'nullable|string|max:60', 'route_to' => 'nullable|string|max:60',
+                'depart_date' => 'nullable|date', 'return_date' => 'nullable|date', 'adults' => 'nullable|integer|min:1|max:99',
+                'children' => 'nullable|integer|min:0|max:99', 'infants' => 'nullable|integer|min:0|max:20', 'details' => 'required|string|max:2000',
+            ],
+        ],
+        'confirm_booking' => [
+            'label' => 'تأكيد حجز ← تحويل لموظف', 'handler' => 'confirmBooking', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => false,
+            'escalates' => true, 'disableable' => true,
+            'description' => 'العميل يريد تأكيد حجز عرض معيّن. استدعِها عند موافقته الصريحة على الحجز. تُنشئ طلب حجز وتحوّل المحادثة لموظف ليُتمّه. لا تؤكّد للعميل أنّ الحجز مكتمل — قل إنّ موظفاً سيتواصل لإتمامه.',
+            'properties' => [
+                'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه', 'minimum' => 1],
+                'option_ref' => ['type' => 'string', 'description' => 'قيمة ref للخيار الذي اختاره العميل من options في get_offers أو get_offer_details — انسخها كما هي', 'maxLength' => 64],
+                'supplement_refs' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 64], 'maxItems' => 10, 'description' => 'قيم ref للإضافات التي طلبها العميل من supplements (مثل باص VIP) — اتركها فارغة إن لم يطلب إضافة'],
+                'hotel' => ['type' => 'string', 'description' => 'الخيار الذي اختاره العميل: اسم الفندق، أو الفندقين معاً في عمرة مكة والمدينة', 'maxLength' => 150],
+                'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية', 'maxLength' => 30],
+                'adults' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 99],
+                'children' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 99],
+                'infants' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 20],
+                'travel_date' => ['type' => 'string', 'description' => 'تاريخ السفر المطلوب إن ذكره العميل YYYY-MM-DD'],
+                'details' => ['type' => 'string', 'description' => 'أي تفاصيل ذكرها العميل (أسماء، ملاحظات، تواريخ مفضّلة)', 'maxLength' => 1500],
+            ],
+            'required' => ['offer_id', 'details'],
+            'rules' => [
+                'offer_id' => 'required|integer|min:1', 'option_ref' => 'nullable|string|max:64', 'supplement_refs' => 'nullable|array|max:10',
+                'supplement_refs.*' => 'string|max:64', 'hotel' => 'nullable|string|max:150', 'room_type' => 'nullable|string|max:30',
+                'adults' => 'nullable|integer|min:1|max:99', 'children' => 'nullable|integer|min:0|max:99', 'infants' => 'nullable|integer|min:0|max:20',
+                'travel_date' => 'nullable|date', 'details' => 'required|string|max:1500',
+            ],
+        ],
+        'save_note' => [
+            'label' => 'حفظ ملاحظة عن العميل', 'handler' => 'saveNote', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'احفظ ملاحظة مهمة عن العميل لتذكّرها لاحقاً (تفضيلاته، عدد أفراد عائلته، اسمه). لا تحفظ أسراراً ولا أرقام بطاقات ولا أرقام جوازات أو هويات.',
+            'properties' => ['note' => ['type' => 'string', 'description' => 'الملاحظة — 300 حرف كحدّ أقصى', 'maxLength' => 300]],
+            'required' => ['note'],
+            'rules' => ['note' => 'required|string|max:300'],
+        ],
+        'handoff_to_human' => [
+            'label' => 'تحويل لموظف', 'handler' => 'handoff', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => true,
+            'escalates' => true, 'disableable' => false,
+            'description' => 'حوّل المحادثة لموظف بشري. استدعِها إذا طلب العميل التحدث مع شخص، أو كان غاضباً أو يشكو، أو كان طلبه خارج قدراتك.',
+            'properties' => ['reason' => ['type' => 'string', 'description' => 'سبب التحويل بإيجاز', 'maxLength' => 300]],
+            'required' => ['reason'],
+            'rules' => ['reason' => 'required|string|max:300'],
+        ],
     ];
 
-    /** إعلانات الأدوات بصيغة Anthropic tool_use */
+    /** سقف نتيجة أداة البوت ما لم تحدّد الأداة سقفها (E15.7) */
+    public const DEFAULT_MAX_RESULT_BYTES = 6000;
+
+    /** @return list<string> */
+    public static function names(): array
+    {
+        return array_keys(self::TOOLS);
+    }
+
+    /** @return array<string, string> */
+    public static function labels(): array
+    {
+        return array_map(fn ($t) => $t['label'], self::TOOLS);
+    }
+
+    /** الأدوات التي ينجح بها التحويل لموظف (HandoffGuard) @return list<string> */
+    public static function escalating(): array
+    {
+        return array_keys(array_filter(self::TOOLS, fn ($t) => $t['escalates']));
+    }
+
+    public static function disableable(string $name): bool
+    {
+        return (bool) (self::TOOLS[$name]['disableable'] ?? true);
+    }
+
+    /** مفعّلة لهذا الإعداد: ما لا يُطفأ مفعّل دائماً مهما كان في tools_config */
+    public static function isEnabled(WaBotSetting $s, string $name): bool
+    {
+        return isset(self::TOOLS[$name]) && (!self::disableable($name) || $s->toolEnabled($name));
+    }
+
+    /** للإعدادات: [{key, label, escalates, disableable}] */
+    public static function meta(): array
+    {
+        return array_map(fn ($name) => ['key' => $name, 'label' => self::TOOLS[$name]['label'],
+            'escalates' => self::TOOLS[$name]['escalates'], 'disableable' => self::TOOLS[$name]['disableable']], self::names());
+    }
+
+    /** @return array<string, string> */
+    public static function rules(string $name): array
+    {
+        return self::TOOLS[$name]['rules'] ?? [];
+    }
+
+    public static function maxResultBytes(string $name): int
+    {
+        return (int) (self::TOOLS[$name]['max_result_bytes'] ?? self::DEFAULT_MAX_RESULT_BYTES);
+    }
+
+    /** إعلانات الأدوات المفعّلة بصيغة Anthropic tool_use (يحوّلها كل مزوّد لصيغته) */
     public static function declarations(WaBotSetting $s, WaConversation $conv): array
     {
-        $all = [
-            [
-                'name' => 'get_offers',
-                'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). '
-                    . 'استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز باسم العرض و«يبدأ من» ولا تخترع عرضاً غير موجود. '
-                    . 'انتبه: شكل العرض يختلف بتصنيفه — عروض الفنادق تأتي بخيارات لكل خيار أسعار للفرد حسب سعة الغرفة، '
-                    . 'وعمرة «مكة والمدينة» يشمل خيارها فندقين بسعر واحد لهما معاً، والتأشيرات لها سعر واحد للفرد بلا فنادق. '
-                    . 'التزم دائماً بحقل pricing_note المرافق لكل عرض ولا تصف التسعير بغيره.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'category' => ['type' => 'string', 'description' => 'تصنيف اختياري: umrah|hajj|flight|visa|hotel|transport|tour|package'],
-                    ],
-                ],
-            ],
-            [
-                'name' => 'get_offer_details',
-                'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله وخياراته وأسعارها، أو شروط التأشيرة ومدّة إصدارها إن كان تأشيرة. '
-                    . 'استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
-                    'required' => ['offer_id'],
-                ],
-            ],
-            [
-                'name' => 'send_offer_card',
-                'description' => 'أرسل للعميل صورة بطاقة العرض (تحوي الفنادق والأسعار حسب سعة الغرفة وما يشمله العرض). '
-                    . 'استدعِها بعد أن يختار العميل عرضاً محدّداً أو يطلب تفاصيله أو صورته أو «التفاصيل كاملة». '
-                    . 'أرسل البطاقة مرّة واحدة لكل عرض في المحادثة، ولا تصف محتوى الصورة بعدها — جملة قصيرة تكفي.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
-                    'required' => ['offer_id'],
-                ],
-            ],
-            [
-                'name' => 'set_topic',
-                'description' => 'سجّل موضوع المحادثة فور اتّضاحه — حتى قبل أي تحويل لموظف. '
-                    . 'هذا يربط المحادثة بالموظف المختصّ فيتابعها من البداية. '
-                    . 'استدعِها مرّة واحدة لكل موضوع، وإن تعدّدت اهتمامات العميل سجّلها كلها. '
-                    . 'لا تُخبر العميل بذلك ولا تذكره في ردّك إطلاقاً.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'topics' => [
-                            'type' => 'array',
-                            'description' => 'موضوع أو أكثر من: ' . implode(' | ', array_keys(\App\Services\WhatsApp\TopicRouter::TOPICS)),
-                            'items' => ['type' => 'string'],
-                        ],
-                    ],
-                    'required' => ['topics'],
-                ],
-            ],
-            [
-                'name' => 'get_my_balance',
-                'description' => 'رصيد ذمّة العميل الحالي (كم عليه من مبالغ). تعمل فقط إن كان رقم المحادثة مربوطاً بحساب عميل مسجّل.',
-                'input_schema' => ['type' => 'object', 'properties' => []],
-            ],
-            [
-                'name' => 'get_my_invoices',
-                'description' => 'فواتير العميل الحالي المعتمدة مع المبلغ المتبقي على كل فاتورة. استدعِها إذا سأل عن فواتيره أو ما تبقّى عليه.',
-                'input_schema' => ['type' => 'object', 'properties' => []],
-            ],
-            [
-                'name' => 'get_my_trips',
-                'description' => 'رحلات العميل الحالي القادمة (تواريخ السفر المسجّلة على فواتيره المعتمدة).',
-                'input_schema' => ['type' => 'object', 'properties' => []],
-            ],
-            [
-                'name' => 'request_quote',
-                'description' => 'أنشئ طلب تسعير وحوّل المحادثة لموظف. استدعِها عندما يطلب العميل سعراً نهائياً لرحلة طيران أو خدمة، أو يسأل عن توفّر المقاعد. اجمع أولاً بالحوار: المسار (من/إلى) وتاريخ السفر وعدد المسافرين. لا تذكر أي سعر من عندك أبداً — الموظف هو من يسعّر.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'type' => ['type' => 'string', 'description' => 'flight|package|visa|hotel|transport|other'],
-                        'route_from' => ['type' => 'string', 'description' => 'مدينة/مطار المغادرة'],
-                        'route_to' => ['type' => 'string', 'description' => 'مدينة/مطار الوصول'],
-                        'depart_date' => ['type' => 'string', 'description' => 'تاريخ السفر YYYY-MM-DD'],
-                        'return_date' => ['type' => 'string', 'description' => 'تاريخ العودة إن وُجد YYYY-MM-DD'],
-                        'adults' => ['type' => 'integer'],
-                        'children' => ['type' => 'integer'],
-                        'infants' => ['type' => 'integer'],
-                        'details' => ['type' => 'string', 'description' => 'ملخّص ما طلبه العميل بكلماته'],
-                    ],
-                    'required' => ['type', 'details'],
-                ],
-            ],
-            [
-                'name' => 'confirm_booking',
-                'description' => 'العميل يريد تأكيد حجز عرض معيّن. استدعِها عند موافقته الصريحة على الحجز. تُنشئ طلب حجز وتحوّل المحادثة لموظف ليُتمّه. لا تؤكّد للعميل أنّ الحجز مكتمل — قل إنّ موظفاً سيتواصل لإتمامه.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه'],
-                        'option_ref' => ['type' => 'string', 'description' => 'قيمة ref للخيار الذي اختاره العميل من options في get_offers أو get_offer_details — انسخها كما هي'],
-                        'supplement_refs' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'قيم ref للإضافات التي طلبها العميل من supplements (مثل باص VIP) — اتركها فارغة إن لم يطلب إضافة'],
-                        'hotel' => ['type' => 'string', 'description' => 'الخيار الذي اختاره العميل: اسم الفندق، أو الفندقين معاً في عمرة مكة والمدينة'],
-                        'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية'],
-                        'adults' => ['type' => 'integer'],
-                        'children' => ['type' => 'integer'],
-                        'infants' => ['type' => 'integer'],
-                        'travel_date' => ['type' => 'string', 'description' => 'تاريخ السفر المطلوب إن ذكره العميل YYYY-MM-DD'],
-                        'details' => ['type' => 'string', 'description' => 'أي تفاصيل ذكرها العميل (أسماء، ملاحظات، تواريخ مفضّلة)'],
-                    ],
-                    'required' => ['offer_id', 'details'],
-                ],
-            ],
-            [
-                'name' => 'save_note',
-                'description' => 'احفظ ملاحظة مهمة عن العميل لتذكّرها لاحقاً (تفضيلاته، عدد أفراد عائلته، اسمه). لا تحفظ أسراراً ولا أرقام بطاقات.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['note' => ['type' => 'string', 'description' => 'الملاحظة — 500 حرف كحدّ أقصى']],
-                    'required' => ['note'],
-                ],
-            ],
-            [
-                'name' => 'handoff_to_human',
-                'description' => 'حوّل المحادثة لموظف بشري. استدعِها إذا طلب العميل التحدث مع شخص، أو كان غاضباً أو يشكو، أو كان طلبه خارج قدراتك.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['reason' => ['type' => 'string', 'description' => 'سبب التحويل بإيجاز']],
-                    'required' => ['reason'],
-                ],
-            ],
-        ];
+        $out = [];
+        foreach (self::TOOLS as $name => $t) {
+            if (!self::isEnabled($s, $name)) {
+                continue;
+            }
+            $props = $t['properties'];
+            if (isset($props['topics']['description'])) {
+                $props['topics']['description'] = str_replace('{topics}', implode(' | ', array_keys(TopicRouter::TOPICS)), $props['topics']['description']);
+            }
+            $schema = ['type' => 'object', 'properties' => $props];
+            if ($t['required']) {
+                $schema['required'] = $t['required'];
+            }
+            $out[] = ['name' => $name, 'description' => $t['description'], 'input_schema' => $schema];
+        }
 
-        return array_values(array_filter($all, fn ($t) => $s->toolEnabled($t['name'])));
+        return $out;
     }
 
     // ==================== التنفيذ ====================
 
+    /**
+     * التنفيذ المباشر بالمعالج المسجّل: للكود الموثوق والاختبارات. ما يطلبه النموذج يمر بـ ToolInvoker (E15.3)
+     * الذي يفحص الاسم المعلن والإذن والمدخلات قبل هذا.
+     */
     public static function execute(string $name, array $in, WaConversation $conv): array
     {
-        return match ($name) {
-            'get_offers' => self::getOffers($in, $conv),
-            'get_offer_details' => self::getOfferDetails($in, $conv),
-            'send_offer_card' => self::sendOfferCard($in, $conv),
-            'set_topic' => self::setTopic($in, $conv),
-            'get_my_balance' => self::getBalance($conv),
-            'get_my_invoices' => self::getInvoices($conv),
-            'get_my_trips' => self::getTrips($conv),
-            'request_quote' => self::requestQuote($in, $conv),
-            'confirm_booking' => self::confirmBooking($in, $conv),
-            'save_note' => self::saveNote($in, $conv),
-            'handoff_to_human' => self::handoff($in, $conv),
-            default => ['error' => 'أداة غير معروفة', 'note' => 'اعتذر للعميل بإيجاز.'],
-        };
+        $handler = self::TOOLS[$name]['handler'] ?? null;
+        if ($handler === null) {
+            return ['error' => 'أداة غير معروفة', 'note' => 'اعتذر للعميل بإيجاز.'];
+        }
+
+        return self::{$handler}($in, $conv);
     }
 
     private static function getOffers(array $in, WaConversation $conv): array
@@ -213,7 +279,7 @@ class BotTools
             'offers' => $offers,
             'note' => $offers
                 ? 'اعرض العروض بإيجاز (الاسم والسعر والمدة، وتاريخ الانطلاق إن وُجد trip_date). لا تخترع تفاصيل غير مذكورة. '
-                    . 'availability تقريبية: قلها كما هي («متوفر» أو «مقاعد محدودة») ولا تذكر عدد مقاعد ولا تؤكّد مقعداً. اسأل العميل أيّ عرض يهمّه.'
+                    .'availability تقريبية: قلها كما هي («متوفر» أو «مقاعد محدودة») ولا تذكر عدد مقاعد ولا تؤكّد مقعداً. اسأل العميل أيّ عرض يهمّه.'
                 : 'لا توجد عروض منشورة حالياً — اعتذر واسأل العميل عمّا يبحث عنه بالتحديد، ثم استدعِ request_quote.',
         ];
     }
@@ -232,7 +298,7 @@ class BotTools
         return [
             'offer' => $o->toBotArray(),
             'note' => 'اعرض التفاصيل بإيجاز. إن أراد الحجز فاستدعِ confirm_booking ومرّر ref الخيار الذي اختاره و ref أي إضافة طلبها من supplements. '
-                . 'لا تذكر عدد مقاعد ولا تؤكّد توفّراً غير ما في availability.',
+                .'لا تذكر عدد مقاعد ولا تؤكّد توفّراً غير ما في availability.',
         ];
     }
 
@@ -318,19 +384,19 @@ class BotTools
         }
 
         // دليل السعر الذي رآه العميل (E14.11): البطاقة تُستبدل عند إعادة التوليد، فتُنسخ للأرشيف لحظة الإرسال
-        if (\App\Support\FeatureFlags::on('media_archive') && !empty($res['message_id'])) {
-            app(\App\Services\WhatsApp\Media\MediaArchiver::class)->storeOutbound((string) $res['message_id'], Storage::disk('public')->path($path), 'image/png');
+        if (FeatureFlags::on('media_archive') && !empty($res['message_id'])) {
+            app(MediaArchiver::class)->storeOutbound((string) $res['message_id'], Storage::disk('public')->path($path), 'image/png');
         }
 
         return [
             'sent' => true,
             'offer' => $offer->title,
             'note' => 'أُرسلت البطاقة للعميل بالفعل. لا تصف محتواها ولا تعيد سرد الأسعار — '
-                . 'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
+                .'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
         ];
     }
 
-    private static function getBalance(WaConversation $conv): array
+    private static function getBalance(array $in, WaConversation $conv): array
     {
         if (!$conv->financialClientId()) {
             return self::notLinked();
@@ -358,7 +424,7 @@ class BotTools
         ];
     }
 
-    private static function getInvoices(WaConversation $conv): array
+    private static function getInvoices(array $in, WaConversation $conv): array
     {
         if (!$conv->financialClientId()) {
             return self::notLinked();
@@ -387,7 +453,7 @@ class BotTools
         ];
     }
 
-    private static function getTrips(WaConversation $conv): array
+    private static function getTrips(array $in, WaConversation $conv): array
     {
         if (!$conv->financialClientId()) {
             return self::notLinked();
@@ -438,7 +504,7 @@ class BotTools
         return [
             'request_number' => $qr->request_number,
             'note' => 'أبلغ العميل أنّ طلبه وصل لفريقنا وسيعود إليه موظف بالسعر النهائي وتأكيد التوفّر قريباً. '
-                . 'لا تذكر أي سعر ولا تؤكّد توفّر مقعد. جملة واحدة قصيرة تكفي.'.self::askForPhone($conv),
+                .'لا تذكر أي سعر ولا تؤكّد توفّر مقعد. جملة واحدة قصيرة تكفي.'.self::askForPhone($conv),
         ];
     }
 
@@ -502,7 +568,7 @@ class BotTools
             'request_number' => $qr->request_number,
             'offer' => $offer->title,
             'note' => 'أبلغ العميل أنّ طلب الحجز وصل وأنّ موظفاً سيتواصل معه لإتمامه وتأكيد التوفّر والدفع. '
-                . 'لا تقل إنّ الحجز تمّ أو تأكّد. جملة قصيرة فقط.'.self::askForPhone($conv),
+                .'لا تقل إنّ الحجز تمّ أو تأكّد. جملة قصيرة فقط.'.self::askForPhone($conv),
         ];
     }
 
@@ -535,7 +601,7 @@ class BotTools
             }
         }
 
-        $room = array_search(trim((string) ($in['room_type'] ?? '')), \App\Models\OfferOption::ROOM_TYPES, true) ?: null;
+        $room = array_search(trim((string) ($in['room_type'] ?? '')), OfferOption::ROOM_TYPES, true) ?: null;
         if ($room && (($option->prices[$room] ?? null) === null)) {
             $room = null;
         }
@@ -546,10 +612,10 @@ class BotTools
     /** سطر تفاصيل الحجز كما يراه الموظف — الفندق وسعة الغرفة إن اختارهما العميل */
     private static function bookingDetails(Offer $offer, array $in, ?array $selection = null): string
     {
-        $parts = ['طلب حجز عرض: ' . $offer->title];
+        $parts = ['طلب حجز عرض: '.$offer->title];
 
         if ($selection && $selection['sel']) {
-            $labels = collect(\App\Services\OfferPricing::selectionLabels($offer, $selection['sel']))
+            $labels = collect(OfferPricing::selectionLabels($offer, $selection['sel']))
                 ->map(fn ($l) => "{$l['group']}: {$l['option']}")->implode(' — ');
             if ($labels !== '') {
                 $parts[] = $labels;
@@ -557,10 +623,10 @@ class BotTools
         }
 
         if (!empty($in['hotel'])) {
-            $parts[] = 'الفندق: ' . mb_substr((string) $in['hotel'], 0, 150);
+            $parts[] = 'الفندق: '.mb_substr((string) $in['hotel'], 0, 150);
         }
         if (!empty($in['room_type'])) {
-            $parts[] = 'الغرفة: ' . mb_substr((string) $in['room_type'], 0, 30);
+            $parts[] = 'الغرفة: '.mb_substr((string) $in['room_type'], 0, 30);
         }
         if (!empty($in['details'])) {
             $parts[] = mb_substr((string) $in['details'], 0, 1500);
@@ -606,7 +672,7 @@ class BotTools
 
         $who = $conv->label();
         $body = $qr
-            ? "{$who} — طلب {$qr->request_number}: " . mb_substr((string) $qr->details, 0, 140)
+            ? "{$who} — طلب {$qr->request_number}: ".mb_substr((string) $qr->details, 0, 140)
             : "{$who} — يحتاج تدخّلاً بشرياً.";
         $url = $qr ? '/quote-requests' : '/whatsapp/inbox';
 
@@ -614,7 +680,7 @@ class BotTools
 
         if ($assignee) {
             try {
-                \App\Services\NotificationService::send($assignee, $title, $body, [
+                NotificationService::send($assignee, $title, $body, [
                     'type' => 'whatsapp', 'icon' => '💬', 'action_url' => $url,
                 ]);
             } catch (\Throwable $e) {
@@ -651,15 +717,17 @@ class BotTools
         return [
             'linked' => false,
             'note' => 'رقم العميل غير مربوط بحساب في النظام. لا تكشف أي بيانات مالية. '
-                . 'اعتذر بلطف واقترح أن يتواصل معه موظف للتحقق، أو استدعِ handoff_to_human.',
+                .'اعتذر بلطف واقترح أن يتواصل معه موظف للتحقق، أو استدعِ handoff_to_human.',
         ];
     }
 
     private static function date(?string $d): ?string
     {
-        if (!$d) return null;
+        if (!$d) {
+            return null;
+        }
         try {
-            return \Illuminate\Support\Carbon::parse($d)->toDateString();
+            return Carbon::parse($d)->toDateString();
         } catch (\Throwable $e) {
             return null;
         }

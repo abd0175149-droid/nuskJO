@@ -49,7 +49,9 @@ class WhatsAppSettingsController extends Controller
             'providers' => LlmFactory::PROVIDERS,
             'webhookUrl' => url('/api/whatsapp/webhook'),
             'defaultPrompt' => BotEngine::DEFAULT_PROMPT,
-            'toolList' => BotTools::LABELS,
+            'toolList' => BotTools::labels(),
+            // من سجل الأدوات (E15): شارة «يحوّل لموظف» وما لا يُطفأ
+            'toolMeta' => BotTools::meta(),
             'graph' => GraphVersions::panel(),
             'health' => ChannelDoctor::checks(),
             'ops' => app(OpsHealth::class)->snapshot(),

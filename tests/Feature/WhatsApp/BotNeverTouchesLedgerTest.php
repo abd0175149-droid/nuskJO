@@ -24,7 +24,7 @@ use Tests\TestCase;
 /**
  * البوت والمساعد الإداري لا يكتبان في الدفاتر (INV-11).
  *
- * تُشغَّل كل أداة في BotTools::LABELS وكل أداة في AdminTools::TOOL_NAMES (والتعديلات حتى التأكيد)
+ * تُشغَّل كل أداة في BotTools::labels() وكل أداة في AdminTools::names() (والتعديلات حتى التأكيد)
  * على عميل مربوط له حساب وفاتورة معتمدة وقيود قائمة، ثم يُقارن ما في الدفاتر قبل وبعد.
  * وكل أداة يُتحقق أنها عملت فعلاً، فلا ينجح الاختبار لأن الأدوات فشلت مبكراً.
  */
@@ -125,7 +125,7 @@ class BotNeverTouchesLedgerTest extends TestCase
             'save_note' => ['note' => 'يفضّل غرفة ثنائية'],
             'handoff_to_human' => ['reason' => 'طلب موظفاً'],
         ];
-        $this->assertEqualsCanonicalizing(array_keys(BotTools::LABELS), array_keys($args), 'أداة جديدة في BotTools بلا حالة هنا');
+        $this->assertEqualsCanonicalizing(BotTools::names(), array_keys($args), 'أداة جديدة في BotTools بلا حالة هنا');
 
         $before = $this->ledgerSnapshot();
 
@@ -195,7 +195,7 @@ class BotNeverTouchesLedgerTest extends TestCase
         $this->assertFalse(WaBotSetting::current()->enabled);
         $write('set_customer_bot', ['action' => 'on']);
 
-        $this->assertEqualsCanonicalizing(AdminTools::TOOL_NAMES, array_values(array_unique($used)), 'أداة إدارية بلا حالة هنا');
+        $this->assertEqualsCanonicalizing(AdminTools::names(), array_values(array_unique($used)), 'أداة إدارية بلا حالة هنا');
 
         $this->assertLedgerCounts($before);
     }

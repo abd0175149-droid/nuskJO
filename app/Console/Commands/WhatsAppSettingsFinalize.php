@@ -34,11 +34,19 @@ class WhatsAppSettingsFinalize extends Command
             $this->line('• يُمسح النص الصريح لرمز التحقق (يبقى هاشه، فالمصافحة تعمل)');
         }
 
-        $unknown = array_values(array_diff(array_keys($s->tools_config ?? []), array_keys(BotTools::LABELS)));
+        $unknown = array_values(array_diff(array_keys($s->tools_config ?? []), BotTools::names()));
         if ($unknown !== []) {
             $changes['tools_config'] = array_fill_keys($unknown, null);
             $actions[] = 'unknown_tools_removed';
             $this->line('• تُحذف مفاتيح أدوات مجهولة: '.implode('، ', $unknown));
+        }
+        // أداة لا تُطفأ وكان لها مفتاح قديم (E15.4): يُحذف، والكاتب يُسقطه أيضاً مع أي حفظ للأدوات
+        $locked = array_values(array_filter(array_keys($s->tools_config ?? []), fn ($t) => in_array($t, BotTools::names(), true) && !BotTools::disableable($t)));
+        if ($locked !== []) {
+            // أي خريطة أدوات (ولو فارغة) تمر بدمج الكاتب فيُسقط المفتاح المقفل
+            $changes['tools_config'] ??= [];
+            $actions[] = 'locked_tools_cleared';
+            $this->line('• تُحذف مفاتيح أدوات لا تُطفأ: '.implode('، ', $locked));
         }
 
         if ($this->option('reset-prompt') && $s->system_prompt !== null

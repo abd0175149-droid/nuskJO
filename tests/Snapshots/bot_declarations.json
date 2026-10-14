@@ -1,0 +1,126 @@
+[
+    {
+        "name": "get_offers",
+        "required": [],
+        "properties": [
+            "category"
+        ],
+        "enums": []
+    },
+    {
+        "name": "get_offer_details",
+        "required": [
+            "offer_id"
+        ],
+        "properties": [
+            "offer_id"
+        ],
+        "enums": []
+    },
+    {
+        "name": "send_offer_card",
+        "required": [
+            "offer_id"
+        ],
+        "properties": [
+            "offer_id"
+        ],
+        "enums": []
+    },
+    {
+        "name": "set_topic",
+        "required": [
+            "topics"
+        ],
+        "properties": [
+            "topics"
+        ],
+        "enums": []
+    },
+    {
+        "name": "get_my_balance",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "get_my_invoices",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "get_my_trips",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "request_quote",
+        "required": [
+            "type",
+            "details"
+        ],
+        "properties": [
+            "type",
+            "route_from",
+            "route_to",
+            "depart_date",
+            "return_date",
+            "adults",
+            "children",
+            "infants",
+            "details"
+        ],
+        "enums": {
+            "type": [
+                "flight",
+                "package",
+                "visa",
+                "hotel",
+                "transport",
+                "other"
+            ]
+        }
+    },
+    {
+        "name": "confirm_booking",
+        "required": [
+            "offer_id",
+            "details"
+        ],
+        "properties": [
+            "offer_id",
+            "option_ref",
+            "supplement_refs",
+            "hotel",
+            "room_type",
+            "adults",
+            "children",
+            "infants",
+            "travel_date",
+            "details"
+        ],
+        "enums": []
+    },
+    {
+        "name": "save_note",
+        "required": [
+            "note"
+        ],
+        "properties": [
+            "note"
+        ],
+        "enums": []
+    },
+    {
+        "name": "handoff_to_human",
+        "required": [
+            "reason"
+        ],
+        "properties": [
+            "reason"
+        ],
+        "enums": []
+    }
+]

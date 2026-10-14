@@ -14,14 +14,14 @@ class WaAdminAction extends Model
     use MassPrunable;
 
     /**
-     * الكتابات المنفّذة (AdminTools::WRITES بحالة done) تبقى سنتين، وكل ما عداها (قراءات ومعاينات ورفض وأخطاء)
+     * الكتابات المنفّذة (AdminTools::writes() بحالة done) تبقى سنتين، وكل ما عداها (قراءات ومعاينات ورفض وأخطاء)
      * 180 يوماً (E13). الحالة done وحدها لا تميّز: القراءات تُسجَّل done أيضاً.
      */
     public function prunable(): Builder
     {
         $write = function ($q) {
             $q->where('status', 'done')->where(function ($w) {
-                foreach (AdminTools::WRITES as $tool => $actions) {
+                foreach (AdminTools::writes() as $tool => $actions) {
                     $w->orWhere(fn ($x) => $x->where('tool', $tool)->whereIn('action', $actions));
                 }
             });

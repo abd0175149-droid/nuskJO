@@ -230,9 +230,14 @@ class WaBotSetting extends Model
         return (bool) (($this->reliability ?? [])[$key] ?? self::RELIABILITY_FLAGS[$key] ?? false);
     }
 
+    /** ما لا يُطفأ (handoff_to_human، E15.4) مفعّل دائماً مهما كان في tools_config القديم */
     public function toolEnabled(string $key): bool
     {
+        if (!\App\Services\WhatsApp\BotTools::disableable($key)) {
+            return true;
+        }
         $cfg = $this->tools_config ?? [];
+
         return !array_key_exists($key, $cfg) || (bool) $cfg[$key];
     }
 }

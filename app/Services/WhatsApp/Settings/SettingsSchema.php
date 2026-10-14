@@ -151,7 +151,7 @@ final class SettingsSchema
             'string' => array_values(array_filter(['string', 'max:64', isset($f['regex']) ? 'regex:'.$f['regex'] : null])),
             'text' => ['string', 'max:'.$f['max']],
             'enum' => [Rule::in(self::enumValues($key))],
-            'map' => ['array:'.implode(',', array_keys(BotTools::LABELS))],
+            'map' => ['array:'.implode(',', BotTools::names())],
             default => ['prohibited'],
         };
     }

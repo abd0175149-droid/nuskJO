@@ -186,7 +186,7 @@ TXT;
             }
 
             // ② ردٌّ يَعِد بموظف دون أداة تحويل ← يُنفَّذ التحويل فعلاً
-            $escalated = (bool) array_intersect($usage['tools'], HandoffGuard::ESCALATING_TOOLS);
+            $escalated = HandoffGuard::escalated($usage['tools']);
             if (!$escalated && HandoffGuard::claimsHandoff($text)) {
                 BotTools::execute('handoff_to_human', ['reason' => 'الردّ وعد بموظف دون تحويل فعلي'], $conv->fresh());
                 $usage['tools'][] = 'handoff_guard';
@@ -552,7 +552,7 @@ TXT;
     /** حارس تسريب الأدوات: النموذج يكتب اسم أداة أو كتلة كود كنصّ */
     private static function stripToolLeak(string $text): string
     {
-        $names = array_merge(array_keys(BotTools::LABELS), AdminTools::TOOL_NAMES);
+        $names = array_merge(BotTools::names(), AdminTools::names());
 
         $clean = preg_replace('/```.*?```/s', '', $text) ?? $text;
         foreach ($names as $n) {

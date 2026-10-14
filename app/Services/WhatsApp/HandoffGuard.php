@@ -13,8 +13,29 @@ namespace App\Services\WhatsApp;
  */
 class HandoffGuard
 {
-    /** أدوات تحوّل المحادثة فعلاً — إن استُدعيت إحداها فالزعم صادق */
-    public const ESCALATING_TOOLS = ['handoff_to_human', 'request_quote', 'confirm_booking'];
+    /** أدوات تحوّل المحادثة فعلاً — من سجل الأدوات (E15) */
+    public static function escalatingTools(): array
+    {
+        return BotTools::escalating();
+    }
+
+    /**
+     * هل تحوّلت المحادثة فعلاً في هذا الرد؟ نجاح أداة تحويل وحده (ok:اسم)، أو اسم قديم بلا بادئة. الرفض أو
+     * الفشل (denied:/failed:) لا يُعدّ، فلا يُسكت حارس «وعد بموظف دون تحويل».
+     *
+     * @param  list<string>  $usedTools
+     */
+    public static function escalated(array $usedTools): bool
+    {
+        foreach ($usedTools as $entry) {
+            [$status, $name] = str_contains($entry, ':') ? explode(':', $entry, 2) : ['ok', $entry];
+            if ($status === 'ok' && in_array($name, self::escalatingTools(), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /** طلب صريح للتحدّث مع إنسان */
     private const WANTS_HUMAN = [

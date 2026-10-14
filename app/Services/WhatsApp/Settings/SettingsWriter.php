@@ -36,12 +36,17 @@ final class SettingsWriter
         if (array_key_exists('tools_config', $changes) && is_array($changes['tools_config'])) {
             $merged = $settings->tools_config ?? [];
             foreach ($changes['tools_config'] as $tool => $on) {
+                // ما لا يُطفأ (handoff_to_human، E15.4) لا يُخزَّن له مفتاح أبداً
+                if (!\App\Services\WhatsApp\BotTools::disableable((string) $tool)) {
+                    continue;
+                }
                 if ($on === null) {
                     unset($merged[$tool]);
                 } else {
                     $merged[$tool] = (bool) $on;
                 }
             }
+            $merged = array_filter($merged, fn ($tool) => \App\Services\WhatsApp\BotTools::disableable((string) $tool), ARRAY_FILTER_USE_KEY);
             $changes['tools_config'] = $merged ?: null;
         }
         $model->forceFill($changes);

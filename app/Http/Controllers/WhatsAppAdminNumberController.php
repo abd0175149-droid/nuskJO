@@ -41,6 +41,8 @@ class WhatsAppAdminNumberController extends Controller
                 'client_match' => PhoneNormalizer::findClient($n->phone)?->name,
             ])->values(),
             'catalog' => AdminTools::CATALOG,
+            // تسميات أدوات المساعد وأفعالها من سجلها (E15)، لا قائمة مكتوبة في الصفحة
+            'toolLabels' => AdminTools::labels(),
             'users' => User::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'actions' => WaAdminAction::with('adminNumber:id,name')->orderByDesc('id')->limit(40)->get()
                 ->map(fn ($a) => [

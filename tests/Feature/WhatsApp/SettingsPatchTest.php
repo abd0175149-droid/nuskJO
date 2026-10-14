@@ -97,7 +97,7 @@ class SettingsPatchTest extends TestCase
 
         $this->assertSame(['save_note' => false], WaBotSetting::current()->fresh()->tools_config);
         $this->assertTrue(WaBotSetting::current()->fresh()->toolEnabled('get_offers'));
-        $this->assertCount(count(BotTools::LABELS), BotTools::LABELS);
+        $this->assertCount(count(BotTools::labels()), BotTools::labels());
     }
 
     public function test_a_stale_version_is_refused_and_writes_nothing(): void
