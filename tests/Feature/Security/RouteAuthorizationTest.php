@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\Permission;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as Router;
@@ -129,5 +130,58 @@ class RouteAuthorizationTest extends TestCase
         $this->artisan('authz:report')
             ->expectsOutputToContain('agents.index')
             ->assertSuccessful();
+    }
+
+    /** المسارات الحساسة تحمل الصلاحية بعينها، لا مجرد أي صلاحية */
+    public function test_sensitive_routes_require_their_specific_permission(): void
+    {
+        $expected = [
+            'invoices.approve' => 'perm:invoices.approve', 'invoices.reject' => 'perm:invoices.reject', 'invoices.start-edit' => 'perm:admin',
+            'invoices.destroy' => 'perm:admin',
+            'receipts.approve' => 'perm:receipts.approve', 'receipts.reject' => 'perm:receipts.reject', 'receipts.start-edit' => 'perm:admin',
+            'receipts.update-approved' => 'perm:admin', 'receipts.destroy' => 'perm:admin',
+            'disbursements.approve' => 'perm:disbursements.approve', 'disbursements.reject' => 'perm:disbursements.reject',
+            'disbursements.start-edit' => 'perm:admin', 'disbursements.update-approved' => 'perm:admin', 'disbursements.destroy' => 'perm:admin',
+            'accounting.close-year' => 'perm:accounting.close', 'accounting.periods.close' => 'perm:accounting.close', 'accounting.periods.open' => 'perm:accounting.close',
+            'users.index' => 'perm:users.view', 'users.store' => 'perm:users.create', 'users.update' => 'perm:users.update', 'users.destroy' => 'perm:users.delete',
+            'users.reset-password' => 'perm:admin',
+            'roles.index' => 'perm:roles.manage', 'roles.store' => 'perm:roles.manage', 'roles.update' => 'perm:roles.manage', 'roles.destroy' => 'perm:roles.manage',
+            'settings.update' => 'perm:settings.update', 'settings.brand-asset' => 'perm:settings.update', 'settings.upload-template' => 'perm:settings.update',
+            'payrolls.approve' => 'perm:payroll.approve', 'whatsapp.settings.update' => 'perm:whatsapp.settings',
+            'settings.backups.ack' => 'perm:backups.restore_ack',
+        ];
+
+        foreach ($expected as $name => $middleware) {
+            $route = Router::getRoutes()->getByName($name);
+            $this->assertNotNull($route, "المسار {$name} غير موجود");
+            $this->assertContains($middleware, $route->gatherMiddleware(), "{$name} لا يحمل {$middleware}");
+        }
+    }
+
+    /** ميتا لا تسجّل دخولاً ولا ترسل رمز CSRF، والحماية بتوقيع HMAC؛ والحد يُسقط إعادة إرسالها */
+    public function test_whatsapp_webhook_is_public_without_csrf_or_throttle(): void
+    {
+        foreach (['GET', 'POST'] as $method) {
+            $route = collect(Router::getRoutes()->getRoutes())->first(fn (Route $r) => $r->uri() === 'api/whatsapp/webhook' && in_array($method, $r->methods(), true));
+            $this->assertNotNull($route);
+            $middleware = $route->gatherMiddleware();
+            $this->assertNotContains('auth', $middleware);
+            $this->assertNotContains('authz.fence', $middleware);
+            $this->assertEmpty(array_filter($middleware, fn ($m) => is_string($m) && str_starts_with($m, 'throttle')));
+        }
+
+        $csrf = new class(app(), app('encrypter')) extends VerifyCsrfToken
+        {
+            public function excluded(): array
+            {
+                return array_merge($this->except, self::$neverVerify ?? []);
+            }
+        };
+        $this->assertContains('api/whatsapp/webhook', $csrf->excluded());
+    }
+
+    public function test_conversation_routes_use_scoped_binding(): void
+    {
+        $this->markTestSkipped('ربط المحادثة المقيّد بالمستخدم يُسلَّم في E04 (IDOR)؛ يُفعَّل معه.');
     }
 }
