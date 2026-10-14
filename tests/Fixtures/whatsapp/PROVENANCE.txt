@@ -48,3 +48,7 @@ username_only.json            [bsuid] § Webhooks: عميل فعّل اسم مس
 username_with_phone.json      [bsuid] § Webhooks: العميل نفسه والرقم ظاهر: from وwa_id مع from_user_id وuser_id.
                               [bsuid] https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids
                               مكتوبان من المرجع لا من أداة Test: تُستبدلان بحمولات أداة Test في App Dashboard (OWNER_ACTIONS 25).
+image_with_sha.json           [messages] § image مع caption وmime_type وsha256 (base64) وid، بلا url (يُطرح منذ 2025-11-12). E14.
+document_pdf.json             [messages] § document مع filename (booking.pdf) وmime_type وsha256 (hex) وid. E14.
+media_131052.json             [messages] § رسالة unsupported تحمل errors[0].code=131052 (Media download error: ملف أكبر من
+                              100MB أو تعذّر تنزيله عند ميتا). [errors] § 131052. E14.

@@ -13,7 +13,7 @@ final class WaLog
     private const ALLOWED = [
         'conv_id', 'message_id', 'wamid', 'status', 'meta_code', 'fbtrace_id', 'source', 'type', 'ms', 'model',
         'tokens_in', 'tokens_out', 'tool', 'field', 'event', 'count', 'phone_tail', 'exception',
-        'http', 'host', 'entry', 'reason', 'offer_id', 'code',
+        'http', 'host', 'entry', 'reason', 'offer_id', 'code', 'bytes',
     ];
 
     public static function info(string $event, array $context = []): void

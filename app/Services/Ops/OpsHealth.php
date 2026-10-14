@@ -21,6 +21,11 @@ final class OpsHealth
     /** نبضة لكل طابور يخدمه عامل (laravel-queue على default، وlaravel-wa على طابور الردود) */
     public const QUEUE_BEAT = 'ops:queue:beat:';
 
+    private const MEDIA_QUEUE = 'wa-media';
+
+    /** وظيفة أرشفة متاحة لم يلتقطها العامل منذ ساعة: تحذير في البطاقة فقط */
+    private const MEDIA_BACKLOG_SECONDS = 3600;
+
     /** الرموز الممكنة، بالترتيب الذي تُعرض به */
     public const CODES = ['db', 'schedule_stale', 'queue_stale', 'reply_queue_stale', 'backlog'];
 
@@ -66,7 +71,8 @@ final class OpsHealth
                     $codes[] = $queue === 'default' ? 'queue_stale' : 'reply_queue_stale';
                 }
             }
-            $backlog = DB::table('jobs')->whereNull('reserved_at')
+            // طابور الأرشيف (E14) له تحذيره الخاص ولا يُسقط /up: تنزيل متأخر لا يعطّل الرد
+            $backlog = DB::table('jobs')->whereNull('reserved_at')->where('queue', '!=', self::MEDIA_QUEUE)
                 ->where('available_at', '<=', $now - (int) config('ops.backlog_stale_seconds'))
                 ->exists();
             if ($backlog) {
@@ -83,7 +89,7 @@ final class OpsHealth
     /**
      * أعمار النبضات بالثواني (null: لا نبضة) وعدد الوظائف الفاشلة في 24 ساعة، لبطاقة الإعدادات وops:status.
      *
-     * @return array{enabled: bool, codes: list<string>, schedule_age: ?int, queues: array<string, ?int>, failed_24h: ?int}
+     * @return array{enabled: bool, codes: list<string>, schedule_age: ?int, queues: array<string, ?int>, failed_24h: ?int, warnings: list<string>}
      */
     public function snapshot(): array
     {
@@ -110,7 +116,19 @@ final class OpsHealth
             'schedule_age' => $age(self::SCHEDULE_BEAT),
             'queues' => collect(self::queues())->mapWithKeys(fn ($q) => [$q => $age(self::beatKey($q))])->all(),
             'failed_24h' => $failed,
+            'warnings' => $this->warnings($now),
         ];
+    }
+
+    /** @return list<string> تحذيرات لا تُسقط /up: media_backlog (تأخر أرشفة المرفقات) */
+    private function warnings(int $now): array
+    {
+        try {
+            return DB::table('jobs')->whereNull('reserved_at')->where('queue', self::MEDIA_QUEUE)
+                ->where('available_at', '<=', $now - self::MEDIA_BACKLOG_SECONDS)->exists() ? ['media_backlog'] : [];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

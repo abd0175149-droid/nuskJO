@@ -687,6 +687,7 @@ const opsComponents = computed(() => {
         { code: 'queue_stale', label: 'العامل الخلفي', ok: !codes.includes('queue_stale'), age: queues.default },
         { code: 'reply_queue_stale', label: 'عامل ردود البوت', ok: !codes.includes('reply_queue_stale'), age: queues['wa-replies'] },
         { code: 'backlog', label: 'الطابور', ok: !codes.includes('backlog') },
+        ...((props.ops?.warnings || []).includes('media_backlog') ? [{ code: 'media_backlog', label: 'تأخر أرشفة المرفقات', ok: false }] : []),
     ];
 });
 

@@ -236,6 +236,8 @@ class WhatsAppInbox
             'body' => $body,
             'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []),
         ] + $columns + (self::hasMetaAt() ? ['meta_at' => $metaAt] : []));
+        // أرشفة المرفق (E14) بعد الاعتماد، خلف العلم media_archive
+        Media\MediaIntake::onInbound($message, $conv, $msg);
 
         // النافذة والمعاينة لا تتراجع: رسالة أقدم أعادت ميتا إرسالها لا تكتبهما
         WaConversation::whereKey($conv->id)

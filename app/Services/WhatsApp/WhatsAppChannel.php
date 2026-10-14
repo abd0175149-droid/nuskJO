@@ -261,6 +261,52 @@ class WhatsAppChannel
     }
 
     /**
+     * بيانات وسيط وارد من ميتا بلا تنزيل (أرشيف E14): GET {v}/{media-id} عبر graph() بلا تحويلات ومهلة 20 ثانية.
+     * الرابط مؤقت (5 دقائق) ويعود للمستدعي وحده: لا يُخزَّن ولا يُسجَّل.
+     *
+     * @return array{ok: bool, http: ?int, meta_code: ?int, url?: string, mime?: string, file_size?: int, sha256?: string}
+     */
+    public static function mediaMeta(string $mediaId): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->token()) {
+            return ['ok' => false, 'http' => null, 'meta_code' => null, 'code' => self::ERR_NOT_CONFIGURED];
+        }
+        try {
+            $res = self::graph($s, 20)->get(self::graphPath($mediaId), array_filter(['phone_number_id' => $s->phoneNumberId()]));
+        } catch (\InvalidArgumentException) {
+            return ['ok' => false, 'http' => null, 'meta_code' => null, 'code' => self::ERR_CONFIG];
+        } catch (\Throwable $e) {
+            WaLog::warning('media.lookup.connection_failed', ['type' => $e::class]);
+
+            return ['ok' => false, 'http' => null, 'meta_code' => null, 'code' => 'HTTP_ERROR'];
+        }
+        $metaCode = is_numeric(data_get($res->json(), 'error.code')) ? (int) data_get($res->json(), 'error.code') : null;
+        $url = (string) $res->json('url', '');
+        if (!$res->successful() || $url === '') {
+            WaLog::warning('media.lookup.failed', ['http' => $res->status(), 'meta_code' => $metaCode]);
+            if (in_array($res->status(), [401, 403], true) && MetaErrorCatalog::isAccountError($metaCode)) {
+                MetaErrorCatalog::react($metaCode);
+            }
+
+            return ['ok' => false, 'http' => $res->status(), 'meta_code' => $metaCode, 'code' => 'META_ERROR',
+                'not_found' => $res->status() === 404 || $metaCode === 100 || str_contains(strtolower((string) data_get($res->json(), 'error.message', '')), 'not found')];
+        }
+
+        return ['ok' => true, 'http' => $res->status(), 'meta_code' => null, 'url' => $url,
+            'mime' => (string) $res->json('mime_type', ''), 'file_size' => (int) $res->json('file_size', 0), 'sha256' => (string) $res->json('sha256', '')];
+    }
+
+    /** رابط تنزيل من ميتا: https ومضيف من WA_MEDIA_HOSTS. الأرشيف لا يرسل الرمز لغيره أياً كان media_host_mode */
+    public static function isMetaMediaUrl(string $url): bool
+    {
+        $parts = parse_url($url) ?: [];
+        $host = strtolower((string) ($parts['host'] ?? ''));
+
+        return ($parts['scheme'] ?? '') === 'https' && $host !== '' && self::isMetaMediaHost($host);
+    }
+
+    /**
      * الغلاف القديم: null عند أي فشل.
      *
      * @return array{bytes: string, mime: string, host: string}|null

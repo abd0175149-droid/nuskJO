@@ -85,6 +85,19 @@ class HealthRouteTest extends TestCase
         $this->assertSame(['backlog'], app(OpsHealth::class)->diagnose());
     }
 
+    public function test_a_late_media_archive_job_warns_without_failing_up(): void
+    {
+        DB::table('jobs')->insert(['queue' => 'wa-media', 'payload' => '{}', 'attempts' => 0, 'reserved_at' => null,
+            'available_at' => now()->subMinutes(30)->getTimestamp(), 'created_at' => now()->subMinutes(30)->getTimestamp()]);
+        $this->upJson()->assertOk();
+        $this->assertSame([], app(OpsHealth::class)->snapshot()['warnings']);
+
+        $this->travel(1)->hours();
+        $this->beat();
+        $this->upJson()->assertOk();
+        $this->assertSame(['media_backlog'], app(OpsHealth::class)->snapshot()['warnings']);
+    }
+
     public function test_repeated_failures_log_one_line_per_code_and_report_nothing(): void
     {
         $this->captureLogs();

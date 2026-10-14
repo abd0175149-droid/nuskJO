@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Jobs\ArchiveWhatsAppMedia;
 use App\Jobs\ProcessWhatsAppReply;
 use App\Jobs\SendPushNotification;
 use App\Services\WhatsApp\ReplyRun;
@@ -75,6 +76,18 @@ class ReplyTimingInvariantsTest extends TestCase
         $this->assertLessThan($retryUntil, $retryAfter);
         $this->assertLessThanOrEqual(ProcessWhatsAppReply::DEBOUNCE_MINUTES * 60, $retryUntil);
         $this->assertGreaterThan($job->timeout, ProcessWhatsAppReply::RUNNING_SECONDS);
+    }
+
+    public function test_a_running_media_download_survives_a_graceful_stop(): void
+    {
+        $ini = parse_ini_file(base_path('docker/supervisord.conf'), true, INI_SCANNER_RAW);
+        $media = $ini['program:laravel-media'];
+        preg_match('/--timeout=(\d+)/', $media['command'], $m);
+
+        $this->assertStringContainsString('--queue=wa-media', $media['command']);
+        $this->assertLessThan((int) $m[1], (new ArchiveWhatsAppMedia(1))->timeout);
+        $this->assertLessThan((int) $media['stopwaitsecs'], (int) $m[1]);
+        $this->assertLessThan($this->composeGrace(), (int) $media['stopwaitsecs']);
     }
 
     public function test_the_queue_workers_stop_before_the_web_server(): void
