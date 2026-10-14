@@ -21,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
     {
         // صفحة الخصوصية تسمّي كل مزوّد ذكاء مفعّل، أساسياً واحتياطياً (E12.6). composer لا Closure في المسار،
         // فلا يتجمّد النص مع route:cache
+        // أرشيف المرفقات (E14): نصّه في الصفحتين يظهر ما دام العلم مفعّلاً، فلا تَعِد الصفحة بما لا يجري
+        \Illuminate\Support\Facades\View::composer(['legal.privacy', 'legal.data-deletion'], function ($view) {
+            $view->with('mediaArchive', rescue(fn () => \App\Support\FeatureFlags::on('media_archive'), false, false))
+                ->with('mediaDays', (int) config('whatsapp.media.retention_days'));
+        });
         \Illuminate\Support\Facades\View::composer('legal.privacy', function ($view) {
             $view->with('aiProviders', rescue(function () {
                 $s = \App\Models\WaBotSetting::current();

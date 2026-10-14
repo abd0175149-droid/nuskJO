@@ -317,6 +317,11 @@ class BotTools
             ];
         }
 
+        // دليل السعر الذي رآه العميل (E14.11): البطاقة تُستبدل عند إعادة التوليد، فتُنسخ للأرشيف لحظة الإرسال
+        if (\App\Support\FeatureFlags::on('media_archive') && !empty($res['message_id'])) {
+            app(\App\Services\WhatsApp\Media\MediaArchiver::class)->storeOutbound((string) $res['message_id'], Storage::disk('public')->path($path), 'image/png');
+        }
+
         return [
             'sent' => true,
             'offer' => $offer->title,

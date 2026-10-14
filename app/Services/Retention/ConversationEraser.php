@@ -197,6 +197,28 @@ final class ConversationEraser
         });
     }
 
+    /**
+     * «احذف ملفاتي» (E14.10): المرفقات وحدها، والمحادثة ورسائلها باقية. الملفات من القرص، والحديث منها عند ميتا،
+     * وما ينتظر الأرشفة لا يُحفظ بعدها (skipped_consent).
+     *
+     * @return array{files: int, media_meta_deleted: int, media_meta_failed: int}
+     */
+    public function eraseMedia(WaConversation $conv): array
+    {
+        $ids = array_values(array_unique(array_merge([$conv->id],
+            Schema::hasColumn('wa_conversations', 'merged_into_id') ? WaConversation::where('merged_into_id', $conv->id)->pluck('id')->all() : [])));
+        $done = ['files' => $this->deleteArchivedFiles($ids), 'media_meta_deleted' => 0, 'media_meta_failed' => 0];
+        if (Schema::hasColumn('wa_messages', 'media_status')) {
+            DB::table('wa_messages')->whereIn('conversation_id', $ids)->whereNotNull('media_path')->update(['media_status' => 'purged', 'media_path' => null, 'updated_at' => now()]);
+            DB::table('wa_messages')->whereIn('conversation_id', $ids)->whereIn('media_status', ['pending', 'failed', 'too_large'])->update(['media_status' => 'skipped_consent', 'updated_at' => now()]);
+        }
+        foreach ($this->recentMediaIds($ids) as $mediaId) {
+            WhatsAppChannel::deleteMedia($mediaId) ? $done['media_meta_deleted']++ : $done['media_meta_failed']++;
+        }
+
+        return $done;
+    }
+
     /** @return list<string> */
     private function recentMediaIds(array $ids): array
     {

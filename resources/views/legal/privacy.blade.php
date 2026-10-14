@@ -13,6 +13,9 @@
     <tr><td>محتوى المراسلات</td><td>نصّ رسائلك على واتساب وردودنا عليها</td><td>محادثتك معنا</td></tr>
     <tr><td>بيانات الحجز</td><td>وجهة السفر، تاريخ الرحلة، عدد المسافرين</td><td>طلبك</td></tr>
     <tr><td>البيانات المالية</td><td>الفواتير، المبالغ المدفوعة والمتبقية</td><td>تعاملاتك معنا</td></tr>
+    @if ($mediaArchive ?? false)
+    <tr><td>المرفقات</td><td>صور ووثائق ترسلها لنا مثل الجواز أو إيصال الحوالة</td><td>محادثتك معنا</td></tr>
+    @endif
     <tr><td>بيانات تقنية</td><td>معرّف الرسالة، وقت الإرسال، حالة التسليم</td><td>منصّة واتساب</td></tr>
 </table>
 
@@ -36,6 +39,9 @@
     <li>قد يردّ عليك <strong>مساعد آليّ</strong> في البداية، ويمكنك في أي وقت طلب التحدّث مع موظف فيُحوَّل حديثك مباشرةً.</li>
     <li>تُحفظ محادثتك في نظامنا ليتمكّن موظفونا من متابعة طلبك.</li>
     <li>تمرّ الرسائل عبر خوادم Meta وتخضع أيضاً لسياسة خصوصية واتساب.</li>
+    @if ($mediaArchive ?? false)
+    <li>الصور والوثائق التي ترسلها تُحفظ على خوادمنا بوصول مقيّد للموظف المختص، ويُسجَّل كل اطّلاع عليها. ولا يطلب منك المساعد الآلي صورة جوازك أو هويتك. ويمكنك اختيار «احذف ملفاتي» فتُحذف فوراً.</li>
+    @endif
     <li>لإيقاف رسائلنا أرسل كلمة <strong>«إيقاف»</strong> في المحادثة.</li>
 </ul>
 
@@ -55,6 +61,9 @@
     <li><strong>الإشعارات الداخلية للموظفين:</strong> حتى 6 أشهر.</li>
     <li><strong>السجلات المالية (الفواتير والسندات):</strong> للمدّة التي يفرضها القانون الأردني، ولا يمكن حذفها قبلها.</li>
     <li><strong>بيانات التعريف:</strong> طوال كونك عميلاً لدينا.</li>
+    @if ($mediaArchive ?? false)
+    <li><strong>المرفقات (صور ووثائق):</strong> {{ $mediaDays }} يوماً من استلامها ثم تُحذف.</li>
+    @endif
     <li><strong>النسخ الاحتياطية:</strong> مشفّرة، وتُحفظ 6 أشهر كحدّ أقصى ثم تُتلف.</li>
 </ul>
 
@@ -90,6 +99,9 @@
     <h3>Sharing</h3>
     <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider{{ count($aiProviders ?? []) > 1 ? 's' : '' }} ({{ implode(', ', $aiProviders ?? ['Google Gemini']) }}) solely to generate replies (not used to train general models), and with authorities where legally required.</p>
     <h3>Retention</h3>
+    @if ($mediaArchive ?? false)
+    <p>Attachments you send (photos, documents such as a passport or a transfer receipt) are stored on our servers with access limited to the staff handling your booking, every view is logged, and they are deleted {{ $mediaDays }} days after receipt — or at once if you choose "Delete my files".</p>
+    @endif
     <p>Conversations: up to 24 months after last contact, unless attached to an invoice. Assistant usage statistics: 12 months, then aggregated monthly without any link to a person. Internal staff notifications: up to 6 months. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
     <h3>Your rights</h3>
     <p>You may access your data (we send you a copy within 30 days after verifying your identity), correct it, or request its deletion — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>

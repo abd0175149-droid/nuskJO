@@ -19,11 +19,11 @@
     <table>@foreach ($data['client'] as $k => $v)<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>@endforeach</table>
 @endif
 
-@foreach (['messages' => 'الرسائل', 'notes' => 'الملاحظات', 'quote_requests' => 'طلبات التسعير', 'invoices' => 'الفواتير', 'receipts' => 'سندات القبض'] as $key => $title)
-    <h2>{{ $title }} ({{ count($data[$key]) }})</h2>
-    @if (count($data[$key]))
+@foreach (['messages' => 'الرسائل', 'notes' => 'الملاحظات', 'quote_requests' => 'طلبات التسعير', 'invoices' => 'الفواتير', 'receipts' => 'سندات القبض', 'attachments' => 'المرفقات (الوصف؛ نسخة الملف عند الطلب)'] as $key => $title)
+    <h2>{{ $title }} ({{ count(($data[$key] ?? [])) }})</h2>
+    @if (count(($data[$key] ?? [])))
         <table>
-            @foreach ($data[$key] as $row)
+            @foreach (($data[$key] ?? []) as $row)
                 <tr>@foreach ((array) $row as $v)<td>{{ is_scalar($v) || $v === null ? $v : json_encode($v, JSON_UNESCAPED_UNICODE) }}</td>@endforeach</tr>
             @endforeach
         </table>

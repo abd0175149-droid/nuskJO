@@ -54,6 +54,7 @@ class WhatsAppSettingsController extends Controller
             'health' => ChannelDoctor::checks(),
             'ops' => app(OpsHealth::class)->snapshot(),
             'meta' => MetaHealth::summary(WaBotSetting::current()),
+            'mediaArchive' => rescue(fn () => \App\Services\WhatsApp\Media\MediaArchiver::summary(), null, false),
         ]);
     }
 

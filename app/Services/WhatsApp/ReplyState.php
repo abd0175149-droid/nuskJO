@@ -33,6 +33,7 @@ final class ReplyState
         'identity_change' => '🔄 غيّر العميل رقمه',
         'llm_outage' => '🔌 تعطّل مزوّد الذكاء',
         'data_erasure' => '🗑️ طلب حذف بيانات',
+        'media_refused' => '🗂️ رفض حفظ الملفات',
     ];
 
     private static ?bool $available = null;

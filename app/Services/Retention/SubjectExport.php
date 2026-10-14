@@ -7,6 +7,7 @@ use App\Models\WaConversation;
 use App\Services\TravelersReport;
 use App\Services\WhatsApp\PhoneNormalizer;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * حق الاطّلاع (E13.8): نسخة من بيانات الشخص بقوائم حقول مسموحة صريحة. لا payload ولا wamid ولا أسماء
@@ -22,6 +23,8 @@ final class SubjectExport
         'quote' => ['request_number', 'type', 'route_from', 'route_to', 'depart_date', 'return_date', 'pax_adults', 'pax_children', 'pax_infants', 'status', 'quoted_price_jod'],
         'invoice' => ['invoice_number', 'invoice_date', 'trip_date', 'total_sell_jod', 'status'],
         'receipt' => ['receipt_number', 'receipt_date', 'amount_jod'],
+        // مرفقات الأرشيف (E14، A8): الوصف وحده؛ نسخة الملف نفسه يسلّمها الموظف من الصندوق عند الطلب
+        'attachment' => ['created_at', 'direction', 'msg_type', 'media_mime', 'media_size', 'media_status', 'media_archived_at'],
     ];
 
     /** @return array{data: array<string, mixed>, counts: array<string, int>} */
@@ -42,6 +45,11 @@ final class SubjectExport
         $messages = DB::table('wa_messages')->whereIn('conversation_id', $ids)->orderBy('id')->get(self::FIELDS['message'])
             ->map(fn ($m) => ['created_at' => $m->created_at, 'direction' => $m->direction, 'source' => $m->direction === 'in' ? 'العميل' : 'نُسك',
                 'msg_type' => $m->msg_type, 'body' => $m->body]);
+        $attachments = Schema::hasColumn('wa_messages', 'media_status')
+            ? DB::table('wa_messages')->whereIn('conversation_id', $ids)->whereNotNull('media_status')->orderBy('id')->get(self::FIELDS['attachment'])
+                ->map(fn ($m) => ['created_at' => $m->created_at, 'from' => $m->direction === 'in' ? 'العميل' : 'نُسك', 'kind' => $m->msg_type,
+                    'type' => $m->media_mime, 'bytes' => $m->media_size, 'kept' => $m->media_status === 'stored', 'archived_at' => $m->media_archived_at])
+            : collect();
         $notes = DB::table('wa_customer_notes')->whereIn('conversation_id', $ids)->orderBy('id')->get(self::FIELDS['note']);
         $quotes = DB::table('quote_requests')->whereIn('conversation_id', $ids)
             ->when($client, fn ($q) => $q->orWhere('client_id', $client->id))->orderBy('id')->get(self::FIELDS['quote']);
@@ -58,11 +66,13 @@ final class SubjectExport
             'quote_requests' => $quotes->values(),
             'invoices' => $invoices->map(fn ($i) => collect((array) $i)->only(self::FIELDS['invoice'])->all() + ['remaining_jod' => $remaining[$i->id] ?? null])->values(),
             'receipts' => $receipts->values(),
+            'attachments' => $attachments->values(),
         ];
 
         return ['data' => $data, 'counts' => [
             'conversations' => $convs->count(), 'messages' => $messages->count(), 'notes' => $notes->count(),
             'quote_requests' => $quotes->count(), 'invoices' => $invoices->count(), 'receipts' => $receipts->count(),
+            'attachments' => $attachments->count(), 'attachments_kept' => $attachments->where('kept', true)->count(),
         ]];
     }
 

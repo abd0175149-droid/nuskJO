@@ -7,11 +7,13 @@ use App\Models\WaMessage;
 use App\Services\WhatsApp\WaLog;
 use App\Services\WhatsApp\WhatsAppChannel;
 use App\Services\WhatsApp\WhatsAppInbox;
+use App\Support\FeatureFlags;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Psr\Http\Message\ResponseInterface;
@@ -108,12 +110,18 @@ final class MediaArchiver
         }
     }
 
-    /** نسخ ملف محلي (بطاقة عرض صادرة، E14.11) إلى الأرشيف وتعليم رسالته stored */
-    public function storeOutbound(string $wamid, string $sourceFile, string $mime): bool
+    /** نسخ ملف محلي (بطاقة عرض صادرة، E14.11؛ ومرفقات الموظف في E32) إلى الأرشيف وتعليم رسالته stored. النوع بالفحص */
+    public function storeOutbound(string $wamid, string $sourceFile, ?string $expectedMime = null): bool
     {
         $m = $wamid !== '' ? WaMessage::where('wamid', $wamid)->first() : null;
+        if (!$m || !is_file($sourceFile)) {
+            return false;
+        }
+        $mime = (string) (new \finfo(FILEINFO_MIME_TYPE))->file($sourceFile);
         $type = self::allowedTypes()[$mime] ?? null;
-        if (!$m || $type === null || !is_file($sourceFile)) {
+        if ($type === null || ($expectedMime !== null && $expectedMime !== $mime)) {
+            WaLog::warning('media.outbound.type', ['message_id' => $m->id]);
+
             return false;
         }
         $tmp = self::tmpDir().'/'.Str::uuid7().'.part';
@@ -153,6 +161,29 @@ final class MediaArchiver
     public function overQuota(): bool
     {
         return Cache::get('wa:media:quota_exceeded') || self::usedBytes() >= (int) config('whatsapp.media.quota_mb') * 1024 * 1024;
+    }
+
+    /** بطاقة «أرشيف المرفقات» في الإعدادات (E14.12): العلمان والمساحة وأعداد آخر 7 أيام لكل حالة. أعداد فقط */
+    public static function summary(): ?array
+    {
+        if (!Schema::hasColumn('wa_messages', 'media_status')) {
+            return null;
+        }
+        $quota = (int) config('whatsapp.media.quota_mb');
+        $used = self::usedBytes();
+
+        return [
+            'enabled' => FeatureFlags::on('media_archive'),
+            'consent_prompt' => FeatureFlags::on('media_consent_prompt'),
+            'used_mb' => round($used / 1048576, 1),
+            'quota_mb' => $quota,
+            'pct' => $quota > 0 ? (int) floor($used / ($quota * 1048576) * 100) : 0,
+            'retention_days' => (int) config('whatsapp.media.retention_days'),
+            'sha_mode' => (string) config('whatsapp.media.sha_mode'),
+            'paused' => (bool) Cache::get('wa:media:quota_exceeded'),
+            'week' => WaMessage::whereNotNull('media_status')->where('created_at', '>=', now()->subDays(7))
+                ->selectRaw('media_status, count(*) n')->groupBy('media_status')->pluck('n', 'media_status')->map(fn ($n) => (int) $n)->all(),
+        ];
     }
 
     /** @return array<string, array{0: string, 1: bool}> النوع المكتشف => [الامتداد، يُعاين] */

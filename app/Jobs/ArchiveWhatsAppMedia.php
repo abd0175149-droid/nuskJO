@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Media\MediaArchiver;
+use App\Services\WhatsApp\Media\MediaConsent;
 use App\Services\WhatsApp\WaLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -79,6 +80,10 @@ final class ArchiveWhatsAppMedia implements ShouldBeUnique, ShouldQueue
             return;
         }
         $archiver->apply($m, $result);
+        // إشعار الحفظ بزرّي «موافق» و«احذف ملفاتي» بعد أول ملف محفوظ (خلف العلم media_consent_prompt)
+        if ($result['status'] === 'stored' && ($conv = $m->conversation()->first()) && $m->fresh()?->media_status === 'stored') {
+            MediaConsent::maybeNotify($conv);
+        }
         WaLog::info('media.archive', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'status' => $result['status'],
             'bytes' => $result['size'] ?? null, 'ms' => (int) ((microtime(true) - $started) * 1000)]);
     }

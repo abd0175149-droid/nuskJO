@@ -116,9 +116,7 @@ enum AuditAction: string
     case ConfigExport = 'config.export';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [
-        'WaMediaPurge' => 'E14 (دفعة التقليم)', 'WaMediaConsent' => 'E14 (دفعة الموافقة)',
-    ];
+    public const INTENTIONALLY_UNEMITTED = [];
 
     public function severity(): AuditSeverity
     {

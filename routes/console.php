@@ -210,6 +210,15 @@ Schedule::command('whatsapp:prune')
     ->dailyAt('03:45')
     ->withoutOverlapping()
     ->when(fn () => \App\Support\FeatureFlags::on('retention_purge') && \App\Support\Retention::backupFresh());
+// أرشيف المرفقات (E14): التقليم بعد النسخة الليلية، والكنس كل ساعة (مؤقت ويتيم ومفقود وسقف)
+Schedule::command('whatsapp:media-prune')
+    ->timezone('Asia/Amman')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->when(fn () => \App\Support\Retention::backupFresh());
+Schedule::command('whatsapp:media-sweep')
+    ->hourly()
+    ->withoutOverlapping();
 
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {

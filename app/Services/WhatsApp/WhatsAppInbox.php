@@ -143,7 +143,7 @@ class WhatsAppInbox
         }
 
         try {
-            [$conv, $optOut] = DB::transaction(fn () => self::storeInboundRows($in, $msg));
+            [$conv, $after] = DB::transaction(fn () => self::storeInboundRows($in, $msg));
         } catch (UniqueConstraintViolationException) {
             // نسختان من الإشعار نفسه في وقت واحد: الأخرى خزّنته
             $existing = WaMessage::where('wamid', $wamid)->first();
@@ -160,7 +160,15 @@ class WhatsAppInbox
         }
 
         // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
-        if ($optOut) {
+        if ($after === 'consent:no') {
+            Media\MediaConsent::refused($conv);
+
+            return null;
+        }
+        if ($after === 'consent:yes') {
+            return null;
+        }
+        if ($after === 'optout') {
             WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system');
 
             return null;
@@ -190,7 +198,7 @@ class WhatsAppInbox
 
     /**
      * صفوف الوارد كلها في معاملة واحدة: المحادثة والرسالة والنافذة، أو لا شيء.
-     * @return array{0: ?WaConversation, 1: bool} المحادثة إن استحقت المتابعة، وهل طلب إيقاف التسويق
+     * @return array{0: ?WaConversation, 1: false|string} المحادثة إن استحقت المتابعة، وما يُنفَّذ بعد الاعتماد (optout | consent:yes | consent:no)
      */
     private static function storeInboundRows(InboundMessage $in, array $msg): array
     {
@@ -250,6 +258,14 @@ class WhatsAppInbox
         WaConversation::whereKey($conv->id)->update(['unread_count' => DB::raw('unread_count + 1'), 'status' => 'open']);
         $conv->refresh();
 
+        // زرّا إشعار حفظ الملفات (E14): اختيار مسجّل لا يصل للبوت، والحذف بعد الاعتماد
+        if ($choice = Media\MediaConsent::choice($buttonId)) {
+            Media\MediaConsent::record($conv, $choice);
+            ReplyState::advance($conv, $message->id);
+
+            return [$conv, "consent:{$choice}"];
+        }
+
         // إيقاف التسويق بنصّ مطابق
         // رقم الإدارة لا يُسجَّل رافضاً للتسويق: «إيقاف» منه تعني غالباً إيقاف البوت
         if (self::isOptOut($body, $buttonId) && !\App\Models\WaAdminNumber::forPhone($conv->phone)) {
@@ -260,7 +276,7 @@ class WhatsAppInbox
             // إشعار النظام هو الرد: لا يجيب البوت عنها لاحقاً (المُصالِح أو مكرر من ميتا)
             ReplyState::advance($conv, $message->id);
 
-            return [$conv, true];
+            return [$conv, 'optout'];
         }
 
         return [$conv, false];

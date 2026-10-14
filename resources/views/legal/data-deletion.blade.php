@@ -29,6 +29,9 @@
 <table>
     <tr><th>البيانات</th><th>الإجراء</th></tr>
     <tr><td>محادثاتك على واتساب (الرسائل الواردة والصادرة)</td><td>✅ تُحذف نهائياً</td></tr>
+    @if ($mediaArchive ?? false)
+    <tr><td>المرفقات (صور ووثائق)</td><td>✅ تُحذف نهائياً من أنظمتنا (ويمكنك حذفها وحدها فوراً بزر «احذف ملفاتي»)</td></tr>
+    @endif
     <tr><td>الملاحظات المحفوظة عنك</td><td>✅ تُحذف نهائياً</td></tr>
     <tr><td>طلبات التسعير غير المكتملة</td><td>✅ تُحذف نهائياً</td></tr>
     <tr><td>بيانات التواصل (الاسم، الهاتف، البريد)</td><td>✅ تُحذف ما لم ترتبط بفواتير قائمة</td></tr>
@@ -71,7 +74,7 @@
         <li><strong>Via email:</strong> write to <a href="mailto:info@nusuk-jo.com?subject=Data%20Deletion%20Request">info@nusuk-jo.com</a> with the subject <strong>"Data Deletion Request"</strong>, including your full name, the phone number you contacted us from, and an explicit deletion request.</li>
     </ul>
     <h3>What is deleted</h3>
-    <p>Your WhatsApp conversations (inbound and outbound messages), stored notes about you, incomplete quotation requests, and your contact details — unless they are attached to existing invoices.</p>
+    <p>Your WhatsApp conversations (inbound and outbound messages){{ ($mediaArchive ?? false) ? ', attachments you sent (photos and documents)' : '' }}, stored notes about you, incomplete quotation requests, and your contact details — unless they are attached to existing invoices.</p>
     <h3>What is retained</h3>
     <p>Invoices and financial vouchers (and quotation requests attached to an invoice) are retained for the period required by Jordanian tax and audit law, then reviewed for deletion. They are never used to contact you after a deletion request.</p>
     <p>Deletion covers our systems only; Meta deletes its copy of media within 30 days, and messages on your device stay there. If you previously sent "STOP", your number stays on the opt-out list so we never message you again.</p>

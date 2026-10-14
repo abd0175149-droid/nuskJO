@@ -52,6 +52,8 @@
                 </div>
 
                 <!-- ================= صحة النظام والقناة ================= -->
+                <MediaArchivePanel v-if="props.mediaArchive" :summary="props.mediaArchive"/>
+
                 <div id="ops" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6 scroll-mt-20">
                     <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
                         <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">🩺 صحة النظام والقناة</h3>
@@ -451,6 +453,7 @@ import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
+import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
@@ -485,6 +488,7 @@ const props = defineProps({
     health: { type: Array, default: () => [] },
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
+    mediaArchive: { type: Object, default: null },
 });
 
 // ===== الحالة المحلية (تتحدّث من ردود الخادم دون إعادة تحميل الصفحة) =====
