@@ -87,6 +87,8 @@ class ReceiptController extends Controller
                 );
                 // قيد محاسبي إلزامي — فشله يُلغي الاعتماد بالكامل
                 AccountingService::recordReceipt($receipt);
+                // ولا اعتماد بلا صف تدقيق: فشله يلغي الاعتماد أيضاً
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::Approve, 'receipt', $receipt->id, $receipt->receipt_number, ['amount_jod' => (float) $receipt->amount_jod]);
                 try { \App\Services\NotificationService::receiptApproved($receipt); } catch (\Exception $e) {}
             });
         } catch (ApprovalConflict $e) {
@@ -108,7 +110,10 @@ class ReceiptController extends Controller
         }
 
         $request->validate(['rejection_reason' => 'required|string|max:500']);
-        $receipt->reject(auth()->user(), $request->rejection_reason);
+        DB::transaction(function () use ($receipt, $request) {
+            $receipt->reject(auth()->user(), $request->rejection_reason);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Reject, 'receipt', $receipt->id, $receipt->receipt_number, ['amount_jod' => (float) $receipt->amount_jod]);
+        });
 
         try { \App\Services\NotificationService::operationRejected($receipt, 'سند قبض', $receipt->receipt_number); } catch (\Exception $e) {}
 

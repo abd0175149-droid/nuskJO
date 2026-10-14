@@ -423,6 +423,7 @@ class OfferController extends Controller
 
         $data = $request->validate(OfferWriter::rules($request->all()), OfferWriter::messages());
         $offer = OfferWriter::save(null, $data);
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::Create, 'offer', $offer->id, $offer->title);
 
         return redirect()->route('offers.show', ['offer' => $offer->id, 'tab' => $request->get('tab', 'data')])
             ->with('success', 'تم إضافة العرض');
@@ -436,7 +437,21 @@ class OfferController extends Controller
         }
 
         $data = $request->validate(OfferWriter::rules($request->all()), OfferWriter::messages());
+        $before = self::priceSnapshot($offer);
         OfferWriter::save($offer, $data);
+
+        // الأسعار التي يقرؤها البوت ويرسلها للعملاء: أي تغيير فيها صف تحذير بالقيم قبل وبعد
+        $after = self::priceSnapshot($offer);
+        if ($before !== $after) {
+            $changed = [];
+            foreach (array_unique([...array_keys($before), ...array_keys($after)]) as $key) {
+                if (($before[$key] ?? null) !== ($after[$key] ?? null)) {
+                    $changed[$key] = ['before' => $before[$key] ?? null, 'after' => $after[$key] ?? null];
+                }
+            }
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::OfferPriceChange, 'offer', $offer->id, $offer->title, ['changed' => $changed]);
+        }
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::Update, 'offer', $offer->id, $offer->title);
 
         return back()->with('success', 'تم حفظ العرض. البوت والبطاقة والفواتير الجديدة تقرأ النسخة المحفوظة الآن.');
     }
@@ -458,9 +473,22 @@ class OfferController extends Controller
             $offer->options()->delete();
             OfferGroup::where('offer_id', $offer->id)->delete();
             $offer->delete();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'offer', $offer->id, $offer->title, null, \App\Enums\AuditSeverity::Warn);
         });
 
         return redirect()->route('offers.index')->with('success', 'تم حذف العرض');
+    }
+
+    /** سعر «يبدأ من» وأسعار كل خيار بيع لكل سعة غرفة: ما يقرؤه البوت ويرسله */
+    private static function priceSnapshot(Offer $offer): array
+    {
+        $offer = $offer->fresh() ?? $offer;
+        $snapshot = ['يبدأ من' => $offer->priceFrom()];
+        foreach ($offer->sellOptions() as $option) {
+            $snapshot[$option->label ?: $option->ref] = $option->prices;
+        }
+
+        return $snapshot;
     }
 
     /** إظهار/إخفاء للبوت — عبر Query Builder فلا تصير البطاقة «قديمة» */
@@ -477,6 +505,8 @@ class OfferController extends Controller
         }
 
         DB::table('offers')->where('id', $offer->id)->update(['is_bot_visible' => !$offer->is_bot_visible]);
+        // ظاهر للبوت = يعرضه على العملاء (Offer::toBotArray)
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::OfferBotVisibility, 'offer', $offer->id, $offer->title, ['visible' => !$offer->is_bot_visible]);
 
         return back()->with('success', !$offer->is_bot_visible ? 'العرض ظاهر للبوت الآن' : 'أُخفي العرض عن البوت');
     }

@@ -2,6 +2,8 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Enums\AuditAction;
+use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Disbursement;
 use App\Models\Invoice;
@@ -14,7 +16,9 @@ use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaKnowledgeEntry;
 use App\Services\TravelersReport;
+use App\Support\AuditActor;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * أدوات المساعد الإداري — لأرقام الإدارة وحدها، وكلٌّ بما سُمح له.
@@ -593,7 +597,8 @@ class AdminTools
         }
 
         Cache::forget(self::pendingKey($conv));
-        $result = self::apply($p, $a);
+        // التعديل وصف تدقيقه معاً، منسوبين إلى رقم الإدارة وموظفه لا إلى البوت
+        $result = AuditActor::as('admin_number', (string) $a->id, fn () => DB::transaction(fn () => self::apply($p, $a)), $a->user_id);
         self::log($a, $conv, $tool, $p['action'], 'done', $result['summary'], $result['input'] ?? $p['payload']);
 
         return ['done' => true, 'result' => $result['summary'], 'note' => 'أبلغ الموظف بالنتيجة في جملة قصيرة.'];
@@ -610,6 +615,7 @@ class AdminTools
                     'sort_order' => (int) WaKnowledgeEntry::max('sort_order') + 1,
                     'source' => 'whatsapp', 'updated_by_admin_id' => $a->id, 'updated_by_user_id' => $a->user_id,
                 ]);
+                AuditLog::log(AuditAction::Create, 'wa_knowledge_entry', $e->id, $e->title);
 
                 return ['summary' => "أُضيفت المعلومة #{$e->id} «{$e->title}» — يقرؤها بوت العملاء من الرسالة التالية."];
 
@@ -620,6 +626,7 @@ class AdminTools
                     'title' => $d['title'], 'content' => $d['content'], 'is_active' => $d['is_active'],
                     'source' => 'whatsapp', 'updated_by_admin_id' => $a->id, 'updated_by_user_id' => $a->user_id,
                 ]);
+                AuditLog::log(AuditAction::Update, 'wa_knowledge_entry', $e->id, $e->title, ['before' => $before]);
 
                 return ['summary' => "عُدّلت المعلومة #{$e->id} «{$e->title}».", 'input' => ['before' => $before, 'after' => $d]];
 
@@ -627,6 +634,7 @@ class AdminTools
                 $e = WaKnowledgeEntry::findOrFail($d['id']);
                 $copy = $e->only(['id', 'title', 'content', 'is_active', 'sort_order']);
                 $e->delete();
+                AuditLog::log(AuditAction::Delete, 'wa_knowledge_entry', $copy['id'], $copy['title'], $copy);
 
                 // النسخة الكاملة في السجلّ — تُستعاد منه عند الحاجة
                 return ['summary' => "حُذفت المعلومة #{$copy['id']} «{$copy['title']}».", 'input' => ['deleted' => $copy]];
@@ -637,12 +645,15 @@ class AdminTools
                 $cfg = $s->tools_config ?? [];
                 $cfg[$d['tool']] = (bool) $d['enabled'];
                 $s->update(['tools_config' => $cfg]);
+                AuditLog::log(AuditAction::WaToolsToggle, 'wa_bot_settings', $s->id, null, ['tool' => $d['tool'], 'enabled' => (bool) $d['enabled']]);
 
                 return ['summary' => ($d['enabled'] ? 'فُعّلت' : 'أُوقفت') . ' أداة «' . BotTools::LABELS[$d['tool']] . '» لبوت العملاء.'];
 
             case 'set_customer_bot:on':
             case 'set_customer_bot:off':
-                WaBotSetting::current()->update(['enabled' => (bool) $d['enabled']]);
+                $s = WaBotSetting::current();
+                $s->update(['enabled' => (bool) $d['enabled']]);
+                AuditLog::log(AuditAction::WaBotEnabled, 'wa_bot_settings', $s->id, 'بوت العملاء', ['on' => (bool) $d['enabled']]);
 
                 return ['summary' => $d['enabled'] ? 'شُغّل بوت العملاء.' : 'أُوقف بوت العملاء — لن يردّ على أي عميل حتى يُعاد تشغيله.'];
         }

@@ -6,6 +6,7 @@ use App\Models\WaConversation;
 use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\ReplyRun;
 use App\Services\WhatsApp\VoiceTranscriber;
+use App\Support\AuditActor;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -139,10 +140,13 @@ class ProcessWhatsAppReply implements ShouldQueue
             $conv = WaConversation::find($this->conversationId);
             if ($conv) {
                 $run = ReplyRun::start($conv, $this->token);
-                // الصوتيات تُفرَّغ أولاً، فيقرؤها البوت نصّاً ضمن السياق؛ ومن ميزانية الرد نفسها
-                VoiceTranscriber::run($conv, $run);
-                $result = BotEngine::reply($conv, $run);
-                self::rerunIfNewer($conv, $run, $result);
+                // ما يكتبه البوت في سجل التدقيق (طلب تسعير، تحويل) يُنسب إليه وإلى المحادثة
+                AuditActor::as('bot', 'conv:' . $conv->id, function () use ($conv, $run) {
+                    // الصوتيات تُفرَّغ أولاً، فيقرؤها البوت نصّاً ضمن السياق؛ ومن ميزانية الرد نفسها
+                    VoiceTranscriber::run($conv, $run);
+                    $result = BotEngine::reply($conv, $run);
+                    self::rerunIfNewer($conv, $run, $result);
+                });
             }
         } finally {
             Cache::forget(self::runningKey($this->conversationId));

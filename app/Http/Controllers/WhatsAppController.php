@@ -9,6 +9,7 @@ use App\Models\WaConversation;
 use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\TopicRouter;
 use App\Services\WhatsApp\WhatsAppChannel;
+use App\Support\AuditRedactor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -129,6 +130,13 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.view'), 403);
 
+        // من فتح المحادثة: صف واحد لكل موظف ومحادثة كل 30 دقيقة (الاستطلاع كل 15 ثانية لا يُغرق السجل).
+        // بالمعرّف وحده، بلا هاتف ولا اسم
+        $viewKey = 'audit:view:'.auth()->id().':'.$conversation->id;
+        if (config('audit.extended') && \Illuminate\Support\Facades\Cache::store(config('audit.sampler_store', 'file'))->add($viewKey, 1, 60 * (int) config('audit.conversation_view_minutes', 30))) {
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaConversationView, 'wa_conversation', $conversation->id);
+        }
+
         $v = $request->validate([
             'before' => 'nullable|integer|min:1|prohibits:after',
             'after' => 'nullable|integer|min:0|prohibits:before',
@@ -230,6 +238,7 @@ class WhatsAppController extends Controller
             TopicRouter::untag($conversation, $data['topic']);
         }
 
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaTopic, 'wa_conversation', $conversation->id, null, ['topic' => $data['topic'], 'attach' => (bool) $data['attach']]);
         $message = $data['attach'] ? 'أُضيف الوسم' : 'أُزيل الوسم';
 
         return $request->expectsJson()
@@ -252,7 +261,9 @@ class WhatsAppController extends Controller
             }
         }
 
+        $from = $conversation->assigned_to;
         $conversation->update(['assigned_to' => $data['user_id'] ?: null]);
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaAssign, 'wa_conversation', $conversation->id, null, ['from' => $from, 'to' => $conversation->assigned_to]);
 
         if ($data['user_id']) {
             try {
@@ -299,6 +310,9 @@ class WhatsAppController extends Controller
         ]);
 
         DB::transaction(function () use ($data) {
+            // من يستلم أي موضوع: قبل وبعد، في المعاملة نفسها
+            $before = DB::table('wa_topic_users')->orderBy('topic')->orderBy('user_id')->get()
+                ->groupBy('topic')->map(fn ($rows) => $rows->pluck('user_id')->map(fn ($id) => (int) $id)->all())->all();
             DB::table('wa_topic_users')->delete();
 
             foreach ($data['routes'] as $route) {
@@ -318,6 +332,9 @@ class WhatsAppController extends Controller
                     ]);
                 }
             }
+
+            $after = collect($data['routes'])->mapWithKeys(fn ($r) => [$r['topic'] => collect($r['users'])->pluck('user_id')->map(fn ($id) => (int) $id)->sort()->values()->all()])->filter()->sortKeys()->all();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaRoutingUpdate, 'wa_routing', null, null, ['before' => $before, 'after' => $after]);
         });
 
         return back()->with('success', 'حُفظ التوجيه');
@@ -355,7 +372,10 @@ class WhatsAppController extends Controller
             'bot_paused_until' => null,
         ] + (\App\Services\WhatsApp\ReplyState::available() ? ['attention_reason' => null] : []));
 
-        return response()->json(['bot_enabled' => (bool) $conversation->fresh()->bot_enabled]);
+        $enabled = (bool) $conversation->fresh()->bot_enabled;
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaBotToggle, 'wa_conversation', $conversation->id, null, ['to' => $enabled]);
+
+        return response()->json(['bot_enabled' => $enabled]);
     }
 
     public function resolve(WaConversation $conversation)
@@ -503,10 +523,43 @@ class WhatsAppController extends Controller
             $settings->forceFill(['wa_waba_id' => null, 'wa_display_phone' => null]);
         }
 
-        $settings->update($data);
+        // «من أوقف الإرسال؟» له جواب دائماً: صفوف التدقيق في المعاملة نفسها
+        DB::transaction(function () use ($settings, $data) {
+            $public = ['enabled', 'wa_suspended', 'wa_phone_number_id', 'wa_app_id', 'provider', 'model', 'context_messages', 'pause_minutes',
+                'max_reply_age_minutes', 'max_tool_loops', 'rate_limit_per_hour', 'fail_message', 'fail_handoff', 'tools_config'];
+            $before = $settings->only($public);
+            $prompt = [$settings->system_prompt, $settings->knowledge_base];
+            $verify = $settings->wa_verify_token;
 
-        // أسماء الحقول فقط، لا قيمة أي سر
-        \App\Models\AuditLog::log(\App\Enums\AuditAction::Update, 'wa_bot_settings', $settings->id, 'إعدادات البوت', ['changed' => array_keys($data)]);
+            $settings->update($data);
+
+            $after = $settings->only($public);
+            $changed = [];
+            foreach ($public as $field) {
+                if ($before[$field] != $after[$field]) {
+                    $changed[$field] = ['before' => $before[$field], 'after' => $after[$field]];
+                }
+            }
+            $changes = [
+                'changed' => $changed,
+                // أسماء الأسرار المرسلة وحدها، بلا قيمها
+                'credentials_changed' => array_values(array_intersect(['wa_token', 'wa_app_secret', 'api_key'], array_keys($data))),
+                'verify_changed' => $verify !== $settings->wa_verify_token,
+            ];
+            foreach (['system_prompt' => 0, 'knowledge_base' => 1] as $field => $i) {
+                if ($prompt[$i] !== $settings->{$field}) {
+                    $changes[$field] = ['before' => AuditRedactor::fingerprint($prompt[$i]), 'after' => AuditRedactor::fingerprint($settings->{$field})];
+                }
+            }
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaSettingsUpdate, 'wa_bot_settings', $settings->id, 'إعدادات البوت', $changes);
+
+            if (isset($changed['wa_suspended'])) {
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::WaSuspendManual, 'wa_bot_settings', $settings->id, 'قفل الإرسال الطارئ', ['on' => (bool) $settings->wa_suspended]);
+            }
+            if (isset($changed['enabled'])) {
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::WaBotEnabled, 'wa_bot_settings', $settings->id, 'بوت العملاء', ['on' => (bool) $settings->enabled]);
+            }
+        });
 
         return back()->with('success', 'تم حفظ إعدادات البوت');
     }
@@ -574,6 +627,7 @@ class WhatsAppController extends Controller
             'cache_discount' => 'nullable|numeric|min:0|max:1',
         ]);
         WaBotSetting::current()->update($data);
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaModelPrices, 'wa_bot_settings', WaBotSetting::current()->id, null, ['models' => array_keys($data['model_prices']), 'cache_discount' => $data['cache_discount'] ?? null]);
 
         return back()->with('success', 'تم حفظ الأسعار');
     }

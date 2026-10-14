@@ -59,12 +59,13 @@ class UserController extends Controller
             'password' => Hash::make($data['password']),
             'phone' => $data['phone'] ?? null,
         ]);
-        $user->forceFill([
-            'role_id' => $role->id,
-            'is_active' => $request->boolean('is_active', true),
-        ])->save();
-
-        AuditLog::log(\App\Enums\AuditAction::UserCreate, 'User', $user->id, $user->name, ['role' => $role->slug]);
+        DB::transaction(function () use ($user, $role, $request) {
+            $user->forceFill([
+                'role_id' => $role->id,
+                'is_active' => $request->boolean('is_active', true),
+            ])->save();
+            AuditLog::log(\App\Enums\AuditAction::UserCreate, 'User', $user->id, $user->name, ['role' => $role->slug]);
+        });
 
         return back()->with('success', 'تم إضافة الموظف بنجاح');
     }
@@ -92,7 +93,7 @@ class UserController extends Controller
 
         $before = ['role_id' => $user->role_id, 'is_active' => (bool) $user->is_active];
 
-        $applied = DB::transaction(function () use ($user, $validated, $newRoleId, $newActive, $roleChanged, $activeChanged) {
+        $applied = DB::transaction(function () use ($user, $validated, $newRoleId, $newActive, $roleChanged, $activeChanged, $before) {
             if ($roleChanged || $activeChanged) {
                 $columns = ['role_id' => $newRoleId, 'is_active' => $newActive];
 
@@ -111,21 +112,29 @@ class UserController extends Controller
             }
             $user->update($data);
 
+            // صفوف التدقيق في المعاملة نفسها: لا تغيير صلاحيات بلا أثر. أسماء الحقول فقط، والهاتف بلا قيمة
+            if ($roleChanged) {
+                AuditLog::log(\App\Enums\AuditAction::UserRoleChange, 'User', $user->id, $user->name, [
+                    'from' => $before['role_id'], 'to' => $newRoleId,
+                    'from_role' => Role::find($before['role_id'])?->slug, 'to_role' => Role::find($newRoleId)?->slug,
+                ]);
+            }
+            if ($activeChanged) {
+                AuditLog::log($newActive ? \App\Enums\AuditAction::UserActivate : \App\Enums\AuditAction::UserDeactivate, 'User', $user->id, $user->name, ['from' => $before['is_active'], 'to' => $newActive]);
+            }
+            if (!empty($validated['password'])) {
+                AuditLog::log(\App\Enums\AuditAction::UserPasswordReset, 'User', $user->id, $user->name);
+            }
+            $fields = array_values(array_intersect(array_keys($user->getChanges()), ['name', 'email', 'phone']));
+            if ($fields) {
+                AuditLog::log(\App\Enums\AuditAction::UserUpdate, 'User', $user->id, $user->name, ['fields' => $fields]);
+            }
+
             return true;
         });
 
         if (! $applied) {
             return $this->invariantBlocked($request);
-        }
-
-        if ($roleChanged) {
-            AuditLog::log(\App\Enums\AuditAction::UserRoleChange, 'User', $user->id, $user->name, ['from' => $before['role_id'], 'to' => $newRoleId]);
-        }
-        if ($activeChanged) {
-            AuditLog::log($newActive ? \App\Enums\AuditAction::UserActivate : \App\Enums\AuditAction::UserDeactivate, 'User', $user->id, $user->name, ['from' => $before['is_active'], 'to' => $newActive]);
-        }
-        if ($request->filled('password')) {
-            AuditLog::log(\App\Enums\AuditAction::UserPasswordReset, 'User', $user->id, $user->name);
         }
         if (($activeChanged && ! $newActive) || $request->filled('password')) {
             SessionRevoker::revoke($user);
@@ -145,9 +154,11 @@ class UserController extends Controller
             'password' => ['required', 'string', \Illuminate\Validation\Rules\Password::min(8), 'confirmed'],
         ]);
 
-        $user->update(['password' => Hash::make($request->password)]);
+        DB::transaction(function () use ($user, $request) {
+            $user->update(['password' => Hash::make($request->password)]);
+            AuditLog::log(\App\Enums\AuditAction::UserPasswordReset, 'User', $user->id, $user->name, ['target_is_admin' => $user->isAdmin()]);
+        });
         SessionRevoker::revoke($user);
-        AuditLog::log(\App\Enums\AuditAction::UserPasswordReset, 'User', $user->id, $user->name);
 
         return back()->with('success', "تمت إعادة تعيين كلمة مرور {$user->name} بنجاح");
     }
@@ -165,17 +176,23 @@ class UserController extends Controller
 
         $label = $user->name;
 
-        if (AdminInvariant::dropsAdmin($user, null, false)) {
-            if (! AdminInvariant::guardedDelete($user)) {
-                return $this->invariantBlocked($request);
+        $deleted = DB::transaction(function () use ($user, $label) {
+            if (AdminInvariant::dropsAdmin($user, null, false)) {
+                if (! AdminInvariant::guardedDelete($user)) {
+                    return false;
+                }
+            } else {
+                $user->delete();
             }
-        } else {
-            $user->delete();
+            AuditLog::log(\App\Enums\AuditAction::UserDelete, 'User', $user->id, $label);
+
+            return true;
+        });
+        if (! $deleted) {
+            return $this->invariantBlocked($request);
         }
 
         SessionRevoker::revokeDeleted($user->id);
-
-        AuditLog::log(\App\Enums\AuditAction::UserDelete, 'User', $user->id, $label);
 
         return back()->with('success', 'تم حذف حساب الموظف');
     }

@@ -84,7 +84,7 @@ class RoleController extends Controller
                 $role->permissions()->sync($request->permissions);
             }
 
-            AuditLog::log(\App\Enums\AuditAction::RoleCreate, 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
+            AuditLog::log(\App\Enums\AuditAction::RoleCreate, 'Role', $role->id, $role->name, ['added' => $role->permissions()->orderBy('slug')->pluck('slug')->all()]);
         });
 
         return back()->with('success', 'تم إنشاء الصلاحية بنجاح');
@@ -122,6 +122,7 @@ class RoleController extends Controller
         );
 
         DB::transaction(function () use ($request, $role) {
+            $before = $role->permissions()->pluck('slug')->all();
             $role->update([
                 'name' => $request->name,
             ]);
@@ -132,7 +133,12 @@ class RoleController extends Controller
                 $role->permissions()->detach();
             }
 
-            AuditLog::log(\App\Enums\AuditAction::RoleUpdate, 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
+            // المضاف والمحذوف بالمعرّفات النصية: تصعيد صلاحية يظهر في السجل كما هو
+            $after = $role->permissions()->pluck('slug')->all();
+            AuditLog::log(\App\Enums\AuditAction::RoleUpdate, 'Role', $role->id, $role->name, [
+                'added' => array_values(array_diff($after, $before)),
+                'removed' => array_values(array_diff($before, $after)),
+            ]);
         });
 
         return back()->with('success', 'تم تحديث الصلاحية بنجاح');
@@ -152,8 +158,10 @@ class RoleController extends Controller
             return back()->with('error', 'لا يمكن حذف هذا الدور لوجود مستخدمين مرتبطين به');
         }
 
-        AuditLog::log(\App\Enums\AuditAction::RoleDelete, 'Role', $role->id, $role->name);
-        $role->delete();
+        DB::transaction(function () use ($role) {
+            AuditLog::log(\App\Enums\AuditAction::RoleDelete, 'Role', $role->id, $role->name, ['permissions' => $role->permissions()->pluck('slug')->all()]);
+            $role->delete();
+        });
         return back()->with('success', 'تم حذف الصلاحية');
     }
 }

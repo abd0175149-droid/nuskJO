@@ -144,6 +144,7 @@ class AdvanceController extends Controller
 
                 // إثبات السلفة محاسبياً — إلزامي: فشله يُلغي الاعتماد بالكامل
                 \App\Services\AccountingService::recordAdvance($advance);
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::Approve, 'advance', $advance->id, $advance->advance_number, ['amount' => (float) $advance->amount, 'installments' => (int) $advance->installments_count]);
 
                 NotificationService::advanceApproved($advance);
             });
@@ -170,7 +171,10 @@ class AdvanceController extends Controller
 
         $request->validate(['rejection_reason' => 'nullable|string|max:500']);
 
-        $advance->reject(auth()->user(), $request->rejection_reason ?? '');
+        DB::transaction(function () use ($advance, $request) {
+            $advance->reject(auth()->user(), $request->rejection_reason ?? '');
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Reject, 'advance', $advance->id, $advance->advance_number, ['amount' => (float) $advance->amount]);
+        });
 
         NotificationService::operationRejected($advance, 'طلب سلفة', $advance->advance_number);
 

@@ -182,6 +182,10 @@ class InvoiceController extends Controller
     {
         $invoice->load(['items.agent:id,name,code', 'client:id,name,code,phone']);
         $out = $invoice->toArray();
+        // الفاتورة الناتجة عن طلب واتساب تشير إليه، فيُتتبَّع أثرها من المحادثة إلى المال
+        $out['quote_request_number'] = $invoice->quote_request_id
+            ? \App\Models\QuoteRequest::whereKey($invoice->quote_request_id)->value('request_number')
+            : null;
         if ($invoice->offer_id && $invoice->offer) {
             $out['offer_form'] = self::posOffer($invoice->offer, $invoice->id);
         }
@@ -633,6 +637,8 @@ class InvoiceController extends Controller
 
                 // قيد محاسبي — إلزامي: فشله يُلغي الاعتماد بالكامل (لا تباعد بين الدفترين)
                 AccountingService::recordInvoice($invoice);
+                // ولا اعتماد بلا صف تدقيق في المعاملة نفسها
+                AuditLog::log(\App\Enums\AuditAction::Approve, 'invoice', $invoice->id, $invoice->invoice_number, ['total_sell_jod' => (float) $invoice->total_sell_jod, 'items' => $invoice->items->count()]);
 
                 // إشعار
                 if ($invoice->created_by && $invoice->created_by !== auth()->id()) {
@@ -646,7 +652,6 @@ class InvoiceController extends Controller
             return back()->with('error', 'تعذّر اعتماد الفاتورة محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
         }
 
-        AuditLog::log(\App\Enums\AuditAction::Approve, 'invoice', $invoice->id, $invoice->invoice_number);
         return back()->with('success', "تم اعتماد الفاتورة {$invoice->invoice_number}");
     }
 
@@ -657,7 +662,10 @@ class InvoiceController extends Controller
         if (!$invoice->isPending()) {
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
         }
-        $invoice->reject(auth()->user(), (string) $request->input('reason', ''));
+        DB::transaction(function () use ($invoice, $request) {
+            $invoice->reject(auth()->user(), (string) $request->input('reason', ''));
+            AuditLog::log(\App\Enums\AuditAction::Reject, 'invoice', $invoice->id, $invoice->invoice_number, ['total_sell_jod' => (float) $invoice->total_sell_jod]);
+        });
 
         try { \App\Services\NotificationService::operationRejected($invoice, 'فاتورة', $invoice->invoice_number); } catch (\Throwable $e) {}
 
@@ -815,8 +823,11 @@ class InvoiceController extends Controller
         if ($invoice->isApproved()) {
             return back()->with('error', 'لا يمكن حذف فاتورة معتمدة');
         }
-        $invoice->items()->delete();
-        $invoice->delete();
+        DB::transaction(function () use ($invoice) {
+            AuditLog::log(\App\Enums\AuditAction::Delete, 'invoice', $invoice->id, $invoice->invoice_number, ['status' => $invoice->status, 'total_sell_jod' => (float) $invoice->total_sell_jod, 'items' => $invoice->items()->count()]);
+            $invoice->items()->delete();
+            $invoice->delete();
+        });
         return back()->with('success', 'تم حذف الفاتورة' . ($invoice->offer_id ? '، وعادت مقاعدها للمتاح' : ''));
     }
 }

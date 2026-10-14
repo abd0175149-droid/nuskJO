@@ -166,15 +166,26 @@ class QuoteRequestController extends Controller
             $lines[] = 'للتأكيد أو أي استفسار، نحن معك هنا.';
 
             $res = WhatsAppChannel::sendText($quoteRequest->conversation, implode("\n", $lines), 'staff', auth()->id());
+            self::auditPrice($quoteRequest, $data, $res['ok']);
 
             if ($res['ok']) {
                 $quoteRequest->update(['status' => 'sent']);
             } else {
                 return back()->with('error', 'حُفظ السعر لكن تعذّر إرساله: ' . $res['error']);
             }
+        } else {
+            self::auditPrice($quoteRequest, $data, null);
         }
 
         return back()->with('success', 'تم حفظ السعر' . (!empty($data['send_to_client']) ? ' وإرساله للعميل' : ''));
+    }
+
+    /** السعر وهل أُرسل، بلا نص الرسالة ولا ملاحظة العميل */
+    private static function auditPrice(QuoteRequest $quoteRequest, array $data, ?bool $sentOk): void
+    {
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::QuotePrice, 'quote_request', $quoteRequest->id, $quoteRequest->request_number, [
+            'quoted_price_jod' => (float) $data['quoted_price_jod'], 'send_to_client' => !empty($data['send_to_client']), 'sent_ok' => $sentOk,
+        ]);
     }
 
     public function updateStatus(Request $request, QuoteRequest $quoteRequest)
@@ -182,7 +193,9 @@ class QuoteRequestController extends Controller
         abort_unless(auth()->user()->can('quotes.price'), 403);
 
         $data = $request->validate(['status' => 'required|in:new,priced,sent,won,lost,cancelled']);
+        $from = $quoteRequest->status;
         $quoteRequest->update($data);
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::QuoteStatus, 'quote_request', $quoteRequest->id, $quoteRequest->request_number, ['from' => $from, 'to' => $data['status']]);
 
         return back()->with('success', 'تم تحديث حالة الطلب');
     }

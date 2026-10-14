@@ -2,6 +2,8 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Enums\AuditAction;
+use App\Models\AuditLog;
 use App\Models\Invoice;
 use App\Models\Offer;
 use App\Models\QuoteRequest;
@@ -413,6 +415,7 @@ class BotTools
             'status' => 'new',
         ]);
 
+        self::auditQuote($qr, $conv);
         self::escalate($conv, $qr, '💰 طلب تسعير جديد');
 
         return [
@@ -453,6 +456,7 @@ class BotTools
             'status' => 'new',
         ]);
 
+        self::auditQuote($qr, $conv);
         self::escalate($conv, $qr, '🧾 طلب تأكيد حجز');
 
         return [
@@ -526,6 +530,14 @@ class BotTools
         return implode(' — ', $parts);
     }
 
+    /** النوع والعرض والمحادثة فقط: اسم العميل ورقمه وتفاصيل طلبه في الطلب نفسه لا في السجل */
+    private static function auditQuote(QuoteRequest $qr, WaConversation $conv): void
+    {
+        AuditLog::safe(AuditAction::QuoteRequestCreate, 'quote_request', $qr->id, $qr->request_number, [
+            'type' => $qr->type, 'offer_id' => $qr->offer_id, 'conversation_id' => $conv->id,
+        ]);
+    }
+
     /**
      * التحويل الكامل: إيقاف البوت + شارة تدخّل + إشعار الأدمن وموظف العميل المسؤول.
      */
@@ -548,6 +560,10 @@ class BotTools
         if ($qr && $assignee) {
             $qr->update(['assigned_to' => $assignee]);
         }
+
+        AuditLog::safe(AuditAction::WaHandoff, 'wa_conversation', $conv->id, null, [
+            'title' => $title, 'quote_request_id' => $qr?->id, 'assigned_to' => $assignee,
+        ]);
 
         $who = $conv->label();
         $body = $qr

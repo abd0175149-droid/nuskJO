@@ -34,11 +34,12 @@ class GenericErrorsTest extends TestCase
     {
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
 
-        $this->actingAs($owner)->put('/whatsapp/settings', ['wa_token' => 'EAAG-very-secret-token-1', 'model' => 'gemini-2.5-flash'])
+        $this->actingAs($owner)->put('/whatsapp/settings', ['wa_token' => 'EAAG-very-secret-token-1', 'model' => 'gemini-2.5-pro'])
             ->assertSessionHasNoErrors();
 
         $row = AuditLog::where('entity_type', 'wa_bot_settings')->sole();
-        $this->assertEqualsCanonicalizing(['wa_token', 'model'], $row->changes['changed']);
+        $this->assertSame(['model'], array_keys($row->changes['changed']));
+        $this->assertSame(['wa_token'], $row->changes['credentials_changed']);
         $this->assertStringNotContainsString('very-secret', json_encode($row->toArray()));
     }
 }

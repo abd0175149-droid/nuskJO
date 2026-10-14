@@ -154,7 +154,11 @@ Artisan::command('whatsapp:reliability {flag?} {state?}', function () {
 
             return 1;
         }
-        $settings->update(['reliability' => array_merge($settings->reliability ?? [], [$flag => $state === 'on'])]);
+        $before = $settings->flag($flag);
+        \App\Support\AuditActor::as('system', 'artisan:whatsapp:reliability', fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($settings, $flag, $state, $before) {
+            $settings->update(['reliability' => array_merge($settings->reliability ?? [], [$flag => $state === 'on'])]);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaReliabilityFlag, 'wa_bot_settings', $settings->id, $flag, ['from' => $before, 'to' => $state === 'on']);
+        }));
         \App\Services\WhatsApp\WaLog::warning('reliability.flag', ['field' => $flag, 'status' => $state]);
     }
 
@@ -195,7 +199,11 @@ Artisan::command('whatsapp:identity-mode {mode?}', function () {
 
             return 1;
         }
-        \App\Models\Setting::set('wa_identity_mode', $mode);
+        $before = \App\Services\WhatsApp\IdentityMode::current();
+        \App\Support\AuditActor::as('system', 'artisan:whatsapp:identity-mode', fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($mode, $before) {
+            \App\Models\Setting::set('wa_identity_mode', $mode);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaIdentityMode, 'setting', null, 'wa_identity_mode', ['from' => $before, 'to' => $mode]);
+        }));
         \App\Services\WhatsApp\WaLog::warning('identity.mode', ['status' => $mode]);
     }
     $this->line('وضع العميل بلا رقم: '.\App\Services\WhatsApp\IdentityMode::current());

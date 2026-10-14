@@ -42,8 +42,18 @@ class SettingController extends Controller
     public function update(\App\Http\Requests\UpdateSettingsRequest $request)
     {
         // المفاتيح المسموحة فقط (UpdateSettingsRequest::EDITABLE)، وعلى الصفوف الموجودة وحدها
+        $changed = [];
         foreach ($request->validated()['values'] ?? [] as $key => $value) {
-            Setting::where('key', $key)->update(['value' => $value === null ? null : (string) $value]);
+            $old = Setting::where('key', $key)->value('value');
+            $new = $value === null ? null : (string) $value;
+            Setting::where('key', $key)->update(['value' => $new]);
+            if ($old !== $new) {
+                // مقصوصة، ومفاتيح الأسرار تُحجب في AuditRedactor
+                $changed[$key] = ['before' => $old === null ? null : mb_substr($old, 0, 200), 'after' => $new === null ? null : mb_substr($new, 0, 200)];
+            }
+        }
+        if ($changed) {
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, null, ['changed' => $changed]);
         }
 
         return redirect()->back()->with('success', 'تم تحديث الإعدادات بنجاح');
@@ -76,6 +86,7 @@ class SettingController extends Controller
             ['key' => $key],
             ['value' => $path, 'group_name' => 'templates', 'label' => $type === 'financial' ? 'قالب مالي' : 'قالب محاسبي']
         );
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, $key, ['key' => $key]);
 
         return redirect()->back()->with('success', 'تم رفع القالب بنجاح');
     }
@@ -133,6 +144,8 @@ class SettingController extends Controller
             }
         }
 
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, "brand_{$type}", ['key' => "brand_{$type}"]);
+
         return redirect()->back()->with('success', match ($type) {
             'logo' => 'تم رفع الشعار',
             'letterhead' => 'تم رفع ورقة الشركة — اضبط النسب ثم أعد توليد البطاقات',
@@ -151,10 +164,19 @@ class SettingController extends Controller
         $validated['jod_to_sar'] = round(1 / $validated['sar_to_jod'], 6);
         $validated['set_by'] = auth()->id();
 
-        ExchangeRate::updateOrCreate(
-            ['rate_date' => $validated['rate_date']],
-            $validated
-        );
+        // سعر الصرف يدخل حساب كل فاتورة: صف تحذير في المعاملة نفسها
+        \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
+            // whereDate: العمود يُخزَّن بوقت (00:00:00)، فمطابقة النص وحده لا تجد سعر اليوم وتصطدم بالقيد الفريد
+            $rate = ExchangeRate::whereDate('rate_date', $validated['rate_date'])->first();
+            $before = $rate?->sar_to_jod;
+            if ($rate) {
+                $rate->update($validated);
+            } else {
+                $rate = ExchangeRate::create($validated);
+            }
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::ExchangeRateSet, 'exchange_rate', $rate->id, (string) $validated['rate_date'],
+                ['date' => (string) $validated['rate_date'], 'from' => $before === null ? null : (float) $before, 'to' => (float) $validated['sar_to_jod']]);
+        });
 
         return redirect()->back()->with('success', 'تم تحديث سعر الصرف بنجاح');
     }
@@ -206,6 +228,7 @@ class SettingController extends Controller
                 'label' => "تخطيط طباعة {$request->type}",
             ]
         );
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, $key, ['key' => $key]);
 
         return redirect()->back()->with('success', 'تم حفظ التخطيط بنجاح');
     }

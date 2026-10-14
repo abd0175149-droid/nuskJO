@@ -115,6 +115,7 @@ class PayrollController extends Controller
 
                 // تسجيل القيد المحاسبي للرواتب — إلزامي: فشله يُلغي الاعتماد بالكامل
                 \App\Services\AccountingService::recordPayroll($payroll);
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::Approve, 'payroll', $payroll->id, $payroll->payroll_number, ['total_net' => (float) $payroll->total_net, 'currency' => $payroll->currency]);
 
                 // إشعار الموظفين
                 NotificationService::payrollReady($payroll);
@@ -172,7 +173,10 @@ class PayrollController extends Controller
 
         $request->validate(['rejection_reason' => 'nullable|string|max:500']);
 
-        $payroll->reject(auth()->user(), $request->rejection_reason ?? '');
+        \Illuminate\Support\Facades\DB::transaction(function () use ($payroll, $request) {
+            $payroll->reject(auth()->user(), $request->rejection_reason ?? '');
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Reject, 'payroll', $payroll->id, $payroll->payroll_number, ['total_net' => (float) $payroll->total_net]);
+        });
 
         return redirect()->back()->with('success', 'تم رفض مسير الرواتب');
     }

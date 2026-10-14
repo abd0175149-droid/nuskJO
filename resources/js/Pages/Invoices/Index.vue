@@ -192,6 +192,7 @@
                     <div><span class="text-gray-400">التكلفة JOD:</span><p class="font-bold font-mono" dir="ltr">{{ Number(viewTarget.total_cost_jod||0).toFixed(3) }}</p></div>
                     <div><span class="text-gray-400">البيع JOD:</span><p class="font-bold font-mono text-blue-600" dir="ltr">{{ Number(viewTarget.total_sell_jod||viewTarget.total_jod||0).toFixed(3) }}</p></div>
                     <div><span class="text-gray-400">الربح JOD:</span><p class="font-bold font-mono" :class="Number(viewTarget.profit_jod)>=0?'text-green-600':'text-red-600'" dir="ltr">{{ Number(viewTarget.profit_jod||0).toFixed(3) }}</p></div>
+                    <div v-if="viewDetails?.quote_request_number"><span class="text-gray-400">من طلب واتساب:</span><p><span class="inline-block px-2 py-0.5 rounded-full text-xs font-mono bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{{ viewDetails.quote_request_number }}</span></p></div>
                 </div>
                 <!-- Items -->
                 <div v-if="viewDetails?.items?.length" class="mt-4">
