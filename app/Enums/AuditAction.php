@@ -74,6 +74,10 @@ enum AuditAction: string
     case WaHandoff = 'wa.handoff';
     case WaReliabilityFlag = 'wa.reliability_flag';
     case WaIdentityMode = 'wa.identity_mode';
+    case WaSecretSet = 'wa.secret_set';
+    case WaSecretClear = 'wa.secret_clear';
+    case WaVerifyRotate = 'wa.verify_rotate';
+    case WaFlagToggle = 'wa.flag_toggle';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -106,7 +110,8 @@ enum AuditAction: string
             self::SettingsDroppedKeys, self::ExchangeRateSet, self::BackupRestoreAck,
             self::OfferPriceChange, self::OfferBotVisibility, self::QuotePrice,
             self::WaSettingsUpdate, self::WaBotEnabled, self::WaSuspendManual, self::WaRoutingUpdate,
-            self::WaReliabilityFlag, self::WaIdentityMode, self::WaSecurity, self::AuditExport => AuditSeverity::Warn,
+            self::WaReliabilityFlag, self::WaIdentityMode, self::WaSecurity, self::AuditExport,
+            self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -192,6 +197,10 @@ enum AuditAction: string
             self::WaHandoff => 'تحويل لموظف',
             self::WaReliabilityFlag => 'علم موثوقية الرد',
             self::WaIdentityMode => 'وضع العميل بلا رقم',
+            self::WaSecretSet => 'تعيين سر القناة',
+            self::WaSecretClear => 'مسح سر القناة',
+            self::WaVerifyRotate => 'توليد رمز تحقق الويبهوك',
+            self::WaFlagToggle => 'تبديل علم ميزة',
             self::WaAccountUpdate => 'حدث حساب ميتا',
             self::WaAccountAlert => 'تنبيه حساب ميتا',
             self::WaSecurity => 'حدث أمان ميتا',

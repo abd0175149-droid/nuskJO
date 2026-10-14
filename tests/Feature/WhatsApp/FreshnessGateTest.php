@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\TestCase;
 
 /**
@@ -23,6 +24,7 @@ use Tests\TestCase;
 class FreshnessGateTest extends TestCase
 {
     use ConfiguresWhatsApp;
+    use PatchesWhatsAppSettings;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -72,8 +74,8 @@ class FreshnessGateTest extends TestCase
     {
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
 
-        $this->actingAs($owner)->put('/whatsapp/settings', ['max_reply_age_minutes' => 1])->assertSessionHasErrors('max_reply_age_minutes');
-        $this->actingAs($owner)->put('/whatsapp/settings', ['max_reply_age_minutes' => 45])->assertSessionHasNoErrors();
+        $this->patchSettings($owner, ['max_reply_age_minutes' => 1])->assertJsonValidationErrors('changes.max_reply_age_minutes');
+        $this->patchSettings($owner, ['max_reply_age_minutes' => 45])->assertOk();
 
         $this->assertSame(45, (int) WaBotSetting::current()->max_reply_age_minutes);
     }

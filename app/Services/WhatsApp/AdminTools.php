@@ -16,6 +16,7 @@ use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaKnowledgeEntry;
 use App\Services\TravelersReport;
+use App\Services\WhatsApp\Settings\SettingsWriter;
 use App\Support\AuditActor;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -525,7 +526,7 @@ class AdminTools
             return self::commit('set_customer_bot', $conv, $a);
         }
         if ($action === 'status') {
-            return ['enabled' => (bool) $s->enabled, 'sending_suspended' => (bool) $s->wa_suspended, 'model' => $s->model];
+            return ['enabled' => (bool) $s->enabled, 'sending_suspended' => $s->sendingSuspended(), 'suspended_source' => $s->suspendSource(), 'model' => $s->model];
         }
         if ((bool) $s->enabled === ($action === 'on')) {
             return ['error' => 'لا تغيير', 'note' => 'البوت ' . ($s->enabled ? 'يعمل' : 'موقوف') . ' أصلاً.'];
@@ -641,19 +642,15 @@ class AdminTools
 
             case 'manage_bot_tools:enable':
             case 'manage_bot_tools:disable':
-                $s = WaBotSetting::current();
-                $cfg = $s->tools_config ?? [];
-                $cfg[$d['tool']] = (bool) $d['enabled'];
-                $s->update(['tools_config' => $cfg]);
-                AuditLog::log(AuditAction::WaToolsToggle, 'wa_bot_settings', $s->id, null, ['tool' => $d['tool'], 'enabled' => (bool) $d['enabled']]);
+                // عبر الكاتب الوحيد: يرفع نسخة الإعدادات، فصفحة مفتوحة لا تلغي هذا التبديل بحفظها
+                SettingsWriter::apply(['tools_config' => [$d['tool'] => (bool) $d['enabled']]], null, AuditAction::WaToolsToggle,
+                    ['tool' => $d['tool'], 'enabled' => (bool) $d['enabled']]);
 
                 return ['summary' => ($d['enabled'] ? 'فُعّلت' : 'أُوقفت') . ' أداة «' . BotTools::LABELS[$d['tool']] . '» لبوت العملاء.'];
 
             case 'set_customer_bot:on':
             case 'set_customer_bot:off':
-                $s = WaBotSetting::current();
-                $s->update(['enabled' => (bool) $d['enabled']]);
-                AuditLog::log(AuditAction::WaBotEnabled, 'wa_bot_settings', $s->id, 'بوت العملاء', ['on' => (bool) $d['enabled']]);
+                SettingsWriter::apply(['enabled' => (bool) $d['enabled']], null, AuditAction::WaBotEnabled, ['on' => (bool) $d['enabled']], label: 'بوت العملاء');
 
                 return ['summary' => $d['enabled'] ? 'شُغّل بوت العملاء.' : 'أُوقف بوت العملاء — لن يردّ على أي عميل حتى يُعاد تشغيله.'];
         }

@@ -2,18 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Console\Commands\BackupSafeMode;
 use App\Models\Setting;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
-use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\TopicRouter;
 use App\Services\WhatsApp\WhatsAppChannel;
-use App\Support\AuditRedactor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class WhatsAppController extends Controller
@@ -34,7 +30,9 @@ class WhatsAppController extends Controller
                 'channel_ready' => $s->channelReady(),
                 'bot_ready' => $s->botReady(),
                 'bot_enabled' => $s->enabled,
-                'suspended' => $s->wa_suspended,
+                // البيئة أو القاعدة (منطق OR)، ومن أوقف: env | manual | meta_event | graph_error | restore
+                'suspended' => $s->sendingSuspended(),
+                'suspended_source' => $s->suspendSource(),
                 // شريط عام بلا تفاصيل: التفاصيل في بطاقة صحة القناة لمن يملك whatsapp.settings
                 'meta_blocked' => data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED'
                     || data_get($s->wa_credentials_status, 'state') === 'critical',
@@ -390,68 +388,6 @@ class WhatsAppController extends Controller
 
     // ==================== الإعدادات ====================
 
-    public function settings()
-    {
-        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
-
-        $s = WaBotSetting::current();
-
-        return Inertia::render('WhatsApp/Settings', [
-            'title' => 'إعدادات بوت الواتساب',
-            'settings' => [
-                'enabled' => (bool) $s->enabled,
-                'wa_suspended' => (bool) $s->wa_suspended,
-                'wa_phone_number_id' => $s->wa_phone_number_id,
-                // يُتعلّمان من أول رسالة لرقمنا؛ بهما تُميَّز أحداث الحساب لأرقام أخرى على التطبيق نفسه
-                'wa_waba_id' => $s->wa_waba_id,
-                'wa_display_phone' => $s->wa_display_phone,
-                'wa_verify_token' => $s->wa_verify_token,
-                'provider' => $s->provider ?: 'google',
-                'model' => $s->model,
-                'system_prompt' => $s->system_prompt ?: BotEngine::DEFAULT_PROMPT,
-                'kb_entries' => rescue(fn () => \App\Models\WaKnowledgeEntry::where('is_active', true)->count(), 0, false),
-                'kb_chars' => rescue(fn () => \App\Models\WaKnowledgeEntry::activeChars(), 0, false),
-                'context_messages' => (int) $s->context_messages,
-                'pause_minutes' => (int) $s->pause_minutes,
-                'max_reply_age_minutes' => (int) ($s->max_reply_age_minutes ?? 10),
-                'max_tool_loops' => (int) $s->max_tool_loops,
-                'rate_limit_per_hour' => (int) $s->rate_limit_per_hour,
-                'fail_message' => $s->fail_message,
-                'fail_handoff' => (bool) $s->fail_handoff,
-                'tools_config' => $s->tools_config ?? [],
-                // الأسرار: نكشف وجودها فقط لا قيمتها
-                'has_token' => !empty($s->token()),
-                'has_app_secret' => !empty($s->appSecret()),
-                'has_api_key' => !empty($s->llmKey()),
-                'env_token' => !empty(config('services.whatsapp.token')),
-                'env_api_key' => $s->envKeyPresent(),
-                // معرّف التطبيق عام لا سري؛ من البيئة يُعطَّل الحقل
-                'wa_app_id' => $s->wa_app_id,
-                'env_app_id' => !empty(config('services.whatsapp.app_id')),
-            ],
-            'providers' => \App\Services\WhatsApp\Llm\LlmFactory::PROVIDERS,
-            'webhookUrl' => url('/api/whatsapp/webhook'),
-            'defaultPrompt' => BotEngine::DEFAULT_PROMPT,
-            'toolList' => \App\Services\WhatsApp\BotTools::LABELS,
-            'graph' => \App\Services\WhatsApp\GraphVersions::panel(),
-            'health' => \App\Services\WhatsApp\ChannelDoctor::checks(),
-            'ops' => app(\App\Services\Ops\OpsHealth::class)->snapshot(),
-            'meta' => $this->metaSummary($s),
-        ]);
-    }
-
-    /** ملخصات آخر فحوص ميتا وآخر خطأ اعتماد عند الإرسال (لا رمز ولا سر) */
-    private function metaSummary(WaBotSetting $s): array
-    {
-        return [
-            'enabled' => (bool) config('ops.meta_checks'),
-            'ready' => $s->metaChecksReady(),
-            'credentials' => $s->wa_credentials_status,
-            'channel' => $s->wa_channel_health,
-            'last_account_error' => \Illuminate\Support\Facades\Cache::get('wa:last_account_error'),
-        ];
-    }
-
     /** «افحص الآن» في بطاقة صحة القناة: الفحصان معاً، ويُرجع الملخص المحفوظ فقط */
     public function metaCheck()
     {
@@ -461,107 +397,7 @@ class WhatsAppController extends Controller
         $health->credentials();
         $health->channel();
 
-        return response()->json(['meta' => $this->metaSummary(WaBotSetting::current()->fresh())]);
-    }
-
-    public function updateSettings(Request $request)
-    {
-        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
-
-        $data = $request->validate([
-            'enabled' => 'boolean',
-            'wa_suspended' => 'boolean',
-            'wa_phone_number_id' => 'nullable|string|max:64',
-            // 16 حرفاً عند التغيير فقط: النموذج يُرسل كاملاً، فلا يمنع رمزٌ قديم قصير حفظ القفل الطارئ نفسه
-            'wa_verify_token' => ['nullable', 'string', 'max:128', \Illuminate\Validation\Rule::when(
-                fn () => filled($request->input('wa_verify_token')) && $request->input('wa_verify_token') !== WaBotSetting::current()->wa_verify_token,
-                'min:16'
-            )],
-            'wa_token' => 'nullable|string',
-            'wa_app_secret' => 'nullable|string',
-            'wa_app_id' => ['nullable', 'string', 'regex:/^\d{5,20}$/'],
-            'api_key' => 'nullable|string',
-            'provider' => 'nullable|in:google,anthropic',
-            'model' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/'],
-            'system_prompt' => 'nullable|string|max:20000',
-            'knowledge_base' => 'nullable|string|max:40000',
-            'context_messages' => 'integer|min:4|max:60',
-            'pause_minutes' => 'integer|min:1|max:1440',
-            'max_reply_age_minutes' => 'integer|min:2|max:120',
-            'max_tool_loops' => 'integer|min:1|max:8',
-            'rate_limit_per_hour' => 'integer|min:1|max:200',
-            'fail_message' => 'nullable|string|max:500',
-            'fail_handoff' => 'boolean',
-            'tools_config' => 'nullable|array',
-        ], [
-            // اسم النموذج يدخل مسار رابط المزوّد
-            'model.regex' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط',
-            'wa_verify_token.min' => 'رمز التحقق 16 حرفاً على الأقل',
-            'wa_app_id.regex' => 'معرّف التطبيق أرقام فقط (من App settings › Basic)',
-        ]);
-
-        // الأسرار الفارغة لا تمسح المحفوظ
-        foreach (['wa_token', 'wa_app_secret', 'api_key'] as $secret) {
-            if (blank($data[$secret] ?? null)) {
-                unset($data[$secret]);
-            }
-        }
-
-        $settings = WaBotSetting::current();
-
-        // بعد استعادة نسخة: القفل يبقى حتى يعتمد المدير المراجعة (وضعه مسموح دائماً)
-        if (array_key_exists('wa_suspended', $data) && !$data['wa_suspended'] && $settings->wa_suspended
-            && Setting::get(BackupSafeMode::REVIEW_KEY)) {
-            throw ValidationException::withMessages([
-                'wa_suspended' => 'أكمل مراجعة ما بعد الاستعادة من صفحة النسخ الاحتياطي أولاً',
-            ]);
-        }
-
-        // رقم جديد: ما تعلّمناه عن الرقم القديم لا يصلح لتمييز أحداث الحساب، فيُتعلّم من جديد مع أول رسالة
-        if (array_key_exists('wa_phone_number_id', $data) && (string) $data['wa_phone_number_id'] !== (string) $settings->wa_phone_number_id
-            && \Illuminate\Support\Facades\Schema::hasColumn('wa_bot_settings', 'wa_display_phone')) {
-            $settings->forceFill(['wa_waba_id' => null, 'wa_display_phone' => null]);
-        }
-
-        // «من أوقف الإرسال؟» له جواب دائماً: صفوف التدقيق في المعاملة نفسها
-        DB::transaction(function () use ($settings, $data) {
-            $public = ['enabled', 'wa_suspended', 'wa_phone_number_id', 'wa_app_id', 'provider', 'model', 'context_messages', 'pause_minutes',
-                'max_reply_age_minutes', 'max_tool_loops', 'rate_limit_per_hour', 'fail_message', 'fail_handoff', 'tools_config'];
-            $before = $settings->only($public);
-            $prompt = [$settings->system_prompt, $settings->knowledge_base];
-            $verify = $settings->wa_verify_token;
-
-            $settings->update($data);
-
-            $after = $settings->only($public);
-            $changed = [];
-            foreach ($public as $field) {
-                if ($before[$field] != $after[$field]) {
-                    $changed[$field] = ['before' => $before[$field], 'after' => $after[$field]];
-                }
-            }
-            $changes = [
-                'changed' => $changed,
-                // أسماء الأسرار المرسلة وحدها، بلا قيمها
-                'credentials_changed' => array_values(array_intersect(['wa_token', 'wa_app_secret', 'api_key'], array_keys($data))),
-                'verify_changed' => $verify !== $settings->wa_verify_token,
-            ];
-            foreach (['system_prompt' => 0, 'knowledge_base' => 1] as $field => $i) {
-                if ($prompt[$i] !== $settings->{$field}) {
-                    $changes[$field] = ['before' => AuditRedactor::fingerprint($prompt[$i]), 'after' => AuditRedactor::fingerprint($settings->{$field})];
-                }
-            }
-            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaSettingsUpdate, 'wa_bot_settings', $settings->id, 'إعدادات البوت', $changes);
-
-            if (isset($changed['wa_suspended'])) {
-                \App\Models\AuditLog::log(\App\Enums\AuditAction::WaSuspendManual, 'wa_bot_settings', $settings->id, 'قفل الإرسال الطارئ', ['on' => (bool) $settings->wa_suspended]);
-            }
-            if (isset($changed['enabled'])) {
-                \App\Models\AuditLog::log(\App\Enums\AuditAction::WaBotEnabled, 'wa_bot_settings', $settings->id, 'بوت العملاء', ['on' => (bool) $settings->enabled]);
-            }
-        });
-
-        return back()->with('success', 'تم حفظ إعدادات البوت');
+        return response()->json(['meta' => \App\Services\WhatsApp\MetaHealth::summary(WaBotSetting::current()->fresh())]);
     }
 
     // ==================== التحليلات ====================
@@ -626,8 +462,9 @@ class WhatsAppController extends Controller
             'model_prices' => 'required|array',
             'cache_discount' => 'nullable|numeric|min:0|max:1',
         ]);
-        WaBotSetting::current()->update($data);
-        \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaModelPrices, 'wa_bot_settings', WaBotSetting::current()->id, null, ['models' => array_keys($data['model_prices']), 'cache_discount' => $data['cache_discount'] ?? null]);
+        // عبر الكاتب الوحيد: يرفع نسخة الإعدادات ويُدقَّق بالقيم الناتجة
+        \App\Services\WhatsApp\Settings\SettingsWriter::apply($data, null, \App\Enums\AuditAction::WaModelPrices,
+            ['models' => array_keys($data['model_prices'])], label: 'أسعار النموذج');
 
         return back()->with('success', 'تم حفظ الأسعار');
     }

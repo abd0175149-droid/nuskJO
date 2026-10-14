@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\TestCase;
 
 /**
@@ -17,6 +18,7 @@ use Tests\TestCase;
 class SettingsOpsCardTest extends TestCase
 {
     use ConfiguresWhatsApp;
+    use PatchesWhatsAppSettings;
     use RefreshDatabase;
 
     private User $owner;
@@ -53,10 +55,10 @@ class SettingsOpsCardTest extends TestCase
 
     public function test_the_app_id_must_be_digits(): void
     {
-        $this->actingAs($this->owner)->put('/whatsapp/settings', ['wa_app_id' => 'abc'])
-            ->assertSessionHasErrors(['wa_app_id' => 'معرّف التطبيق أرقام فقط (من App settings › Basic)']);
+        $this->patchSettings($this->owner, ['wa_app_id' => 'abc'])
+            ->assertJsonValidationErrors(['changes.wa_app_id' => 'معرّف التطبيق أرقام فقط (من App settings › Basic)']);
 
-        $this->actingAs($this->owner)->put('/whatsapp/settings', ['wa_app_id' => '9876543210'])->assertSessionHasNoErrors();
+        $this->patchSettings($this->owner, ['wa_app_id' => '9876543210'])->assertOk();
         $this->assertSame('9876543210', WaBotSetting::current()->wa_app_id);
     }
 

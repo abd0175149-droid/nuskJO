@@ -316,6 +316,31 @@ class WhatsAppChannel
     }
 
     /**
+     * قبل حفظ Phone Number ID جديد (E10): هل تعرفه ميتا برمزنا؟ قراءة فقط.
+     * false: ردّت ميتا بأن المعرّف غير صالح (400 برمز 100 أو 803)؛ true: موجود؛ null: لا نعرف (لا رمز، أو لا اتصال، أو خطأ آخر)،
+     * فلا يُمنع الحفظ إلا برفض صريح من ميتا.
+     */
+    public static function probePhoneNumberId(string $phoneNumberId): ?bool
+    {
+        $s = WaBotSetting::current();
+        if (empty($s->token())) {
+            return null;
+        }
+        try {
+            $res = self::graph($s, 15)->get(self::graphPath($phoneNumberId), ['fields' => 'id']);
+        } catch (\Throwable $e) {
+            WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'phone_number_id']);
+
+            return null;
+        }
+        if ($res->successful()) {
+            return true;
+        }
+
+        return $res->status() === 400 && in_array((int) data_get($res->json(), 'error.code'), [100, 803], true) ? false : null;
+    }
+
+    /**
      * فحص قرائي لرقمنا على إصدار Graph المضبوط (whatsapp:graph-smoke). لا يرسل أي رسالة.
      *
      * @return array{ok: bool, code: ?string, status: ?int, data?: array<string, mixed>}
@@ -517,7 +542,7 @@ class WhatsAppChannel
         }
 
         // ── القفل 2: إيقاف إرسال طارئ
-        if ($s->wa_suspended || config('services.whatsapp.suspended')) {
+        if ($s->sendingSuspended()) {
             return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).');
         }
 

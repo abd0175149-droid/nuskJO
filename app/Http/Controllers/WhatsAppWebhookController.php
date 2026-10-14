@@ -11,6 +11,7 @@ use App\Services\WhatsApp\WaLog;
 use App\Services\WhatsApp\WhatsAppInbox;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * ويبهوك ميتا — خارج auth وخارج CSRF.
@@ -23,17 +24,18 @@ class WhatsAppWebhookController extends Controller
     public function verify(Request $request)
     {
         $s = WaBotSetting::current();
-        $expected = (string) $s->verifyToken();
-
-        // مقارنة بصمتين بطول ثابت: hash_equals على النصين يكشف الطول عند الاختلاف
-        $key = (string) config('app.key');
+        // القاعدة تحفظ هاش الرمز وحده (E10)؛ مقارنة هاشين بطول ثابت لا تكشف طول الرمز
+        $expected = (string) $s->verifyTokenHash();
         $given = (string) $request->query('hub_verify_token', '');
-        $matches = $expected !== '' && hash_equals(hash_hmac('sha256', $expected, $key), hash_hmac('sha256', $given, $key));
+        $matches = $expected !== '' && hash_equals($expected, hash('sha256', $given));
 
         // التحدي يُعاد نصاً كما هو: نقبل الشكل الذي ترسله ميتا فقط
         $challenge = (string) $request->query('hub_challenge', '');
 
         if ($request->query('hub_mode') === 'subscribe' && $matches && preg_match('/^[A-Za-z0-9_-]{1,128}$/', $challenge)) {
+            // «آخر مصافحة ناجحة» في الإعدادات، بلا كتابة في صف الإعدادات
+            Cache::forever('wa:verify:last_handshake_at', now()->toIso8601String());
+
             return response($challenge, 200)->header('Content-Type', 'text/plain');
         }
 
@@ -53,13 +55,22 @@ class WhatsAppWebhookController extends Controller
         $raw = $request->getContent();
 
         // التوقيع إلزامي — لا استثناء في الإنتاج
+        // appSecret() لا يرمي إن تعذّر فك السر: null فرفض 403، وميتا تعيد 7 أيام
         if (!WhatsAppChannel::verifySignature($raw, $request->header('X-Hub-Signature-256'), $s->appSecret())) {
+            $hourKey = 'wa:sig:fail:'.now()->format('YmdH');
+            Cache::add($hourKey, 0, 7200);
+            Cache::increment($hourKey);
             WaLog::warning('webhook.bad_signature');
             // عيّنة لكل عنوان: الجسم لا يُسجَّل، ولا حد ولا 429 (الطلب الموقَّع لا يمر من هنا)
             AuditLog::sampled(AuditAction::WaWebhookBadSignature, 'wa_sig:'.$request->ip(), 'webhook', null, null, [
                 'has_header' => $request->hasHeader('X-Hub-Signature-256'), 'bytes' => strlen($raw),
             ]);
             return response()->json(['ok' => false], 403);
+        }
+
+        // «آخر توقيع صحيح» في الإعدادات: كتابة واحدة في الدقيقة على الأكثر
+        if (Cache::add('wa:sig:ok:tick', 1, 60)) {
+            Cache::forever('wa:sig:last_ok_at', now()->toIso8601String());
         }
 
         $touched = [];

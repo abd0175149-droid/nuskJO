@@ -43,7 +43,7 @@ final class ReplyReconciler
         $result['skipped'] = match (true) {
             !ReplyState::available() => 'no_watermark_column',
             !$s->flag('reconcile') => 'flag_off',
-            $s->wa_suspended || (bool) config('services.whatsapp.suspended') => 'suspended',
+            $s->sendingSuspended() => 'suspended',
             // البوت مطفأ: بوابات BotEngine ترفع الشارة عند وصول الرسالة
             !$s->botReady() => 'bot_off',
             default => null,

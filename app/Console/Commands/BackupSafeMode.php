@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Setting;
-use App\Models\WaBotSetting;
+use App\Services\WhatsApp\Settings\SettingsWriter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -59,7 +59,10 @@ class BackupSafeMode extends Command
         }
 
         if (Schema::hasTable('wa_bot_settings')) {
-            WaBotSetting::current()->update(['enabled' => false, 'wa_suspended' => true]);
+            \App\Support\AuditActor::as('system', 'artisan:'.$this->getName(), fn () => SettingsWriter::apply([
+                'enabled' => false, 'wa_suspended' => true, 'wa_suspended_at' => now(), 'wa_suspended_by' => null,
+                'wa_suspended_source' => 'restore', 'wa_suspended_reason' => 'وضع آمن بعد استعادة نسخة '.$snap,
+            ], null, \App\Enums\AuditAction::WaSuspendAuto, ['restored_from' => $snap], audit: 'safe', label: 'استعادة نسخة'));
             $this->line('• البوت مطفأ والإرسال مقفل');
         } else {
             $this->warn('• جدول إعدادات البوت غير موجود في هذه النسخة');

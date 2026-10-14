@@ -1,0 +1,340 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Console\Commands\BackupSafeMode;
+use App\Enums\AuditAction;
+use App\Exceptions\StaleSettingsException;
+use App\Models\Setting;
+use App\Models\User;
+use App\Models\WaBotSetting;
+use App\Models\WaKnowledgeEntry;
+use App\Services\Ops\OpsHealth;
+use App\Services\WhatsApp\BotEngine;
+use App\Services\WhatsApp\BotTools;
+use App\Services\WhatsApp\ChannelDoctor;
+use App\Services\WhatsApp\GraphVersions;
+use App\Services\WhatsApp\Llm\LlmFactory;
+use App\Services\WhatsApp\MetaHealth;
+use App\Services\WhatsApp\Settings\SettingsSchema;
+use App\Services\WhatsApp\Settings\SettingsWriter;
+use App\Services\WhatsApp\WhatsAppChannel;
+use App\Services\WhatsApp\WhatsAppInbox;
+use App\Support\FeatureFlags;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+
+/**
+ * إعدادات بوت الواتساب (E10): حفظ جزئي برمز نسخة (409 عند التعارض)، وإيقاف طارئ بسبب في مسار مستقل،
+ * وأسرار تُعيَّن وتُمسح ولا تعود للمتصفح أبداً (عدا رمز التحقق المولَّد لحظة توليده). كل كتابة عبر SettingsWriter.
+ */
+class WhatsAppSettingsController extends Controller
+{
+    private const SECRETS = ['wa_token' => 'رمز ميتا', 'wa_app_secret' => 'App Secret', 'api_key' => 'مفتاح المزوّد'];
+
+    public function show()
+    {
+        $this->authorizeSettings();
+
+        return Inertia::render('WhatsApp/Settings', $this->payload() + [
+            'title' => 'إعدادات بوت الواتساب',
+            'providers' => LlmFactory::PROVIDERS,
+            'webhookUrl' => url('/api/whatsapp/webhook'),
+            'defaultPrompt' => BotEngine::DEFAULT_PROMPT,
+            'toolList' => BotTools::LABELS,
+            'graph' => GraphVersions::panel(),
+            'health' => ChannelDoctor::checks(),
+            'ops' => app(OpsHealth::class)->snapshot(),
+            'meta' => MetaHealth::summary(WaBotSetting::current()),
+        ]);
+    }
+
+    /** الحمولة نفسها JSON: تعيد الصفحة بناء نفسها بعد 409 */
+    public function current(): JsonResponse
+    {
+        $this->authorizeSettings();
+
+        return response()->json($this->payload())->header('Cache-Control', 'no-store');
+    }
+
+    /** PATCH whatsapp/settings: {version, changes: {key: value|null}, confirm?}. null = القيمة الافتراضية */
+    public function update(Request $request): JsonResponse
+    {
+        $this->authorizeSettings();
+        $changes = (array) $request->input('changes', []);
+        $data = $request->validate(['version' => 'required|integer|min:1', 'confirm' => 'sometimes|boolean'] + SettingsSchema::patchRules($changes), [
+            'changes.array' => 'حقل غير مسموح في الإعدادات: الأسرار والإيقاف لها أزرارها',
+            'changes.model.regex' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط',
+            'changes.wa_app_id.regex' => 'معرّف التطبيق أرقام فقط (من App settings › Basic)',
+            'changes.wa_phone_number_id.regex' => 'Phone Number ID أرقام فقط',
+        ]);
+
+        $settings = WaBotSetting::current();
+        $changes = [];
+        foreach ($data['changes'] as $key => $value) {
+            $changes[$key] = $value ?? SettingsSchema::default($key);
+        }
+
+        // الحقول الحساسة (رقم الإرسال والمزوّد) بتأكيد صريح
+        $sensitive = array_filter(array_keys($changes), fn ($k) => SettingsSchema::isSensitive($k) && $changes[$k] != $settings->{$k});
+        if ($sensitive && !$request->boolean('confirm')) {
+            throw ValidationException::withMessages(['confirm' => 'تغيير '.implode(' و', array_map(fn ($k) => SettingsSchema::FIELDS[$k]['label'], $sensitive)).' يحتاج تأكيداً']);
+        }
+
+        if (array_key_exists('wa_phone_number_id', $changes) && (string) $changes['wa_phone_number_id'] !== (string) $settings->wa_phone_number_id) {
+            if ($changes['wa_phone_number_id'] !== null && WhatsAppChannel::probePhoneNumberId((string) $changes['wa_phone_number_id']) === false) {
+                throw ValidationException::withMessages(['changes.wa_phone_number_id' => 'ميتا لا تعرف هذا المعرّف برمزنا الحالي — انسخه من WhatsApp › API Setup']);
+            }
+            // رقم جديد: ما تعلّمناه عن القديم لا يصلح لتمييز أحداث الحساب، فيُتعلّم من أول رسالة
+            $changes += ['wa_waba_id' => null, 'wa_display_phone' => null];
+        }
+
+        try {
+            $fresh = SettingsWriter::apply($changes, (int) $data['version'], AuditAction::WaSettingsUpdate);
+        } catch (StaleSettingsException $e) {
+            return response()->json(['error' => 'stale', 'message' => 'غيّر غيرك الإعدادات بعد فتحك الصفحة — راجع الحقول المتعارضة ثم احفظ', 'current_version' => $e->currentVersion], 409);
+        }
+
+        return response()->json(['version' => (int) $fresh->settings_version, 'settings' => $this->settings($fresh)]);
+    }
+
+    /** PUT القديم (تبويب فُتح قبل النشر): لا يكتب شيئاً. يُحذف في الإصدار التالي */
+    public function legacyUpdate()
+    {
+        $this->authorizeSettings();
+
+        return back()->with('error', 'تغيّرت صفحة الإعدادات — أعد تحميلها ثم احفظ');
+    }
+
+    /** الإيقاف الطارئ: on بسبب، وoff بسبب وكتابة «استئناف». WA_SUSPENDED في البيئة يتقدّم دائماً */
+    public function killSwitch(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'state' => 'required|in:on,off',
+            'reason' => 'required|string|min:10|max:500',
+            'confirm_text' => 'nullable|string|max:20',
+            'acknowledge' => 'sometimes|boolean',
+        ], ['reason.min' => 'اكتب السبب (10 أحرف على الأقل)']);
+        $user = $request->user();
+        $on = $data['state'] === 'on';
+
+        abort_unless($on ? ($user->can('whatsapp.settings') || $user->can('whatsapp.kill_switch')) : $user->can('whatsapp.settings'), 403);
+        if (config('services.whatsapp.suspended')) {
+            return response()->json(['message' => 'الإيقاف مفروض من بيئة الخادم (WA_SUSPENDED) — لا يُغيَّر من هنا'], 409);
+        }
+
+        $s = WaBotSetting::current();
+        if (!$on) {
+            if (trim((string) ($data['confirm_text'] ?? '')) !== 'استئناف') {
+                throw ValidationException::withMessages(['confirm_text' => 'اكتب «استئناف» للتأكيد']);
+            }
+            // بعد استعادة نسخة: القفل يبقى حتى يعتمد المدير المراجعة
+            if ($s->wa_suspended && Setting::get(BackupSafeMode::REVIEW_KEY)) {
+                throw ValidationException::withMessages(['state' => 'أكمل مراجعة ما بعد الاستعادة من صفحة النسخ الاحتياطي أولاً']);
+            }
+            // قفل من ميتا أو من رمز خطأ: تأكيد إضافي أن الحساب رُوجع
+            if (in_array($s->wa_suspended_source, ['meta_event', 'graph_error'], true) && !$request->boolean('acknowledge')) {
+                throw ValidationException::withMessages(['acknowledge' => 'أُوقف الإرسال بحدث من ميتا ('.$s->wa_suspended_reason.') — أكّد أنك راجعت حالة الحساب']);
+            }
+        }
+
+        if ($on !== (bool) $s->wa_suspended) {
+            $previous = $s->wa_suspended_source;
+            SettingsWriter::apply([
+                'wa_suspended' => $on, 'wa_suspended_at' => now(), 'wa_suspended_by' => $user->id,
+                'wa_suspended_source' => $on ? 'manual' : null, 'wa_suspended_reason' => $data['reason'],
+            ], null, AuditAction::WaSuspendManual, ['on' => $on, 'reason' => $data['reason']] + ($on ? [] : ['previous_source' => $previous]), label: 'قفل الإرسال الطارئ');
+
+            WhatsAppInbox::notifyAdmins(
+                $on ? '⛔ أُوقف إرسال الواتساب' : '✅ استُؤنف إرسال الواتساب',
+                ($on ? 'أوقفه ' : 'استأنفه ').$user->name.': '.$data['reason'],
+                '/whatsapp/settings',
+            );
+        }
+
+        return response()->json(['killSwitch' => $this->killSwitchState(WaBotSetting::current())]);
+    }
+
+    /** تعيين سر (رمز ميتا، App Secret، مفتاح المزوّد) بسبب. الرد بلا القيمة */
+    public function setSecret(Request $request, string $secret): JsonResponse
+    {
+        $this->authorizeSettings();
+        abort_unless(isset(self::SECRETS[$secret]), 404);
+        $data = $request->validate([
+            'value' => 'required|string|min:20|max:4096',
+            'reason' => 'required|in:routine,leak,setup,other',
+            'note' => 'nullable|string|max:200',
+        ]);
+        if (($this->sourceOf($secret)) === 'env') {
+            return response()->json(['message' => 'البيئة تتقدّم على المحفوظ — عدّل .env.production'], 409);
+        }
+
+        $fresh = SettingsWriter::apply([$secret => $data['value'], "{$secret}_rotated_at" => now()], null, AuditAction::WaSecretSet,
+            ['field' => $secret, 'reason' => $data['reason'], 'note' => $data['note'] ?? null], label: self::SECRETS[$secret]);
+
+        return response()->json([
+            'has' => true,
+            'rotated_at' => $fresh->{"{$secret}_rotated_at"}?->toIso8601String(),
+            'fingerprint' => substr(hash('sha256', $data['value']), 0, 8),
+        ])->header('Cache-Control', 'no-store');
+    }
+
+    public function clearSecret(Request $request, string $secret): JsonResponse
+    {
+        $this->authorizeSettings();
+        abort_unless(isset(self::SECRETS[$secret]), 404);
+        $data = $request->validate(['reason' => 'required|in:routine,leak,setup,other']);
+        if ($this->sourceOf($secret) === 'env') {
+            return response()->json(['message' => 'البيئة تتقدّم على المحفوظ — عدّل .env.production'], 409);
+        }
+
+        SettingsWriter::apply([$secret => null, "{$secret}_rotated_at" => now()], null, AuditAction::WaSecretClear,
+            ['field' => $secret, 'reason' => $data['reason']], label: self::SECRETS[$secret]);
+
+        return response()->json(['has' => false])->header('Cache-Control', 'no-store');
+    }
+
+    /** رمز تحقق عشوائي يُعاد مرة واحدة هنا؛ القاعدة تحفظ هاشه وحده */
+    public function rotateVerifyToken(Request $request): JsonResponse
+    {
+        $this->authorizeSettings();
+        $data = $request->validate(['reason' => 'required|in:routine,leak,setup,other']);
+        if ((string) config('services.whatsapp.verify_token') !== '') {
+            return response()->json(['message' => 'الرمز من البيئة (WA_WEBHOOK_VERIFY_TOKEN) — يُغيَّر في .env.production'], 409);
+        }
+
+        $token = bin2hex(random_bytes(32));
+        $fresh = SettingsWriter::apply([
+            'wa_verify_token' => null, 'wa_verify_token_hash' => hash('sha256', $token), 'wa_verify_token_rotated_at' => now(),
+        ], null, AuditAction::WaVerifyRotate, ['reason' => $data['reason']], label: 'رمز التحقق');
+
+        return response()->json([
+            'token' => $token,
+            'rotated_at' => $fresh->wa_verify_token_rotated_at?->toIso8601String(),
+        ])->header('Cache-Control', 'no-store');
+    }
+
+    /** PATCH api/whatsapp/settings/flags/{flag}: {state: on|off|default, reason} */
+    public function toggleFlag(Request $request, string $flag): JsonResponse
+    {
+        $this->authorizeSettings();
+        abort_unless(isset(FeatureFlags::definitions()[$flag]), 404);
+        $data = $request->validate(['state' => 'required|in:on,off,default', 'reason' => 'required|string|min:5|max:300']);
+        if (!FeatureFlags::available($flag)) {
+            throw ValidationException::withMessages(['state' => 'هذه الميزة لم تُشحن بعد، فلا تُفعَّل']);
+        }
+        if (FeatureFlags::state($flag)['source'] === 'env') {
+            return response()->json(['message' => 'العلم مفروض من البيئة — يُغيَّر في .env.production'], 409);
+        }
+
+        $flags = WaBotSetting::current()->feature_flags ?? [];
+        if ($data['state'] === 'default') {
+            unset($flags[$flag]);
+        } else {
+            $flags[$flag] = $data['state'] === 'on';
+        }
+        SettingsWriter::apply(['feature_flags' => $flags ?: null], null, AuditAction::WaFlagToggle,
+            ['flag' => $flag, 'state' => $data['state'], 'reason' => $data['reason']], label: $flag);
+
+        return response()->json(['flags' => FeatureFlags::panel()]);
+    }
+
+    // ==================== الحمولة ====================
+
+    private function payload(): array
+    {
+        $s = WaBotSetting::current();
+        $sources = $s->sources();
+
+        return [
+            'settings' => $this->settings($s),
+            'version' => (int) ($s->settings_version ?? 1),
+            'fields' => SettingsSchema::uiFields(),
+            'defaults' => SettingsSchema::defaults(),
+            'sources' => $sources,
+            'secrets' => collect(self::SECRETS)->map(fn ($label, $key) => [
+                'label' => $label,
+                'has' => !empty(match ($key) {
+                    'wa_token' => $s->token(), 'wa_app_secret' => $s->appSecret(), default => $s->llmKey()
+                }),
+                'source' => $sources[$key]['source'],
+                'env_var' => $sources[$key]['env_var'],
+                'decrypt_ok' => $sources[$key]['decrypt_ok'],
+                'rotated_at' => $s->{"{$key}_rotated_at"}?->toIso8601String(),
+            ])->all(),
+            'verify' => [
+                'has' => $s->verifyTokenHash() !== null,
+                'source' => $sources['wa_verify_token']['source'],
+                'rotated_at' => $s->wa_verify_token_rotated_at?->toIso8601String(),
+                'last_handshake_at' => Cache::get('wa:verify:last_handshake_at'),
+                // نص صريح قديم ما زال محفوظاً (يمسحه whatsapp:settings-finalize)
+                'legacy_plain' => !empty($s->wa_verify_token),
+            ],
+            'signature' => [
+                'last_ok_at' => Cache::get('wa:sig:last_ok_at'),
+                'failures_last_hour' => (int) Cache::get('wa:sig:fail:'.now()->format('YmdH'), 0),
+            ],
+            'killSwitch' => $this->killSwitchState($s),
+            'flags' => FeatureFlags::panel(),
+            'can' => [
+                'suspend' => auth()->user()->can('whatsapp.settings') || auth()->user()->can('whatsapp.kill_switch'),
+                'resume' => auth()->user()->can('whatsapp.settings'),
+            ],
+        ];
+    }
+
+    /** القيم الآمنة وحدها: لا سر ولا هاش */
+    private function settings(WaBotSetting $s): array
+    {
+        return [
+            'enabled' => (bool) $s->enabled,
+            'wa_phone_number_id' => $s->wa_phone_number_id,
+            // يُتعلّمان من أول رسالة لرقمنا؛ بهما تُميَّز أحداث الحساب لأرقام أخرى على التطبيق نفسه
+            'wa_waba_id' => $s->wa_waba_id,
+            'wa_display_phone' => $s->wa_display_phone,
+            'wa_app_id' => $s->wa_app_id,
+            'provider' => $s->provider ?: SettingsSchema::default('provider'),
+            'model' => $s->model,
+            // null = النص الافتراضي الحي (defaultPrompt)؛ لا يُحقن في الحقل فلا يتجمّد في القاعدة عند أول حفظ
+            'system_prompt' => $s->system_prompt,
+            'kb_entries' => rescue(fn () => WaKnowledgeEntry::where('is_active', true)->count(), 0, false),
+            'kb_chars' => rescue(fn () => WaKnowledgeEntry::activeChars(), 0, false),
+            'context_messages' => (int) $s->context_messages,
+            'pause_minutes' => (int) $s->pause_minutes,
+            'max_reply_age_minutes' => (int) ($s->max_reply_age_minutes ?? SettingsSchema::default('max_reply_age_minutes')),
+            'max_tool_loops' => (int) $s->max_tool_loops,
+            'rate_limit_per_hour' => (int) $s->rate_limit_per_hour,
+            'fail_message' => $s->fail_message,
+            'fail_handoff' => (bool) $s->fail_handoff,
+            'tools_config' => $s->tools_config ?? (object) [],
+            'env_app_id' => !empty(config('services.whatsapp.app_id')),
+        ];
+    }
+
+    private function killSwitchState(WaBotSetting $s): array
+    {
+        return [
+            'db' => (bool) $s->wa_suspended,
+            'env' => (bool) config('services.whatsapp.suspended'),
+            'effective' => $s->sendingSuspended(),
+            'source' => $s->suspendSource(),
+            'reason' => $s->wa_suspended_reason,
+            'at' => $s->wa_suspended_at?->toIso8601String(),
+            'by_name' => $s->wa_suspended_by ? User::whereKey($s->wa_suspended_by)->value('name') : null,
+            'review_pending' => (bool) Setting::get(BackupSafeMode::REVIEW_KEY),
+        ];
+    }
+
+    private function sourceOf(string $key): ?string
+    {
+        return WaBotSetting::current()->sources()[$key]['source'] ?? null;
+    }
+
+    private function authorizeSettings(): void
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+    }
+}

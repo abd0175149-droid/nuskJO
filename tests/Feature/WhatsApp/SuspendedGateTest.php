@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\TestCase;
 
 /**
@@ -23,6 +24,7 @@ use Tests\TestCase;
 class SuspendedGateTest extends TestCase
 {
     use ConfiguresWhatsApp;
+    use PatchesWhatsAppSettings;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -76,14 +78,13 @@ class SuspendedGateTest extends TestCase
         WaBotSetting::current()->update(['wa_suspended' => true]);
         Setting::set(BackupSafeMode::REVIEW_KEY, json_encode(['snapshot' => '20261014T023000Z-scheduled']));
 
-        $this->actingAs($admin)->put('/whatsapp/settings', ['wa_suspended' => false])
-            ->assertSessionHasErrors('wa_suspended');
+        $this->killSwitch($admin, 'off')->assertUnprocessable()->assertJsonValidationErrors('state');
         $this->assertTrue(WaBotSetting::current()->fresh()->wa_suspended);
 
-        // إبقاؤه مقفلاً وتعديل غيره مسموح
-        $this->actingAs($admin)->put('/whatsapp/settings', ['wa_suspended' => true, 'pause_minutes' => 45])
-            ->assertSessionHasNoErrors();
+        // تعديل غيره مسموح، والقفل باقٍ
+        $this->patchSettings($admin, ['pause_minutes' => 45])->assertOk();
         $this->assertSame(45, (int) WaBotSetting::current()->fresh()->pause_minutes);
+        $this->assertTrue(WaBotSetting::current()->fresh()->wa_suspended);
     }
 
     public function test_lock_can_be_lifted_without_a_pending_review(): void
@@ -91,7 +92,7 @@ class SuspendedGateTest extends TestCase
         $admin = User::factory()->admin()->create();
         WaBotSetting::current()->update(['wa_suspended' => true]);
 
-        $this->actingAs($admin)->put('/whatsapp/settings', ['wa_suspended' => false])->assertSessionHasNoErrors();
+        $this->killSwitch($admin, 'off')->assertOk();
         $this->assertFalse(WaBotSetting::current()->fresh()->wa_suspended);
     }
 }

@@ -116,7 +116,10 @@ final class MetaErrorCatalog
         if ($action === 'suspend' && self::autosuspends($metaCode)) {
             $settings = WaBotSetting::current();
             if (!$settings->wa_suspended) {
-                $settings->update(['wa_suspended' => true]);
+                \App\Support\AuditActor::as('system', 'graph:'.$metaCode, fn () => Settings\SettingsWriter::apply([
+                    'wa_suspended' => true, 'wa_suspended_at' => now(), 'wa_suspended_by' => null,
+                    'wa_suspended_source' => 'graph_error', 'wa_suspended_reason' => 'رمز ميتا '.$metaCode,
+                ], null, \App\Enums\AuditAction::WaSuspendAuto, ['meta_code' => $metaCode], audit: 'safe', label: 'رمز '.$metaCode));
                 WaLog::error('graph.autosuspend', ['meta_code' => $metaCode]);
                 WhatsAppInbox::notifyAdmins('⛔ إيقاف إرسال الواتساب', "ردّت ميتا بالرمز {$metaCode} (تقييد الحساب)، فأُوقف كل الإرسال تلقائياً. راجع حالة الحساب قبل إعادة التشغيل.", '/whatsapp/settings');
             }

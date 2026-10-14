@@ -170,6 +170,8 @@ class AppServiceProvider extends ServiceProvider
             }
             $done = true;
 
+            // env() عمداً: متغير لأمر واحد على سطر الأوامر (ALLOW_MIGRATE_WITHOUT_BACKUP=1 php artisan migrate)،
+            // ويصل حتى مع config:cache لأنه من بيئة العملية لا من .env (ArchitectureSettingsTest يستثنيه وحده)
             if (env('ALLOW_MIGRATE_WITHOUT_BACKUP')) {
                 \Illuminate\Support\Facades\Log::warning('migrate without pre-migrate backup (ALLOW_MIGRATE_WITHOUT_BACKUP)');
 

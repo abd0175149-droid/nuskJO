@@ -11,6 +11,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use RuntimeException;
+use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\TestCase;
 
 /**
@@ -19,6 +20,7 @@ use Tests\TestCase;
  */
 class OutboundLlmCallsTest extends TestCase
 {
+    use PatchesWhatsAppSettings;
     use RefreshDatabase;
 
     private const KEY = 'AIzaSyTEST-not-a-real-key';
@@ -127,8 +129,8 @@ class OutboundLlmCallsTest extends TestCase
     {
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
 
-        $this->actingAs($owner)->put('/whatsapp/settings', ['model' => 'gemini/../x?y'])
-            ->assertSessionHasErrors(['model' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط']);
-        $this->actingAs($owner)->put('/whatsapp/settings', ['model' => 'gemini-2.5-flash'])->assertSessionHasNoErrors();
+        $this->patchSettings($owner, ['model' => 'gemini/../x?y'])->assertUnprocessable()
+            ->assertJsonValidationErrors(['changes.model' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط']);
+        $this->patchSettings($owner, ['model' => 'gemini-2.5-flash'])->assertOk();
     }
 }

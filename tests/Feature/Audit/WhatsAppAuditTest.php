@@ -14,6 +14,7 @@ use App\Services\WhatsApp\AdminTools;
 use App\Support\AuditRedactor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ use Tests\TestCase;
 class WhatsAppAuditTest extends TestCase
 {
     use ConfiguresWhatsApp;
+    use PatchesWhatsAppSettings;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -36,23 +38,24 @@ class WhatsAppAuditTest extends TestCase
         return AuditLog::where('action', $action->value)->orderBy('id')->get();
     }
 
-    public function test_settings_record_changed_fields_and_credential_names_but_never_their_values(): void
+    public function test_settings_record_resulting_values_and_secrets_only_by_fingerprint(): void
     {
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
-        $oldPrompt = WaBotSetting::current()->system_prompt;
 
-        $this->actingAs($owner)->put('/whatsapp/settings', [
-            'wa_token' => 'EAAG-SECRET123-token', 'api_key' => 'AIza-SECRET123', 'rate_limit_per_hour' => 33,
+        $this->patchSettings($owner, [
+            'rate_limit_per_hour' => 33,
             'system_prompt' => 'أنت مساعد الشركة. SECRET123 لا يظهر في السجل.',
-        ])->assertSessionHasNoErrors();
+        ])->assertOk();
+        $this->actingAs($owner)->postJson('/api/whatsapp/settings/secrets/wa_token', ['value' => 'EAAG-SECRET123-token-value', 'reason' => 'routine'])->assertOk();
 
         $row = $this->rows(AuditAction::WaSettingsUpdate)->sole();
-        $this->assertSame(['rate_limit_per_hour'], array_keys($row->changes['changed']));
-        $this->assertSame(33, $row->changes['changed']['rate_limit_per_hour']['after']);
-        $this->assertSame(['wa_token', 'api_key'], $row->changes['credentials_changed']);
-        $this->assertFalse($row->changes['verify_changed']);
-        $this->assertSame(AuditRedactor::fingerprint($oldPrompt), $row->changes['system_prompt']['before']);
-        $this->assertArrayNotHasKey('knowledge_base', $row->changes);
+        $this->assertSame(['system_prompt', 'rate_limit_per_hour'], array_keys($row->changes['changed']));
+        $this->assertSame(['from' => 20, 'to' => 33], $row->changes['changed']['rate_limit_per_hour']);
+        $this->assertSame(AuditRedactor::fingerprint(null), $row->changes['changed']['system_prompt']['from']);
+
+        $secret = $this->rows(AuditAction::WaSecretSet)->sole();
+        $this->assertSame([['field' => 'wa_token', 'set' => true, 'fp' => substr(hash('sha256', 'EAAG-SECRET123-token-value'), 0, 8)]], $secret->changes['credentials']);
+        $this->assertSame('routine', $secret->changes['reason']);
         $this->assertStringNotContainsString('SECRET123', json_encode(AuditLog::all()->toArray()));
         $this->assertCount(0, $this->rows(AuditAction::WaSuspendManual));
     }
@@ -61,11 +64,14 @@ class WhatsAppAuditTest extends TestCase
     {
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
 
-        $this->actingAs($owner)->put('/whatsapp/settings', ['wa_suspended' => true, 'enabled' => false])->assertSessionHasNoErrors();
+        $this->killSwitch($owner, 'on')->assertOk();
+        $this->patchSettings($owner, ['enabled' => false, 'pause_minutes' => 40])->assertOk();
 
-        $this->assertTrue($this->rows(AuditAction::WaSuspendManual)->sole()->changes['on']);
+        $stop = $this->rows(AuditAction::WaSuspendManual)->sole();
+        $this->assertTrue($stop->changes['on']);
+        $this->assertSame('سبب مكتوب للاختبار', $stop->changes['reason']);
+        $this->assertSame('warn', $stop->severity);
         $this->assertFalse($this->rows(AuditAction::WaBotEnabled)->sole()->changes['on']);
-        $this->assertSame('warn', $this->rows(AuditAction::WaSuspendManual)->sole()->severity);
     }
 
     public function test_opening_a_conversation_is_sampled_once_per_window_and_only_when_extended(): void

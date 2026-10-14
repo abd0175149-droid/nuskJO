@@ -39,6 +39,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // /up يستدعي report() عند كل فشل (كل 30 ثانية من Docker)؛ OpsHealth يكتب سطراً لكل رمز في الساعة
         $exceptions->dontReport(\App\Exceptions\HealthCheckFailed::class);
 
+        // فشل التحقق يحفظ المدخلات القديمة في الجلسة (جدول sessions): الأسرار لا تُحفظ هناك أبداً (E10)
+        $exceptions->dontFlash(['password', 'password_confirmation', 'current_password', 'wa_token', 'wa_app_secret', 'api_key', 'value', 'wa_verify_token']);
+
         // رفض صلاحية داخل صفحة Inertia: رسالة في الصفحة نفسها بدل صفحة 403 خام
         $exceptions->respond(function ($response, \Throwable $e, \Illuminate\Http\Request $request) {
             if ($response->getStatusCode() === 403 && $request->header('X-Inertia')) {

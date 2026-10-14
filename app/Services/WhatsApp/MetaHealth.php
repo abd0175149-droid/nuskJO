@@ -37,6 +37,18 @@ final class MetaHealth
 
     public function __construct(private OpsAlerts $alerts) {}
 
+    /** ملخصات آخر فحوص ميتا وآخر خطأ اعتماد عند الإرسال لبطاقة الإعدادات (لا رمز ولا سر) */
+    public static function summary(WaBotSetting $s): array
+    {
+        return [
+            'enabled' => (bool) config('ops.meta_checks'),
+            'ready' => $s->metaChecksReady(),
+            'credentials' => $s->wa_credentials_status,
+            'channel' => $s->wa_channel_health,
+            'last_account_error' => Cache::get('wa:last_account_error'),
+        ];
+    }
+
     /** @return array<string, mixed> الملخص المحفوظ في wa_credentials_status */
     public function credentials(): array
     {
@@ -199,7 +211,8 @@ final class MetaHealth
     {
         $summary['checked_at'] = now()->toIso8601String();
         try {
-            $s->forceFill([$column => $summary])->save();
+            // نتيجة فحص لا تعديل مدير: بلا رفع النسخة وبلا تدقيق
+            Settings\SettingsWriter::apply([$column => $summary], null, null, bumpVersion: false, audit: 'none');
         } catch (\Throwable $e) {
             // قبل الهجرة 2026_10_14_000008 لا عمود: الفحص لا يكسر المجدول
             WaLog::error('meta.check.save_failed', ['type' => $e::class]);

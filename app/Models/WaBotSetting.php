@@ -2,7 +2,11 @@
 
 namespace App\Models;
 
+use App\Services\WhatsApp\Settings\SettingsSchema;
+use App\Services\WhatsApp\WaLog;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class WaBotSetting extends Model
 {
@@ -16,7 +20,13 @@ class WaBotSetting extends Model
         'fail_message', 'fail_handoff', 'tools_config', 'model_prices', 'cache_discount',
         'max_reply_age_minutes', 'reliability',
         'wa_app_id', 'wa_credentials_status', 'wa_channel_health',
+        // E10: settings_version خارج القائمة عمداً (يرفعه SettingsWriter وحده)
+        'wa_verify_token_hash', 'wa_verify_token_rotated_at', 'wa_token_rotated_at', 'wa_app_secret_rotated_at', 'api_key_rotated_at',
+        'wa_suspended_at', 'wa_suspended_by', 'wa_suspended_source', 'wa_suspended_reason', 'feature_flags',
     ];
+
+    /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
+    protected $hidden = ['wa_token', 'wa_app_secret', 'api_key', 'wa_verify_token', 'wa_verify_token_hash'];
 
     /** أعلام موثوقية الرد (E07) وقيمها الافتراضية؛ تُبدَّل وقت التشغيل بـ whatsapp:reliability */
     public const RELIABILITY_FLAGS = [
@@ -38,6 +48,12 @@ class WaBotSetting extends Model
         'wa_token' => 'encrypted',
         'wa_app_secret' => 'encrypted',
         'api_key' => 'encrypted',
+        'feature_flags' => 'array',
+        'wa_verify_token_rotated_at' => 'datetime',
+        'wa_token_rotated_at' => 'datetime',
+        'wa_app_secret_rotated_at' => 'datetime',
+        'api_key_rotated_at' => 'datetime',
+        'wa_suspended_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -46,35 +62,127 @@ class WaBotSetting extends Model
         static::saved(fn () => \App\Support\SecretRedactor::forget());
     }
 
-    /** الصف الوحيد — يُنشأ بقيم افتراضية آمنة عند أول استدعاء */
+    /** الصف الوحيد — يُنشأ عند أول استدعاء بقيم SettingsSchema::defaults() (مصدرها الوحيد) */
     public static function current(): self
     {
-        return static::firstOrCreate([], [
-            'enabled' => false,
-            'wa_suspended' => false,
-            'provider' => 'google',
-            'model' => 'gemini-2.5-flash',
-            'context_messages' => 20,
-            'pause_minutes' => 30,
-            'max_tool_loops' => 4,
-            'rate_limit_per_hour' => 20,
-            'fail_handoff' => true,
-            'fail_message' => 'عذراً، حدث خلل مؤقّت. سيتواصل معك أحد موظفينا حالاً.',
-        ]);
+        $settings = static::firstOrCreate([], SettingsSchema::defaults());
+
+        // صف جديد: قيم القاعدة الافتراضية (settings_version) تُقرأ بدل أن تبقى null في النموذج
+        return $settings->wasRecentlyCreated ? $settings->refresh() : $settings;
     }
 
     /** أولوية البيئة (عبر config/services.php) على القاعدة للأسرار */
-    public function token(): ?string { return config('services.whatsapp.token') ?: $this->wa_token; }
+    public function token(): ?string { return config('services.whatsapp.token') ?: $this->secret('wa_token'); }
     public function phoneNumberId(): ?string { return config('services.whatsapp.phone_number_id') ?: $this->wa_phone_number_id; }
-    public function verifyToken(): ?string { return config('services.whatsapp.verify_token') ?: $this->wa_verify_token; }
-    public function appSecret(): ?string { return config('services.whatsapp.app_secret') ?: $this->wa_app_secret; }
+    public function appSecret(): ?string { return config('services.whatsapp.app_secret') ?: $this->secret('wa_app_secret'); }
+
+    /**
+     * هاش رمز التحقق الذي تُقارن به المصافحة: من البيئة إن ضُبطت، وإلا المحفوظ (E10 يخزّن الهاش وحده
+     * للرمز المولَّد)، وإلا هاش النص الصريح القديم حتى يمسحه whatsapp:settings-finalize.
+     */
+    public function verifyTokenHash(): ?string
+    {
+        $env = (string) config('services.whatsapp.verify_token');
+        if ($env !== '') {
+            return hash('sha256', $env);
+        }
+        if (!empty($this->wa_verify_token_hash)) {
+            return (string) $this->wa_verify_token_hash;
+        }
+
+        return !empty($this->wa_verify_token) ? hash('sha256', (string) $this->wa_verify_token) : null;
+    }
+
+    /**
+     * سر مشفّر بلا 500 إن تعذّر فكّه (مفتاح التطبيق تغيّر بلا APP_PREVIOUS_KEYS): null وسطر خطأ مرة في الساعة.
+     * الويبهوك يرد 403 حينها (ميتا تعيد 7 أيام)، وصفحة الإعدادات تُظهر «تعذّر فك التشفير».
+     */
+    private function secret(string $column): ?string
+    {
+        try {
+            return $this->{$column};
+        } catch (DecryptException) {
+            if (Cache::add("wa:decrypt_failed:{$column}", 1, 3600)) {
+                WaLog::error('settings.decrypt_failed', ['field' => $column]);
+            }
+
+            return null;
+        }
+    }
+
+    /** null: لا قيمة محفوظة؛ true/false: هل تُفك بمفاتيح التطبيق الحالية */
+    public function decryptOk(string $column): ?bool
+    {
+        $raw = $this->getAttributes()[$column] ?? null;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        try {
+            $this->{$column};
+
+            return true;
+        } catch (DecryptException) {
+            return false;
+        }
+    }
+
+    /** الإيقاف منطق OR لا أولوية: يكفي أحد المصدرين (القاعدة أو WA_SUSPENDED) */
+    public function sendingSuspended(): bool
+    {
+        return (bool) $this->wa_suspended || (bool) config('services.whatsapp.suspended');
+    }
+
+    /** من أوقف الإرسال؟ env | manual | meta_event | graph_error | restore | null (يعمل) */
+    public function suspendSource(): ?string
+    {
+        if ((bool) config('services.whatsapp.suspended')) {
+            return 'env';
+        }
+
+        return $this->wa_suspended ? ($this->wa_suspended_source ?: 'manual') : null;
+    }
+
+    /**
+     * مصدر كل مفتاح له متغير بيئة: env | db | default | unset، واسم المتغير، وهل تظلل البيئة قيمة محفوظة،
+     * وهل يُفك السر المحفوظ. لا قيمة سرية في المخرجات.
+     *
+     * @return array<string, array{source: string, env_var: ?string, db_shadowed: bool, decrypt_ok: ?bool}>
+     */
+    public function sources(): array
+    {
+        $out = [];
+        foreach (SettingsSchema::FIELDS as $key => $f) {
+            if (!isset($f['env'])) {
+                continue;
+            }
+            $env = match ($key) {
+                'api_key' => self::envKeyFor($this->provider),
+                default => config($f['env']),
+            };
+            $envSet = $key === 'wa_suspended' ? (bool) $env : ($env !== null && $env !== '' && $env !== false);
+            $raw = $this->getAttributes()[$key] ?? null;
+            $dbSet = match ($key) {
+                'wa_suspended' => (bool) $this->wa_suspended,
+                'wa_verify_token' => !empty($raw) || !empty($this->wa_verify_token_hash),
+                default => $raw !== null && $raw !== '',
+            };
+            $out[$key] = [
+                'source' => $envSet ? 'env' : ($dbSet ? 'db' : (SettingsSchema::default($key) !== null ? 'default' : 'unset')),
+                'env_var' => $f['env_var'] ?? null,
+                'db_shadowed' => $envSet && $dbSet && $key !== 'wa_suspended',
+                'decrypt_ok' => in_array($key, ['wa_token', 'wa_app_secret', 'api_key'], true) ? $this->decryptOk($key) : null,
+            ];
+        }
+
+        return $out;
+    }
     /** معرّف تطبيق ميتا (عام): لفحص الرمز بـ debug_token */
     public function appId(): ?string { return config('services.whatsapp.app_id') ?: $this->wa_app_id; }
     public function metaChecksReady(): bool { return !empty($this->token()) && !empty($this->appId()) && !empty($this->appSecret()); }
     /** مفتاح المزوّد — البيئة أولاً ثم المحفوظ، وحسب المزوّد المختار */
     public function llmKey(): ?string
     {
-        return self::envKeyFor($this->provider) ?: $this->api_key;
+        return self::envKeyFor($this->provider) ?: $this->secret('api_key');
     }
 
     public function envKeyPresent(): bool

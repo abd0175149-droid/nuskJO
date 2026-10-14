@@ -266,7 +266,7 @@ class OfferCardService
     /** مسار كروميوم — يُضبط بـ CHROMIUM_PATH عند الحاجة */
     private static function chromium(): string
     {
-        $configured = config('services.chromium.path') ?: env('CHROMIUM_PATH');
+        $configured = config('services.chromium.path');
         if ($configured && is_executable($configured)) {
             return $configured;
         }

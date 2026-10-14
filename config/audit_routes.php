@@ -92,7 +92,13 @@ return [
     'BackupController@acknowledgeRestore' => 'backup.restore_ack',
 
     // ===== الواتساب =====
-    'WhatsAppController@updateSettings' => 'wa.settings_update',
+    'WhatsAppSettingsController@update' => 'wa.settings_update',
+    'WhatsAppSettingsController@legacyUpdate' => 'none: غلاف PUT القديم لا يكتب شيئاً (يُحذف في الإصدار التالي)',
+    'WhatsAppSettingsController@killSwitch' => 'wa.suspend_manual',
+    'WhatsAppSettingsController@setSecret' => 'wa.secret_set',
+    'WhatsAppSettingsController@clearSecret' => 'wa.secret_clear',
+    'WhatsAppSettingsController@rotateVerifyToken' => 'wa.verify_rotate',
+    'WhatsAppSettingsController@toggleFlag' => 'wa.flag_toggle',
     'WhatsAppController@saveRouting' => 'wa.routing_update',
     'WhatsAppController@savePrices' => 'wa.model_prices',
     'WhatsAppController@toggleBot' => 'wa.bot_toggle',

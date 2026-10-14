@@ -155,10 +155,9 @@ Artisan::command('whatsapp:reliability {flag?} {state?}', function () {
             return 1;
         }
         $before = $settings->flag($flag);
-        \App\Support\AuditActor::as('system', 'artisan:whatsapp:reliability', fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($settings, $flag, $state, $before) {
-            $settings->update(['reliability' => array_merge($settings->reliability ?? [], [$flag => $state === 'on'])]);
-            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaReliabilityFlag, 'wa_bot_settings', $settings->id, $flag, ['from' => $before, 'to' => $state === 'on']);
-        }));
+        \App\Support\AuditActor::as('system', 'artisan:whatsapp:reliability', fn () => \App\Services\WhatsApp\Settings\SettingsWriter::apply(
+            ['reliability' => array_merge($settings->reliability ?? [], [$flag => $state === 'on'])],
+            null, \App\Enums\AuditAction::WaReliabilityFlag, ['flag' => $flag, 'from' => $before, 'to' => $state === 'on'], label: $flag));
         \App\Services\WhatsApp\WaLog::warning('reliability.flag', ['field' => $flag, 'status' => $state]);
     }
 

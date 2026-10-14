@@ -6,9 +6,11 @@ use App\Models\User;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
@@ -20,6 +22,7 @@ class AccountEventFenceTest extends TestCase
 {
     use CapturesLogs;
     use ConfiguresWhatsApp;
+    use PatchesWhatsAppSettings;
     use RefreshDatabase;
     use SignsMetaWebhooks;
 
@@ -115,7 +118,10 @@ class AccountEventFenceTest extends TestCase
         $this->learnOurNumber();
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
 
-        $this->actingAs($owner)->put('/whatsapp/settings', ['wa_phone_number_id' => '200000000000001'])->assertSessionHasNoErrors();
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => '200000000000001'])]);
+        // حقل حساس: بلا تأكيد يُرفض، وبه يُحفظ بعد فحص قرائي عند ميتا
+        $this->patchSettings($owner, ['wa_phone_number_id' => '200000000000001'])->assertJsonValidationErrors('confirm');
+        $this->patchSettings($owner, ['wa_phone_number_id' => '200000000000001'], confirm: true)->assertOk();
 
         $settings = WaBotSetting::current();
         $this->assertNull($settings->wa_waba_id);

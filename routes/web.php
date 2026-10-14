@@ -140,8 +140,17 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::post('api/whatsapp/conversations/{conversation}/read', [\App\Http\Controllers\WhatsAppController::class, 'markRead'])->middleware('perm:whatsapp.reply');
     Route::get('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'routing'])->name('whatsapp.routing')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'saveRouting'])->name('whatsapp.routing.save')->middleware('perm:whatsapp.settings');
-    Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'settings'])->name('whatsapp.settings')->middleware('perm:whatsapp.settings');
-    Route::put('whatsapp/settings', [\App\Http\Controllers\WhatsAppController::class, 'updateSettings'])->name('whatsapp.settings.update')->middleware('perm:whatsapp.settings');
+    // إعدادات البوت (E10): حفظ جزئي برمز نسخة، وإيقاف طارئ بسبب، وأسرار لا تعود للمتصفح
+    Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'show'])->name('whatsapp.settings')->middleware('perm:whatsapp.settings');
+    Route::patch('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'update'])->name('whatsapp.settings.patch')->middleware('perm:whatsapp.settings');
+    Route::put('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'legacyUpdate'])->name('whatsapp.settings.update')->middleware('perm:whatsapp.settings');
+    Route::get('api/whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'current'])->middleware('perm:whatsapp.settings');
+    // الإيقاف لمن يملك whatsapp.settings أو whatsapp.kill_switch، والاستئناف لـ whatsapp.settings (فحص المتحكم)
+    Route::post('api/whatsapp/settings/kill-switch', [\App\Http\Controllers\WhatsAppSettingsController::class, 'killSwitch'])->middleware(['perm:whatsapp.settings,whatsapp.kill_switch', 'throttle:20,1']);
+    Route::post('api/whatsapp/settings/secrets/{secret}', [\App\Http\Controllers\WhatsAppSettingsController::class, 'setSecret'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
+    Route::delete('api/whatsapp/settings/secrets/{secret}', [\App\Http\Controllers\WhatsAppSettingsController::class, 'clearSecret'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
+    Route::post('api/whatsapp/settings/verify-token', [\App\Http\Controllers\WhatsAppSettingsController::class, 'rotateVerifyToken'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
+    Route::patch('api/whatsapp/settings/flags/{flag}', [\App\Http\Controllers\WhatsAppSettingsController::class, 'toggleFlag'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::get('whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analytics'])->name('whatsapp.analytics')->middleware('perm:whatsapp.settings');
     Route::get('api/whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analyticsData'])->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/prices', [\App\Http\Controllers\WhatsAppController::class, 'savePrices'])->name('whatsapp.prices')->middleware('perm:whatsapp.settings');

@@ -9,6 +9,7 @@ use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Models\WaOptout;
+use App\Services\WhatsApp\Settings\SettingsWriter;
 use App\Support\AuditActor;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -326,7 +327,9 @@ class WhatsAppInbox
 
         $settings->forceFill($learned);
         if ($settings->isDirty()) {
-            $settings->save();
+            // معرفة تشغيلية لا تعديل مدير: بلا رفع النسخة وبلا تدقيق
+            SettingsWriter::apply($settings->getDirty(), null, null, bumpVersion: false, audit: 'none');
+            $settings->syncOriginal();
         }
     }
 
@@ -368,12 +371,13 @@ class WhatsAppInbox
         $bad = ['FLAGGED', 'DOWNGRADE', 'ACCOUNT_VIOLATION', 'ACCOUNT_RESTRICTION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED'];
         $violation = data_get($value, 'violation_info') || data_get($value, 'ban_info');
         if (in_array($event, $bad, true) || $violation) {
-            $current = WaBotSetting::current();
-            $wasSuspended = (bool) $current->wa_suspended;
-            $current->update(['wa_suspended' => true]);
-            if (!$wasSuspended) {
-                // «من أوقف الإرسال؟» له جواب دائماً (alwaysOn)، وفشل كتابته لا يُسقط الإيقاف ولا الويبهوك
-                AuditActor::as('meta', $field, fn () => AuditLog::safe(AuditAction::WaSuspendAuto, 'wa_bot_settings', $current->id, $event, ['field' => $field, 'event' => $event]));
+            if (!WaBotSetting::current()->wa_suspended) {
+                // يرفع النسخة: صفحة إعدادات فُتحت قبله لا تلغيه بحفظها (409). «من أوقف؟» له جواب دائماً (alwaysOn)،
+                // وفشل كتابة التدقيق لا يُسقط الإيقاف ولا الويبهوك (safe)
+                AuditActor::as('meta', $field, fn () => SettingsWriter::apply([
+                    'wa_suspended' => true, 'wa_suspended_at' => now(), 'wa_suspended_by' => null,
+                    'wa_suspended_source' => 'meta_event', 'wa_suspended_reason' => $event,
+                ], null, AuditAction::WaSuspendAuto, ['field' => $field, 'event' => $event], audit: 'safe', label: $event));
             }
             self::notifyAdmins('⛔ إيقاف إرسال الواتساب', "وصل حدث «{$event}» من ميتا، فأُوقف كل الإرسال تلقائياً. راجع صحّة الحساب قبل إعادة التشغيل.");
         } elseif ($event === 'ACCOUNT_OFFBOARDED') {
