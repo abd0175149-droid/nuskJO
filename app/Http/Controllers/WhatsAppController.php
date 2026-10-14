@@ -397,6 +397,7 @@ class WhatsAppController extends Controller
             'webhookUrl' => url('/api/whatsapp/webhook'),
             'defaultPrompt' => BotEngine::DEFAULT_PROMPT,
             'toolList' => \App\Services\WhatsApp\BotTools::LABELS,
+            'graph' => \App\Services\WhatsApp\GraphVersions::panel(),
         ]);
     }
 

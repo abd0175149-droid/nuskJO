@@ -160,7 +160,7 @@ class WhatsAppChannel
      * الرابط https إلزامياً، ومضيفه من قائمة ميتا (WA_MEDIA_HOST_MODE: log يسجّل ويكمل، enforce يرفض قبل إرسال الرمز)،
      * والحجم مقيّد أثناء القراءة، والبصمة sha256 تُطابق بعدها.
      *
-     * @return array{ok: bool, code: ?string, error: ?string, bytes?: string, mime?: string, host?: string}
+     * @return array{ok: bool, code: ?string, error: ?string, bytes?: string, mime?: string, host?: string, sha256_ok?: ?bool}
      */
     public static function fetchMedia(string $mediaId, string $kind = 'audio', int $maxBytes = 15_000_000): array
     {
@@ -261,14 +261,15 @@ class WhatsAppChannel
         }
 
         // (هـ) البصمة
-        if ($sha !== '' && !hash_equals($sha, hash('sha256', $bytes))) {
+        $shaOk = $sha === '' ? null : hash_equals($sha, hash('sha256', $bytes));
+        if ($shaOk === false) {
             Log::error('WA media sha256 mismatch', ['host' => $host]);
             if ($enforce) {
                 return self::mediaFail(self::ERR_MEDIA_INTEGRITY, 'الملف المنزَّل لا يطابق بصمة ميتا.');
             }
         }
 
-        return ['ok' => true, 'code' => null, 'error' => null, 'bytes' => $bytes, 'mime' => $mime, 'host' => $host];
+        return ['ok' => true, 'code' => null, 'error' => null, 'bytes' => $bytes, 'mime' => $mime, 'host' => $host, 'sha256_ok' => $shaOk];
     }
 
     /**
@@ -284,6 +285,38 @@ class WhatsAppChannel
         $media = self::fetchMedia($mediaId, 'audio', $maxBytes);
 
         return $media['ok'] ? ['bytes' => $media['bytes'], 'mime' => $media['mime'], 'host' => $media['host']] : null;
+    }
+
+    /**
+     * فحص قرائي لرقمنا على إصدار Graph المضبوط (whatsapp:graph-smoke). لا يرسل أي رسالة.
+     *
+     * @return array{ok: bool, code: ?string, status: ?int, data?: array<string, mixed>}
+     */
+    public static function phoneNumberInfo(): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return ['ok' => false, 'code' => self::ERR_NOT_CONFIGURED, 'status' => null];
+        }
+        try {
+            $url = self::graphPath((string) $s->phoneNumberId());
+        } catch (\InvalidArgumentException) {
+            return ['ok' => false, 'code' => self::ERR_CONFIG, 'status' => null];
+        }
+        try {
+            $res = self::graph($s, 20)->get($url, ['fields' => 'id,display_phone_number,quality_rating,verified_name']);
+        } catch (\Throwable $e) {
+            Log::error('WA graph smoke connection failed: ' . SecretRedactor::clean($e->getMessage()));
+
+            return ['ok' => false, 'code' => 'HTTP_ERROR', 'status' => null];
+        }
+        if (!$res->successful()) {
+            return ['ok' => false, 'code' => self::mapGraphError($res)[0], 'status' => $res->status()];
+        }
+
+        $data = array_intersect_key((array) $res->json(), array_flip(['id', 'display_phone_number', 'quality_rating', 'verified_name']));
+
+        return ['ok' => true, 'code' => null, 'status' => $res->status(), 'data' => $data];
     }
 
     private static function isMetaMediaHost(string $host): bool

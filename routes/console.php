@@ -99,6 +99,44 @@ Artisan::command('whatsapp:fence-report {--json : مخرجات JSON}', function 
     return 0;
 })->purpose('للقراءة فقط: ما يراه كل موظف من محادثات واتساب وطلبات التسعير بعد السياج (أعداد فقط)');
 
+// نهاية دعم إصدار Graph (E05): تنبيه يومي للمدير قبل 60 يوماً، أو لإصدار منتهٍ أو مجهول، أو ويبهوك بلا إصدار مضبوط
+Artisan::command('whatsapp:graph-version-check', function () {
+    $sent = 0;
+    $kinds = ['requests' => ['إصدار الطلبات', 'graph_version'], 'webhook' => ['إصدار الويبهوك', 'webhook_version']];
+    foreach ($kinds as $kind => [$label, $key]) {
+        $version = config("services.whatsapp.{$key}") ?: null;
+        $status = \App\Services\WhatsApp\GraphVersions::status($version);
+
+        if ($kind === 'webhook' && $version === null) {
+            [$title, $reason] = ['⚠️ إصدار Graph يحتاج مراجعة', 'WA_WEBHOOK_VERSION غير مضبوط — اضبطه على إصدار الويبهوك في لوحة ميتا'];
+        } elseif ($status['level'] === 'ok') {
+            continue;
+        } elseif ($status['level'] === 'unknown') {
+            [$title, $reason] = ['⚠️ إصدار Graph يحتاج مراجعة', "الإصدار {$version} غير موجود في جدول الإصدارات"];
+        } elseif ($status['level'] === 'expired') {
+            [$title, $reason] = ['⛔ إصدار Graph انتهى دعمه', "الإصدار {$version} انتهى في {$status['sunset']}"];
+        } else {
+            [$title, $reason] = ['⚠️ إصدار Graph يقترب من نهاية دعمه', "الإصدار {$version} ينتهي في {$status['sunset']} (بعد {$status['days_left']} يوماً)"];
+        }
+
+        $this->warn("{$label}: {$reason}");
+        if (\Illuminate\Support\Facades\Cache::add("wa:graphver:{$kind}:".($version ?? 'none').':'.now()->toDateString(), 1, now()->addDay())) {
+            \Illuminate\Support\Facades\Log::error("WA graph version check [{$kind}]: {$reason}");
+            \App\Services\WhatsApp\WhatsAppInbox::notifyAdmins($title, "{$label}: {$reason} — راجع خطة الترقية", '/whatsapp/settings');
+            $sent++;
+        }
+    }
+
+    $this->info($sent ? "أُرسل {$sent} تنبيهاً" : 'لا تنبيه جديد');
+
+    return 0;
+})->purpose('تنبيه المدير قبل 60 يوماً من نهاية دعم إصدار Graph للطلبات أو للويبهوك');
+
+Schedule::command('whatsapp:graph-version-check')
+    ->timezone('Asia/Amman')
+    ->dailyAt('08:00')
+    ->withoutOverlapping();
+
 Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();

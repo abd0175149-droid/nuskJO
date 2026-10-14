@@ -156,6 +156,41 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-4 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700">
                         ℹ️ ترك أي حقل سري فارغًا يُبقي القيمة المحفوظة كما هي — لا تُمحى أبدًا بالحفظ.
                     </p>
+
+                    <!-- الإصدارات والحماية (للقراءة فقط: تُضبط من بيئة الخادم) -->
+                    <div v-if="graph" class="mt-4 rounded-xl border p-4 text-sm"
+                         :class="graphAlert === 'red' ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20'
+                               : graphAlert === 'amber' ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20'
+                               : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40'">
+                        <p class="font-bold text-gray-800 dark:text-gray-100 mb-2">🧭 الإصدارات والحماية</p>
+                        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                            <div class="flex items-center justify-between gap-3">
+                                <dt class="text-gray-500 dark:text-gray-400">إصدار الطلبات</dt>
+                                <dd class="dark:text-white">
+                                    <span class="font-mono" dir="ltr">{{ graph.requests.version || '—' }}</span>
+                                    <span v-if="graph.requests.sunset" class="text-xs text-gray-500"> · ينتهي <bdi dir="ltr">{{ graph.requests.sunset }}</bdi> (بعد {{ graph.requests.days_left }} يوماً)</span>
+                                </dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <dt class="text-gray-500 dark:text-gray-400">إصدار الويبهوك المسجّل</dt>
+                                <dd class="dark:text-white">
+                                    <span class="font-mono" dir="ltr">{{ graph.webhook.version || 'غير مضبوط' }}</span>
+                                    <span v-if="graph.webhook.sunset" class="text-xs text-gray-500"> · ينتهي <bdi dir="ltr">{{ graph.webhook.sunset }}</bdi></span>
+                                </dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <dt class="text-gray-500 dark:text-gray-400">appsecret_proof</dt>
+                                <dd class="dark:text-white">{{ graph.appsecret_proof ? 'مُرسل' : 'غير مُرسل' }}</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <dt class="text-gray-500 dark:text-gray-400">فحص مضيف الوسائط</dt>
+                                <dd class="dark:text-white">{{ graph.media_host_mode === 'enforce' ? 'رفض' : 'تسجيل' }}</dd>
+                            </div>
+                        </dl>
+                        <p v-if="graphAlert === 'red'" class="text-xs font-bold text-red-700 dark:text-red-400 mt-2">⛔ إصدار منتهٍ أو غير معروف أو غير مضبوط — رقِّ الإصدار.</p>
+                        <p v-else-if="graphAlert === 'amber'" class="text-xs font-bold text-amber-700 dark:text-amber-400 mt-2">⚠️ إصدار يقترب من نهاية دعمه — رقِّه قبل التاريخ.</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">يُغيَّر من بيئة الخادم (WA_GRAPH_VERSION وWA_WEBHOOK_VERSION)، لا من هنا.</p>
+                    </div>
                 </div>
 
                 <!-- ================= 3. الذكاء ================= -->
@@ -336,6 +371,14 @@ const props = defineProps({
     defaultPrompt: String,
     toolList: Object,
     providers: { type: Object, default: () => ({ google: 'Google Gemini', anthropic: 'Anthropic Claude' }) },
+    graph: Object,
+});
+
+// أسوأ حالة بين إصدار الطلبات وإصدار الويبهوك
+const graphAlert = computed(() => {
+    const levels = [props.graph?.requests?.level, props.graph?.webhook?.level];
+    if (levels.some((l) => l === 'expired' || l === 'unknown')) return 'red';
+    return levels.includes('warn') ? 'amber' : null;
 });
 
 const handoffTools = ['request_quote', 'confirm_booking'];
