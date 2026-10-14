@@ -11,6 +11,7 @@ use App\Models\WaMessage;
 use App\Models\WaOptout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -54,6 +55,18 @@ class WebhookContractTest extends TestCase
         return data_get($this->fixture($name), 'entry.0.changes.0.value.statuses.0');
     }
 
+    /**
+     * يضبط الساعة بعد وقت ميتا في التثبيتة بثوانٍ (وصول متأخر قليلاً)، ويعيد وقت ميتا نفسه.
+     * أوقات التثبيتات ثابتة، والنافذة تُحسب من وقت ميتا لا من وقت الاستلام.
+     */
+    private function receivedShortlyAfter(string $fixture, int $lagSeconds = 7): Carbon
+    {
+        $metaAt = Carbon::createFromTimestamp((int) $this->fixtureMessage($fixture)['timestamp'], config('app.timezone'));
+        $this->travelTo($metaAt->copy()->addSeconds($lagSeconds));
+
+        return $metaAt;
+    }
+
     /** محادثة العميل النموذجي، ونافذتها مفتوحة منذ ثلاث ساعات */
     private function existingConversation(): WaConversation
     {
@@ -77,7 +90,7 @@ class WebhookContractTest extends TestCase
 
     public function test_text_message_is_stored_and_handed_to_the_bot(): void
     {
-        $this->freezeSecond();
+        $metaAt = $this->receivedShortlyAfter('text.json');
         $msg = $this->fixtureMessage('text.json');
 
         $this->postMetaWebhook('text.json')->assertOk()->assertExactJson(['ok' => true]);
@@ -94,7 +107,9 @@ class WebhookContractTest extends TestCase
         $this->assertSame(self::CUSTOMER, $conv->phone);
         $this->assertSame(self::CUSTOMER, $conv->wa_phone);
         $this->assertSame('Sheena Nelson', $conv->display_name);
-        $this->assertTrue($conv->last_inbound_at->equalTo(now()));
+        // النافذة من وقت ميتا، لا من وقت الاستلام
+        $this->assertTrue($conv->last_inbound_at->equalTo($metaAt));
+        $this->assertTrue($message->meta_at->equalTo($metaAt));
         $this->assertSame(1, $conv->unread_count);
         $this->assertSame('open', $conv->status);
 
@@ -243,6 +258,7 @@ class WebhookContractTest extends TestCase
 
     public function test_iqaf_opts_out_and_sends_the_system_notice_instead_of_the_bot(): void
     {
+        $this->receivedShortlyAfter('optout_iqaf.json');
         $this->postMetaWebhook('optout_iqaf.json')->assertOk();
 
         $this->assertTrue(WaOptout::where('phone', self::CUSTOMER)->exists());
