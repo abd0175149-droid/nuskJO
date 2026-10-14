@@ -199,7 +199,7 @@ class AdminToolsConfirmTest extends TestCase
 
         $this->tool('manage_bot_tools', ['action' => 'disable', 'tool' => 'save_note']);
         $this->assertTrue(WaBotSetting::current()->toolEnabled('save_note'), 'المعاينة لا تغيّر شيئاً');
-        $this->say('نعم');
+        $this->say('تأكيد');
         $this->assertTrue($this->tool('manage_bot_tools', ['action' => 'disable', 'tool' => 'save_note', 'confirm' => true])['done']);
 
         $this->assertFalse(WaBotSetting::current()->toolEnabled('save_note'));

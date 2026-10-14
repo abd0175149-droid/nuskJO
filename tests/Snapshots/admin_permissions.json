@@ -19,6 +19,10 @@
         "perm": "report.quotes",
         "write": false
     },
+    "get_attention_queue:_": {
+        "perm": "report.attention",
+        "write": false
+    },
     "find_client:_": {
         "perm": "report.client",
         "write": false

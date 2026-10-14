@@ -58,7 +58,8 @@ class BotToolsExplicitResultsTest extends TestCase
         $this->assertStringNotContainsString('مسدّدة', $credit['note']);
     }
 
-    public function test_the_customer_card_says_unavailable_without_an_account(): void
+    /** الرصيد لا يُذكر في البطاقة أصلاً (E15.6)، وget_my_balance تقول «غير متاح» (الاختبار أعلاه) */
+    public function test_the_customer_card_carries_no_balance_and_the_failed_tool_rule(): void
     {
         $this->configureChannel();
         $this->fakeGraph();
@@ -70,7 +71,7 @@ class BotToolsExplicitResultsTest extends TestCase
 
         $prompt = Http::recorded()->filter(fn ($p) => str_contains($p[0]->url(), 'generativelanguage'))
             ->map(fn ($p) => json_encode($p[0]->data(), JSON_UNESCAPED_UNICODE))->implode('');
-        $this->assertStringContainsString('رصيد ذمّته: غير متاح', $prompt);
+        $this->assertStringNotContainsString('رصيد ذمّته', $prompt);
         $this->assertStringContainsString('ok=false', $prompt, 'قاعدة النظام عن نتيجة الأداة الفاشلة');
     }
 

@@ -9,6 +9,7 @@ use App\Models\WaAdminNumber;
 use App\Models\WaBotSetting;
 use App\Services\WhatsApp\AdminTools;
 use App\Services\WhatsApp\PhoneNormalizer;
+use App\Support\FeatureFlags;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -22,7 +23,7 @@ class WhatsAppAdminNumberController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
-        $numbers = WaAdminNumber::with('user:id,name,is_active')->orderBy('name')->get();
+        $numbers = WaAdminNumber::with('user:id,name,is_active,role_id')->orderBy('name')->get();
 
         return Inertia::render('WhatsApp/AdminNumbers', [
             'title' => 'أرقام الإدارة',
@@ -34,6 +35,9 @@ class WhatsAppAdminNumberController extends Controller
                 'user_name' => $n->user?->name,
                 'user_inactive' => $n->user && !$n->user->is_active,
                 'permissions' => $n->permissions ?? [],
+                // ما يدعمه دور المستخدم المرتبط من صلاحيات الرقم، وتحذيرات ما لا يدعمه (E15.5)
+                'effective' => $n->effectivePermissions(),
+                'warnings' => AdminTools::permissionWarnings($n),
                 'is_active' => (bool) $n->is_active,
                 'notes' => $n->notes,
                 'last_used' => $n->last_used_at?->diffForHumans(),
@@ -56,6 +60,10 @@ class WhatsAppAdminNumberController extends Controller
                 ]),
             'botPhone' => \App\Services\CompanyInfo::all()['phone'],
             'botReady' => WaBotSetting::current()->channelReady(),
+            'modes' => [
+                'readonly' => FeatureFlags::on('admin_readonly'),
+                'rbacEnforced' => FeatureFlags::on('admin_rbac_enforce'),
+            ],
         ]);
     }
 

@@ -35,6 +35,12 @@
         "enums": []
     },
     {
+        "name": "get_attention_queue",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
         "name": "find_client",
         "required": [
             "query"

@@ -39,8 +39,8 @@ final class ToolInvoker
             return self::finish('denied', $name, ['ok' => false, 'error' => 'أداة غير متاحة', 'note' => self::DENIED_NOTE], $admin, $conv);
         }
         if ($admin) {
-            $needed = AdminTools::permissionFor($name, (string) ($in['action'] ?? ''));
-            if ($needed === null || !$admin->allowsAny((array) $needed)) {
+            // صلاحية الرقم، ثم وضع القراءة فقط، ثم دور المستخدم المرتبط (AdminTools::gate، E15.5)
+            if (!AdminTools::gate($admin, $name, (string) ($in['action'] ?? ''))['allowed']) {
                 // AdminTools::execute يسجّل الرفض في wa_admin_actions ويعيد نصه
                 $out = AdminTools::execute($name, $in, $conv, $admin);
 

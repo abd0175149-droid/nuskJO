@@ -11,6 +11,9 @@
                 <p>من يراسل رقم البوت على واتساب من رقم مسجّل هنا يردّ عليه <b>المساعد الإداري</b> بدل بوت العملاء، ولا يستطيع إلا ما سمحت به لرقمه: تقارير، أو إدارة قاعدة المعرفة، أو تشغيل أدوات البوت وإيقافها.</p>
                 <p>أي تعديل يطلبه يُعرض عليه أولاً كمعاينة، ولا يُنفَّذ إلا بعد أن يردّ بـ«تأكيد» في رسالة جديدة. وكل ما يُنفَّذ أو يُرفض يظهر في السجلّ أسفل الصفحة.</p>
                 <p v-if="!botReady" class="text-amber-700 dark:text-amber-400 font-bold">⚠️ قناة واتساب غير مهيّأة بعد من إعدادات البوت.</p>
+                <p>لا يُنفَّذ إلا ما يملكه <b>المستخدم المرتبط</b> بالرقم بدوره في النظام، والرقم بلا مستخدم مرتبط للقراءة فقط.
+                    <span v-if="!modes.rbacEnforced" class="text-gray-500 dark:text-gray-400">(هذا الشرط يُسجَّل الآن ولا يُفرض بعد.)</span></p>
+                <p v-if="modes.readonly" class="text-red-700 dark:text-red-400 font-bold">🔒 وضع القراءة فقط مفعّل: كل تعديل من أرقام الإدارة موقوف.</p>
             </div>
 
             <div class="flex justify-between items-center gap-3 flex-wrap">
@@ -40,9 +43,14 @@
                         <p class="text-[11px] font-bold text-gray-400">{{ group }}</p>
                         <div class="flex flex-wrap gap-1.5">
                             <span v-for="k in keys" :key="k" class="px-2 py-0.5 rounded-full text-xs font-bold"
-                                  :class="catalog[k]?.write ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gold-50 text-gold-800 dark:bg-gold-900/30 dark:text-gold-200'">{{ catalog[k]?.label || k }}</span>
+                                  :class="[catalog[k]?.write ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gold-50 text-gold-800 dark:bg-gold-900/30 dark:text-gold-200',
+                                           (n.effective || n.permissions).includes(k) ? '' : 'line-through opacity-60']"
+                                  :title="(n.effective || n.permissions).includes(k) ? '' : 'لا يدعمها دور المستخدم المرتبط'">{{ catalog[k]?.label || k }}</span>
                         </div>
                     </div>
+                    <ul v-if="n.warnings?.length" class="space-y-1">
+                        <li v-for="(w, i) in n.warnings" :key="i" class="text-xs p-2 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">⚠️ {{ w }}</li>
+                    </ul>
                     <p v-if="!n.permissions.length" class="text-xs text-gray-400">لا صلاحيات — يردّ المساعد بأنّه لا يملك أدوات لهذا الرقم.</p>
                     <p v-if="n.notes" class="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800 pt-2">{{ n.notes }}</p>
                 </div>
@@ -110,7 +118,7 @@
                             <option :value="null">—</option>
                             <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
                         </select>
-                        <p class="mt-1 text-xs text-gray-400">لنسبة ما يعدّله إلى حسابه في سجلّ التدقيق.</p>
+                        <p class="mt-1 text-xs text-gray-400">لنسبة ما يعدّله إلى حسابه في سجلّ التدقيق، ولا يُنفَّذ إلا ما يملكه هذا الحساب بدوره. بلا حساب: قراءة فقط.</p>
                     </div>
                     <div class="flex items-center">
                         <label for="an-active" class="flex items-center gap-2 cursor-pointer">
@@ -172,6 +180,7 @@ const props = defineProps({
     botPhone: { type: String, default: null },
     botReady: { type: Boolean, default: true },
     toolLabels: { type: Object, default: () => ({ tools: {}, actions: {} }) },
+    modes: { type: Object, default: () => ({ readonly: false, rbacEnforced: false }) },
 });
 
 const showForm = ref(false);

@@ -20,7 +20,7 @@ use Tests\TestCase;
  *
  * في كل حالة يوجد عميل حقيقي برصيد، باسم المحادثة نفسه، ويذكر المرسِل رمزه في الدردشة:
  * فلا تُستنتج الهوية من الاسم ولا مما يُكتب. والحالة الضابطة (محادثة مربوطة) تثبت أن الرصيد
- * يصل النموذج حين يحق له، فغيابه في الحالات الأخرى ذو معنى.
+ * يصل النموذج حين يحق له، من أداته وحدها لا من البطاقة (E15.6)، فغيابه في الحالات الأخرى ذو معنى.
  */
 class UnlinkedNumberTest extends TestCase
 {
@@ -98,19 +98,21 @@ class UnlinkedNumberTest extends TestCase
     }
 
     #[Group('INV-12')]
-    public function test_control_linked_number_does_get_its_balance_in_the_prompt(): void
+    public function test_control_linked_number_gets_its_balance_from_the_tool_not_the_card(): void
     {
         $this->configureChannel();
         $this->fakeGraph();
-        $this->fakeGemini('رصيدك الحالي 980.25 د.أ.');
+        $this->fakeGemini(['call' => 'get_my_balance', 'args' => []], 'رصيدك الحالي 980.25 د.أ.');
 
         $conv = WaConversation::factory()->windowOpen()->linkedTo($this->client)->create();
         WaMessage::factory()->inbound()->create(['conversation_id' => $conv->id, 'body' => 'كم رصيدي؟']);
 
         BotEngine::reply($conv);
 
-        [$body] = $this->geminiBodies();
-        $this->assertStringContainsString(self::BALANCE_LINE.' الحالي: '.self::BALANCE, $body);
-        $this->assertStringNotContainsString('غير مربوط بأي حساب', $body);
+        [$card, $afterTool] = $this->geminiBodies();
+        $this->assertStringNotContainsString(self::BALANCE, $card, 'البطاقة بلا رصيد');
+        $this->assertStringNotContainsString(self::BALANCE_LINE, $card);
+        $this->assertStringNotContainsString('غير مربوط بأي حساب', $card);
+        $this->assertStringContainsString('"balance_jod":'.self::BALANCE, $afterTool, 'الرصيد من أداته');
     }
 }

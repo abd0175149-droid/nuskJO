@@ -8,7 +8,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * موافقة الموظف على إجراء معلّق: صريحة، وفي أول الرسالة.
+ * موافقة الموظف على إجراء معلّق: كلمة «تأكيد» (أو أكّد / confirm) في أول الرسالة (E15.5). الكلمات الفضفاضة ليست تأكيداً.
  */
 class AdminAffirmativeTest extends TestCase
 {
@@ -16,17 +16,12 @@ class AdminAffirmativeTest extends TestCase
     {
         return [
             ['تأكيد'],
-            ['نعم'],
+            ['تاكيد'],
             ['أكّد'],
-            ['اكدت'],
-            ['موافق'],
-            ['أيوه'],
-            ['تمام، نفّذ'],
-            ['ok'],
-            ['OK تمام'],
-            ['okay?'],
-            ['Yes'],
+            ['أكد'],
+            ['تأكيد، نفّذ'],
             ['confirm'],
+            ['Confirm please'],
         ];
     }
 
@@ -49,6 +44,16 @@ class AdminAffirmativeTest extends TestCase
             'كلمة إنجليزية تبدأ بـ yes' => ['yesterday'],
             'إلغاء بالإنجليزية' => ['cancel'],
             'فارغ' => [''],
+            'تمام' => ['تمام'],
+            'نعم' => ['نعم'],
+            'موافق' => ['موافق'],
+            'ok' => ['ok'],
+            'yes' => ['Yes'],
+            'sure' => ['sure'],
+            'ماشي' => ['ماشي'],
+            'يلا' => ['يلا'],
+            'اه' => ['اه'],
+            'confirmed ليست الكلمة نفسها' => ['confirmed'],
         ];
     }
 

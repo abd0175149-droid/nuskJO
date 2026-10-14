@@ -695,7 +695,8 @@ class BotTools
         WaCustomerNote::create([
             'conversation_id' => $conv->id,
             'client_id' => $conv->client_id,
-            'note' => mb_substr((string) ($in['note'] ?? ''), 0, 500),
+            // كلام العميل: سطر واحد حتى 300 حرف، بلا أرقام طويلة ولا رموز جوازات (E15.6)
+            'note' => CustomerNotes::scrub((string) ($in['note'] ?? '')),
             'source' => 'bot',
             'created_at' => now(),
         ]);

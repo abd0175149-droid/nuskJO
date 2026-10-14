@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\WhatsApp\AdminTools;
 use App\Services\WhatsApp\PhoneNormalizer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -79,5 +80,22 @@ class WaAdminNumber extends Model
     public function allowsAny(array $permissions): bool
     {
         return (bool) array_intersect($permissions, $this->permissions ?? []);
+    }
+
+    /**
+     * صلاحيات الرقم التي يدعمها صاحبه (E15.5): صلاحيات الرقم ∩ ما يملكه المستخدم المرتبط بدوره (AdminTools::RBAC_REQUIRES).
+     * بلا مستخدم مرتبط أو بمستخدم معطّل: القراءة وحدها. الفرض خلف العلم admin_rbac_enforce (AdminTools::gate).
+     *
+     * @return list<string>
+     */
+    public function effectivePermissions(): array
+    {
+        $perms = $this->permissions ?? [];
+        $user = $this->user_id ? $this->user : null;
+        if (!$user || !$user->is_active) {
+            return array_values(array_filter($perms, fn ($p) => !(AdminTools::CATALOG[$p]['write'] ?? true)));
+        }
+
+        return array_values(array_filter($perms, fn ($p) => AdminTools::rbacAllows($user, $p)));
     }
 }
