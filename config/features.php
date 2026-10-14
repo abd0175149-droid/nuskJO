@@ -11,5 +11,7 @@ return [
         'llm_circuit_breaker' => env('WA_FEATURE_LLM_CIRCUIT_BREAKER'),
         'inbound_event_log' => env('WA_FEATURE_INBOUND_EVENT_LOG'),
         'retention_purge' => env('WA_FEATURE_RETENTION_PURGE'),
+        'media_archive' => env('WA_FEATURE_MEDIA_ARCHIVE'),
+        'media_consent_prompt' => env('WA_FEATURE_MEDIA_CONSENT_PROMPT'),
     ],
 ];

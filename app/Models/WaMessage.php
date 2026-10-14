@@ -16,10 +16,15 @@ class WaMessage extends Model
         // E11: رقمنا، والاقتباس، ورمز الخطأ الداخلي، ومفتاح الإرسال، ووصف الوسائط، والإحالة
         'phone_number_id', 'reply_to_wamid', 'error_code', 'send_key',
         'media_id', 'media_mime', 'media_sha256', 'media_filename', 'media_size', 'media_path', 'referral',
+        // E14: حالة الأرشفة (pending|stored|too_large|failed|expired|rejected|purged|missing|skipped_quota|skipped_consent)
+        'media_status', 'media_error', 'media_archived_at',
     ];
 
+    // مسار الملف وبصمته لا يخرجان إن سُلسلت الرسالة (الصندوق يبني حقل media بنفسه)
+    protected $hidden = ['media_path', 'media_sha256'];
+
     // meta_at: وقت ميتا للوارد (timestamp الويبهوك)، لا وقت وصوله إلينا
-    protected $casts = ['payload' => 'array', 'meta_at' => 'datetime', 'referral' => 'array'];
+    protected $casts = ['payload' => 'array', 'meta_at' => 'datetime', 'referral' => 'array', 'media_archived_at' => 'datetime', 'media_size' => 'integer'];
 
     /** @var bool|null عمود body_norm موجود (بين نشر الكود والهجرة لا يكون) */
     private static ?bool $hasBodyNorm = null;

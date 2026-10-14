@@ -41,10 +41,13 @@ chown www-data:www-data "$DB_DIR" "$DB_FILE"
 find "$DB_DIR" -maxdepth 1 -name "$(basename "$DB_FILE")*" -exec chown www-data:www-data {} +
 chmod 700 "$DB_DIR"
 chmod 600 "$DB_FILE"
-mkdir -p storage/app/backups storage/app/public storage/framework/cache/data \
+mkdir -p storage/app/backups storage/app/public storage/app/wa-media/.tmp storage/framework/cache/data \
     storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
 chown -R www-data:www-data storage bootstrap/cache
 chmod 700 storage/app/backups
+# مرفقات العملاء (جوازات ووثائق، E14): لـ www-data وحده، ولا يفتحها أي chmod لاحق على storage
+find storage/app/wa-media -type d -exec chmod 700 {} +
+find storage/app/wa-media -type f -exec chmod 600 {} +
 chmod -R 775 storage/framework storage/logs bootstrap/cache
 
 # Cache configuration for production

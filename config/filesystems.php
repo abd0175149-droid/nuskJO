@@ -38,6 +38,21 @@ return [
             'report' => false,
         ],
 
+        // مرفقات العملاء المؤرشفة (E14): خارج جذر local (عليه serve=true)، ولا رابط عام. العرض من
+        // WhatsAppMediaController وحده بربط محصور. المفتاح {Y}/{m}/{uuid7}.{ext} بلا اسم ولا رقم
+        'wa_media' => [
+            'driver' => 'local',
+            'root' => storage_path('app/wa-media'),
+            'serve' => false,
+            'visibility' => 'private',
+            'permissions' => [
+                'file' => ['public' => 0600, 'private' => 0600],
+                'dir' => ['public' => 0700, 'private' => 0700],
+            ],
+            'throw' => true,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

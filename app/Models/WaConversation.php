@@ -21,6 +21,8 @@ class WaConversation extends Model
         'wa_user_id', 'wa_username', 'wa_profile_name',
         // E11: رقمنا المستقبِل، وأول إحالة (إعلان)، وحالة الربط بعميل (auto | manual | blocked)، والدمج
         'phone_number_id', 'referral', 'client_link', 'client_linked_by', 'client_linked_at', 'merged_into_id',
+        // E14: إشعار حفظ الملفات واختيار العميل (granted | refused)
+        'media_consent', 'media_consent_at', 'media_notice_at',
     ];
 
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
@@ -35,6 +37,8 @@ class WaConversation extends Model
         'referral' => 'array',
         'client_linked_at' => 'datetime',
         'erased_at' => 'datetime',
+        'media_consent_at' => 'datetime',
+        'media_notice_at' => 'datetime',
     ];
 
     /**

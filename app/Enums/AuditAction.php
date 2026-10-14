@@ -89,6 +89,11 @@ enum AuditAction: string
     case WaErasureVerify = 'wa.erasure_verify';
     case WaErasureReject = 'wa.erasure_reject';
     case WaDataErase = 'wa.data_erase';
+    case WaMediaView = 'wa.media_view';
+    case WaMediaDownload = 'wa.media_download';
+    case WaMediaRefetch = 'wa.media_refetch';
+    case WaMediaPurge = 'wa.media_purge';
+    case WaMediaConsent = 'wa.media_consent';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -111,7 +116,10 @@ enum AuditAction: string
     case ConfigExport = 'config.export';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [];
+    public const INTENTIONALLY_UNEMITTED = [
+        'WaMediaView' => 'E14 (دفعة العرض)', 'WaMediaDownload' => 'E14 (دفعة العرض)', 'WaMediaRefetch' => 'E14 (دفعة العرض)',
+        'WaMediaPurge' => 'E14 (دفعة التقليم)', 'WaMediaConsent' => 'E14 (دفعة الموافقة)',
+    ];
 
     public function severity(): AuditSeverity
     {
@@ -128,7 +136,8 @@ enum AuditAction: string
             self::WaReliabilityFlag, self::WaIdentityMode, self::WaSecurity, self::AuditExport,
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
-            self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport => AuditSeverity::Warn,
+            self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
+            self::WaMediaDownload => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -230,6 +239,11 @@ enum AuditAction: string
             self::WaErasureVerify => 'تحقّق من هوية طالب الحذف',
             self::WaErasureReject => 'رفض طلب حذف',
             self::WaDataErase => 'حذف بيانات عميل',
+            self::WaMediaView => 'عرض مرفق عميل',
+            self::WaMediaDownload => 'تنزيل مرفق عميل',
+            self::WaMediaRefetch => 'تنزيل يدوي لمرفق',
+            self::WaMediaPurge => 'حذف مرفقات عميل',
+            self::WaMediaConsent => 'اختيار العميل حفظ ملفاته',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -249,10 +263,10 @@ enum AuditAction: string
         };
     }
 
-    /** يُكتب ولو كان audit.extended مطفأً: المال، وقفل الدخول (يُدقَّق منذ E03)، والإيقاف التلقائي للإرسال */
+    /** يُكتب ولو كان audit.extended مطفأً: المال، وقفل الدخول (يُدقَّق منذ E03)، والإيقاف التلقائي للإرسال، والاطّلاع على مرفقات العملاء (E14) */
     public function alwaysOn(): bool
     {
-        return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto], true);
+        return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload], true);
     }
 
     public function isNoise(): bool
