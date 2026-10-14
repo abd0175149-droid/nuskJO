@@ -79,6 +79,11 @@ enum AuditAction: string
     case WaVerifyRotate = 'wa.verify_rotate';
     case WaFlagToggle = 'wa.flag_toggle';
     case WaSettingsFinalize = 'wa.settings_finalize';
+    case WaMerge = 'wa.merge';
+    case WaIdentityChange = 'wa.identity_change';
+    case WaLinkClient = 'wa.link_client';
+    case WaUnlinkClient = 'wa.unlink_client';
+    case WaBackfillIdentity = 'wa.backfill_identity';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -98,7 +103,11 @@ enum AuditAction: string
     case AppKeyReencrypt = 'system.reencrypt';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [];
+    public const INTENTIONALLY_UNEMITTED = [
+        // مؤقت: زر الربط اليدوي في دفعة لاحقة من E11 (E11.8)، ويُحذف السطران معه
+        'WaLinkClient' => 'E11.8 لم يُبنَ بعد',
+        'WaUnlinkClient' => 'E11.8 لم يُبنَ بعد',
+    ];
 
     public function severity(): AuditSeverity
     {
@@ -114,7 +123,7 @@ enum AuditAction: string
             self::WaSettingsUpdate, self::WaBotEnabled, self::WaSuspendManual, self::WaRoutingUpdate,
             self::WaReliabilityFlag, self::WaIdentityMode, self::WaSecurity, self::AuditExport,
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
-            self::WaSettingsFinalize, self::AppKeyReencrypt => AuditSeverity::Warn,
+            self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -131,12 +140,12 @@ enum AuditAction: string
             self::AuthLockout, self::AuthInactiveBlocked, self::AuthzDenied, self::AuthzWouldDeny, self::AuthzUnmapped,
             self::UserCreate, self::UserUpdate, self::UserRoleChange, self::UserPasswordReset, self::UserPasswordChange,
             self::UserActivate, self::UserDeactivate, self::UserDelete, self::UserRestoreAdmin,
-            self::RoleCreate, self::RoleUpdate, self::RoleDelete => 'access',
+            self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
-            self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto => 'meta',
-            self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt => 'system',
+            self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange => 'meta',
+            self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity => 'system',
             default => 'whatsapp',
         };
     }
@@ -205,6 +214,11 @@ enum AuditAction: string
             self::WaVerifyRotate => 'توليد رمز تحقق الويبهوك',
             self::WaFlagToggle => 'تبديل علم ميزة',
             self::WaSettingsFinalize => 'إقفال ترقية الإعدادات',
+            self::WaMerge => 'دمج محادثتين لعميل واحد',
+            self::WaIdentityChange => 'تغيّر رقم العميل أو معرّفه',
+            self::WaLinkClient => 'ربط محادثة بعميل',
+            self::WaUnlinkClient => 'فك ربط محادثة بعميل',
+            self::WaBackfillIdentity => 'تعبئة هوية المحادثات القديمة',
             self::WaAccountUpdate => 'حدث حساب ميتا',
             self::WaAccountAlert => 'تنبيه حساب ميتا',
             self::WaSecurity => 'حدث أمان ميتا',

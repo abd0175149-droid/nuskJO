@@ -52,7 +52,11 @@ class MessageReplayer
                 $existed = $phone !== null
                     ? WaConversation::where('phone', $phone)->exists()
                     : WaConversation::where('wa_user_id', $userId)->exists();
-                $conv = ContactIdentity::resolve($row->c_wa_phone, $userId, $row->c_display_name ? ['profile' => ['name' => $row->c_display_name]] : []);
+                $conv = ContactIdentity::resolveIdentity($row->c_wa_phone, $userId);
+                // الاسم المعروض كما كان في النسخة (لا يُكتب فوق اسم موجود)
+                if ($row->c_display_name && !$conv->display_name) {
+                    $conv->forceFill(['display_name' => \App\Services\WhatsApp\TextNormalizer::untrustedName($row->c_display_name)])->save();
+                }
                 if (!$existed) {
                     $stats['conversations_created']++;
                 }

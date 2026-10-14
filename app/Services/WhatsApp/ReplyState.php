@@ -30,6 +30,7 @@ final class ReplyState
         'handoff' => '🙋 طلب موظفاً',
         'no_phone' => '📵 رقم غير ظاهر',
         'identity_conflict' => '🔀 محادثتان لعميل واحد',
+        'identity_change' => '🔄 غيّر العميل رقمه',
     ];
 
     private static ?bool $available = null;

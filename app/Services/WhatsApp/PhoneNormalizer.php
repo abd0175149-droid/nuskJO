@@ -7,7 +7,8 @@ use App\Models\User;
 
 /**
  * توحيد الأرقام: نُسك يخزّن +962…/+966… وميتا ترسل 962… بلا +.
- * المطابقة النهائية على آخر 9 أرقام لتجاوز اختلاف صيغة الإدخال.
+ * الربط الآلي (عميل، موظف) بالرقم الكامل الموحَّد وحده (E11): آخر 9 أرقام قد تطابق رقماً من بلد آخر.
+ * معرّف ميتا (BSUID مثل «JO.123…») لا يصير رقماً أبداً: نص فيه حرف أو نقطة يعطي ''.
  */
 class PhoneNormalizer
 {
@@ -16,9 +17,22 @@ class PhoneNormalizer
         return preg_replace('/\D+/', '', (string) $p) ?? '';
     }
 
+    /** أرقام فقط بصيغة هاتف (6–15 رقماً، و+ اختياري): لا أحرف ولا نقاط */
+    public static function isPhoneLike(?string $p): bool
+    {
+        return is_string($p) && preg_match('/^\+?\d{6,15}$/', $p) === 1;
+    }
+
+    /** نص فيه حرف أو نقطة ليس رقماً (معرّف BSUID، أو «079… (أحمد)») */
+    private static function hasLetters(?string $p): bool
+    {
+        return preg_match('/[\p{L}.]/u', (string) $p) === 1;
+    }
+
     /** صيغة موحّدة للتخزين والمطابقة (E.164 بلا +) */
     public static function canonical(?string $p): string
     {
+        if (self::hasLetters($p)) return '';
         $d = self::digits($p);
         if ($d === '') return '';
 
@@ -39,6 +53,7 @@ class PhoneNormalizer
     /** آخر n أرقام — أساس المطابقة */
     public static function tail(?string $p, int $n = 9): string
     {
+        if (self::hasLetters($p)) return '';
         $d = self::digits($p);
         return strlen($d) > $n ? substr($d, -$n) : $d;
     }
@@ -50,27 +65,46 @@ class PhoneNormalizer
         return $ta !== '' && $ta === $tb;
     }
 
-    /** البحث عن عميل بالهاتف (مطابقة آخر 9 أرقام) */
-    public static function findClient(?string $phone): ?Client
+    /**
+     * رقم محفوظ يصلح للربط الآلي: دولي (+ أو 00 أو بمفتاح الدولة) أو أردني محلي (07… أو 7…).
+     * المحلي 05… ملتبس (السعودية والإمارات) فلا يُربط آلياً؛ يربطه موظف يدوياً.
+     */
+    public static function autoLinkable(?string $stored): bool
     {
-        $tail = self::tail($phone);
-        if ($tail === '') return null;
+        $raw = trim((string) $stored);
+        if ($raw === '' || self::hasLetters($raw)) return false;
+        $d = self::digits($raw);
 
-        return Client::query()
-            ->whereNotNull('phone')->where('phone', '!=', '')
-            ->get(['id', 'name', 'code', 'phone', 'account_id', 'employee_id'])
-            ->first(fn ($c) => self::tail($c->phone) === $tail);
+        return str_starts_with($raw, '+') || str_starts_with($d, '00') || strlen($d) >= 11 || preg_match('/^0?7\d{8}$/', $d) === 1;
     }
 
-    /** البحث عن مستخدم/موظف بالهاتف — لتمييز رسائل الموظفين */
+    /** عميل بالرقم الكامل الموحَّد؛ أكثر من عميل بالرقم نفسه = لا ربط آلي (null) */
+    public static function findClient(?string $phone): ?Client
+    {
+        $matches = self::matches(Client::query(), $phone, ['id', 'name', 'code', 'phone', 'account_id', 'employee_id']);
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /** مستخدم/موظف بالرقم الكامل الموحَّد — لتمييز رسائل الموظفين */
     public static function findUser(?string $phone): ?User
     {
-        $tail = self::tail($phone);
-        if ($tail === '') return null;
+        $matches = self::matches(User::query(), $phone, ['id', 'name', 'phone', 'role_id', 'is_active']);
 
-        return User::query()
-            ->whereNotNull('phone')->where('phone', '!=', '')
-            ->get(['id', 'name', 'phone', 'role_id', 'is_active'])
-            ->first(fn ($u) => self::tail($u->phone) === $tail);
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    private static function matches($query, ?string $phone, array $columns)
+    {
+        $canonical = self::canonical($phone);
+        if ($canonical === '' || strlen($canonical) < 8) {
+            return collect();
+        }
+
+        // بلا تصفية LIKE في القاعدة: رقم محفوظ بمسافات أو شرطات («123 4567») يفلت منها
+        return $query->whereNotNull('phone')->where('phone', '!=', '')
+            ->get($columns)
+            ->filter(fn ($row) => self::autoLinkable($row->phone) && self::canonical($row->phone) === $canonical)
+            ->values();
     }
 }

@@ -19,6 +19,8 @@ class WaConversation extends Model
         'needs_attention', 'assigned_to', 'status', 'bot_answered_in_id', 'attention_reason',
         // E11a: معرّف ميتا الخاص بنشاطنا (BSUID) واسم المستخدم والاسم كما أرسله العميل (غير موثوقين)
         'wa_user_id', 'wa_username', 'wa_profile_name',
+        // E11: رقمنا المستقبِل، وأول إحالة (إعلان)، وحالة الربط بعميل (auto | manual | blocked)، والدمج
+        'phone_number_id', 'referral', 'client_link', 'client_linked_by', 'client_linked_at', 'merged_into_id',
     ];
 
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
@@ -30,6 +32,8 @@ class WaConversation extends Model
         'last_inbound_at' => 'datetime',
         'last_outbound_at' => 'datetime',
         'last_message_at' => 'datetime',
+        'referral' => 'array',
+        'client_linked_at' => 'datetime',
     ];
 
     /**

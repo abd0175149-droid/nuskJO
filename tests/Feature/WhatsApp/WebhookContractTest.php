@@ -107,7 +107,9 @@ class WebhookContractTest extends TestCase
         $conv = $message->conversation;
         $this->assertSame(self::CUSTOMER, $conv->phone);
         $this->assertSame(self::CUSTOMER, $conv->wa_phone);
-        $this->assertSame('Sheena Nelson', $conv->display_name);
+        // اسم واتساب يضعه العميل بنفسه: للعرض فقط، ولا يُكتب فوق display_name (E11)
+        $this->assertSame('Sheena Nelson', $conv->wa_profile_name);
+        $this->assertSame('Sheena Nelson', $conv->label());
         // النافذة من وقت ميتا، لا من وقت الاستلام
         $this->assertTrue($conv->last_inbound_at->equalTo($metaAt));
         $this->assertTrue($message->meta_at->equalTo($metaAt));
@@ -287,7 +289,7 @@ class WebhookContractTest extends TestCase
 
         $message = WaMessage::sole();
         $this->assertSame('unsupported', $message->msg_type);
-        $this->assertSame('[unsupported]', $message->body);
+        $this->assertSame('⚠️ رسالة غير مدعومة', $message->body);
         $this->assertSame(131051, data_get($message->payload, 'errors.0.code'));
     }
 

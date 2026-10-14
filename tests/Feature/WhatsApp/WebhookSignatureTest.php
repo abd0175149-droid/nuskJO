@@ -93,7 +93,7 @@ class WebhookSignatureTest extends TestCase
 
         $message = WaMessage::sole();
         $this->assertSame('السلام عليكم 🕋 هل عرض العمرة متاح؟', $message->body);
-        $this->assertSame('عميل تجريبي', $message->conversation->display_name);
+        $this->assertSame('عميل تجريبي', $message->conversation->wa_profile_name);
     }
 
     #[Group('INV-01')]

@@ -38,6 +38,14 @@ class WhatsAppInbox
                 $field = data_get($change, 'field');
                 $value = data_get($change, 'value', []);
 
+                // تغيّر معرّف العميل (إن وصل حقلاً): هوية لا حدث حساب، فلا يمس الإيقاف أبداً
+                if ($field === 'user_id_update') {
+                    $to = (string) data_get($value, 'metadata.phone_number_id', '');
+                    if ($ownId === '' || $to === $ownId) {
+                        ContactIdentity::applyUserIdUpdate((array) $value);
+                    }
+                    continue;
+                }
                 if ($field !== 'messages') {
                     // صحّة الحساب / حالة القوالب → قفل الإرسال احتياطاً، إن كان الحدث لرقمنا أو حسابنا
                     self::handleAccountEvent((string) $field, (array) $value, $entryId, $settings);
@@ -59,6 +67,11 @@ class WhatsAppInbox
                 // مطابقة كل رسالة بمدخلها: بالمعرّف (BSUID) ثم بالرقم (ContactIdentity::contactFor)
                 $contacts = (array) data_get($value, 'contacts', []);
 
+                // أخطاء على مستوى الحمولة: الرمز والعنوان فقط
+                foreach ((array) data_get($value, 'errors', []) as $error) {
+                    WaLog::warning('webhook.value_error', ['meta_code' => data_get($error, 'code'), 'reason' => mb_substr((string) data_get($error, 'title'), 0, 120)]);
+                }
+
                 // حالات التسليم
                 foreach (data_get($value, 'statuses', []) as $st) {
                     self::handleStatus($st);
@@ -66,7 +79,7 @@ class WhatsAppInbox
 
                 // الرسائل الواردة
                 foreach (data_get($value, 'messages', []) as $msg) {
-                    $convId = self::storeInbound($msg, $contacts);
+                    $convId = self::storeInbound((array) $msg, $contacts, $to);
                     if ($convId) {
                         $touched[] = $convId;
                     }
@@ -101,15 +114,13 @@ class WhatsAppInbox
     }
 
     /** @return int|null معرّف المحادثة إن كانت الرسالة تستحق ردّ البوت */
-    private static function storeInbound(array $msg, array $contacts): ?int
+    private static function storeInbound(array $msg, array $contacts, string $pnid = ''): ?int
     {
-        $wamid = data_get($msg, 'id');
-        $from = data_get($msg, 'from');
         // عميل باسم مستخدم بلا تواصل حديث: from محذوف، والمعرّف الخاص بنشاطنا (BSUID) في from_user_id
-        $userId = filled(data_get($msg, 'from_user_id')) ? (string) data_get($msg, 'from_user_id') : null;
-        $type = data_get($msg, 'type', 'text');
+        $in = InboundMessage::fromWebhook($msg, ContactIdentity::contactFor($contacts, data_get($msg, 'from'), data_get($msg, 'from_user_id')), $pnid);
+        $wamid = $in->wamid;
 
-        if (!$wamid || (ContactIdentity::phoneFrom($from) === null && $userId === null)) {
+        if (!$wamid || ($in->fromPhone === null && $in->fromUserId === null)) {
             self::noIdentity($msg);
 
             return null;
@@ -120,8 +131,19 @@ class WhatsAppInbox
             return self::pendingDuplicate($existing);
         }
 
+        // رسالة نظام (غيّر العميل رقمه أو تغيّر معرّفه): تحديث هوية في محادثته، لا وارد يرد عليه البوت
+        if ($in->isSystem()) {
+            try {
+                DB::transaction(fn () => ContactIdentity::applySystemChange($in));
+            } catch (UniqueConstraintViolationException) {
+                // مكرر من ميتا وصل معاً
+            }
+
+            return null;
+        }
+
         try {
-            [$conv, $optOut] = DB::transaction(fn () => self::storeInboundRows($msg, $contacts, (string) $wamid, is_string($from) ? $from : null, $userId, (string) $type));
+            [$conv, $optOut] = DB::transaction(fn () => self::storeInboundRows($in, $msg));
         } catch (UniqueConstraintViolationException) {
             // نسختان من الإشعار نفسه في وقت واحد: الأخرى خزّنته
             $existing = WaMessage::where('wamid', $wamid)->first();
@@ -165,22 +187,35 @@ class WhatsAppInbox
      * صفوف الوارد كلها في معاملة واحدة: المحادثة والرسالة والنافذة، أو لا شيء.
      * @return array{0: ?WaConversation, 1: bool} المحادثة إن استحقت المتابعة، وهل طلب إيقاف التسويق
      */
-    private static function storeInboundRows(array $msg, array $contacts, string $wamid, ?string $from, ?string $userId, string $type): array
+    private static function storeInboundRows(InboundMessage $in, array $msg): array
     {
-        $conv = ContactIdentity::resolve($from, $userId, ContactIdentity::contactFor($contacts, $from, $userId));
+        $conv = ContactIdentity::resolve($in);
+        // رقم شاركه العميل بزر «طلب الرقم» يملأ المحادثة (بطاقة شخص ثالث لا)
+        ContactIdentity::acceptSharedPhone($conv, $in);
+        // أول مصدر للمحادثة (إعلان انقر للواتساب) يبقى
+        if ($in->referral && !$conv->referral) {
+            $conv->forceFill(['referral' => $in->referral])->save();
+        }
+        $wamid = (string) $in->wamid;
+        $columns = self::newColumns($in);
 
         // التفاعلات (reaction) مسار منفصل: تُخزَّن ولا تفتح نافذة ولا تُمرَّر للبوت
-        if ($type === 'reaction') {
+        if ($in->isReaction()) {
             WaMessage::create([
                 'conversation_id' => $conv->id, 'wamid' => $wamid, 'direction' => 'in',
                 'source' => 'customer', 'msg_type' => 'reaction',
-                'body' => data_get($msg, 'reaction.emoji', '👍'), 'payload' => $msg,
-            ]);
+                'body' => $in->body, 'payload' => $msg + ($in->reactionTo ? ['_reaction_to' => $in->reactionTo] : []),
+            ] + $columns);
 
             return [null, false];
         }
 
-        [$body, $buttonId] = self::extract($msg, $type);
+        $body = $in->body;
+        $buttonId = $in->buttonId;
+        $type = $in->type;
+        if ($type === 'unsupported') {
+            WaLog::warning('webhook.inbound.unsupported', ['wamid' => $wamid, 'meta_code' => 131051, 'type' => $in->unsupportedType]);
+        }
         \Illuminate\Support\Facades\Context::push('wamid_in', $wamid);
 
         // وقت ميتا للرسالة (لا وقت وصولها إلينا): عليه تُبنى النافذة وبوابة الحداثة. لا يتجاوز «الآن»
@@ -195,7 +230,7 @@ class WhatsAppInbox
             'msg_type' => $type,
             'body' => $body,
             'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []),
-        ] + (self::hasMetaAt() ? ['meta_at' => $metaAt] : []));
+        ] + $columns + (self::hasMetaAt() ? ['meta_at' => $metaAt] : []));
 
         // النافذة والمعاينة لا تتراجع: رسالة أقدم أعادت ميتا إرسالها لا تكتبهما
         WaConversation::whereKey($conv->id)
@@ -224,33 +259,32 @@ class WhatsAppInbox
         return [$conv, false];
     }
 
-    /** إيجاد/إنشاء محادثة برقم وربطها بالعميل أو الموظف (MessageReplayer والاختبارات؛ الويبهوك عبر ContactIdentity) */
+    /** إيجاد/إنشاء محادثة برقم وربطها بالعميل أو الموظف (الاختبارات؛ الويبهوك عبر ContactIdentity::resolve) */
     public static function conversationFor(string $waPhone, ?string $profileName = null): WaConversation
     {
-        return ContactIdentity::resolve($waPhone, null, $profileName ? ['profile' => ['name' => $profileName]] : []);
+        return ContactIdentity::resolveIdentity($waPhone, null, TextNormalizer::untrustedName($profileName));
     }
 
-    /** استخراج النص ومعرّف الزر إن وجد */
-    private static function extract(array $msg, string $type): array
+    /** @var bool|null أعمدة E11 في wa_messages (بين النشر والهجرة لا توجد، والرسالة تُخزَّن رغم ذلك) */
+    private static ?bool $hasE11Columns = null;
+
+    /** الاقتباس والوسائط والإحالة ورقمنا المستقبِل */
+    private static function newColumns(InboundMessage $in): array
     {
-        return match ($type) {
-            'text' => [data_get($msg, 'text.body', ''), null],
-            'interactive' => [
-                data_get($msg, 'interactive.button_reply.title')
-                    ?? data_get($msg, 'interactive.list_reply.title', ''),
-                // التقاط الاثنين — القوائم ليست أزراراً
-                data_get($msg, 'interactive.button_reply.id')
-                    ?? data_get($msg, 'interactive.list_reply.id'),
-            ],
-            'button' => [data_get($msg, 'button.text', ''), data_get($msg, 'button.payload')],
-            'image' => ['📷 صورة' . (data_get($msg, 'image.caption') ? ': ' . data_get($msg, 'image.caption') : ''), null],
-            'audio' => ['🎤 رسالة صوتية', null],
-            'video' => ['🎬 مقطع فيديو', null],
-            'document' => ['📄 ملف: ' . data_get($msg, 'document.filename', ''), null],
-            'location' => ['📍 موقع', null],
-            'sticker' => ['🏷️ ملصق', null],
-            default => ['[' . $type . ']', null],
-        };
+        self::$hasE11Columns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['reply_to_wamid', 'media_id', 'phone_number_id']);
+        if (!self::$hasE11Columns) {
+            return [];
+        }
+
+        return array_filter([
+            'phone_number_id' => $in->phoneNumberId ?: null,
+            'reply_to_wamid' => $in->replyToWamid,
+            'referral' => $in->referral,
+            'media_id' => $in->media['id'] ?? null,
+            'media_mime' => $in->media['mime'] ?? null,
+            'media_sha256' => $in->media['sha256'] ?? null,
+            'media_filename' => $in->media['filename'] ?? null,
+        ], fn ($v) => $v !== null);
     }
 
     private static function isOptOut(?string $body, ?string $buttonId): bool
@@ -291,8 +325,17 @@ class WhatsAppInbox
             if ($code !== null && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_code')) {
                 $update['meta_code'] = $code;
             }
+            // رمزنا الداخلي من الجدول (رقم ميتا في meta_code)
+            if ($code !== null && (self::$hasE11Columns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['reply_to_wamid', 'media_id', 'phone_number_id']))) {
+                $update['error_code'] = mb_substr(MetaErrorCatalog::codeFor($code), 0, 32);
+            }
         }
         $m->update($update);
+
+        // حالة فيها الرقم والمعرّف معاً تملأ معرّف محادثة رقمها معروف
+        if ($m->direction === 'out' && filled(data_get($st, 'recipient_user_id')) && ($c = WaConversation::find($m->conversation_id))) {
+            ContactIdentity::fillFromStatus($st, $c);
+        }
 
         if ($code !== null) {
             WaLog::warning('wa.status.failed', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'meta_code' => $code]);

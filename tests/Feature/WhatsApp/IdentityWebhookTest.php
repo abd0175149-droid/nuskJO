@@ -138,10 +138,25 @@ class IdentityWebhookTest extends TestCase
         $this->assertNull(WaConversation::sole()->client_id);
     }
 
-    public function test_number_and_id_in_two_conversations_are_flagged_not_merged(): void
+    public function test_number_and_id_in_two_conversations_are_merged_into_the_phone_conversation(): void
     {
-        $byId = WaConversation::factory()->create(['phone' => null, 'wa_phone' => null, 'wa_user_id' => self::BSUID]);
-        $byPhone = WaConversation::factory()->create(['phone' => self::PHONE, 'wa_phone' => self::PHONE]);
+        $byId = WaConversation::factory()->create(['phone' => null, 'wa_phone' => null, 'wa_user_id' => self::BSUID, 'unread_count' => 2]);
+        WaMessage::factory()->inbound()->create(['conversation_id' => $byId->id, 'body' => 'رسالة قبل معرفة الرقم']);
+        $byPhone = WaConversation::factory()->create(['phone' => self::PHONE, 'wa_phone' => self::PHONE, 'unread_count' => 1]);
+
+        $this->receive('username_with_phone.json')->assertOk();
+
+        $this->assertSame(2, WaMessage::where('conversation_id', $byPhone->id)->count(), 'رسائل محادثة المعرّف انتقلت');
+        $this->assertSame(['merged', $byPhone->id, null], [$byId->fresh()->status, $byId->fresh()->merged_into_id, $byId->fresh()->wa_user_id]);
+        $this->assertSame(self::BSUID, $byPhone->fresh()->wa_user_id);
+        $this->assertSame(4, $byPhone->fresh()->unread_count);
+        $this->assertSame(1, \App\Models\AuditLog::where('action', 'wa.merge')->count());
+    }
+
+    public function test_number_and_id_of_two_different_clients_are_flagged_not_merged(): void
+    {
+        $byId = WaConversation::factory()->create(['phone' => null, 'wa_phone' => null, 'wa_user_id' => self::BSUID, 'client_id' => Client::factory()->create()->id]);
+        $byPhone = WaConversation::factory()->create(['phone' => self::PHONE, 'wa_phone' => self::PHONE, 'client_id' => Client::factory()->create()->id]);
 
         $this->receive('username_with_phone.json')->assertOk();
 
@@ -149,9 +164,9 @@ class IdentityWebhookTest extends TestCase
         foreach ([$byId, $byPhone] as $conv) {
             $this->assertTrue($conv->fresh()->needs_attention);
             $this->assertSame('identity_conflict', $conv->fresh()->attention_reason);
+            $this->assertNotSame('merged', $conv->fresh()->status);
         }
         $this->assertSame(self::BSUID, $byId->fresh()->wa_user_id);
-        $this->assertNull($byPhone->fresh()->wa_user_id);
     }
 
     public function test_a_phoneless_opt_out_is_kept_by_id(): void
