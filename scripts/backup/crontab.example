@@ -1,0 +1,5 @@
+# يُضاف لمستخدم sysadmin (crontab -e). لا يحتاج sudo؛ يكفي أنه في مجموعة docker.
+# اللقطة اليومية داخل الحاوية 02:30 بتوقيت عمّان، فالمجمّع بعدها بعشرين دقيقة.
+# افحص توقيت المضيف أولاً (timedatectl): إن كان UTC وعمّان UTC+3 فالسطر يصبح 50 23 * * *.
+CRON_TZ=Asia/Amman
+50 2 * * * bash /opt/nuskJO/scripts/backup/collect.sh >> $HOME/backups/nuskjo/collect.log 2>&1
