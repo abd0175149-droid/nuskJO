@@ -344,7 +344,7 @@ class WhatsAppController extends Controller
             'bot_enabled' => !$conversation->bot_enabled,
             'needs_attention' => false,
             'bot_paused_until' => null,
-        ]);
+        ] + (\App\Services\WhatsApp\ReplyState::available() ? ['attention_reason' => null] : []));
 
         return response()->json(['bot_enabled' => (bool) $conversation->fresh()->bot_enabled]);
     }
@@ -352,7 +352,10 @@ class WhatsAppController extends Controller
     public function resolve(WaConversation $conversation)
     {
         abort_unless(auth()->user()->can('whatsapp.reply'), 403);
-        $conversation->update(['needs_attention' => false]);
+        $conversation->update(['needs_attention' => false] + (\App\Services\WhatsApp\ReplyState::available() ? ['attention_reason' => null] : []));
+        // «تمّت المعالجة»: ما وصل حتى الآن خُدم، فلا يرد البوت عليه لاحقاً
+        \App\Services\WhatsApp\ReplyState::advanceToNewest($conversation);
+
         return response()->json(['ok' => true]);
     }
 

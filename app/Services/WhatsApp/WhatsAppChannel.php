@@ -510,8 +510,16 @@ class WhatsAppChannel
             $update['bot_paused_until'] = now()->addMinutes(max(1, (int) $s->pause_minutes));
             $update['unread_count'] = 0;
             $update['needs_attention'] = false;
+            if (ReplyState::available()) {
+                $update['attention_reason'] = null;
+            }
         }
         $conv->update($update);
+
+        // رد الموظف يخدم كل ما وصل قبله: لا يجيب البوت عنه لاحقاً
+        if ($source === 'staff') {
+            ReplyState::advanceToNewest($conv);
+        }
 
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $wamid];
     }

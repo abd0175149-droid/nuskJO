@@ -281,6 +281,13 @@ class BotTools
             }
         }
 
+        // موظف تسلّم المحادثة أثناء التوليد؟ لا صورة، وتنقطع الحلقة
+        if (($run = ReplyRun::current()) && ($drop = $run->mayDeliver($conv))) {
+            $run->abort = $drop;
+
+            return ['sent' => false, 'note' => 'لا ترسل شيئاً آخر.'];
+        }
+
         $res = WhatsAppChannel::sendImage(
             $conv,
             url(Storage::disk('public')->url($path)),
@@ -519,6 +526,11 @@ class BotTools
             'needs_attention' => true,
             'assigned_to' => $assignee,
         ]);
+
+        // التحويل من التشغيل نفسه: رسالة تأكيده لا تُسقط بحجة أن البوت صار مطفأً
+        if ($run = ReplyRun::current()) {
+            $run->escalated = true;
+        }
 
         if ($qr && $assignee) {
             $qr->update(['assigned_to' => $assignee]);

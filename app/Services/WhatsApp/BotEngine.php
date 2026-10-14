@@ -78,10 +78,21 @@ TXT;
 TXT;
 
     /**
-     * توليد ردّ واحد لمحادثة. يُستدعى من الوظيفة المؤجّلة.
+     * توليد ردّ واحد لمحادثة. يُستدعى من الوظيفة المؤجّلة ومعه تشغيلها (ReplyRun).
      * @return array{sent:bool, reason:?string}
      */
-    public static function reply(WaConversation $conv): array
+    public static function reply(WaConversation $conv, ?ReplyRun $run = null): array
+    {
+        $run ??= ReplyRun::start($conv, 'direct');
+        ReplyRun::bind($run);
+        try {
+            return self::replyWith($conv, $run);
+        } finally {
+            ReplyRun::clear();
+        }
+    }
+
+    private static function replyWith(WaConversation $conv, ReplyRun $run): array
     {
         $s = WaBotSetting::current();
 
@@ -93,7 +104,7 @@ TXT;
 
         // أرقام الإدارة يخدمها المساعد الإداري بأدواتها المسموحة وحدها — حتى لو كان بوت العملاء موقوفاً
         if ($admin = WaAdminNumber::forPhone($conv->phone)) {
-            return self::adminReply($conv, $s, $admin);
+            return self::adminReply($conv, $s, $admin, $run);
         }
 
         // ── بوّابات خروج مبكر ───────────────────────────────────
@@ -101,28 +112,25 @@ TXT;
         if (!$conv->botActive())        return self::skip('البوت موقوف لهذه المحادثة');
         if (!$conv->isWindowOpen())     return self::skip('نافذة 24 ساعة مغلقة');
 
-        $last = $conv->messages()->orderByDesc('id')->first();
-        if (!$last || $last->direction !== 'in') {
-            return self::skip('آخر رسالة ليست من العميل');
+        if (!self::hasPendingInbound($conv, $s)) {
+            return self::skip('لا وارد بعد آخر رد');
         }
 
-        $pending = self::pendingCustomerText($conv);
+        $pending = self::pendingCustomerText($conv, $s);
 
         // ① طلب صريح لموظف: يُحوَّل بالكود، ولا يُترك للنموذج أن يزعم التحويل
         if (HandoffGuard::wantsHuman($pending)) {
-            return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف');
+            return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف', $run);
         }
 
-        // حدّ المعدّل لكل محادثة — عند بلوغه نحوّل بدل الصمت
-        $key = 'wa:rate:' . $conv->id . ':' . now()->format('YmdH');
-        $count = (int) Cache::get($key, 0);
-        if ($count >= max(1, (int) $s->rate_limit_per_hour)) {
-            return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة');
+        // حدّ المعدّل لكل محادثة — عند بلوغه نحوّل بدل الصمت. يُزاد بعد الإرسال الناجح وحده، فالإعادة لا تستهلكه
+        $key = self::rateKey($conv);
+        if ((int) Cache::get($key, 0) >= max(1, (int) $s->rate_limit_per_hour)) {
+            return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run);
         }
-        Cache::put($key, $count + 1, now()->addHour());
 
         try {
-            [$text, $usage] = self::runLoop($conv, $s);
+            [$text, $usage] = self::runLoop($conv, $s, null, null, null, $run);
 
             if (trim((string) $text) === '') {
                 $text = 'تلقّيت رسالتك. سيتواصل معك أحد موظفينا حالاً.';
@@ -136,12 +144,20 @@ TXT;
             }
 
             self::recordUsage($conv->id, $s->model, $usage);
+
+            // ② قبل الإرسال: ردّ موظف أو أطفأ البوت أو أوقفه أثناء التوليد؟ يُسقط الرد
+            if ($drop = $run->mayDeliver($conv)) {
+                return self::dropped($conv, $s, $drop);
+            }
             $res = WhatsAppChannel::sendText($conv, $text, 'bot');
+            if ($res['ok']) {
+                self::served($conv, $run);
+            }
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
         } catch (\Throwable $e) {
             WaLog::error('bot.failed', ['conv_id' => $conv->id, 'exception' => $e]);
-            return self::failSafe($conv, $s);
+            return self::failSafe($conv, $s, $run);
         }
     }
 
@@ -151,14 +167,14 @@ TXT;
      * حلقة النموذج والأدوات — واحدة للمسارين.
      * بلا وسائط إضافية: بوت العملاء بشخصيته وأدواته. ومع $system و$tools و$exec: المساعد الإداري.
      */
-    private static function runLoop(WaConversation $conv, WaBotSetting $s, ?array $system = null, ?array $tools = null, ?callable $exec = null): array
+    private static function runLoop(WaConversation $conv, WaBotSetting $s, ?array $system = null, ?array $tools = null, ?callable $exec = null, ?ReplyRun $run = null): array
     {
         $provider = LlmFactory::make($s->provider);
         $apiKey = (string) $s->llmKey();
         $model = (string) $s->model;
 
         $system ??= self::buildSystem($conv, $s);                         // مصفوفة نصوص
-        $history = $provider->buildHistory(self::buildMessages($conv, $s));
+        $history = $provider->buildHistory(self::buildMessages($conv, $s, $run));
         $tools ??= BotTools::declarations($s, $conv);
 
         $usage = ['calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0,
@@ -200,6 +216,11 @@ TXT;
                 $results[] = ['id' => $tc['id'], 'name' => $tc['name'], 'output' => $out];
             }
             $provider->appendToolResults($history, $results);
+
+            // أداة رفضت الإرسال (موظف تسلّم المحادثة أثناء التوليد): لا دورة أخرى
+            if ($run?->abort !== null) {
+                break;
+            }
         }
 
         $clean = self::stripToolLeak($final);
@@ -271,7 +292,7 @@ TXT;
         return implode("\n", $lines);
     }
 
-    private static function buildMessages(WaConversation $conv, WaBotSetting $s): array
+    private static function buildMessages(WaConversation $conv, WaBotSetting $s, ?ReplyRun $run = null): array
     {
         $take = max(4, min(60, (int) $s->context_messages));
 
@@ -279,6 +300,16 @@ TXT;
             ->whereIn('source', ['customer', 'bot', 'staff', 'injected'])
             ->where('msg_type', '!=', 'reaction')
             ->orderByDesc('id')->limit($take)->get()->reverse()->values();
+
+        // الوارد بعد العلامة دورٌ أخير للمستخدم: لا يرى النموذج رسالة B قبل رد A فيظنها مُجابة
+        if (self::watermarkOn($s)) {
+            $mark = ReplyState::mark($conv);
+            [$pending, $before] = $rows->partition(fn ($m) => $m->direction === 'in' && $m->id > $mark);
+            $rows = $before->values()->concat($pending->values());
+        }
+        if ($run) {
+            $run->uptoId = (int) $rows->where('direction', 'in')->max('id');
+        }
 
         $messages = [];
         foreach ($rows as $m) {
@@ -334,14 +365,13 @@ TXT;
 
     // ==================== المساعد الإداري ====================
 
-    private static function adminReply(WaConversation $conv, WaBotSetting $s, WaAdminNumber $admin): array
+    private static function adminReply(WaConversation $conv, WaBotSetting $s, WaAdminNumber $admin, ReplyRun $run): array
     {
         if (!$s->channelReady() || !$s->llmKey()) return self::skip('القناة أو مفتاح النموذج غير مهيّأ');
         if (!$conv->isWindowOpen())               return self::skip('نافذة 24 ساعة مغلقة');
 
-        $last = $conv->messages()->orderByDesc('id')->first();
-        if (!$last || $last->direction !== 'in') {
-            return self::skip('آخر رسالة ليست من الموظف');
+        if (!self::hasPendingInbound($conv, $s)) {
+            return self::skip('لا وارد من الموظف بعد آخر رد');
         }
 
         $key = 'wa:rate:admin:' . $conv->id . ':' . now()->format('YmdH');
@@ -356,7 +386,7 @@ TXT;
 
         try {
             [$text, $usage] = self::runLoop($conv, $s, $system, $tools,
-                fn (string $name, array $in, WaConversation $c) => AdminTools::execute($name, $in, $c, $admin));
+                fn (string $name, array $in, WaConversation $c) => AdminTools::execute($name, $in, $c, $admin), $run);
 
             if (trim((string) $text) === '') {
                 $text = 'لم أفهم الطلب تماماً — وضّحه أكثر من فضلك.';
@@ -365,6 +395,9 @@ TXT;
             self::recordUsage($conv->id, $s->model, $usage, 'admin');
             $admin->forceFill(['last_used_at' => now()])->saveQuietly();
             $res = WhatsAppChannel::sendText($conv, $text, 'bot');
+            if ($res['ok']) {
+                ReplyState::advance($conv, $run->uptoId);
+            }
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
         } catch (\Throwable $e) {
@@ -388,36 +421,93 @@ TXT;
         ]);
     }
 
-    /** نصّ رسائل العميل منذ آخر رسالة صادرة — ما ينتظر الردّ الآن */
-    private static function pendingCustomerText(WaConversation $conv): string
+    /** نصّ رسائل العميل التي تنتظر الردّ الآن: بعد العلامة، أو (البوابة القديمة) بعد آخر رسالة صادرة */
+    private static function pendingCustomerText(WaConversation $conv, WaBotSetting $s): string
     {
-        $lastOutId = (int) $conv->messages()->where('direction', 'out')->max('id');
+        $after = self::watermarkOn($s)
+            ? ReplyState::mark($conv)
+            : (int) $conv->messages()->where('direction', 'out')->max('id');
 
         return $conv->messages()
-            ->where('direction', 'in')->where('id', '>', $lastOutId)
+            ->where('direction', 'in')->where('id', '>', $after)
             ->where('msg_type', '!=', 'reaction')
             ->orderBy('id')->limit(10)->pluck('body')
             ->implode("\n");
     }
 
+    private static function watermarkOn(WaBotSetting $s): bool
+    {
+        return ReplyState::available() && $s->flag('watermark');
+    }
+
+    /** وارد ينتظر الرد: بعد العلامة، أو (البوابة القديمة) آخر رسالة في المحادثة من العميل */
+    private static function hasPendingInbound(WaConversation $conv, WaBotSetting $s): bool
+    {
+        if (self::watermarkOn($s)) {
+            return ReplyState::hasPending($conv);
+        }
+        $last = $conv->messages()->orderByDesc('id')->first();
+
+        return $last && $last->direction === 'in';
+    }
+
+    private static function rateKey(WaConversation $conv): string
+    {
+        return 'wa:rate:' . $conv->id . ':' . now()->format('YmdH');
+    }
+
+    /** بعد إرسال ناجح: العلامة إلى ما دخل السياق، وعدّاد الحد */
+    private static function served(WaConversation $conv, ReplyRun $run): void
+    {
+        ReplyState::advance($conv, $run->uptoId);
+        $key = self::rateKey($conv);
+        Cache::add($key, 0, now()->addHour());
+        Cache::increment($key);
+    }
+
+    /** رد أُسقط قبل الإرسال: صف «gate» (لا تقرؤه الإحصاءات) ولا تتحرك العلامة */
+    private static function dropped(WaConversation $conv, WaBotSetting $s, string $reason): array
+    {
+        self::recordUsage($conv->id, (string) $s->model, [
+            'calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0,
+            'tools' => [$reason], 'leaked' => false, 'ms' => 0,
+        ], 'gate');
+        WaLog::info('bot.reply.dropped', ['conv_id' => $conv->id, 'reason' => $reason]);
+
+        return self::skip($reason);
+    }
+
     /** تحويل يقرّره الكود: أداة التحويل نفسها + رسالة تأكيد يبنيها الكود بلغة العميل */
-    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason): array
+    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null): array
     {
         BotTools::execute('handoff_to_human', ['reason' => $reason], $conv);
+        if ($run) {
+            $run->escalated = true;
+        }
 
         self::recordUsage($conv->id, $s->model, [
             'calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0,
             'tools' => ['handoff_guard'], 'leaked' => false, 'ms' => 0,
         ]);
 
+        // المحادثة صارت للموظف: لا يجيب البوت لاحقاً عن رسائل كانت له
+        ReplyState::advanceToNewest($conv);
+
+        if ($run && ($drop = $run->mayDeliver($conv))) {
+            return self::dropped($conv, $s, $drop);
+        }
         $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'bot');
 
         return ['sent' => (bool) $res['ok'], 'reason' => $reason];
     }
 
     /** الفشل الآمن: العميل لا يُترك في صمت */
-    private static function failSafe(WaConversation $conv, WaBotSetting $s): array
+    private static function failSafe(WaConversation $conv, WaBotSetting $s, ?ReplyRun $run = null): array
     {
+        if ($run && ($drop = $run->mayDeliver($conv))) {
+            return self::dropped($conv, $s, $drop);
+        }
+
         $msg = $s->fail_message ?: 'عذراً، حدث خلل مؤقّت. سيتواصل معك أحد موظفينا حالاً.';
         WhatsAppChannel::sendText($conv, $msg, 'system');
 

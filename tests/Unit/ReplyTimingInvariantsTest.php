@@ -38,6 +38,12 @@ class ReplyTimingInvariantsTest extends TestCase
         $this->assertFalse($job->failOnTimeout);
     }
 
+    public function test_the_model_budget_and_final_send_fit_in_the_job(): void
+    {
+        // الإرسال إلى ميتا مهلته 25 ثانية بعد الميزانية
+        $this->assertLessThanOrEqual((new ProcessWhatsAppReply(1, 't'))->timeout, \App\Services\WhatsApp\ReplyRun::BUDGET_SECONDS + 25);
+    }
+
     public function test_lock_retry_and_debounce_outlast_the_job(): void
     {
         $job = new ProcessWhatsAppReply(1, 't');

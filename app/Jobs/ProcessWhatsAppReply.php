@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\WaConversation;
 use App\Services\WhatsApp\BotEngine;
+use App\Services\WhatsApp\ReplyRun;
 use App\Services\WhatsApp\VoiceTranscriber;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -68,6 +69,28 @@ class ProcessWhatsAppReply implements ShouldQueue
         self::dispatch($convId, $token)->delay(now()->addSeconds(2));
     }
 
+    /**
+     * إعادة احتياطية: وصل وارد أثناء التوليد ولم يدخل السياق. وظيفته المؤجّلة قائمة عادةً، وهذه تضمنها.
+     * متكررة الأمان (الرمز الأحدث يُبطل المنتظرة، والعلامة تمنع الرد المزدوج)، وثلاث مرات في 10 دقائق كحد.
+     */
+    private static function rerunIfNewer(WaConversation $conv, ReplyRun $run, array $result): void
+    {
+        if (!$result['sent'] || $run->uptoId <= 0) {
+            return;
+        }
+        $fresh = $conv->fresh();
+        $newer = $conv->messages()->where('direction', 'in')->where('msg_type', '!=', 'reaction')->where('id', '>', $run->uptoId)->exists();
+        if (!$newer || !$fresh?->botActive() || !$fresh->isWindowOpen()) {
+            return;
+        }
+
+        $key = "wa:rerun:{$conv->id}";
+        Cache::add($key, 0, now()->addMinutes(10));
+        if (Cache::increment($key) <= 3) {
+            self::schedule($conv->id);
+        }
+    }
+
     public function backoff(): array
     {
         return [10, 30];
@@ -99,9 +122,11 @@ class ProcessWhatsAppReply implements ShouldQueue
         try {
             $conv = WaConversation::find($this->conversationId);
             if ($conv) {
+                $run = ReplyRun::start($conv, $this->token);
                 // الصوتيات تُفرَّغ أولاً، فيقرؤها البوت نصّاً ضمن السياق
                 VoiceTranscriber::run($conv);
-                BotEngine::reply($conv);
+                $result = BotEngine::reply($conv, $run);
+                self::rerunIfNewer($conv, $run, $result);
             }
         } finally {
             Cache::forget(self::runningKey($this->conversationId));

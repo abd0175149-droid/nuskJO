@@ -1,0 +1,93 @@
+<?php
+
+namespace App\Services\WhatsApp;
+
+use App\Models\WaBotSetting;
+use App\Models\WaConversation;
+use App\Models\WaMessage;
+
+/**
+ * تشغيل رد واحد (وظيفة ProcessWhatsAppReply): يبدأ بلقطة، ويُسأل قبل كل إرسال هل ما زال الرد مناسباً.
+ * يُسقط الرد إن ردّ موظف أو أطفأ البوت أو أوقفه أثناء التوليد. لا يُسقطه تحويل نفّذه التشغيل نفسه،
+ * ولا رسالة أحدث من العميل (العلامة تضمن لها رداً ثانياً).
+ * تبقى نافذة ضيقة بين الفحص ونداء /messages لا يمكن إغلاقها.
+ */
+final class ReplyRun
+{
+    /** ميزانية الحلقة كلها من بداية الوظيفة، ومعها التفريغ الصوتي (ReplyTimingInvariantsTest) */
+    public const BUDGET_SECONDS = 95;
+
+    public float $startedAt;
+
+    /** أعلى وارد دخل سياق النموذج: إليه تتحرك العلامة بعد الإرسال */
+    public int $uptoId = 0;
+
+    /** نفّذ هذا التشغيل تحويلاً (handoff/request_quote/confirm_booking): تأكيده لا يُسقط */
+    public bool $escalated = false;
+
+    /** سبب قطع الحلقة (budget أو stale_*) */
+    public ?string $abort = null;
+
+    private static ?self $current = null;
+
+    public function __construct(public string $token, public int $startMaxMsgId, ?float $startedAt = null)
+    {
+        $this->startedAt = $startedAt ?? microtime(true);
+    }
+
+    public static function start(WaConversation $conv, string $token): self
+    {
+        return new self($token, (int) WaMessage::where('conversation_id', $conv->id)->max('id'));
+    }
+
+    public function remaining(): float
+    {
+        return self::BUDGET_SECONDS - (microtime(true) - $this->startedAt);
+    }
+
+    public static function current(): ?self
+    {
+        return self::$current;
+    }
+
+    public static function bind(self $run): void
+    {
+        self::$current = $run;
+    }
+
+    public static function clear(): void
+    {
+        self::$current = null;
+    }
+
+    /** سبب الإسقاط، أو null إن جاز الإرسال. يقرأ المحادثة والإعدادات من القاعدة الآن */
+    public function mayDeliver(WaConversation $conv, bool $customerPath = true): ?string
+    {
+        $fresh = $conv->fresh();
+        if (!$fresh) {
+            return 'stale_gone';
+        }
+
+        $staffReplied = WaMessage::where('conversation_id', $conv->id)
+            ->where('source', 'staff')->where('status', '!=', 'failed')
+            ->where('id', '>', $this->startMaxMsgId)->exists();
+        if ($staffReplied) {
+            return 'stale_takeover';
+        }
+
+        if (!$this->escalated) {
+            if (!$fresh->bot_enabled) {
+                return 'stale_disabled';
+            }
+            if ($fresh->bot_paused_until && $fresh->bot_paused_until->isFuture()) {
+                return 'stale_paused';
+            }
+        }
+
+        if ($customerPath && !WaBotSetting::current()->botReady()) {
+            return 'stale_bot_off';
+        }
+
+        return null;
+    }
+}
