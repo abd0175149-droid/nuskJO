@@ -84,7 +84,7 @@ class BackupController extends Controller
         }
 
         Setting::where('key', BackupSafeMode::REVIEW_KEY)->delete();
-        AuditLog::log('backup.restore_ack', 'BackupRun', 0, (string) ($review['snapshot'] ?? ''), [
+        AuditLog::log(\App\Enums\AuditAction::BackupRestoreAck, 'BackupRun', null, (string) ($review['snapshot'] ?? ''), [
             'pre_restore' => $review['pre_restore'] ?? null,
             'restored_at' => $review['restored_at'] ?? null,
         ]);

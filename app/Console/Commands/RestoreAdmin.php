@@ -43,17 +43,9 @@ class RestoreAdmin extends Command
             $user->forceFill(['password' => Hash::make($password)])->save();
         }
 
-        AuditLog::create([
-            'user_id' => null,
-            'user_name' => 'console',
-            'action' => 'user.restore_admin',
-            'entity_type' => 'User',
-            'entity_id' => $user->id,
-            'entity_label' => $user->name,
-            'changes' => ['reset_password' => (bool) $password],
-            'ip_address' => null,
-            'created_at' => now(),
-        ]);
+        \App\Support\AuditActor::as('system', 'artisan:'.$this->getName(), fn () => AuditLog::log(
+            \App\Enums\AuditAction::UserRestoreAdmin, 'User', $user->id, $user->name, ['reset_password' => (bool) $password],
+        ));
 
         $this->info("أصبح {$user->email} مديراً نشطاً.");
         if ($password) {

@@ -48,6 +48,9 @@ services:
       # E08: فحص /up الحقيقي وفحوص ميتا. مطفآن حتى يُضبطا في /opt/nuskJO/.env (تعويض compose)، مرحلةً مرحلة (docs/RELEASE.md)
       - OPS_HEALTH_CHECKS=${OPS_HEALTH_CHECKS:-false}
       - WA_META_CHECKS=${WA_META_CHECKS:-false}
+      # E09: أحداث التدقيق غير المالية وصفحة /audit-logs (مطفآن حتى يُضبطا في /opt/nuskJO/.env)
+      - AUDIT_EXTENDED=${AUDIT_EXTENDED:-false}
+      - AUDIT_PAGE=${AUDIT_PAGE:-false}
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database

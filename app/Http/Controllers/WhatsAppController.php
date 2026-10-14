@@ -506,7 +506,7 @@ class WhatsAppController extends Controller
         $settings->update($data);
 
         // أسماء الحقول فقط، لا قيمة أي سر
-        \App\Models\AuditLog::log('update', 'wa_bot_settings', $settings->id, 'إعدادات البوت', ['changed' => array_keys($data)]);
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::Update, 'wa_bot_settings', $settings->id, 'إعدادات البوت', ['changed' => array_keys($data)]);
 
         return back()->with('success', 'تم حفظ إعدادات البوت');
     }

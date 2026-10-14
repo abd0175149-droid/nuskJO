@@ -23,7 +23,7 @@ class RequirePermission
         }
 
         $enforced = !Authz::logOnly() || array_intersect($abilities, config('authz.always_enforce', []));
-        Authz::record($request, $enforced ? 'authz.denied' : 'authz.would_deny', ['perm' => implode('|', $abilities)]);
+        Authz::record($request, $enforced ? \App\Enums\AuditAction::AuthzDenied : \App\Enums\AuditAction::AuthzWouldDeny, ['perm' => implode('|', $abilities)]);
 
         abort_if($enforced, 403);
 

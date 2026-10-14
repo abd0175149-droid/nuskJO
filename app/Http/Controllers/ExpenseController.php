@@ -121,7 +121,7 @@ class ExpenseController extends Controller
                 'original_values' => $expense->getOriginal(),
             ]);
 
-            \App\Models\AuditLog::log('start_edit', 'expense', $expense->id, $expense->expense_number);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::StartEdit, 'expense', $expense->id, $expense->expense_number);
         });
 
         return back()->with('success', "تم فتح المصروف {$expense->expense_number} للتعديل");

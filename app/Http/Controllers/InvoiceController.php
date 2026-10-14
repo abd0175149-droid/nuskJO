@@ -485,7 +485,7 @@ class InvoiceController extends Controller
             $v = $request->validate($this->offerRules(), $this->offerMessages());
             $invoice = $this->saveOfferInvoice($v, null);
             try { \App\Services\NotificationService::invoiceCreated($invoice); } catch (\Throwable $e) {}
-            AuditLog::log('create', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::Create, 'invoice', $invoice->id, $invoice->invoice_number);
 
             return redirect()->back()->with('success', "تم إنشاء فاتورة العرض {$invoice->invoice_number} وحُجزت مقاعدها ({$invoice->offer_seats})");
         }
@@ -646,7 +646,7 @@ class InvoiceController extends Controller
             return back()->with('error', 'تعذّر اعتماد الفاتورة محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
         }
 
-        AuditLog::log('approve', 'invoice', $invoice->id, $invoice->invoice_number);
+        AuditLog::log(\App\Enums\AuditAction::Approve, 'invoice', $invoice->id, $invoice->invoice_number);
         return back()->with('success', "تم اعتماد الفاتورة {$invoice->invoice_number}");
     }
 
@@ -706,7 +706,7 @@ class InvoiceController extends Controller
                 ->where('reference_id', $invoice->id)->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل الفاتورة'); } catch (\Exception $e) {}
 
-            AuditLog::log('start_edit', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::StartEdit, 'invoice', $invoice->id, $invoice->invoice_number);
         });
 
         return back()->with('success', "تم فتح الفاتورة {$invoice->invoice_number} للتعديل");
@@ -721,7 +721,7 @@ class InvoiceController extends Controller
         if ($invoice->offer_id) {
             $v = $request->validate($this->offerRules(), $this->offerMessages());
             $this->saveOfferInvoice($v, $invoice);
-            AuditLog::log('update', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::Update, 'invoice', $invoice->id, $invoice->invoice_number);
 
             return redirect()->back()->with('success', "تم تعديل الفاتورة {$invoice->invoice_number} وإرسالها للاعتماد");
         }
@@ -802,7 +802,7 @@ class InvoiceController extends Controller
                 ]);
             }
 
-            AuditLog::log('update', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::Update, 'invoice', $invoice->id, $invoice->invoice_number);
         });
 
         return redirect()->back()->with('success', "تم تعديل الفاتورة {$invoice->invoice_number} وإرسالها للاعتماد");

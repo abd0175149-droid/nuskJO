@@ -137,7 +137,7 @@ class ReceiptController extends Controller
                 ->where('reference_id', $receipt->id)->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل سند القبض'); } catch (\Exception $e) {}
 
-            \App\Models\AuditLog::log('start_edit', 'receipt', $receipt->id, $receipt->receipt_number);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::StartEdit, 'receipt', $receipt->id, $receipt->receipt_number);
         });
 
         return back()->with('success', "تم فتح سند القبض {$receipt->receipt_number} للتعديل");

@@ -64,7 +64,7 @@ class UserController extends Controller
             'is_active' => $request->boolean('is_active', true),
         ])->save();
 
-        AuditLog::log('user.create', 'User', $user->id, $user->name, ['role' => $role->slug]);
+        AuditLog::log(\App\Enums\AuditAction::UserCreate, 'User', $user->id, $user->name, ['role' => $role->slug]);
 
         return back()->with('success', 'تم إضافة الموظف بنجاح');
     }
@@ -119,13 +119,13 @@ class UserController extends Controller
         }
 
         if ($roleChanged) {
-            AuditLog::log('user.role_change', 'User', $user->id, $user->name, ['from' => $before['role_id'], 'to' => $newRoleId]);
+            AuditLog::log(\App\Enums\AuditAction::UserRoleChange, 'User', $user->id, $user->name, ['from' => $before['role_id'], 'to' => $newRoleId]);
         }
         if ($activeChanged) {
-            AuditLog::log($newActive ? 'user.activate' : 'user.deactivate', 'User', $user->id, $user->name, ['from' => $before['is_active'], 'to' => $newActive]);
+            AuditLog::log($newActive ? \App\Enums\AuditAction::UserActivate : \App\Enums\AuditAction::UserDeactivate, 'User', $user->id, $user->name, ['from' => $before['is_active'], 'to' => $newActive]);
         }
         if ($request->filled('password')) {
-            AuditLog::log('user.password_reset', 'User', $user->id, $user->name);
+            AuditLog::log(\App\Enums\AuditAction::UserPasswordReset, 'User', $user->id, $user->name);
         }
         if (($activeChanged && ! $newActive) || $request->filled('password')) {
             SessionRevoker::revoke($user);
@@ -147,7 +147,7 @@ class UserController extends Controller
 
         $user->update(['password' => Hash::make($request->password)]);
         SessionRevoker::revoke($user);
-        AuditLog::log('user.password_reset', 'User', $user->id, $user->name);
+        AuditLog::log(\App\Enums\AuditAction::UserPasswordReset, 'User', $user->id, $user->name);
 
         return back()->with('success', "تمت إعادة تعيين كلمة مرور {$user->name} بنجاح");
     }
@@ -175,7 +175,7 @@ class UserController extends Controller
 
         SessionRevoker::revokeDeleted($user->id);
 
-        AuditLog::log('user.delete', 'User', $user->id, $label);
+        AuditLog::log(\App\Enums\AuditAction::UserDelete, 'User', $user->id, $label);
 
         return back()->with('success', 'تم حذف حساب الموظف');
     }

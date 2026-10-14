@@ -50,7 +50,7 @@ class UpdateSettingsRequest extends FormRequest
         }
 
         if ($dropped) {
-            AuditLog::log('settings.dropped_keys', 'Setting', 0, null, ['keys' => array_slice(array_values(array_unique($dropped)), 0, 50)]);
+            AuditLog::log(\App\Enums\AuditAction::SettingsDroppedKeys, 'Setting', null, null, ['keys' => array_slice(array_values(array_unique($dropped)), 0, 50)]);
         }
 
         $this->merge(['values' => $values]);

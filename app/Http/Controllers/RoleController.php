@@ -84,7 +84,7 @@ class RoleController extends Controller
                 $role->permissions()->sync($request->permissions);
             }
 
-            AuditLog::log('role.create', 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
+            AuditLog::log(\App\Enums\AuditAction::RoleCreate, 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
         });
 
         return back()->with('success', 'تم إنشاء الصلاحية بنجاح');
@@ -132,7 +132,7 @@ class RoleController extends Controller
                 $role->permissions()->detach();
             }
 
-            AuditLog::log('role.update', 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
+            AuditLog::log(\App\Enums\AuditAction::RoleUpdate, 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
         });
 
         return back()->with('success', 'تم تحديث الصلاحية بنجاح');
@@ -152,7 +152,7 @@ class RoleController extends Controller
             return back()->with('error', 'لا يمكن حذف هذا الدور لوجود مستخدمين مرتبطين به');
         }
 
-        AuditLog::log('role.delete', 'Role', $role->id, $role->name);
+        AuditLog::log(\App\Enums\AuditAction::RoleDelete, 'Role', $role->id, $role->name);
         $role->delete();
         return back()->with('success', 'تم حذف الصلاحية');
     }

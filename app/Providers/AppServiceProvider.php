@@ -97,7 +97,7 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\RateLimiter::for('login', function (\Illuminate\Http\Request $request) {
             $email = \Illuminate\Support\Str::lower((string) $request->input('email'));
             $locked = function () use ($request, $email) {
-                \App\Models\AuditLog::log('auth.lockout', 'User', 0, self::maskEmail($email), ['ip' => $request->ip()]);
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::AuthLockout, 'User', null, self::maskEmail($email), ['ip' => $request->ip()]);
 
                 return back()->withErrors(['email' => 'محاولات دخول كثيرة. انتظر دقيقة ثم أعد المحاولة.'])->onlyInput('email');
             };

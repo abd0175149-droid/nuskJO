@@ -26,17 +26,19 @@ class Authz
      * سجل تدقيق مقلَّص: مرة في الساعة لكل مستخدم ومسار وفعل (استطلاع الصندوق كل 15 ثانية لا يُغرق السجل).
      * لا جسم طلب ولا بيانات عميل.
      */
-    public static function record(Request $request, string $action, array $extra): void
+    public static function record(Request $request, \App\Enums\AuditAction $action, array $extra): void
     {
         $key = self::routeKey($request);
         $uid = $request->user()?->id ?? 0;
+        // رفض سُجّل هنا: لا يكرره صف access.denied في AssignRequestId
+        $request->attributes->set('audit.denied_recorded', true);
 
-        if (!Cache::add("authz:{$action}:{$uid}:".md5($key).':'.now()->format('YmdH'), true, 3600)) {
+        if (!Cache::add("authz:{$action->value}:{$uid}:".md5($key).':'.now()->format('YmdH'), true, 3600)) {
             return;
         }
 
         try {
-            AuditLog::log($action, 'route', 0, $key, $extra + [
+            AuditLog::log($action, 'route', null, $key, $extra + [
                 'method' => $request->method(),
                 'role' => $request->user()?->role?->slug,
                 'mode' => config('authz.mode'),

@@ -23,7 +23,7 @@ class EnsureRoutePermission
             return $next($request);
         }
 
-        Authz::record($request, 'authz.unmapped', []);
+        Authz::record($request, \App\Enums\AuditAction::AuthzUnmapped, []);
         abort_unless(Authz::logOnly(), 403);
 
         return $next($request);

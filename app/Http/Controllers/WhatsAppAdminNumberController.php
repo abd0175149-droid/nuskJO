@@ -65,7 +65,7 @@ class WhatsAppAdminNumberController extends Controller
         $data['created_by'] = auth()->id();
         $n = WaAdminNumber::create($data);
 
-        AuditLog::log('create', 'wa_admin_number', $n->id, $n->name, ['permissions' => $n->permissions]);
+        AuditLog::log(\App\Enums\AuditAction::Create, 'wa_admin_number', $n->id, $n->name, ['permissions' => $n->permissions]);
 
         return back()->with('success', "أُضيف رقم الإدارة «{$n->name}»");
     }
@@ -77,7 +77,7 @@ class WhatsAppAdminNumberController extends Controller
         $before = $adminNumber->only(['phone', 'name', 'permissions', 'is_active']);
         $adminNumber->update($this->validated($request, $adminNumber->id));
 
-        AuditLog::log('update', 'wa_admin_number', $adminNumber->id, $adminNumber->name, [
+        AuditLog::log(\App\Enums\AuditAction::Update, 'wa_admin_number', $adminNumber->id, $adminNumber->name, [
             'before' => $before, 'after' => $adminNumber->only(['phone', 'name', 'permissions', 'is_active']),
         ]);
 
@@ -88,7 +88,7 @@ class WhatsAppAdminNumberController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
-        AuditLog::log('delete', 'wa_admin_number', $adminNumber->id, $adminNumber->name);
+        AuditLog::log(\App\Enums\AuditAction::Delete, 'wa_admin_number', $adminNumber->id, $adminNumber->name);
         $adminNumber->delete();
 
         return back()->with('success', 'حُذف رقم الإدارة — صار صاحبه يُخدم كأي عميل');

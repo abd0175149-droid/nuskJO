@@ -145,7 +145,7 @@ class OfferSettlementService
             }
 
             DB::table('offers')->where('id', $o->id)->update(['settlement_status' => 'approved']);
-            AuditLog::log('settle', 'offer', $o->id, $o->title);
+            AuditLog::log(\App\Enums\AuditAction::Settle, 'offer', $o->id, $o->title);
 
             return $settlement;
         });

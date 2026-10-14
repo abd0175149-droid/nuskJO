@@ -34,7 +34,7 @@ class RequestIdTest extends TestCase
         $this->actingAs(User::factory()->create());
         Context::add('request_id', 'req-12345678');
 
-        $row = AuditLog::log('update', 'wa_bot_settings', 1, 'إعدادات البوت', ['changed' => ['model']]);
+        $row = AuditLog::log(\App\Enums\AuditAction::Update, 'wa_bot_settings', 1, 'إعدادات البوت', ['changed' => ['model']]);
 
         $this->assertSame('req-12345678', $row->fresh()->request_id);
     }

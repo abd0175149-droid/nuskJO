@@ -93,7 +93,7 @@ class DisbursementController extends Controller
             DB::transaction(function () use ($disbursement) {
                 $disbursement->approve(auth()->user());
 
-                AuditLog::log('approve', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
+                AuditLog::log(\App\Enums\AuditAction::Approve, 'disbursement', $disbursement->id, $disbursement->disbursement_number);
 
                 // قيد محاسبي إلزامي — فشله يُلغي الاعتماد بالكامل
                 AccountingService::recordDisbursement($disbursement);
@@ -121,7 +121,7 @@ class DisbursementController extends Controller
 
         $request->validate(['rejection_reason' => 'required|string|max:500']);
         $disbursement->reject(auth()->user(), $request->rejection_reason);
-        AuditLog::log('reject', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
+        AuditLog::log(\App\Enums\AuditAction::Reject, 'disbursement', $disbursement->id, $disbursement->disbursement_number);
 
         try { \App\Services\NotificationService::operationRejected($disbursement, 'سند صرف', $disbursement->disbursement_number); } catch (\Throwable $e) {}
 
@@ -146,7 +146,7 @@ class DisbursementController extends Controller
                 ->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل سند الصرف'); } catch (\Exception $e) { \Log::error('Reverse Disbursement: ' . $e->getMessage()); }
 
-            AuditLog::log('start_edit', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
+            AuditLog::log(\App\Enums\AuditAction::StartEdit, 'disbursement', $disbursement->id, $disbursement->disbursement_number);
         });
 
         return back()->with('success', "تم فتح سند الصرف {$disbursement->disbursement_number} للتعديل");

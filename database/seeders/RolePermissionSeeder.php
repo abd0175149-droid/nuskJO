@@ -52,6 +52,7 @@ class RolePermissionSeeder extends Seeder
 
             // النسخ الاحتياطي (للمدير وحده افتراضياً؛ لا تُمنح لأي دور أدناه)
             'backups' => ['view', 'run', 'restore_ack'],
+            'audit' => ['view', 'export'],
 
             // المحاسبة وإدارة الأدوار
             'accounting' => ['view', 'manage', 'close'],
@@ -65,7 +66,7 @@ class RolePermissionSeeder extends Seeder
             'whatsapp' => 'الواتساب', 'offers' => 'العروض', 'quotes' => 'طلبات التسعير',
             'users' => 'المستخدمين', 'employees' => 'الموظفين', 'attendance' => 'الحضور',
             'leaves' => 'الإجازات', 'advances' => 'السلف', 'payroll' => 'الرواتب',
-            'hr_reports' => 'تقارير HR', 'backups' => 'النسخ الاحتياطي',
+            'hr_reports' => 'تقارير HR', 'backups' => 'النسخ الاحتياطي', 'audit' => 'سجل التدقيق',
             'accounting' => 'المحاسبة', 'roles' => 'الأدوار والصلاحيات',
         ];
 
@@ -78,7 +79,7 @@ class RolePermissionSeeder extends Seeder
             'price' => 'التسعير والإرسال', 'view_cost' => 'عرض تكاليف',
             'run' => 'تشغيل نسخة الآن', 'restore_ack' => 'اعتماد مراجعة ما بعد الاستعادة',
             'manage' => 'إدارة', 'close' => 'إقفال الفترات والسنة',
-            'admin_chats' => 'محادثات أرقام الإدارة',
+            'admin_chats' => 'محادثات أرقام الإدارة', 'export' => 'تصدير',
         ];
 
         $allPermissions = [];

@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\AuditAction;
+use App\Models\AuditLog;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -34,6 +36,24 @@ class AssignRequestId
         $response = $next($request);
         $response->headers->set('X-Request-ID', $id);
 
+        if ($response->getStatusCode() === 403) {
+            $this->auditDenied($request);
+        }
+
         return $response;
+    }
+
+    /**
+     * رد 403 (abort_unless في المتحكمات): صف access.denied بالعيّنات لكل مستخدم ومسار. ما سجّله حارس الصلاحيات
+     * (authz.*) لا يُكرَّر، والويبهوك خارج هذا (توقيعه المرفوض له حدثه).
+     */
+    private function auditDenied(Request $request): void
+    {
+        if ($request->attributes->get('audit.denied_recorded') || $request->is('api/whatsapp/webhook')) {
+            return;
+        }
+        $route = $request->route()?->getName() ?? $request->route()?->uri() ?? $request->path();
+        AuditLog::sampled(AuditAction::AccessDenied, ($request->user()?->id ?? $request->ip()).'|'.$route,
+            'route', null, mb_substr((string) $route, 0, 100), ['method' => $request->method()]);
     }
 }

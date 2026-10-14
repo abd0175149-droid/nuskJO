@@ -120,7 +120,7 @@ class EmployeeController extends Controller
                     'role_id' => $validated['new_user_role_id'],
                     'is_active' => true,
                 ])->save();
-                \App\Models\AuditLog::log('user.create', 'User', $user->id, $user->name, ['via' => 'employee']);
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::UserCreate, 'User', $user->id, $user->name, ['via' => 'employee']);
                 $validated['user_id'] = $user->id;
             }
 

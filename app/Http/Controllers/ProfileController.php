@@ -49,7 +49,7 @@ class ProfileController extends Controller
         $user->forceFill(['password' => Hash::make($request->password)])->save();
         Auth::logoutOtherDevices($request->password);   // يعيد ختم كوكي «تذكرني» لهذا الجهاز إن وُجد
         \App\Services\Security\SessionRevoker::revoke($user, keepCurrent: true, devices: false);
-        \App\Models\AuditLog::log('user.password_change', 'User', $user->id, $user->name);
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::UserPasswordChange, 'User', $user->id, $user->name);
 
         return back()->with('success', 'تم تغيير كلمة المرور بنجاح');
     }

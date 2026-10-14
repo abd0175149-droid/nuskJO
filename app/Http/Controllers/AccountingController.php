@@ -621,7 +621,7 @@ class AccountingController extends Controller
             $entry->delete();
         });
 
-        \App\Models\AuditLog::log('delete', 'journal_entry', $entry->id, $entryNumber);
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'journal_entry', $entry->id, $entryNumber);
 
         return back()->with('success', "تم حذف القيد {$entryNumber} وعكس أثره على الأرصدة بنجاح");
     }

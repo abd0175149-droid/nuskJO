@@ -56,7 +56,7 @@ class WhatsAppKnowledgeController extends Controller
             'updated_by_user_id' => auth()->id(),
         ]);
 
-        AuditLog::log('create', 'wa_knowledge_entry', $e->id, $e->title);
+        AuditLog::log(\App\Enums\AuditAction::Create, 'wa_knowledge_entry', $e->id, $e->title);
 
         return back()->with('success', "أُضيفت المعلومة «{$e->title}»");
     }
@@ -72,7 +72,7 @@ class WhatsAppKnowledgeController extends Controller
             'updated_by_admin_id' => null,
         ]);
 
-        AuditLog::log('update', 'wa_knowledge_entry', $entry->id, $entry->title, ['before' => $before]);
+        AuditLog::log(\App\Enums\AuditAction::Update, 'wa_knowledge_entry', $entry->id, $entry->title, ['before' => $before]);
 
         return back()->with('success', "حُفظت المعلومة «{$entry->title}»");
     }
@@ -82,7 +82,7 @@ class WhatsAppKnowledgeController extends Controller
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
         // النسخة الكاملة في سجلّ التدقيق — تُستعاد منه عند الحاجة
-        AuditLog::log('delete', 'wa_knowledge_entry', $entry->id, $entry->title, $entry->only(['title', 'content', 'is_active', 'sort_order']));
+        AuditLog::log(\App\Enums\AuditAction::Delete, 'wa_knowledge_entry', $entry->id, $entry->title, $entry->only(['title', 'content', 'is_active', 'sort_order']));
         $entry->delete();
 
         return back()->with('success', 'حُذفت المعلومة');
