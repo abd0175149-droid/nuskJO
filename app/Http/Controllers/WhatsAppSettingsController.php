@@ -16,6 +16,7 @@ use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\ChannelDoctor;
 use App\Services\WhatsApp\GraphVersions;
 use App\Services\WhatsApp\IdentityMode;
+use App\Services\WhatsApp\LlmCircuitBreaker;
 use App\Services\WhatsApp\Llm\LlmFactory;
 use App\Services\WhatsApp\MetaHealth;
 use App\Services\WhatsApp\Settings\SettingsSchema;
@@ -37,7 +38,7 @@ use Inertia\Inertia;
  */
 class WhatsAppSettingsController extends Controller
 {
-    private const SECRETS = ['wa_token' => 'رمز ميتا', 'wa_app_secret' => 'App Secret', 'api_key' => 'مفتاح المزوّد'];
+    private const SECRETS = ['wa_token' => 'رمز ميتا', 'wa_app_secret' => 'App Secret', 'api_key' => 'مفتاح المزوّد', 'fallback_api_key' => 'مفتاح المزوّد الاحتياطي'];
 
     public function show()
     {
@@ -96,10 +97,28 @@ class WhatsAppSettingsController extends Controller
             $changes += ['wa_waba_id' => null, 'wa_display_phone' => null];
         }
 
+        // الاحتياطي يجب أن يختلف عن الأساسي (مزوّداً أو نموذجاً)، وإلا لا معنى له
+        $fallbackProvider = $changes['fallback_provider'] ?? $settings->fallback_provider;
+        if ($fallbackProvider !== null && (array_key_exists('fallback_provider', $changes) || array_key_exists('fallback_model', $changes))) {
+            $fallbackModel = $changes['fallback_model'] ?? $settings->fallback_model;
+            if (blank($fallbackModel)) {
+                throw ValidationException::withMessages(['changes.fallback_model' => 'حدّد نموذج المزوّد الاحتياطي']);
+            }
+            if ($fallbackProvider === ($changes['provider'] ?? $settings->provider) && $fallbackModel === ($changes['model'] ?? $settings->model)) {
+                throw ValidationException::withMessages(['changes.fallback_model' => 'الاحتياطي يطابق الأساسي — اختر نموذجاً أو مزوّداً آخر']);
+            }
+        }
+
+        $before = ['provider' => $settings->provider, 'model' => $settings->model];
         try {
             $fresh = SettingsWriter::apply($changes, (int) $data['version'], AuditAction::WaSettingsUpdate);
         } catch (StaleSettingsException $e) {
             return response()->json(['error' => 'stale', 'message' => 'غيّر غيرك الإعدادات بعد فتحك الصفحة — راجع الحقول المتعارضة ثم احفظ', 'current_version' => $e->currentVersion], 409);
+        }
+        // مزوّد أو نموذج جديد: حادثة القديم لا تخص الجديد (E12)
+        if ($before !== ['provider' => $fresh->provider, 'model' => $fresh->model]) {
+            LlmCircuitBreaker::forceClose((string) $before['provider'], auth()->id(), 'settings_changed');
+            LlmCircuitBreaker::forceClose((string) $fresh->provider, auth()->id(), 'settings_changed');
         }
 
         return response()->json(['version' => (int) $fresh->settings_version, 'settings' => $this->settings($fresh)]);
@@ -178,6 +197,12 @@ class WhatsAppSettingsController extends Controller
 
         $fresh = SettingsWriter::apply([$secret => $data['value'], "{$secret}_rotated_at" => now()], null, AuditAction::WaSecretSet,
             ['field' => $secret, 'reason' => $data['reason'], 'note' => $data['note'] ?? null], label: self::SECRETS[$secret]);
+        // مفتاح جديد: قد يكون سبب الحادثة نفسه (E12)
+        if ($secret === 'api_key') {
+            LlmCircuitBreaker::forceClose((string) $fresh->provider, auth()->id(), 'settings_changed');
+        } elseif ($secret === 'fallback_api_key' && $fresh->fallback_provider) {
+            LlmCircuitBreaker::forceClose((string) $fresh->fallback_provider, auth()->id(), 'settings_changed');
+        }
 
         return response()->json([
             'has' => true,
@@ -282,11 +307,12 @@ class WhatsAppSettingsController extends Controller
             'secrets' => collect(self::SECRETS)->map(fn ($label, $key) => [
                 'label' => $label,
                 'has' => !empty(match ($key) {
-                    'wa_token' => $s->token(), 'wa_app_secret' => $s->appSecret(), default => $s->llmKey()
+                    'wa_token' => $s->token(), 'wa_app_secret' => $s->appSecret(), 'fallback_api_key' => $s->fallbackKey(), default => $s->llmKey()
                 }),
-                'source' => $sources[$key]['source'],
-                'env_var' => $sources[$key]['env_var'],
-                'decrypt_ok' => $sources[$key]['decrypt_ok'],
+                // مفتاح الاحتياطي بلا متغير بيئة خاص به (البيئة لمزوّده تُقرأ في fallbackKey)
+                'source' => $sources[$key]['source'] ?? (filled($s->getAttributes()[$key] ?? null) ? 'db' : 'unset'),
+                'env_var' => $sources[$key]['env_var'] ?? null,
+                'decrypt_ok' => $sources[$key]['decrypt_ok'] ?? $s->decryptOk($key),
                 'rotated_at' => $s->{"{$key}_rotated_at"}?->toIso8601String(),
             ])->all(),
             'verify' => [

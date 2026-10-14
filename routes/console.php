@@ -217,6 +217,37 @@ Artisan::command('whatsapp:identity-mode {mode?}', function () {
     return 0;
 })->purpose('عرض أو تبديل التعامل مع عميل بلا رقم: whatsapp:identity-mode [store|staff|full]');
 
+// قاطع مزوّد الذكاء (E12): محاولة half-open بنداء صناعي بلا بيانات عملاء، فيُغلق القاطع ويصل إشعار العودة
+// حتى لو لم يراسل أحد. يعمل فقط والقاطع مفتوح وانتهت مدته ولا محاولة جارية
+Artisan::command('whatsapp:llm-probe', function () {
+    $s = \App\Models\WaBotSetting::current();
+    $provider = (string) $s->provider;
+    if (\App\Services\WhatsApp\LlmCircuitBreaker::mode($s) === 'off' || !$s->llmKey()) {
+        return 0;
+    }
+    $until = \App\Services\WhatsApp\LlmCircuitBreaker::openUntil($provider);
+    if ($until === null || $until->isFuture() || \App\Services\WhatsApp\LlmCircuitBreaker::allow($provider) !== \App\Services\WhatsApp\LlmCircuitBreaker::PROBE) {
+        return 0;
+    }
+    try {
+        $llm = \App\Services\WhatsApp\Llm\LlmFactory::make($provider);
+        $llm->generate((string) $s->llmKey(), (string) $s->model, ['ping'], $llm->buildHistory([['role' => 'user', 'text' => 'ping']]), [], 15);
+        \App\Services\WhatsApp\LlmCircuitBreaker::recordSuccess($provider);
+        $this->info('المزوّد عاد');
+    } catch (\Throwable $e) {
+        $classified = \App\Services\WhatsApp\Llm\LlmErrorClassifier::fromThrowable($provider, $e)
+            ?? new \App\Services\WhatsApp\Llm\Exceptions\LlmUnavailable($provider, 'probe failed');
+        \App\Services\WhatsApp\LlmCircuitBreaker::recordFailure($provider, $classified);
+        $this->warn('المزوّد ما زال متعطّلاً: '.$classified->kind());
+    }
+
+    return 0;
+})->purpose('محاولة half-open لقاطع مزوّد الذكاء (E12)');
+
+Schedule::command('whatsapp:llm-probe')
+    ->everyTwoMinutes()
+    ->withoutOverlapping(5);
+
 Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();

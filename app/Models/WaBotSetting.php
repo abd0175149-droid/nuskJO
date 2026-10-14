@@ -23,10 +23,13 @@ class WaBotSetting extends Model
         // E10: settings_version خارج القائمة عمداً (يرفعه SettingsWriter وحده)
         'wa_verify_token_hash', 'wa_verify_token_rotated_at', 'wa_token_rotated_at', 'wa_app_secret_rotated_at', 'api_key_rotated_at',
         'wa_suspended_at', 'wa_suspended_by', 'wa_suspended_source', 'wa_suspended_reason', 'feature_flags',
+        // E12: قاطع المزوّد والمزوّد الاحتياطي
+        'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes',
+        'fallback_provider', 'fallback_model', 'fallback_api_key', 'fallback_api_key_rotated_at',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
-    protected $hidden = ['wa_token', 'wa_app_secret', 'api_key', 'wa_verify_token', 'wa_verify_token_hash'];
+    protected $hidden = ['wa_token', 'wa_app_secret', 'api_key', 'wa_verify_token', 'wa_verify_token_hash', 'fallback_api_key'];
 
     /** أعلام موثوقية الرد (E07) وقيمها الافتراضية؛ تُبدَّل وقت التشغيل بـ whatsapp:reliability */
     public const RELIABILITY_FLAGS = [
@@ -48,6 +51,8 @@ class WaBotSetting extends Model
         'wa_token' => 'encrypted',
         'wa_app_secret' => 'encrypted',
         'api_key' => 'encrypted',
+        'fallback_api_key' => 'encrypted',
+        'fallback_api_key_rotated_at' => 'datetime',
         'feature_flags' => 'array',
         'wa_verify_token_rotated_at' => 'datetime',
         'wa_token_rotated_at' => 'datetime',
@@ -183,6 +188,25 @@ class WaBotSetting extends Model
     public function llmKey(): ?string
     {
         return self::envKeyFor($this->provider) ?: $this->secret('api_key');
+    }
+
+    /**
+     * المزوّد الاحتياطي (E12): مفتاح بيئة مزوّده أولاً ثم المحفوظ. جاهز إن اكتمل واختلف عن الأساسي
+     * (نموذج Gemini آخر بالمفتاح نفسه لا يضيف معالِجاً جديداً للبيانات).
+     */
+    public function fallbackKey(): ?string
+    {
+        if (!$this->fallback_provider) {
+            return null;
+        }
+
+        return self::envKeyFor($this->fallback_provider) ?: ($this->secret('fallback_api_key') ?: null);
+    }
+
+    public function fallbackReady(): bool
+    {
+        return filled($this->fallback_provider) && filled($this->fallback_model) && filled($this->fallbackKey())
+            && [$this->fallback_provider, $this->fallback_model] !== [$this->provider, $this->model];
     }
 
     public function envKeyPresent(): bool

@@ -45,6 +45,19 @@ final class SettingsSchema
         'fail_handoff' => ['type' => 'bool', 'default' => true, 'patchable' => true, 'group' => 'failure', 'ui' => 'custom', 'label' => 'تحويل لموظف عند الخلل'],
         // خريطة أداة => تشغيل. مفتاح غائب = الأداة مفعّلة (WaBotSetting::toolEnabled)
         'tools_config' => ['type' => 'map', 'keys' => 'tools', 'nullable' => true, 'default' => null, 'patchable' => true, 'group' => 'tools', 'ui' => 'custom', 'label' => 'أدوات البوت'],
+        // قاطع مزوّد الذكاء (E12): off لا يحسب، shadow يحسب ويسجّل ولا يحجب، on يحوّل للموظفين أثناء العطل
+        'breaker_mode' => ['type' => 'enum', 'values' => 'breaker_modes', 'default' => 'shadow', 'patchable' => true, 'group' => 'failure', 'ui' => 'custom', 'label' => 'وضع قاطع المزوّد'],
+        'breaker_threshold' => ['type' => 'int', 'min' => 2, 'max' => 10, 'default' => 3, 'patchable' => true, 'group' => 'failure', 'ui' => 'custom',
+            'label' => 'إخفاقات متتالية تفتح القاطع'],
+        'breaker_window_minutes' => ['type' => 'int', 'min' => 1, 'max' => 30, 'default' => 5, 'patchable' => true, 'group' => 'failure', 'ui' => 'custom',
+            'label' => 'نافذة عدّ الإخفاقات (دقائق)'],
+        'breaker_open_minutes' => ['type' => 'int', 'min' => 2, 'max' => 120, 'default' => 10, 'patchable' => true, 'group' => 'failure', 'ui' => 'custom',
+            'label' => 'مدة وضع التحويل (دقائق)'],
+        // مزوّد احتياطي اختياري (معطّل حتى يُضبط): مزوّد آخر يُذكر في صفحة الخصوصية تلقائياً
+        'fallback_provider' => ['type' => 'enum', 'values' => 'providers', 'nullable' => true, 'default' => null, 'patchable' => true, 'sensitive' => true,
+            'group' => 'ai', 'ui' => 'custom', 'label' => 'المزوّد الاحتياطي'],
+        'fallback_model' => ['type' => 'string', 'regex' => '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', 'nullable' => true, 'default' => null, 'patchable' => true,
+            'group' => 'ai', 'ui' => 'custom', 'label' => 'نموذج الاحتياطي'],
         'model_prices' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'أسعار النموذج (صفحة التحليلات)'],
         'cache_discount' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'خصم الكاش (صفحة التحليلات)'],
 
@@ -52,6 +65,7 @@ final class SettingsSchema
         'wa_token' => ['type' => 'secret', 'env' => 'services.whatsapp.token', 'env_var' => 'WA_TOKEN', 'group' => 'meta', 'ui' => 'custom', 'label' => 'رمز ميتا (WA_TOKEN)'],
         'wa_app_secret' => ['type' => 'secret', 'env' => 'services.whatsapp.app_secret', 'env_var' => 'WA_APP_SECRET', 'group' => 'meta', 'ui' => 'custom', 'label' => 'App Secret'],
         'api_key' => ['type' => 'secret', 'env' => 'llm', 'env_var' => 'GOOGLE_API_KEY | ANTHROPIC_API_KEY', 'group' => 'ai', 'ui' => 'custom', 'label' => 'مفتاح المزوّد'],
+        'fallback_api_key' => ['type' => 'secret', 'group' => 'ai', 'ui' => 'custom', 'label' => 'مفتاح المزوّد الاحتياطي'],
         'wa_verify_token' => ['type' => 'secret', 'env' => 'services.whatsapp.verify_token', 'env_var' => 'WA_WEBHOOK_VERIFY_TOKEN', 'group' => 'meta', 'ui' => 'custom', 'label' => 'رمز التحقق من الويبهوك'],
 
         // الإيقاف الطارئ: مسار خاص بسبب وتأكيد
@@ -68,6 +82,7 @@ final class SettingsSchema
     public const METADATA = [
         'wa_verify_token_hash', 'wa_verify_token_rotated_at', 'wa_token_rotated_at', 'wa_app_secret_rotated_at', 'api_key_rotated_at',
         'wa_suspended_at', 'wa_suspended_by', 'wa_suspended_source', 'wa_suspended_reason', 'feature_flags',
+        'fallback_api_key_rotated_at',
     ];
 
     /** النصوص الطويلة: طولها وبصمتها في التدقيق لا نصها */
@@ -146,6 +161,7 @@ final class SettingsSchema
     {
         return match (self::FIELDS[$key]['values'] ?? null) {
             'providers' => array_keys(LlmFactory::PROVIDERS),
+            'breaker_modes' => ['off', 'shadow', 'on'],
             default => [],
         };
     }
