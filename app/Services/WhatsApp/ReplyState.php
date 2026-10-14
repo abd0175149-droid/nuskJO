@@ -2,6 +2,7 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -58,6 +59,20 @@ final class ReplyState
     public static function newestPending(WaConversation $conv): ?WaMessage
     {
         return self::pendingQuery($conv)->orderByDesc('id')->first();
+    }
+
+    public static function maxAgeMinutes(WaBotSetting $s): int
+    {
+        return max(2, (int) ($s->max_reply_age_minutes ?? 10));
+    }
+
+    /** عمر أحدث وارد معلّق (بوقت ميتا، وإلا وقت وصوله) أكبر من max_reply_age_minutes */
+    public static function isStale(WaConversation $conv, WaBotSetting $s): bool
+    {
+        $newest = self::newestPending($conv);
+        $at = $newest?->meta_at ?? $newest?->created_at;
+
+        return $at !== null && $at->lt(now()->subMinutes(self::maxAgeMinutes($s)));
     }
 
     /** رتيب: لا تتراجع العلامة أبداً */

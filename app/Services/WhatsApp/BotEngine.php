@@ -128,7 +128,7 @@ TXT;
         }
 
         // بوابة الحداثة: رسالة تأخرت (عطل، أو إعادة من ميتا بعد ساعات) لا يرد عليها البوت آلياً، بل موظف
-        if (self::watermarkOn($s) && $s->flag('stale_gate') && self::isStale($conv, $s)) {
+        if (self::watermarkOn($s) && $s->flag('stale_gate') && ReplyState::isStale($conv, $s)) {
             ReplyState::markUnserved($conv, 'stale');
 
             return self::skip('stale');
@@ -142,8 +142,7 @@ TXT;
         }
 
         // حدّ المعدّل لكل محادثة — عند بلوغه نحوّل بدل الصمت. يُزاد بعد الإرسال الناجح وحده، فالإعادة لا تستهلكه
-        $key = self::rateKey($conv);
-        if ((int) Cache::get($key, 0) >= max(1, (int) $s->rate_limit_per_hour)) {
+        if (self::rateLimited($conv, $s)) {
             return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run);
         }
 
@@ -504,19 +503,15 @@ TXT;
         return $last && $last->direction === 'in';
     }
 
-    /** عمر أحدث وارد معلّق (بوقت ميتا، وإلا وقت وصوله) أكبر من max_reply_age_minutes */
-    private static function isStale(WaConversation $conv, WaBotSetting $s): bool
-    {
-        $newest = ReplyState::newestPending($conv);
-        $at = $newest?->meta_at ?? $newest?->created_at;
-        $maxAge = max(2, (int) ($s->max_reply_age_minutes ?? 10));
-
-        return $at !== null && $at->lt(now()->subMinutes($maxAge));
-    }
-
     private static function rateKey(WaConversation $conv): string
     {
         return 'wa:rate:' . $conv->id . ':' . now()->format('YmdH');
+    }
+
+    /** بلغت ردود البوت في هذه الساعة حدّها (يقرؤه المُصالِح أيضاً) */
+    public static function rateLimited(WaConversation $conv, WaBotSetting $s): bool
+    {
+        return (int) Cache::get(self::rateKey($conv), 0) >= max(1, (int) $s->rate_limit_per_hour);
     }
 
     /** بعد إرسال ناجح: العلامة إلى ما دخل السياق، وعدّاد الحد */

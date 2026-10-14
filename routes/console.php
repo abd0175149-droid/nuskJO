@@ -168,6 +168,12 @@ Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
+// المُصالِح (يعمل فقط والعلم reconcile مفعّل؛ إنذار تأخر الطابور دائماً). المانع 5 دقائق لا 24 ساعة،
+// فلا يعلق إن قُتل schedule:work
+Schedule::command('whatsapp:reconcile-replies')
+    ->everyMinute()
+    ->withoutOverlapping(5);
+
 // مطابقة دورية بين الدفترين (المبسّط مقابل القيود) + إشعار الإدارة عند أي انحراف
 Schedule::command('accounting:reconcile')
     ->dailyAt('01:00')
