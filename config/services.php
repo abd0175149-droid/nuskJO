@@ -12,7 +12,9 @@ return [
         'phone_number_id' => env('WA_PHONE_NUMBER_ID'),
         'verify_token' => env('WA_WEBHOOK_VERIFY_TOKEN'),
         'app_secret' => env('WA_APP_SECRET'),
-        'graph_version' => env('WA_GRAPH_VERSION', 'v21.0'),
+        // إصدار Graph للطلبات الصادرة. v21.0 يُزال في 2027-01-21؛ v25.0 ينتهي 2028-07-29.
+        // للتراجع: WA_GRAPH_VERSION=v21.0 في .env (صالح حتى 2027-01-21).
+        'graph_version' => env('WA_GRAPH_VERSION', 'v25.0'),
         'suspended' => (bool) env('WA_SUSPENDED', false),
     ],
 

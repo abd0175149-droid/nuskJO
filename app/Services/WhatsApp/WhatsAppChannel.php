@@ -24,7 +24,7 @@ class WhatsAppChannel
 
     private static function graphBase(): string
     {
-        return 'https://graph.facebook.com/' . (config('services.whatsapp.graph_version') ?: 'v21.0');
+        return 'https://graph.facebook.com/' . (config('services.whatsapp.graph_version') ?: 'v25.0');
     }
 
     private static function graphUrl(string $phoneNumberId): string
