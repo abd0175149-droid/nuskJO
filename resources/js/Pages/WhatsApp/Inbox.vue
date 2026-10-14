@@ -110,7 +110,9 @@
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p class="font-bold text-sm">{{ thread.name }}</p>
-                  <p class="text-xs text-gray-400 font-mono" dir="ltr">{{ thread.phone }}<span v-if="thread.client"> · {{ thread.client }}</span></p>
+                  <p v-if="thread.phone" class="text-xs text-gray-400 font-mono" dir="ltr">{{ thread.phone }}<span v-if="thread.client"> · {{ thread.client }}</span></p>
+                  <!-- عميل باسم مستخدم واتساب بلا رقم ظاهر (E11a) -->
+                  <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<bdi v-if="thread.username" dir="ltr" class="font-mono"> · @{{ thread.username }}</bdi></p>
                 </div>
                 <div class="flex items-center gap-2">
                   <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ reasonLabel(thread.attention_reason) }}</span>

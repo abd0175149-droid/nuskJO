@@ -99,7 +99,9 @@ class WhatsAppController extends Controller
             ->map(fn ($c) => [
                 'id' => $c->id,
                 'phone' => $c->phone,
-                'name' => $c->display_name ?: $c->client?->name ?: $c->phone,
+                'name' => $c->display_name ?: $c->label(),
+                // عميل باسم مستخدم بلا رقم (E11a): المعرّف نفسه لا يُعرض
+                'username' => $c->wa_username,
                 'client' => $c->client?->name,
                 'client_id' => $c->client_id,
                 'bot_enabled' => (bool) $c->bot_enabled,
@@ -186,8 +188,9 @@ class WhatsAppController extends Controller
             'synced_at' => $syncedAt,
             'conversation' => [
                 'id' => $conversation->id,
-                'name' => $conversation->display_name ?: $conversation->phone,
+                'name' => $conversation->display_name ?: $conversation->label(),
                 'phone' => $conversation->phone,
+                'username' => $conversation->wa_username,
                 'client' => $conversation->client?->name,
                 'bot_enabled' => (bool) $conversation->bot_enabled,
                 'needs_attention' => (bool) $conversation->needs_attention,
@@ -256,7 +259,7 @@ class WhatsAppController extends Controller
                 \App\Services\NotificationService::send(
                     (int) $data['user_id'],
                     '💬 محادثة واتساب مُحوّلة إليك',
-                    ($conversation->display_name ?: $conversation->phone) . ' — حوّلها ' . auth()->user()->name,
+                    $conversation->label() . ' — حوّلها ' . auth()->user()->name,
                     ['type' => 'whatsapp', 'icon' => '💬', 'action_url' => '/whatsapp/inbox']
                 );
             } catch (\Throwable $e) {

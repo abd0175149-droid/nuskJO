@@ -42,3 +42,9 @@ status_failed_131047.json     [messages] § statuses (failed)، منسوخ شك�
 account_update_ban.json       [account] § DISABLED_UPDATE مع ban_info (waba_ban_state=DISABLE).
 account_update_benign.json    [account] § PARTNER_ADDED مع waba_info. حدث عادي يصل عند ربط الحساب.
 quality_update_other_number.json [quality] § FLAGGED لرقم آخر في الحساب نفسه (16505553333)، لا لرقمنا.
+username_only.json            [bsuid] § Webhooks: عميل فعّل اسم مستخدم ولا تواصل خلال 30 يوماً: لا from ولا wa_id،
+                              والمعرّف الخاص بنشاطنا في messages[].from_user_id وcontacts[].user_id، واسم المستخدم
+                              في contacts[].profile.username. المعرّف US.13491208655302741918 بصيغة المرجع (رمز الدولة ثم نقطة).
+username_with_phone.json      [bsuid] § Webhooks: العميل نفسه والرقم ظاهر: from وwa_id مع from_user_id وuser_id.
+                              [bsuid] https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids
+                              مكتوبان من المرجع لا من أداة Test: تُستبدلان بحمولات أداة Test في App Dashboard (OWNER_ACTIONS 25).

@@ -110,10 +110,11 @@ class FreshnessGateTest extends TestCase
         $this->assertSame('send_failed', $conv->fresh()->attention_reason);
     }
 
-    public function test_a_message_without_a_sender_number_alerts_admins_once_an_hour(): void
+    /** بلا رقم ولا معرّف لا يُعرف لمن تُحفظ؛ أما المعرّف وحده (اسم مستخدم) فيُحفظ (IdentityWebhookTest) */
+    public function test_a_message_without_any_sender_alerts_admins_once_an_hour(): void
     {
         $admin = User::factory()->admin()->create();
-        $payload = $this->inbound('wamid.NOFROM', now()->timestamp, 'سري', ['from_user_id' => 'US.1234567890']);
+        $payload = $this->inbound('wamid.NOFROM', now()->timestamp, 'سري');
         unset($payload['entry'][0]['changes'][0]['value']['messages'][0]['from']);
 
         WhatsAppInbox::handleWebhook($payload);
@@ -121,6 +122,6 @@ class FreshnessGateTest extends TestCase
 
         $this->assertSame(0, WaMessage::count());
         $this->assertSame(1, Notification::where('user_id', $admin->id)->count());
-        $this->assertSame(2, Cache::get('wa:nofrom:count:'.now()->format('Ymd')));
+        $this->assertSame(2, Cache::get('wa:noidentity:count:'.now()->format('Ymd')));
     }
 }

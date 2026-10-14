@@ -325,7 +325,7 @@ class BotTools
 
     private static function getBalance(WaConversation $conv): array
     {
-        if (!$conv->client_id) {
+        if (!$conv->financialClientId()) {
             return self::notLinked();
         }
         $client = $conv->client;
@@ -342,7 +342,7 @@ class BotTools
 
     private static function getInvoices(WaConversation $conv): array
     {
-        if (!$conv->client_id) {
+        if (!$conv->financialClientId()) {
             return self::notLinked();
         }
 
@@ -370,7 +370,7 @@ class BotTools
 
     private static function getTrips(WaConversation $conv): array
     {
-        if (!$conv->client_id) {
+        if (!$conv->financialClientId()) {
             return self::notLinked();
         }
 
@@ -397,7 +397,8 @@ class BotTools
             'request_number' => QuoteRequest::nextNumber(),
             'conversation_id' => $conv->id,
             'client_id' => $conv->client_id,
-            'phone' => $conv->phone,
+            // عميل بلا رقم: نص فارغ (العمود NOT NULL)، والهوية من conversation_id
+            'phone' => $conv->phone ?? '',
             'customer_name' => $conv->display_name,
             'type' => $in['type'] ?? 'flight',
             // كان القصّ عند 8 أحرف (طول رمز مطار) يقطع أسماء المدن: «المدينة المنورة» ← «المدينة»
@@ -436,7 +437,8 @@ class BotTools
             'conversation_id' => $conv->id,
             'client_id' => $conv->client_id,
             'offer_id' => $offer->id,
-            'phone' => $conv->phone,
+            // عميل بلا رقم: نص فارغ (العمود NOT NULL)، والهوية من conversation_id
+            'phone' => $conv->phone ?? '',
             'customer_name' => $conv->display_name,
             'type' => 'package',
             // العرض الجاهز بتاريخه؛ وإلا التاريخ الذي طلبه العميل — والموظف يثبّته عند التقفيل
@@ -547,7 +549,7 @@ class BotTools
             $qr->update(['assigned_to' => $assignee]);
         }
 
-        $who = $conv->display_name ?: $conv->phone;
+        $who = $conv->label();
         $body = $qr
             ? "{$who} — طلب {$qr->request_number}: " . mb_substr((string) $qr->details, 0, 140)
             : "{$who} — يحتاج تدخّلاً بشرياً.";

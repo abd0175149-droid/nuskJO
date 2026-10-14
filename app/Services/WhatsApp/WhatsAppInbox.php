@@ -51,7 +51,8 @@ class WhatsAppInbox
                     self::learnOwnAccount($settings, $entryId, (string) data_get($value, 'metadata.display_phone_number', ''));
                 }
 
-                $contacts = collect(data_get($value, 'contacts', []))->keyBy('wa_id');
+                // مطابقة كل رسالة بمدخلها: بالمعرّف (BSUID) ثم بالرقم (ContactIdentity::contactFor)
+                $contacts = (array) data_get($value, 'contacts', []);
 
                 // حالات التسليم
                 foreach (data_get($value, 'statuses', []) as $st) {
@@ -79,37 +80,32 @@ class WhatsAppInbox
     }
 
     /**
-     * رسالة بلا رقم مرسل (from): أسماء مستخدمي واتساب تُخفي الرقم أحياناً، والرسالة تُسقط حتى E11.
-     * لا تضيع بصمت: سجل بمعرّف مقطوع البصمة بلا نص ولا اسم، وتنبيه للمدير مرة في الساعة، وعدّاد يومي.
+     * رسالة بلا رقم ولا معرّف مرسل (لا from ولا from_user_id): لا يُعرف لمن تُحفظ. لا تضيع بصمت:
+     * سجل بلا نص ولا اسم، وتنبيه للمدير مرة في الساعة، وعدّاد يومي.
      */
-    private static function noSenderNumber(array $msg): void
+    private static function noIdentity(array $msg): void
     {
-        $userId = (string) data_get($msg, 'from_user_id', '');
-        if ($userId === '') {
-            return;
-        }
-
-        WaLog::warning('webhook.inbound.no_from', [
-            'wamid' => data_get($msg, 'id'), 'type' => data_get($msg, 'type'), 'reason' => substr(hash('sha256', $userId), 0, 12),
-        ]);
-        $day = 'wa:nofrom:count:' . now()->format('Ymd');
+        WaLog::warning('webhook.inbound.no_identity', ['wamid' => data_get($msg, 'id'), 'type' => data_get($msg, 'type')]);
+        $day = 'wa:noidentity:count:' . now()->format('Ymd');
         \Illuminate\Support\Facades\Cache::add($day, 0, now()->addDays(2));
         \Illuminate\Support\Facades\Cache::increment($day);
 
-        if (\Illuminate\Support\Facades\Cache::add('wa:nofrom:alert:' . now()->format('YmdH'), 1, now()->addHour())) {
-            self::notifyAdmins('⚠️ رسالة واتساب بلا رقم مرسل', 'وصلت رسالة من عميل يخفي رقمه (اسم مستخدم واتساب) ولم تُحفظ بعد. التفاصيل في السجل.', '/whatsapp/inbox');
+        if (\Illuminate\Support\Facades\Cache::add('wa:noidentity:alert:' . now()->format('YmdH'), 1, now()->addHour())) {
+            self::notifyAdmins('⚠️ رسالة واتساب بلا مرسل', 'وصلت رسالة بلا رقم ولا معرّف مرسل فلم تُحفظ. التفاصيل في السجل.', '/whatsapp/inbox');
         }
     }
 
     /** @return int|null معرّف المحادثة إن كانت الرسالة تستحق ردّ البوت */
-    private static function storeInbound(array $msg, $contacts): ?int
+    private static function storeInbound(array $msg, array $contacts): ?int
     {
         $wamid = data_get($msg, 'id');
         $from = data_get($msg, 'from');
+        // عميل باسم مستخدم بلا تواصل حديث: from محذوف، والمعرّف الخاص بنشاطنا (BSUID) في from_user_id
+        $userId = filled(data_get($msg, 'from_user_id')) ? (string) data_get($msg, 'from_user_id') : null;
         $type = data_get($msg, 'type', 'text');
 
-        if (!$wamid || !$from) {
-            self::noSenderNumber($msg);
+        if (!$wamid || (ContactIdentity::phoneFrom($from) === null && $userId === null)) {
+            self::noIdentity($msg);
 
             return null;
         }
@@ -120,7 +116,7 @@ class WhatsAppInbox
         }
 
         try {
-            [$conv, $optOut] = DB::transaction(fn () => self::storeInboundRows($msg, $contacts, (string) $wamid, (string) $from, (string) $type));
+            [$conv, $optOut] = DB::transaction(fn () => self::storeInboundRows($msg, $contacts, (string) $wamid, is_string($from) ? $from : null, $userId, (string) $type));
         } catch (UniqueConstraintViolationException) {
             // نسختان من الإشعار نفسه في وقت واحد: الأخرى خزّنته
             $existing = WaMessage::where('wamid', $wamid)->first();
@@ -134,6 +130,13 @@ class WhatsAppInbox
         // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
         if ($optOut) {
             WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system');
+
+            return null;
+        }
+
+        // بلا رقم: لا يرد البوت إلا في الوضع full، فالمحادثة «تدخّل» لموظف (ويرد بالمعرّف من الوضع staff)
+        if (!$conv->hasPhone() && !IdentityMode::botServesWithoutPhone()) {
+            ReplyState::markUnserved($conv, 'no_phone');
 
             return null;
         }
@@ -157,9 +160,9 @@ class WhatsAppInbox
      * صفوف الوارد كلها في معاملة واحدة: المحادثة والرسالة والنافذة، أو لا شيء.
      * @return array{0: ?WaConversation, 1: bool} المحادثة إن استحقت المتابعة، وهل طلب إيقاف التسويق
      */
-    private static function storeInboundRows(array $msg, $contacts, string $wamid, string $from, string $type): array
+    private static function storeInboundRows(array $msg, array $contacts, string $wamid, ?string $from, ?string $userId, string $type): array
     {
-        $conv = self::conversationFor($from, data_get($contacts->get($from), 'profile.name'));
+        $conv = ContactIdentity::resolve($from, $userId, ContactIdentity::contactFor($contacts, $from, $userId));
 
         // التفاعلات (reaction) مسار منفصل: تُخزَّن ولا تفتح نافذة ولا تُمرَّر للبوت
         if ($type === 'reaction') {
@@ -204,7 +207,7 @@ class WhatsAppInbox
         // رقم الإدارة لا يُسجَّل رافضاً للتسويق: «إيقاف» منه تعني غالباً إيقاف البوت
         if (self::isOptOut($body, $buttonId) && !\App\Models\WaAdminNumber::forPhone($conv->phone)) {
             WaOptout::updateOrCreate(
-                ['phone' => $conv->phone],
+                $conv->hasPhone() ? ['phone' => $conv->phone] : ['wa_user_id' => $conv->wa_user_id],
                 ['reason' => 'طلب العميل', 'created_at' => now()]
             );
             // إشعار النظام هو الرد: لا يجيب البوت عنها لاحقاً (المُصالِح أو مكرر من ميتا)
@@ -216,43 +219,10 @@ class WhatsAppInbox
         return [$conv, false];
     }
 
-    /** إيجاد/إنشاء محادثة وربطها بالعميل أو الموظف */
+    /** إيجاد/إنشاء محادثة برقم وربطها بالعميل أو الموظف (MessageReplayer والاختبارات؛ الويبهوك عبر ContactIdentity) */
     public static function conversationFor(string $waPhone, ?string $profileName = null): WaConversation
     {
-        $canonical = PhoneNormalizer::canonical($waPhone);
-
-        $conv = WaConversation::firstOrCreate(
-            ['phone' => $canonical],
-            [
-                'wa_phone' => PhoneNormalizer::digits($waPhone),
-                'display_name' => $profileName,
-                'bot_enabled' => true,
-                'status' => 'open',
-            ]
-        );
-
-        $update = [];
-        if ($profileName && $conv->display_name !== $profileName) {
-            $update['display_name'] = $profileName;
-        }
-        // يُعاد الفحص مع كل رسالة حتى يُربط
-        if (!$conv->client_id) {
-            if ($client = PhoneNormalizer::findClient($canonical)) {
-                $update['client_id'] = $client->id;
-                $update['display_name'] = $update['display_name'] ?? $client->name;
-            }
-        }
-        if (!$conv->user_id) {
-            if ($user = PhoneNormalizer::findUser($canonical)) {
-                $update['user_id'] = $user->id;
-            }
-        }
-        if ($update) {
-            $conv->update($update);
-            $conv->refresh();
-        }
-
-        return $conv;
+        return ContactIdentity::resolve($waPhone, null, $profileName ? ['profile' => ['name' => $profileName]] : []);
     }
 
     /** استخراج النص ومعرّف الزر إن وجد */

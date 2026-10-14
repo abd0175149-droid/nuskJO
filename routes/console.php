@@ -186,6 +186,23 @@ Schedule::command('whatsapp:health-status')
 // الوظائف الفاشلة تحمل بيانات عملاء في payload والاستثناء: أسبوع ثم تُحذف
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
+// عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
+Artisan::command('whatsapp:identity-mode {mode?}', function () {
+    $mode = $this->argument('mode');
+    if ($mode !== null) {
+        if (!in_array($mode, \App\Services\WhatsApp\IdentityMode::MODES, true)) {
+            $this->error('الوضع: '.implode(' أو ', \App\Services\WhatsApp\IdentityMode::MODES));
+
+            return 1;
+        }
+        \App\Models\Setting::set('wa_identity_mode', $mode);
+        \App\Services\WhatsApp\WaLog::warning('identity.mode', ['status' => $mode]);
+    }
+    $this->line('وضع العميل بلا رقم: '.\App\Services\WhatsApp\IdentityMode::current());
+
+    return 0;
+})->purpose('عرض أو تبديل التعامل مع عميل بلا رقم: whatsapp:identity-mode [store|staff|full]');
+
 Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();

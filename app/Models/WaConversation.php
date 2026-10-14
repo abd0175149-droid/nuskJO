@@ -17,6 +17,8 @@ class WaConversation extends Model
         'bot_enabled', 'bot_paused_until', 'last_inbound_at', 'last_outbound_at',
         'last_message_at', 'last_message_preview', 'unread_count',
         'needs_attention', 'assigned_to', 'status', 'bot_answered_in_id', 'attention_reason',
+        // E11a: معرّف ميتا الخاص بنشاطنا (BSUID) واسم المستخدم والاسم كما أرسله العميل (غير موثوقين)
+        'wa_user_id', 'wa_username', 'wa_profile_name',
     ];
 
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
@@ -43,6 +45,31 @@ class WaConversation extends Model
     public function notes(): HasMany { return $this->hasMany(WaCustomerNote::class, 'conversation_id'); }
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
     public function assignee(): BelongsTo { return $this->belongsTo(User::class, 'assigned_to'); }
+
+    /** الرقم معروف (عميل باسم مستخدم قد يراسلنا بلا رقم) */
+    public function hasPhone(): bool
+    {
+        return filled($this->phone);
+    }
+
+    /**
+     * العميل الذي تُعرض بياناته المالية: فقط إن عُرف الرقم. الربط بالمعرّف أو بالاسم وحده لا يكشف رصيداً.
+     */
+    public function financialClientId(): ?int
+    {
+        return $this->hasPhone() && $this->client_id ? (int) $this->client_id : null;
+    }
+
+    /** اسم للعرض والإشعارات: العميل، ثم الاسم، ثم اسم المستخدم، ثم الرقم، ثم رقم المحادثة */
+    public function label(): string
+    {
+        return $this->client?->name
+            ?: $this->display_name
+            ?: $this->wa_profile_name
+            ?: ($this->wa_username ? '@'.$this->wa_username : null)
+            ?: ($this->hasPhone() ? '+'.$this->phone : null)
+            ?: 'محادثة #'.$this->id;
+    }
 
     /** نافذة ميتا: 24 ساعة من آخر رسالة واردة */
     public function isWindowOpen(): bool

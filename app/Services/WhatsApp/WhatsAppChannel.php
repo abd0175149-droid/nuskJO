@@ -44,6 +44,7 @@ class WhatsAppChannel
     public const ERR_TOO_LARGE = 'TOO_LARGE';
     public const ERR_MEDIA_HOST = 'MEDIA_HOST_BLOCKED';
     public const ERR_MEDIA_INTEGRITY = 'MEDIA_INTEGRITY';
+    public const ERR_NO_RECIPIENT = 'NO_RECIPIENT';
 
     /** أنواع الصوت التي نفرّغها؛ غيرها لا يُنزَّل */
     private const AUDIO_MIME = ['audio/ogg', 'audio/opus', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr'];
@@ -382,7 +383,6 @@ class WhatsAppChannel
         return self::dispatch($conv, [
             'messaging_product' => 'whatsapp',
             'recipient_type' => 'individual',
-            'to' => $conv->wa_phone,
             'type' => 'text',
             'text' => ['preview_url' => false, 'body' => mb_substr($text, 0, 4096)],
         ], $text, 'text', $source, $staffId);
@@ -415,7 +415,6 @@ class WhatsAppChannel
         return self::dispatch($conv, [
             'messaging_product' => 'whatsapp',
             'recipient_type' => 'individual',
-            'to' => $conv->wa_phone,
             'type' => 'image',
             'image' => $image,
         ], $caption ?: '📷 صورة', 'image', $source, $staffId);
@@ -437,7 +436,6 @@ class WhatsAppChannel
 
         return self::dispatch($conv, [
             'messaging_product' => 'whatsapp',
-            'to' => $conv->wa_phone,
             'type' => 'interactive',
             'interactive' => [
                 'type' => 'button',
@@ -467,7 +465,6 @@ class WhatsAppChannel
 
         return self::dispatch($conv, [
             'messaging_product' => 'whatsapp',
-            'to' => $conv->wa_phone,
             'type' => 'interactive',
             'interactive' => [
                 'type' => 'list',
@@ -481,6 +478,19 @@ class WhatsAppChannel
     }
 
     // ==================== المحرّك ====================
+
+    /** @return array{to: string}|array{recipient: string}|null */
+    private static function target(WaConversation $conv, string $source): ?array
+    {
+        if (filled($conv->wa_phone)) {
+            return ['to' => (string) $conv->wa_phone];
+        }
+        if (filled($conv->wa_user_id) && IdentityMode::allowsRecipient($source)) {
+            return ['recipient' => (string) $conv->wa_user_id];
+        }
+
+        return null;
+    }
 
     private static function dispatch(
         WaConversation $conv,
@@ -515,6 +525,13 @@ class WhatsAppChannel
         if (!$conv->isWindowOpen()) {
             return self::fail(self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.');
         }
+
+        // ── القفل 4: إلى من؟ الرقم إن عُرف، وإلا معرّف ميتا (BSUID) إن سمح وضع الهوية لهذا المصدر. لا الاثنان معاً
+        $target = self::target($conv, $source);
+        if ($target === null) {
+            return self::fail(self::ERR_NO_RECIPIENT, 'العميل يراسل باسم مستخدم ورقمه غير ظاهر، والرد عليه غير مفعّل بعد — أبلغ المدير.');
+        }
+        $payload = ['messaging_product' => 'whatsapp'] + $target + $payload;
 
         try {
             $url = self::graphPath((string) $s->phoneNumberId(), 'messages');

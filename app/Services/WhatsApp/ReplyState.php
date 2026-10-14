@@ -28,6 +28,8 @@ final class ReplyState
         'rate_limit' => '🚦 تجاوز الحد',
         'window_closed' => '🔒 النافذة مغلقة',
         'handoff' => '🙋 طلب موظفاً',
+        'no_phone' => '📵 رقم غير ظاهر',
+        'identity_conflict' => '🔀 محادثتان لعميل واحد',
     ];
 
     private static ?bool $available = null;

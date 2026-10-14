@@ -116,6 +116,8 @@ TXT;
         }
         $unserved = match (true) {
             !$s->botReady() => 'bot_off',
+            // عميل باسم مستخدم بلا رقم: البوت في الوضع full وحده (IdentityMode)
+            !$conv->hasPhone() && !IdentityMode::botServesWithoutPhone() => 'no_phone',
             !$conv->bot_enabled => 'with_staff',
             !$conv->botActive() => 'bot_paused',
             !$conv->isWindowOpen() => 'window_closed',
@@ -321,9 +323,14 @@ TXT;
     private static function customerCard(WaConversation $conv): string
     {
         $lines = ['الآن بتوقيت الأردن: ' . now()->format('Y-m-d H:i') . ' (' . now()->locale('ar')->dayName . ')'];
-        $lines[] = 'رقم المحادثة الحالي: ' . $conv->phone;
+        if ($conv->hasPhone()) {
+            $lines[] = 'رقم المحادثة الحالي: ' . $conv->phone;
+        } else {
+            $lines[] = 'رقم المحادثة الحالي: غير ظاهر (العميل يراسل باسم مستخدم). لا تكشف أي بيانات مالية؛ إن طلب تسعيراً أو حجزاً فاطلب منه كتابة رقم هاتفه ليتابع معه موظف.';
+        }
 
-        if ($conv->client_id && ($c = $conv->client)) {
+        // البيانات المالية بالرقم وحده (financialClientId)، لا بمعرّف ولا باسم
+        if ($conv->financialClientId() && ($c = $conv->client)) {
             $lines[] = 'بطاقة العميل: مربوط بحساب مسجّل — الاسم: ' . $c->name . ' · الكود: ' . $c->code;
             $lines[] = 'رصيد ذمّته الحالي: ' . round((float) ($c->account?->balance ?? 0), 3) . ' د.أ';
         } else {
@@ -575,7 +582,7 @@ TXT;
 
         if ($s->fail_handoff) {
             $conv->update(['needs_attention' => true, 'bot_paused_until' => now()->addHour()]);
-            WhatsAppInbox::notifyAdmins('⚠️ فشل ردّ البوت', ($conv->display_name ?: $conv->phone) . ' — البوت موقوف ساعة، المحادثة تحتاج تدخّلاً.');
+            WhatsAppInbox::notifyAdmins('⚠️ فشل ردّ البوت', $conv->label() . ' — البوت موقوف ساعة، المحادثة تحتاج تدخّلاً.');
         }
 
         return ['sent' => true, 'reason' => 'fail-safe'];

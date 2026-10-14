@@ -4,8 +4,7 @@ namespace App\Services\Backup;
 
 use App\Models\WaConversation;
 use App\Models\WaMessage;
-use App\Services\WhatsApp\PhoneNormalizer;
-use App\Services\WhatsApp\WhatsAppInbox;
+use App\Services\WhatsApp\ContactIdentity;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +33,9 @@ class MessageReplayer
             ->join('wa_conversations as c', 'c.id', '=', 'm.conversation_id')
             ->where('m.created_at', '>', $sinceUtc)
             ->orderBy('m.id')
-            ->get(['m.*', 'c.wa_phone as c_wa_phone', 'c.display_name as c_display_name', 'c.id as c_id']);
+            ->get(array_merge(['m.*', 'c.wa_phone as c_wa_phone', 'c.display_name as c_display_name', 'c.id as c_id'],
+                // لقطات ما بعد E11a: محادثة باسم مستخدم بلا رقم تُعرف بمعرّفها
+                $source->getSchemaBuilder()->hasColumn('wa_conversations', 'wa_user_id') ? ['c.wa_user_id as c_wa_user_id'] : []));
 
         $stats = ['candidates' => $rows->count(), 'inserted' => 0, 'duplicates' => 0, 'conversations_created' => 0, 'conversations_touched' => 0];
         $touched = [];   // معرّف المحادثة الحية => معرّف المحادثة في اللقطة
@@ -43,8 +44,15 @@ class MessageReplayer
         DB::beginTransaction();
         try {
             foreach ($rows as $row) {
-                $existed = WaConversation::where('phone', PhoneNormalizer::canonical($row->c_wa_phone))->exists();
-                $conv = WhatsAppInbox::conversationFor($row->c_wa_phone, $row->c_display_name);
+                $userId = $row->c_wa_user_id ?? null;
+                $phone = ContactIdentity::phoneFrom($row->c_wa_phone);
+                if ($phone === null && !filled($userId)) {
+                    continue;
+                }
+                $existed = $phone !== null
+                    ? WaConversation::where('phone', $phone)->exists()
+                    : WaConversation::where('wa_user_id', $userId)->exists();
+                $conv = ContactIdentity::resolve($row->c_wa_phone, $userId, $row->c_display_name ? ['profile' => ['name' => $row->c_display_name]] : []);
                 if (!$existed) {
                     $stats['conversations_created']++;
                 }
