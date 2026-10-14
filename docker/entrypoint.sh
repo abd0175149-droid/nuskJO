@@ -11,28 +11,19 @@ DB_DIR="$(dirname "$DB_FILE")"
 
 as_www() { su -s /bin/sh www-data -c "$*"; }
 
-# Ensure .env file exists (needed for key:generate and config:cache)
-if [ ! -f .env ]; then
-    if [ -f .env.production ]; then
-        cp .env.production .env
-    else
-        touch .env
-    fi
+# البيئة من env_file وحده (.env.production على المضيف)، لا من نسخة مخبوزة في الصورة.
+# في الإنتاج: مفتاح لا يُفك إلى 32 بايتاً أو APP_DEBUG مفعّل يرفضان الإقلاع (BOOT_GUARD=warn للطوارئ)
+/usr/local/bin/check-env.sh
+
+# خارج الإنتاج فقط: مفتاح مؤقت لهذا التشغيل (لا يُكتب في أي ملف)
+if [ -z "${APP_KEY:-}" ] && [ "$APP_ENV" != "production" ]; then
+    echo "⚠️  APP_KEY غير مضبوط — مفتاح مؤقت لهذا التشغيل فقط (خارج الإنتاج)"
+    APP_KEY=$(php artisan key:generate --show --no-interaction)
+    export APP_KEY
 fi
 
-# مفتاح التطبيق: توليد مفتاح جديد في الإنتاج يُفسد الإعدادات المشفّرة (رموز واتساب ومفاتيح الذكاء)
-if [ -z "$APP_KEY" ] || ! grep -q '^APP_KEY=base64:' .env; then
-    if [ "$APP_ENV" = "production" ] && [ "${ALLOW_KEY_GENERATE:-0}" != "1" ]; then
-        echo "❌ APP_KEY غير مضبوط في .env.production — رفض الإقلاع (ALLOW_KEY_GENERATE=1 لتجاوز ذلك عمداً)"
-        exit 1
-    fi
-    echo "🔑 Generating application key..."
-    php artisan key:generate --force --no-interaction
-fi
-
-# Export APP_KEY from .env file so it overrides the empty env var from docker-compose
-APP_KEY=$(grep '^APP_KEY=' .env | cut -d'=' -f2-)
-export APP_KEY
+# بصمة لا المفتاح: تكفي لمطابقته بنسخة مدير كلمات المرور
+echo "🔑 APP_KEY fingerprint: $(printf '%s' "$APP_KEY" | sha256sum | cut -c1-8)"
 
 # القاعدة: لا ننشئ ملفاً فارغاً في الإنتاج، فغيابها يعني حجماً خاطئاً أو غير مركّب
 if [ ! -s "$DB_FILE" ]; then
@@ -72,6 +63,9 @@ php artisan storage:link --force 2>/dev/null || true
 
 # Seed chart of accounts if fresh database
 as_www "php artisan db:seed --class=ChartOfAccountsSeeder --force --no-interaction" 2>/dev/null || true
+
+# صحة القناة في docker logs (لا يوقف الإقلاع): أسرار لا تُفك، رمز تحقق قصير، كلمة مرور افتراضية...
+as_www "php artisan whatsapp:doctor --no-ansi" || true
 
 # ما قد يكون أنشأه root أثناء الإقلاع (التخزين المؤقت للعروض والإعدادات)
 chown -R www-data:www-data storage/framework storage/logs bootstrap/cache

@@ -107,7 +107,8 @@ COPY docker/supervisord.conf /etc/supervisord.conf
 
 # ---- Entrypoint Script ----
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY docker/check-env.sh /usr/local/bin/check-env.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/check-env.sh
 
 # رقم الإصدار في manifest النسخ الاحتياطية (يمرّره scripts/deploy.sh)
 ARG GIT_COMMIT=unknown

@@ -6,6 +6,14 @@
             <!-- ===== رسائل Flash ===== -->
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
             <div v-if="$page.props.flash?.error" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">❌ {{ $page.props.flash.error }}</div>
+            <!-- صحة القناة (whatsapp:doctor): الرسالة والنصيحة فقط، بلا أي قيمة سرية -->
+            <div v-if="health.length" role="status" class="p-4 rounded-xl border text-sm border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
+                <p class="font-bold mb-1">🩺 صحة القناة</p>
+                <ul class="space-y-1">
+                    <li v-for="c in health" :key="c.code">{{ c.level === 'error' ? '❌' : '⚠️' }} {{ c.message }}</li>
+                </ul>
+            </div>
+
             <div v-if="Object.keys(form.errors).length" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">
                 ❌ تحقّق من الحقول التالية:
                 <ul class="list-disc mt-1 pr-5 space-y-0.5">
@@ -380,6 +388,7 @@ const props = defineProps({
     toolList: Object,
     providers: { type: Object, default: () => ({ google: 'Google Gemini', anthropic: 'Anthropic Claude' }) },
     graph: Object,
+    health: { type: Array, default: () => [] },
 });
 
 // رمز تحقق عشوائي: 32 خانة hex من مولّد المتصفح الآمن

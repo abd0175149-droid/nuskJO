@@ -398,6 +398,7 @@ class WhatsAppController extends Controller
             'defaultPrompt' => BotEngine::DEFAULT_PROMPT,
             'toolList' => \App\Services\WhatsApp\BotTools::LABELS,
             'graph' => \App\Services\WhatsApp\GraphVersions::panel(),
+            'health' => \App\Services\WhatsApp\ChannelDoctor::checks(),
         ]);
     }
 
