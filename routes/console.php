@@ -49,3 +49,10 @@ Schedule::command('whatsapp:window-reminders')
 Schedule::command('accounting:reconcile')
     ->dailyAt('01:00')
     ->withoutOverlapping();
+
+// نسخة احتياطية يومية (E01) — تعمل فقط إن فُعّل BACKUP_ENABLED
+Schedule::command('backup:run --reason=scheduled')
+    ->timezone('Asia/Amman')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->when(fn () => config('backup.enabled'));

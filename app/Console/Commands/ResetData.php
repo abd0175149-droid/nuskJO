@@ -18,6 +18,12 @@ class ResetData extends Command
             return 1;
         }
 
+        // نسخة قبل أي حذف؛ فشلها يوقف التفريغ (E01)
+        if ($this->call('backup:run', ['--reason' => 'pre-reset']) !== 0) {
+            $this->error('رُفض التفريغ: تعذّر أخذ نسخة احتياطية قبله');
+            return 1;
+        }
+
         $this->info('🔄 جاري تفريغ البيانات...');
 
         DB::statement('PRAGMA foreign_keys = OFF');

@@ -29,5 +29,40 @@ class AppServiceProvider extends ServiceProvider
         // HR Observers
         \App\Models\Employee::observe(\App\Observers\EmployeeObserver::class);
         \App\Models\Attendance::observe(\App\Observers\AttendanceObserver::class);
+
+        $this->guardDestructiveDatabaseCommands();
+    }
+
+    /**
+     * لا هجرة على الإنتاج بلا نسخة قبلها، ولا أوامر مسح شاملة على الإنتاج (E01).
+     * الحدث MigrationsStarted لا يُطلق إلا عند وجود هجرات معلّقة، فلا تتكرر النسخ مع كل إقلاع.
+     */
+    private function guardDestructiveDatabaseCommands(): void
+    {
+        \Illuminate\Support\Facades\DB::prohibitDestructiveCommands($this->app->isProduction());
+
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\MigrationsStarted::class, function () {
+            static $done = false;
+
+            $db = (string) config('database.connections.sqlite.database');
+            if ($done
+                || ! $this->app->isProduction()
+                || ! config('backup.pre_migrate')
+                || config('database.default') !== 'sqlite'
+                || $db === '' || $db === ':memory:' || ! is_file($db)) {
+                return;
+            }
+            $done = true;
+
+            if (env('ALLOW_MIGRATE_WITHOUT_BACKUP')) {
+                \Illuminate\Support\Facades\Log::warning('migrate without pre-migrate backup (ALLOW_MIGRATE_WITHOUT_BACKUP)');
+
+                return;
+            }
+
+            if (\Illuminate\Support\Facades\Artisan::call('backup:run', ['--reason' => 'pre-migrate']) !== 0) {
+                throw new \RuntimeException('رفض الهجرة: تعذّر أخذ نسخة قبلها');
+            }
+        });
     }
 }
