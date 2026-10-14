@@ -130,6 +130,18 @@ class SnapshotServiceTest extends TestCase
         $this->assertSame([], \App\Support\Retention::shrinkAllowance(), 'يُمسح بعد نسخة ناجحة');
     }
 
+    public function test_the_erasure_ledger_travels_with_the_snapshot(): void
+    {
+        config(['retention.erasure_ledger' => $this->dir.'/erasure-ledger.jsonl']);
+        $this->assertArrayNotHasKey('erasure-ledger.jsonl', $this->service()->run('manual', 'a')['manifest']['files']);
+
+        \App\Support\Retention::appendErasureLedger(['subject_hmac' => 'abc', 'done_at' => '2026-10-14T10:00:00Z']);
+        $result = $this->service()->run('manual', 'b');
+
+        $this->assertSame(hash_file('sha256', $this->dir.'/erasure-ledger.jsonl'), $result['manifest']['files']['erasure-ledger.jsonl']['sha256']);
+        $this->assertSame('0600', substr(sprintf('%o', fileperms($result['path'].'/erasure-ledger.jsonl')), -4));
+    }
+
     public function test_rotation_keeps_latest_and_latest_pre_migrate(): void
     {
         config(['backup.local_keep' => 2]);

@@ -76,9 +76,9 @@ final class Retention
     }
 
     /** @return list<array<string, mixed>> */
-    public static function erasureLedger(): array
+    public static function erasureLedger(?string $path = null): array
     {
-        $path = (string) config('retention.erasure_ledger');
+        $path ??= (string) config('retention.erasure_ledger');
         if (!is_file($path)) {
             return [];
         }

@@ -252,4 +252,24 @@ class ForgetCommandTest extends TestCase
         $this->assertSame('erased', $back->fresh()->status);
         $this->assertSame(1, Http::recorded(fn (Request $r) => $r->method() === 'DELETE')->count(), 'إعادة التطبيق بلا نداءات لميتا');
     }
+
+    public function test_after_losing_the_host_the_ledger_from_the_backup_is_enough(): void
+    {
+        $this->fakeGraph();
+        $this->seedConversation();
+        Artisan::call('whatsapp:forget', ['--conversation' => $this->conv->id, '--token' => $this->token()]);
+
+        // خادم جديد: السجل الحي ضاع، ونسخته داخل النسخة الاحتياطية
+        $fromBackup = storage_path('framework/testing/erasure-ledger-from-backup.jsonl');
+        File::move(config('retention.erasure_ledger'), $fromBackup);
+        $back = WaConversation::factory()->create(['phone' => self::PHONE, 'wa_phone' => self::PHONE]);
+
+        $this->assertSame(1, Artisan::call('whatsapp:erasure-reapply', ['--ledger' => ['/nope.jsonl']]));
+        Artisan::call('whatsapp:erasure-reapply');
+        $this->assertNotSame('erased', $back->fresh()->status);
+
+        $this->assertSame(0, Artisan::call('whatsapp:erasure-reapply', ['--ledger' => [$fromBackup]]));
+        File::delete($fromBackup);
+        $this->assertSame('erased', $back->fresh()->status);
+    }
 }

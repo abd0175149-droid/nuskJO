@@ -54,6 +54,13 @@ docker exec -u www-data nuskjo-app php artisan backup:diff-report /tmp/pre-resto
   docker exec -u www-data nuskjo-app php artisan whatsapp:erasure-reapply --dry-run
   docker exec -u www-data nuskjo-app php artisan whatsapp:erasure-reapply
   ```
+  على خادم جديد (ضاع السجل الحي): كل نسخة تحمل `erasure-ledger.jsonl`، فخذه من **أحدث** نسخة متاحة:
+  ```bash
+  docker exec -i -u www-data nuskjo-app sh -c 'umask 077; cat > /tmp/erasure-ledger.jsonl' < <مجلد النسخة>/erasure-ledger.jsonl
+  docker exec -u www-data nuskjo-app php artisan whatsapp:erasure-reapply --ledger=/tmp/erasure-ledger.jsonl --dry-run
+  ```
+  ثم الأمر نفسه بلا `--dry-run`، ثم أعده سجلاً حياً (فقط إن لم يُكتب سجل جديد بعد):
+  `docker exec -u www-data nuskjo-app sh -c 'mkdir -p storage/app/private && [ ! -e storage/app/private/erasure-ledger.jsonl ] && mv /tmp/erasure-ledger.jsonl storage/app/private/'`
 - إدخال ما في تقرير الفرق.
 
 بعد الاعتماد: ارفع قفل الإرسال وشغّل البوت من **الواتساب › الإعدادات**.

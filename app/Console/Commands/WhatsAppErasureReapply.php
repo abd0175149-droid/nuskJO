@@ -17,14 +17,23 @@ use Illuminate\Support\Carbon;
  */
 class WhatsAppErasureReapply extends Command
 {
-    protected $signature = 'whatsapp:erasure-reapply {--since= : من تاريخ (افتراضياً: كل السجل)} {--dry-run}';
+    protected $signature = 'whatsapp:erasure-reapply {--since= : من تاريخ (افتراضياً: كل السجل)} {--ledger=* : سجل إضافي (erasure-ledger.jsonl من النسخة عند فقد الخادم)} {--dry-run}';
 
     protected $description = 'إعادة تطبيق طلبات الحذف المنفّذة بعد استعادة نسخة';
 
     public function handle(ConversationEraser $eraser): int
     {
         $since = $this->option('since') ? Carbon::parse((string) $this->option('since')) : null;
-        $entries = collect(Retention::erasureLedger())->filter(fn ($e) => !$since || Carbon::parse($e['done_at'] ?? '1970-01-01')->gte($since));
+        $entries = collect(Retention::erasureLedger());
+        foreach ((array) $this->option('ledger') as $extra) {
+            if (!is_file($extra)) {
+                $this->error("السجل غير موجود: {$extra}");
+
+                return self::FAILURE;
+            }
+            $entries = $entries->merge(Retention::erasureLedger($extra));
+        }
+        $entries = $entries->filter(fn ($e) => !$since || Carbon::parse($e['done_at'] ?? '1970-01-01')->gte($since));
         $subjects = $entries->pluck('subject_hmac')->filter()->flip();
         $userSubjects = $entries->pluck('wa_user_hmac')->filter()->flip();
         if ($subjects->isEmpty() && $userSubjects->isEmpty()) {

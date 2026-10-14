@@ -69,6 +69,11 @@ class SnapshotService
             $this->assertNotWrongDatabase($counts, $liveAppendOnly, $allowShrink);
 
             $mediaBytes = $mediaSize === null ? 0 : $this->archiveMedia("{$partial}/storage-public.tar.gz");
+            // سجل المحو الخارجي (E13) يسافر مع النسخة: عند فقد الخادم كله لا مصدر غيره لإعادة المحو
+            $ledger = (string) config('retention.erasure_ledger');
+            if ($ledger !== '' && is_file($ledger)) {
+                copy($ledger, "{$partial}/erasure-ledger.jsonl");
+            }
             $journalMode = $live->journalMode();
             unset($snap, $live);
 
