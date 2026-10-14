@@ -21,7 +21,7 @@ final class SecretRedactor
         '/sk-ant-[A-Za-z0-9_\-]{16,}/' => '***',                               // مفتاح Anthropic
         '/\bEAA[A-Za-z0-9]{20,}/' => '***',                                     // رمز ميتا
         '/(Bearer\s+)[^\s"\',;]+/i' => '$1***',
-        '/([?&](?:key|access_token|token|client_secret|appsecret_proof|hub[._]verify_token)=)[^&\s"\'<>]+/i' => '$1***',
+        '/([?&](?:key|access_token|input_token|token|client_secret|appsecret_proof|hub[._]verify_token)=)[^&\s"\'<>]+/i' => '$1***',
         '/base64:[A-Za-z0-9+\/]{43}=/' => 'base64:***',                         // APP_KEY
         '/-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----/s' => '[PRIVATE KEY]',
     ];

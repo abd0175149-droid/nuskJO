@@ -167,7 +167,12 @@ class WhatsAppChannel
         }
         $url = (string) $meta->json('url', '');
         if (!$meta->successful() || $url === '') {
-            WaLog::error('media.lookup.failed', ['http' => $meta->status(), 'meta_code' => data_get($meta->json(), 'error.code')]);
+            $metaCode = is_numeric(data_get($meta->json(), 'error.code')) ? (int) data_get($meta->json(), 'error.code') : null;
+            WaLog::error('media.lookup.failed', ['http' => $meta->status(), 'meta_code' => $metaCode]);
+            // رمز مرفوض أو صلاحية ناقصة يظهر هنا أيضاً (تنزيل الصوت)، فينبّه كما ينبّه الإرسال
+            if (in_array($meta->status(), [401, 403], true) && MetaErrorCatalog::isAccountError($metaCode)) {
+                MetaErrorCatalog::react($metaCode);
+            }
 
             return self::mediaFail('META_ERROR', 'تعذّر جلب بيانات الوسائط من ميتا.');
         }
@@ -264,6 +269,49 @@ class WhatsAppChannel
         $media = self::fetchMedia($mediaId, 'audio', $maxBytes);
 
         return $media['ok'] ? ['bytes' => $media['bytes'], 'mime' => $media['mime'], 'host' => $media['host']] : null;
+    }
+
+    // ==================== فحوص ميتا للقراءة (MetaHealth، E08) ====================
+
+    /**
+     * GET /debug_token لرمزنا، برمز التطبيق {app-id}|{app-secret} في ترويسة Authorization (يُبنى هنا ولا يُعاد ولا يُسجَّل).
+     * الرابط يحمل الرمز المفحوص (input_token)، فالاستثناء لا يُسجَّل إلا باسم صنفه.
+     *
+     * @return array{reached: bool, status: ?int, json: array<string, mixed>}
+     */
+    public static function debugToken(): array
+    {
+        $s = WaBotSetting::current();
+        try {
+            $res = Http::withToken($s->appId().'|'.$s->appSecret())
+                ->withoutRedirecting()->connectTimeout(5)->timeout(15)->acceptJson()
+                ->get(self::graphPath('debug_token'), ['input_token' => (string) $s->token()]);
+        } catch (\Throwable $e) {
+            WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'debug_token']);
+
+            return ['reached' => false, 'status' => null, 'json' => []];
+        }
+
+        return ['reached' => true, 'status' => $res->status(), 'json' => (array) $res->json()];
+    }
+
+    /**
+     * صحة الإرسال من رقمنا: health_status (PHONE_NUMBER وWABA وBUSINESS وAPP) وquality_rating وverified_name.
+     *
+     * @return array{reached: bool, status: ?int, json: array<string, mixed>}
+     */
+    public static function healthStatus(): array
+    {
+        $s = WaBotSetting::current();
+        try {
+            $res = self::graph($s, 15)->get(self::graphPath((string) $s->phoneNumberId()), ['fields' => 'health_status,quality_rating,verified_name']);
+        } catch (\Throwable $e) {
+            WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'health_status']);
+
+            return ['reached' => false, 'status' => null, 'json' => []];
+        }
+
+        return ['reached' => true, 'status' => $res->status(), 'json' => (array) $res->json()];
     }
 
     /**

@@ -102,7 +102,7 @@ class GraphClientTest extends TestCase
         WhatsAppChannel::sendText($conv, 'ب');
 
         $this->assertSame(WhatsAppChannel::ERR_ACCOUNT, $first['code']);
-        $this->assertSame(1, Notification::where('user_id', $admin->id)->where('title', '⚠️ تنبيه من ميتا')->count());
+        $this->assertSame(1, Notification::where('user_id', $admin->id)->where('title', '⛔ الحساب مقيّد من ميتا')->count());
         $this->assertFalse(WaBotSetting::current()->wa_suspended);
     }
 

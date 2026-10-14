@@ -3,6 +3,7 @@
 namespace App\Services\WhatsApp;
 
 use App\Models\WaBotSetting;
+use App\Services\Ops\OpsAlerts;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -19,9 +20,16 @@ final class MetaErrorCatalog
 
     private const RESTRICTED = 'حساب واتساب مقيّد من ميتا — راجع حالة الحساب في لوحة ميتا.';
 
-    /** رمز ميتا => [رمزنا، النص المحفوظ مع الرسالة، الفعل] */
+    private const PERMISSION = 'صلاحيات رمز ميتا لا تسمح بهذه العملية — راجع صلاحيات مستخدم النظام والتطبيق في لوحة ميتا.';
+
+    /** رمز ميتا => [رمزنا، النص المحفوظ مع الرسالة، الفعل]. والنطاق 200–299 (صلاحيات) في entry() */
     public const CODES = [
         190 => ['TOKEN_INVALID', 'رمز ميتا منتهٍ أو مُلغى — يحدّثه المدير من إعدادات الواتساب.', 'alert'],
+        0 => ['TOKEN_INVALID', 'خطأ اعتماد عند ميتا — تحقق من رمز الوصول في إعدادات الواتساب.', 'alert'],
+        3 => ['PERMISSION_DENIED', 'التطبيق لا يملك قدرة هذه العملية عند ميتا — راجع إعداد التطبيق.', 'alert'],
+        10 => ['PERMISSION_DENIED', self::PERMISSION, 'alert'],
+        131005 => ['PERMISSION_DENIED', self::PERMISSION, 'alert'],
+        131042 => ['PAYMENT_ISSUE', 'مشكلة في وسيلة الدفع في حساب ميتا — راجع الفوترة في WhatsApp Manager.', 'alert'],
         131047 => ['WINDOW_EXPIRED', 'انتهت نافذة الـ24 ساعة عند ميتا — لا يمكن الإرسال حتى يراسلنا العميل.', null],
         131026 => ['UNDELIVERABLE', 'تعذّر التسليم: الرقم بلا واتساب، أو بنسخة قديمة، أو لم يقبل الشروط.', null],
         131051 => ['UNSUPPORTED', 'نوع الرسالة غير مدعوم في واتساب.', null],
@@ -37,14 +45,47 @@ final class MetaErrorCatalog
         131053 => ['MEDIA_ERROR', 'خطأ في رفع الوسائط.', null],
     ];
 
+    /** رموز الاعتماد والقيود: تنبيه فوري للمدير وسطر «آخر خطأ اعتماد» في بطاقة الصحة (E08) */
+    private const ACCOUNT_ERRORS = [0, 3, 10, 190, 368, 131005, 131031, 131042];
+
+    /** عنوان التنبيه حسب الرمز (والنص «[الرمز] الوصف») */
+    private const ALERT_TITLES = [
+        0 => '⛔ رمز ميتا منتهٍ أو ملغى — الإرسال متوقف',
+        190 => '⛔ رمز ميتا منتهٍ أو ملغى — الإرسال متوقف',
+        368 => '⛔ الحساب مقيّد من ميتا',
+        131031 => '⛔ الحساب مقيّد من ميتا',
+        131042 => '💳 مشكلة دفع في حساب ميتا',
+        3 => '⛔ صلاحيات ميتا ناقصة',
+        10 => '⛔ صلاحيات ميتا ناقصة',
+        131005 => '⛔ صلاحيات ميتا ناقصة',
+    ];
+
+    /** @return array{0: string, 1: string, 2: ?string}|null */
+    private static function entry(?int $metaCode): ?array
+    {
+        if ($metaCode === null) {
+            return null;
+        }
+        if (isset(self::CODES[$metaCode])) {
+            return self::CODES[$metaCode];
+        }
+
+        return $metaCode >= 200 && $metaCode <= 299 ? ['PERMISSION_DENIED', self::PERMISSION, 'alert'] : null;
+    }
+
+    public static function isAccountError(?int $metaCode): bool
+    {
+        return $metaCode !== null && (in_array($metaCode, self::ACCOUNT_ERRORS, true) || ($metaCode >= 200 && $metaCode <= 299));
+    }
+
     public static function codeFor(?int $metaCode): string
     {
-        return self::CODES[$metaCode][0] ?? 'META_ERROR';
+        return self::entry($metaCode)[0] ?? 'META_ERROR';
     }
 
     public static function describe(?int $metaCode): ?string
     {
-        return self::CODES[$metaCode][1] ?? null;
+        return self::entry($metaCode)[1] ?? null;
     }
 
     /** النص المحفوظ: «[رمز] النص العربي» أو «[رمز] نص ميتا» لما لا يعرفه الجدول */
@@ -59,13 +100,17 @@ final class MetaErrorCatalog
 
     public static function react(?int $metaCode): void
     {
-        if ($metaCode === null || !isset(self::CODES[$metaCode])) {
+        $entry = self::entry($metaCode);
+        if ($entry === null) {
             return;
         }
-        $action = self::CODES[$metaCode][2];
+        $action = $entry[2];
 
         if ($metaCode === 190) {
             Cache::put('wa:last_auth_error_at', now()->toIso8601String(), now()->addDays(2));
+        }
+        if (self::isAccountError($metaCode)) {
+            Cache::put('wa:last_account_error', ['code' => $metaCode, 'at' => now()->getTimestamp()], now()->addDay());
         }
 
         if ($action === 'suspend' && self::autosuspends($metaCode)) {
@@ -79,8 +124,9 @@ final class MetaErrorCatalog
             return;
         }
 
-        if (($action === 'alert' || $action === 'suspend') && Cache::add("wa:alert:{$metaCode}", 1, 3600)) {
-            WhatsAppInbox::notifyAdmins('⚠️ تنبيه من ميتا', "[{$metaCode}] ".self::CODES[$metaCode][1], '/whatsapp/settings');
+        // مرة في الساعة لكل رمز، والدفع للجهاز مباشرة (OpsAlerts). الرمز ووصفه فقط، بلا رقم عميل ولا نص
+        if ($action === 'alert' || $action === 'suspend') {
+            app(OpsAlerts::class)->notifyAdmins('meta:send:'.$metaCode, self::ALERT_TITLES[$metaCode] ?? (self::isAccountError($metaCode) ? '⛔ صلاحيات ميتا ناقصة' : '⚠️ تنبيه من ميتا'), "[{$metaCode}] ".$entry[1]);
         }
     }
 

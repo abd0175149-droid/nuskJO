@@ -174,6 +174,15 @@ foreach (\App\Services\Ops\OpsHealth::queues() as $queue) {
         ->everyMinute()
         ->name("ops:queue-beat:{$queue}");
 }
+// فحوص ميتا للقراءة (WA_META_CHECKS): الرمز يومياً وصحة القناة كل ساعة، والنتيجة في بطاقة صحة النظام
+Schedule::command('whatsapp:credentials-check')
+    ->dailyAt(config('ops.credentials_check_at'))
+    ->timezone('Asia/Amman')
+    ->withoutOverlapping(10);
+Schedule::command('whatsapp:health-status')
+    ->hourly()
+    ->withoutOverlapping(10);
+
 // الوظائف الفاشلة تحمل بيانات عملاء في payload والاستثناء: أسبوع ثم تُحذف
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
