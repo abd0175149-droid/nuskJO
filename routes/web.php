@@ -133,6 +133,10 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send'])->middleware('perm:whatsapp.reply');
     Route::post('api/whatsapp/conversations/{conversation}/request-contact', [\App\Http\Controllers\WhatsAppController::class, 'requestContact'])->middleware('perm:whatsapp.reply');
     Route::get('api/whatsapp/clients/search', [\App\Http\Controllers\WhatsAppController::class, 'searchClients'])->middleware('perm:whatsapp.link_client');
+    // طلبات حذف البيانات (E13): عرض وتحقّق ورفض؛ التنفيذ من سطر الأوامر وحده
+    Route::get('whatsapp/erasure-requests', [\App\Http\Controllers\WhatsAppErasureController::class, 'index'])->name('whatsapp.erasure')->middleware('perm:whatsapp.erase');
+    Route::post('whatsapp/erasure-requests/{erasureRequest}/verify', [\App\Http\Controllers\WhatsAppErasureController::class, 'verify'])->middleware('perm:whatsapp.erase');
+    Route::post('whatsapp/erasure-requests/{erasureRequest}/reject', [\App\Http\Controllers\WhatsAppErasureController::class, 'reject'])->middleware('perm:whatsapp.erase');
     Route::post('api/whatsapp/conversations/{conversation}/link-client', [\App\Http\Controllers\WhatsAppController::class, 'linkClient'])->middleware('perm:whatsapp.link_client');
     Route::delete('api/whatsapp/conversations/{conversation}/link-client', [\App\Http\Controllers\WhatsAppController::class, 'unlinkClient'])->middleware('perm:whatsapp.link_client');
     Route::post('api/whatsapp/conversations/{conversation}/toggle-bot', [\App\Http\Controllers\WhatsAppController::class, 'toggleBot'])->middleware('perm:whatsapp.bot_toggle');

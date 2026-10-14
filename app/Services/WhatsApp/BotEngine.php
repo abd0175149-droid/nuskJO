@@ -147,6 +147,12 @@ TXT;
 
         $pending = self::pendingCustomerText($conv, $s);
 
+        // ⓪ طلب حذف البيانات (E13): إيصال يبنيه الكود وتحويل، فلا يدّعي النموذج حذفاً لم يحدث
+        if (HandoffGuard::wantsErasure($pending)) {
+            return self::forceHandoff($conv, $s, $pending, 'طلب العميل حذف بياناته', $run, 'data_erasure',
+                HandoffGuard::erasureConfirmation(HandoffGuard::isLatin($pending)));
+        }
+
         // ① طلب صريح لموظف: يُحوَّل بالكود، ولا يُترك للنموذج أن يزعم التحويل
         if (HandoffGuard::wantsHuman($pending)) {
             return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف', $run);
@@ -713,7 +719,7 @@ TXT;
     }
 
     /** تحويل يقرّره الكود: أداة التحويل نفسها + رسالة تأكيد يبنيها الكود بلغة العميل */
-    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null, ?string $attention = null): array
+    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null, ?string $attention = null, ?string $text = null): array
     {
         BotTools::execute('handoff_to_human', ['reason' => $reason], $conv);
         if ($run) {
@@ -735,7 +741,7 @@ TXT;
         if ($run && ($drop = $run->mayDeliver($conv))) {
             return self::dropped($conv, $s, $drop);
         }
-        $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'bot');
+        $res = WhatsAppChannel::sendText($conv, $text ?? HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'bot');
 
         return ['sent' => (bool) $res['ok'], 'reason' => $reason];
     }

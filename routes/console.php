@@ -248,6 +248,12 @@ Schedule::command('whatsapp:llm-probe')
     ->everyTwoMinutes()
     ->withoutOverlapping(5);
 
+// طلبات حذف تقترب من مهلتها (E13): تنبيه يومي للمدراء
+Schedule::command('whatsapp:erasure-sla')
+    ->timezone('Asia/Amman')
+    ->dailyAt('09:10')
+    ->withoutOverlapping();
+
 Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();

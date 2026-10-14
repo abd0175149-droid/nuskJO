@@ -154,6 +154,11 @@ class WhatsAppInbox
             return null;
         }
 
+        // «حذف بياناتي» (E13): طلب مسجّل حتمياً، مستقلاً عن البوت ومن يمسك المحادثة. رقم الإدارة لا يُعدّ طالباً
+        if ($in->type === 'text' && HandoffGuard::wantsErasure($in->body) && !\App\Models\WaAdminNumber::forPhone($conv->phone)) {
+            ErasureRequests::receive($conv);
+        }
+
         // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
         if ($optOut) {
             WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system');

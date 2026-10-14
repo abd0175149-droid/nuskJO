@@ -30,6 +30,12 @@ class HandoffGuard
         '/\b(real person|live agent|human agent|representative)\b/i',
     ];
 
+    /** طلب حذف البيانات (E13): يُفتح طلب مسجّل حتمياً ويُحوَّل لموظف، ولا يراه النموذج */
+    private const WANTS_ERASURE = [
+        '/(^|\s)(حذف|احذف|احذفو|احذفوا|امسح|امسحو|امسحوا|مسح|شطب)\s+(كل\s+)?(بياناتي|معلوماتي|محادثتي|محادثاتي|رقمي|بيانات حسابي)(\s|$)/u',
+        '/\b(delete|erase|remove)\s+(all\s+)?(of\s+)?my\s+(data|information|personal data|chat|messages)\b/i',
+    ];
+
     /** ردٌّ يزعم أنّ المحادثة حُوّلت أو أنّ موظفاً سيتواصل */
     private const CLAIMS_HANDOFF = [
         '/تم\s+تحويل/u',
@@ -44,6 +50,19 @@ class HandoffGuard
     public static function wantsHuman(string $text): bool
     {
         return self::matchesAny(self::normalize($text), self::WANTS_HUMAN);
+    }
+
+    public static function wantsErasure(string $text): bool
+    {
+        return self::matchesAny(self::normalize($text), self::WANTS_ERASURE);
+    }
+
+    /** إيصال طلب الحذف بلغة العميل: لا يدّعي حذفاً لم يحدث */
+    public static function erasureConfirmation(bool $latin): string
+    {
+        return $latin
+            ? 'We have received your request to delete your data. A colleague will verify your identity and contact you within two working days; the deletion is completed within 30 days.'
+            : 'استلمنا طلب حذف بياناتك. سيتحقق موظف من هويتك ويتواصل معك خلال يومي عمل، ويُنفَّذ الحذف خلال 30 يوماً.';
     }
 
     public static function claimsHandoff(string $text): bool

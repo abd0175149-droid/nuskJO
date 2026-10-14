@@ -32,6 +32,7 @@ final class ReplyState
         'identity_conflict' => '🔀 محادثتان لعميل واحد',
         'identity_change' => '🔄 غيّر العميل رقمه',
         'llm_outage' => '🔌 تعطّل مزوّد الذكاء',
+        'data_erasure' => '🗑️ طلب حذف بيانات',
     ];
 
     private static ?bool $available = null;
