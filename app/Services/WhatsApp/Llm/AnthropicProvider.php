@@ -21,7 +21,7 @@ class AnthropicProvider implements LlmProvider
     }
 
     /** ترويسة المفتاح لا تتبع تحويلاً إلى مضيف آخر */
-    private function client(string $apiKey, int $timeout): PendingRequest
+    private function client(#[\SensitiveParameter] string $apiKey, int $timeout): PendingRequest
     {
         return Http::withHeaders([
             'x-api-key' => $apiKey,
@@ -29,7 +29,7 @@ class AnthropicProvider implements LlmProvider
         ])->withoutRedirecting()->connectTimeout(10)->timeout($timeout)->acceptJson();
     }
 
-    public function models(string $apiKey): array
+    public function models(#[\SensitiveParameter] string $apiKey): array
     {
         $res = $this->client($apiKey, 20)->get(self::API . '/models', ['limit' => 50]);
 
@@ -57,7 +57,7 @@ class AnthropicProvider implements LlmProvider
         ], $messages);
     }
 
-    public function generate(string $apiKey, string $model, array $system, array $history, array $tools): array
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools): array
     {
         // أول كتلة (الشخصية + قاعدة المعرفة) تُخزَّن مؤقتاً
         $systemBlocks = [];

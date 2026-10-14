@@ -44,6 +44,17 @@ class OutboundLlmCallsTest extends TestCase
         Http::assertSent(fn (Request $r) => $r->hasHeader('x-goog-api-key', self::KEY));
     }
 
+    public function test_api_keys_are_marked_sensitive_for_stack_traces(): void
+    {
+        foreach ([GeminiProvider::class => ['models', 'generate', 'transcribe'], AnthropicProvider::class => ['models', 'generate']] as $class => $methods) {
+            foreach ($methods as $method) {
+                $param = (new \ReflectionMethod($class, $method))->getParameters()[0];
+                $this->assertSame('apiKey', $param->getName());
+                $this->assertNotEmpty($param->getAttributes(\SensitiveParameter::class), "{$class}::{$method}");
+            }
+        }
+    }
+
     public function test_model_name_cannot_change_the_path(): void
     {
         Http::fake();

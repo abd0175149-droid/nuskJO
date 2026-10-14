@@ -25,7 +25,7 @@ class GeminiProvider implements LlmProvider
     }
 
     /** المفتاح في الترويسة لا في الرابط (الرابط يصل إلى السجلات ورسائل الأخطاء)، ولا تحويل يحمله لمضيف آخر */
-    private function client(string $apiKey, int $timeout): PendingRequest
+    private function client(#[\SensitiveParameter] string $apiKey, int $timeout): PendingRequest
     {
         return Http::withHeaders(['x-goog-api-key' => $apiKey])
             ->withoutRedirecting()
@@ -39,13 +39,13 @@ class GeminiProvider implements LlmProvider
         return self::BASE . '/models/' . UrlPath::segment($model) . ':generateContent';
     }
 
-    private static function failure(string $prefix, \Illuminate\Http\Client\Response $res, string $apiKey): \RuntimeException
+    private static function failure(string $prefix, \Illuminate\Http\Client\Response $res, #[\SensitiveParameter] string $apiKey): \RuntimeException
     {
         return new \RuntimeException(SecretRedactor::clean($prefix . ' HTTP ' . $res->status() . ': '
             . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300), [$apiKey]));
     }
 
-    public function models(string $apiKey): array
+    public function models(#[\SensitiveParameter] string $apiKey): array
     {
         $res = $this->client($apiKey, 20)->get(self::BASE . '/models');
         if (!$res->successful()) {
@@ -88,7 +88,7 @@ class GeminiProvider implements LlmProvider
         return $h;
     }
 
-    public function generate(string $apiKey, string $model, array $system, array $history, array $tools): array
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools): array
     {
         $body = [
             'systemInstruction' => ['parts' => array_map(fn ($t) => ['text' => $t], $system)],
@@ -151,7 +151,7 @@ class GeminiProvider implements LlmProvider
      *
      * @return array{text:string, usage:array{in:int,out:int}}
      */
-    public function transcribe(string $apiKey, string $model, string $bytes, string $mime): array
+    public function transcribe(#[\SensitiveParameter] string $apiKey, string $model, string $bytes, string $mime): array
     {
         $body = [
             'contents' => [[

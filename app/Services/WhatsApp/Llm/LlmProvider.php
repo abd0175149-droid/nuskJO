@@ -16,7 +16,7 @@ interface LlmProvider
     public function key(): string;
 
     /** النماذج المتاحة فعلياً لهذا المفتاح — تُجلب حيّاً */
-    public function models(string $apiKey): array;
+    public function models(#[\SensitiveParameter] string $apiKey): array;
 
     /** تحويل التمثيل المحايد إلى سجلّ المزوّد */
     public function buildHistory(array $messages): array;
@@ -26,7 +26,7 @@ interface LlmProvider
      * @return array{text:string, tool_calls:array<array{id:string,name:string,input:array}>,
      *               raw_assistant:mixed, usage:array{in:int,out:int,cache_read:int,cache_write:int}}
      */
-    public function generate(string $apiKey, string $model, array $system, array $history, array $tools): array;
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools): array;
 
     /** إلحاق ردّ النموذج بالسجلّ — كما وصل حرفياً (مهم لنماذج التفكير) */
     public function appendAssistant(array &$history, mixed $rawAssistant): void;
