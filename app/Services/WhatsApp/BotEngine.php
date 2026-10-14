@@ -86,6 +86,12 @@ TXT;
     {
         $s = WaBotSetting::current();
 
+        // قفل الإرسال الطارئ يوقف كل شيء قبل النموذج، ومنه المساعد الإداري: لا تكلفة ولا أدوات
+        // (بعد استعادة نسخة مثلاً، قد يكتب المدير «تأكيد» على معاينة لم يرها)
+        if ($s->wa_suspended || config('services.whatsapp.suspended')) {
+            return self::skip('الإرسال موقوف (قفل طارئ)');
+        }
+
         // أرقام الإدارة يخدمها المساعد الإداري بأدواتها المسموحة وحدها — حتى لو كان بوت العملاء موقوفاً
         if ($admin = WaAdminNumber::forPhone($conv->phone)) {
             return self::adminReply($conv, $s, $admin);

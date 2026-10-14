@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Console\Commands\BackupSafeMode;
+use App\Models\Setting;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Services\WhatsApp\BotEngine;
@@ -10,6 +12,7 @@ use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class WhatsAppController extends Controller
@@ -350,7 +353,17 @@ class WhatsAppController extends Controller
             }
         }
 
-        WaBotSetting::current()->update($data);
+        $settings = WaBotSetting::current();
+
+        // بعد استعادة نسخة: القفل يبقى حتى يعتمد المدير المراجعة (وضعه مسموح دائماً)
+        if (array_key_exists('wa_suspended', $data) && !$data['wa_suspended'] && $settings->wa_suspended
+            && Setting::get(BackupSafeMode::REVIEW_KEY)) {
+            throw ValidationException::withMessages([
+                'wa_suspended' => 'أكمل مراجعة ما بعد الاستعادة من صفحة النسخ الاحتياطي أولاً',
+            ]);
+        }
+
+        $settings->update($data);
 
         return back()->with('success', 'تم حفظ إعدادات البوت');
     }

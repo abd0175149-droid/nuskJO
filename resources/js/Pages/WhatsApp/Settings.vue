@@ -66,6 +66,10 @@
                                 <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">يمنع أي رسالة صادرة فورًا — للاستخدام عند وجود خلل أو تجاوز في الفواتير.</span>
                             </span>
                         </label>
+                        <p v-if="form.errors.wa_suspended" class="px-1 text-xs font-bold text-red-600 dark:text-red-400">
+                            {{ form.errors.wa_suspended }} —
+                            <Link href="/settings/backups" class="underline">النسخ الاحتياطي</Link>
+                        </p>
                     </div>
                 </div>
 
@@ -306,7 +310,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { Link, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 
