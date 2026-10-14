@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
  *
  * ثلاثة أنماط كتابة:
  *  log     صارم يرمي: للمال والصلاحيات، داخل المعاملة نفسها (لا اعتماد بلا صف تدقيق).
- *  safe    بأفضل جهد: لا يُفشل العملية ولا الويبهوك. وغير المالي منه خلف audit.extended.
+ *  safe    بأفضل جهد: لا يُفشل العملية ولا الويبهوك. وما ليس alwaysOn خلف audit.extended.
  *  sampled بالعيّنات: للضجيج (دخول فاشل، توقيع مرفوض، 403).
  */
 class AuditLog extends Model
@@ -106,7 +106,7 @@ class AuditLog extends Model
 
     private static function enabledFor(AuditAction $action): bool
     {
-        return $action->category() === 'money' || (bool) config('audit.extended');
+        return $action->alwaysOn() || (bool) config('audit.extended');
     }
 
     private static function row(AuditAction $action, string $entityType, ?int $entityId, ?string $label, ?array $changes, ?AuditSeverity $severity): array

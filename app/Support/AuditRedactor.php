@@ -27,6 +27,14 @@ final class AuditRedactor
         return $clean;
     }
 
+    /** a***@domain.com: يكفي لمعرفة الحساب المستهدف دون كشف البريد */
+    public static function maskEmail(string $email): string
+    {
+        [$local, $domain] = array_pad(explode('@', $email, 2), 2, '');
+
+        return mb_substr($local, 0, 1).'***'.($domain !== '' ? '@'.$domain : '');
+    }
+
     /** @return array{len: int, sha1: string} */
     public static function fingerprint(?string $value): array
     {

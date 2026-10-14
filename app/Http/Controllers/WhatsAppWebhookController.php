@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AuditAction;
 use App\Jobs\ProcessWhatsAppReply;
+use App\Models\AuditLog;
 use App\Models\WaBotSetting;
 use App\Services\WhatsApp\WhatsAppChannel;
 use App\Services\WhatsApp\WaLog;
@@ -36,6 +38,10 @@ class WhatsAppWebhookController extends Controller
         }
 
         WaLog::warning('webhook.verify.denied');
+        // عيّنة لكل عنوان، بلا الرمز المرسل
+        AuditLog::sampled(AuditAction::WaWebhookVerifyFailed, 'wa_verify:'.$request->ip(), 'webhook', null, null, [
+            'mode' => mb_substr((string) $request->query('hub_mode', ''), 0, 20), 'verify_param_sent' => $given !== '',
+        ]);
 
         return response('Forbidden', 403);
     }
@@ -49,6 +55,10 @@ class WhatsAppWebhookController extends Controller
         // التوقيع إلزامي — لا استثناء في الإنتاج
         if (!WhatsAppChannel::verifySignature($raw, $request->header('X-Hub-Signature-256'), $s->appSecret())) {
             WaLog::warning('webhook.bad_signature');
+            // عيّنة لكل عنوان: الجسم لا يُسجَّل، ولا حد ولا 429 (الطلب الموقَّع لا يمر من هنا)
+            AuditLog::sampled(AuditAction::WaWebhookBadSignature, 'wa_sig:'.$request->ip(), 'webhook', null, null, [
+                'has_header' => $request->hasHeader('X-Hub-Signature-256'), 'bytes' => strlen($raw),
+            ]);
             return response()->json(['ok' => false], 403);
         }
 

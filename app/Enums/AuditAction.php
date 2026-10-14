@@ -207,6 +207,12 @@ enum AuditAction: string
         };
     }
 
+    /** يُكتب ولو كان audit.extended مطفأً: المال، وقفل الدخول (يُدقَّق منذ E03)، والإيقاف التلقائي للإرسال */
+    public function alwaysOn(): bool
+    {
+        return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto], true);
+    }
+
     public function isNoise(): bool
     {
         return $this->category() === 'noise';

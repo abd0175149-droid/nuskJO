@@ -33,6 +33,7 @@ class AppServiceProvider extends ServiceProvider
         $this->guardDestructiveDatabaseCommands();
         $this->definePermissionGate();
         $this->defineLoginRateLimit();
+        \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         $this->bindVisibleConversations();
         $this->watchOperations();
 
@@ -90,14 +91,14 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * حد محاولات الدخول (E03): 5 في الدقيقة لكل بريد وعنوان، و30 لكل عنوان (المكتب خلف عنوان واحد).
-     * القفل يُسجَّل في التدقيق ببريد مقنّع فقط.
+     * القفل حدث Lockout يدقّقه AuditAuthEvents (E09) ببريد مقنّع وبالعيّنات.
      */
     private function defineLoginRateLimit(): void
     {
         \Illuminate\Support\Facades\RateLimiter::for('login', function (\Illuminate\Http\Request $request) {
             $email = \Illuminate\Support\Str::lower((string) $request->input('email'));
-            $locked = function () use ($request, $email) {
-                \App\Models\AuditLog::log(\App\Enums\AuditAction::AuthLockout, 'User', null, self::maskEmail($email), ['ip' => $request->ip()]);
+            $locked = function () use ($request) {
+                event(new \Illuminate\Auth\Events\Lockout($request));
 
                 return back()->withErrors(['email' => 'محاولات دخول كثيرة. انتظر دقيقة ثم أعد المحاولة.'])->onlyInput('email');
             };
@@ -107,14 +108,6 @@ class AppServiceProvider extends ServiceProvider
                 \Illuminate\Cache\RateLimiting\Limit::perMinute(30)->by('ip:'.$request->ip())->response($locked),
             ];
         });
-    }
-
-    /** a***@domain.com */
-    private static function maskEmail(string $email): string
-    {
-        [$local, $domain] = array_pad(explode('@', $email, 2), 2, '');
-
-        return mb_substr($local, 0, 1).'***'.($domain !== '' ? '@'.$domain : '');
     }
 
     /**

@@ -2,10 +2,14 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Enums\AuditAction;
+use App\Enums\AuditSeverity;
+use App\Models\AuditLog;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Models\WaOptout;
+use App\Support\AuditActor;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -330,31 +334,93 @@ class WhatsAppInbox
      * أحداث صحة الحساب: الحدث السلبي وحده يقفل الإرسال (أحداث عادية تصل عند ربط الحساب أو توثيقه تُسجَّل فقط).
      * الويبهوك واحد للتطبيق، فحدث رقم آخر أو حساب آخر يُتجاهل حين نعرف رقمنا وحسابنا.
      * ما لم نعرفهما بعد (لم تصل رسالة لرقمنا)، يبقى الإيقاف الاحتياطي.
+     * وكل حقل لنا صف تدقيق دائم بفاعل meta (E09)؛ فشل كتابته لا يقطع بقية الحمولة.
      */
     private static function handleAccountEvent(string $field, array $value, string $entryId, WaBotSetting $settings): void
     {
-        $critical = ['account_update', 'phone_number_quality_update'];
-        if (!in_array($field, $critical, true)) return;
-
         $ours = (string) $settings->wa_display_phone;
         $theirs = PhoneNormalizer::digits((string) data_get($value, 'display_phone_number', ''));
         $otherNumber = $field === 'phone_number_quality_update' && $ours !== '' && $theirs !== '' && $theirs !== $ours;
-        $otherAccount = $field === 'account_update' && (string) $settings->wa_waba_id !== '' && $entryId !== '' && $entryId !== (string) $settings->wa_waba_id;
+        $otherAccount = $field !== 'phone_number_quality_update' && (string) $settings->wa_waba_id !== '' && $entryId !== '' && $entryId !== (string) $settings->wa_waba_id;
         if ($otherNumber || $otherAccount) {
             WaLog::warning('account.event.other_number', ['field' => $field, 'event' => data_get($value, 'event'), 'entry' => $entryId]);
             return;
         }
 
-        $event = data_get($value, 'event') ?: data_get($value, 'current_limit') ?: $field;
-        // الحقل والحدث فقط: الحمولة فيها أرقام معروضة وبيانات حساب
-        WaLog::warning('account.event', ['field' => $field, 'event' => (string) $event, 'entry' => $entryId]);
+        $event = strtoupper((string) (data_get($value, 'event') ?: data_get($value, 'alert_type') ?: data_get($value, 'decision') ?: $field));
+        $critical = in_array($field, ['account_update', 'phone_number_quality_update'], true);
+        if ($critical) {
+            // الحقل والحدث فقط: الحمولة فيها أرقام معروضة وبيانات حساب
+            WaLog::warning('account.event', ['field' => $field, 'event' => $event, 'entry' => $entryId]);
+        }
+
+        [$action, $severity] = self::accountAudit($field, $value, $event);
+        try {
+            AuditActor::as('meta', $field, fn () => AuditLog::safe($action, 'wa_account', null, $event, self::accountSnapshot($field, $value), $severity));
+        } catch (\Throwable) {
+            // safe لا يرمي؛ الحارس لما قبله (السياق) كي لا يضيع ما بعده في الحمولة
+        }
+
+        if (!$critical) {
+            return;
+        }
 
         $bad = ['FLAGGED', 'DOWNGRADE', 'ACCOUNT_VIOLATION', 'ACCOUNT_RESTRICTION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED'];
         $violation = data_get($value, 'violation_info') || data_get($value, 'ban_info');
-        if (in_array(strtoupper((string) $event), $bad, true) || $violation) {
-            WaBotSetting::current()->update(['wa_suspended' => true]);
+        if (in_array($event, $bad, true) || $violation) {
+            $current = WaBotSetting::current();
+            $wasSuspended = (bool) $current->wa_suspended;
+            $current->update(['wa_suspended' => true]);
+            if (!$wasSuspended) {
+                // «من أوقف الإرسال؟» له جواب دائماً (alwaysOn)، وفشل كتابته لا يُسقط الإيقاف ولا الويبهوك
+                AuditActor::as('meta', $field, fn () => AuditLog::safe(AuditAction::WaSuspendAuto, 'wa_bot_settings', $current->id, $event, ['field' => $field, 'event' => $event]));
+            }
             self::notifyAdmins('⛔ إيقاف إرسال الواتساب', "وصل حدث «{$event}» من ميتا، فأُوقف كل الإرسال تلقائياً. راجع صحّة الحساب قبل إعادة التشغيل.");
+        } elseif ($event === 'ACCOUNT_OFFBOARDED') {
+            // فصل الحساب عن الشريك: تنبيه فقط، والإيقاف التلقائي له قرار مالك (E09.9)
+            self::notifyAdmins('⚠️ فُصل حساب واتساب للأعمال', 'وصل حدث ACCOUNT_OFFBOARDED من ميتا. راجع ربط الحساب قبل أن يتوقف الإرسال.');
         }
+    }
+
+    /** @return array{0: AuditAction, 1: AuditSeverity} */
+    private static function accountAudit(string $field, array $value, string $event): array
+    {
+        return match ($field) {
+            'account_update' => [AuditAction::WaAccountUpdate,
+                in_array($event, ['ACCOUNT_VIOLATION', 'ACCOUNT_RESTRICTION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED', 'ACCOUNT_OFFBOARDED'], true)
+                || data_get($value, 'violation_info') || data_get($value, 'ban_info') || data_get($value, 'restriction_info')
+                    ? AuditSeverity::Error : AuditSeverity::Info],
+            'account_alerts' => [AuditAction::WaAccountAlert, match (strtoupper((string) data_get($value, 'alert_severity'))) {
+                'CRITICAL' => AuditSeverity::Error,
+                'WARNING' => AuditSeverity::Warn,
+                default => AuditSeverity::Info,
+            }],
+            'security' => [AuditAction::WaSecurity, AuditSeverity::Warn],
+            'phone_number_quality_update' => [AuditAction::WaQualityUpdate,
+                in_array($event, ['FLAGGED', 'DOWNGRADE'], true) ? AuditSeverity::Error : AuditSeverity::Info],
+            'account_review_update' => [AuditAction::WaReviewUpdate,
+                strtoupper((string) data_get($value, 'decision')) === 'REJECTED' ? AuditSeverity::Error : AuditSeverity::Info],
+            'business_capability_update' => [AuditAction::WaCapabilityUpdate, AuditSeverity::Info],
+            default => [AuditAction::WaWebhookOther, AuditSeverity::Info],
+        };
+    }
+
+    /** الحمولة كما وصلت بعد الحجب (AuditRedactor عند الكتابة)، بحد 8KB. تفضيلات العملاء فيها wa_id: أعداد فقط */
+    private static function accountSnapshot(string $field, array $value): array
+    {
+        if ($field === 'user_preferences') {
+            $prefs = (array) data_get($value, 'user_preferences', []);
+
+            return ['count' => count($prefs), 'by_value' => array_count_values(array_map(fn ($p) => (string) data_get($p, 'value', '?'), $prefs))];
+        }
+        if ($field === 'phone_number_quality_update') {
+            // الاسم الأحدث للحد اليومي، وcurrent_limit إن وصل بالشكل القديم
+            $value['limit'] = data_get($value, 'max_daily_conversations_per_business') ?? data_get($value, 'current_limit');
+        }
+
+        $bytes = strlen((string) json_encode($value, JSON_UNESCAPED_UNICODE));
+
+        return $bytes <= 8192 ? $value : ['truncated' => true, 'bytes' => $bytes, 'keys' => array_slice(array_keys($value), 0, 40)];
     }
 
     public static function notifyAdmins(string $title, string $body, string $url = '/whatsapp/inbox'): void

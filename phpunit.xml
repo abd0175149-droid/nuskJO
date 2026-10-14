@@ -23,6 +23,7 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
+        <env name="CACHE_LIMITER" value="array"/>
         <env name="OPS_CACHE_STORE" value="array"/>
         <env name="OPS_HEALTH_CHECKS" value="false"/>
         <env name="AUDIT_SAMPLER_STORE" value="array"/>

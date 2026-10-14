@@ -32,6 +32,7 @@ class LoginController extends Controller
 
         if (!$user->is_active) {
             Auth::logout();
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::AuthInactiveBlocked, 'User', $user->id, $user->name);
             return back()->withErrors([
                 'email' => 'تم تعطيل حسابك. تواصل مع المدير.',
             ]);
