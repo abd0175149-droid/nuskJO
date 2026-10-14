@@ -174,16 +174,10 @@ class OfferCardService
         return $mime ? 'data:' . $mime . ';base64,' . base64_encode($bytes) : null;
     }
 
-    /** يشغّل كروميوم بلا واجهة لالتقاط البطاقة */
-    private static function shoot(string $htmlPath, string $pngPath): void
+    /** @return list<string> */
+    private static function chromiumArguments(string $binary, string $profile, string $htmlPath, string $pngPath): array
     {
-        $binary = self::chromium();
-
-        // كروميوم يحتاج مجلّد ملفّ تعريف قابلاً للكتابة، و www-data بلا مجلّد منزل
-        // داخل الحاوية — فنمنحه مجلّداً مؤقتاً خاصاً بكل عملية ثم نحذفه.
-        $profile = sys_get_temp_dir() . '/chromium-' . bin2hex(random_bytes(5));
-
-        $process = new Process([
+        $args = [
             $binary,
             '--headless',
             '--no-sandbox',                 // نعمل كـ root داخل حاوية معزولة
@@ -198,9 +192,39 @@ class OfferCardService
             '--no-default-browser-check',
             '--window-size=' . self::WIDTH . ',' . self::HEIGHT,
             '--virtual-time-budget=8000',   // ننتظر الخطوط وسكربت ضبط المقاس
-            '--screenshot=' . $pngPath,
-            'file://' . str_replace('\\', '/', $htmlPath),
-        ]);
+        ];
+
+        // عزل عن الشبكة: بروكسي ميت يشمل loopback (Reverb وphp-fpm وnginx على المضيف نفسه)، وحلّ أسماء فاشل،
+        // ولا خدمات خلفية. سياسة CSP في القالب هي الحاجز الأول؛ هذه طبقة ثانية لأي محتوى يفلت منها.
+        if (config('services.chromium.net_isolation')) {
+            array_push($args,
+                '--proxy-server=127.0.0.1:9',
+                '--proxy-bypass-list=<-loopback>',
+                '--host-resolver-rules=MAP * ~NOTFOUND',
+                '--disable-background-networking',
+                '--disable-component-update',
+                '--disable-sync',
+                '--disable-domain-reliability',
+                '--no-pings',
+            );
+        }
+
+        $args[] = '--screenshot=' . $pngPath;
+        $args[] = 'file://' . str_replace('\\', '/', $htmlPath);
+
+        return $args;
+    }
+
+    /** يشغّل كروميوم بلا واجهة لالتقاط البطاقة */
+    private static function shoot(string $htmlPath, string $pngPath): void
+    {
+        $binary = self::chromium();
+
+        // كروميوم يحتاج مجلّد ملفّ تعريف قابلاً للكتابة، و www-data بلا مجلّد منزل
+        // داخل الحاوية — فنمنحه مجلّداً مؤقتاً خاصاً بكل عملية ثم نحذفه.
+        $profile = sys_get_temp_dir() . '/chromium-' . bin2hex(random_bytes(5));
+
+        $process = new Process(self::chromiumArguments($binary, $profile, $htmlPath, $pngPath));
 
         $process->setTimeout(60);
         $process->setEnv(['HOME' => $profile]);

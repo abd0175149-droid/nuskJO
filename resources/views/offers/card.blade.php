@@ -255,6 +255,8 @@
 <html dir="rtl" lang="ar">
 <head>
     <meta charset="utf-8">
+    {{-- بلا شبكة ولا ملفات أخرى: كل الصور data: والخطوط خطوط نظام والسكربت الوحيد مضمّن (يسري على المعاينة في المتصفح أيضاً) --}}
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'">
     <title>{{ $has($offer->title ?? null) ? $offer->title : 'بطاقة العرض' }}</title>
     <style>
         /* ===== الأساس ===== */
