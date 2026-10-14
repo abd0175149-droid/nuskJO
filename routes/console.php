@@ -41,6 +41,64 @@ Artisan::command('whatsapp:window-reminders', function () {
     $this->info("أُرسل {$sent} تذكيراً");
 })->purpose('تذكير الموظفين قبل إغلاق نافذة الـ24 ساعة في واتساب');
 
+// تقرير السياج (E04) للقراءة فقط: ما يراه كل موظف بعد السياج، قبل تفعيل WA_FENCE_QUOTES وبعد تغيير التوجيه.
+// أعداد ومعرّفات فقط: لا أسماء ولا هواتف في الطرفية.
+Artisan::command('whatsapp:fence-report {--json : مخرجات JSON}', function () {
+    $total = \App\Models\WaConversation::count();
+    $adminChats = \App\Models\WaConversation::where(fn ($q) => $q->where('is_admin_chat', true)
+        ->orWhereIn('phone', \App\Models\WaAdminNumber::select('phone')))->count();
+    $unrouted = \App\Models\WaConversation::whereNull('assigned_to')
+        ->whereNotExists(fn ($s) => $s->selectRaw(1)->from('wa_conversation_topics')
+            ->whereColumn('wa_conversation_topics.conversation_id', 'wa_conversations.id'))->count();
+    $openQuotes = \App\Models\QuoteRequest::whereIn('status', ['new', 'priced']);
+    $fenceQuotes = (bool) config('services.whatsapp.fence_quotes');
+
+    $rows = \App\Models\User::with('role.permissions')->where('is_active', true)->orderBy('id')->get()
+        ->filter(fn ($u) => $u->can('whatsapp.view'))
+        ->map(function ($u) use ($adminChats, $openQuotes) {
+            // طلبات التسعير كما ستكون بعد التفعيل، أياً كانت قيمة المفتاح الآن
+            $was = config('services.whatsapp.fence_quotes');
+            config(['services.whatsapp.fence_quotes' => true]);
+            $quotesFenced = (clone $openQuotes)->visibleTo($u)->count();
+            config(['services.whatsapp.fence_quotes' => $was]);
+
+            return [
+                'user' => $u->id,
+                'role' => $u->role?->slug,
+                'view_all' => $u->can('whatsapp.view_all') ? 'yes' : 'no',
+                'topics' => count(\App\Services\WhatsApp\TopicRouter::topicsForUser($u->id)),
+                'visible' => \App\Models\WaConversation::query()->visibleTo($u)->count(),
+                'assigned' => \App\Models\WaConversation::where('assigned_to', $u->id)->count(),
+                'admin_hidden' => $u->can('whatsapp.admin_chats') ? 0 : $adminChats,
+                'quotes_fenced' => $quotesFenced,
+            ];
+        })->values();
+
+    $summary = [
+        'conversations' => $total,
+        'admin_chats' => $adminChats,
+        'unrouted' => $unrouted,
+        'open_quotes' => (clone $openQuotes)->count(),
+        'fence_quotes' => $fenceQuotes,
+        'users_seeing_nothing' => $rows->where('visible', 0)->where('view_all', 'no')->pluck('user')->values()->all(),
+    ];
+
+    if ($this->option('json')) {
+        $this->line(json_encode(['summary' => $summary, 'users' => $rows->all()], JSON_UNESCAPED_UNICODE));
+
+        return 0;
+    }
+
+    $this->line("المحادثات: {$total} · محادثات الإدارة: {$adminChats} · بلا وسم ولا توكيل (للمدير وحده): {$unrouted}");
+    $this->line('طلبات التسعير المفتوحة: '.$summary['open_quotes'].' · WA_FENCE_QUOTES: '.($fenceQuotes ? 'مفعّل' : 'مطفأ'));
+    $this->table(['مستخدم', 'الدور', 'يرى الكل', 'اختصاصات', 'يرى', 'موكلة له', 'إدارة محجوبة', 'طلبات بعد التفعيل'], $rows->all());
+    if ($summary['users_seeing_nothing']) {
+        $this->warn('لا يرون أي محادثة (أضف اختصاصاً في /whatsapp/routing أو وكّل لهم): '.implode(', ', $summary['users_seeing_nothing']));
+    }
+
+    return 0;
+})->purpose('للقراءة فقط: ما يراه كل موظف من محادثات واتساب وطلبات التسعير بعد السياج (أعداد فقط)');
+
 Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
