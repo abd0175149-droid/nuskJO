@@ -4,10 +4,12 @@ namespace Tests\Feature\Retention;
 
 use App\Models\AuditLog;
 use App\Models\Client;
+use App\Models\Offer;
 use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaKnowledgeEntry;
 use App\Models\WaMessage;
+use Database\Factories\OfferFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -70,15 +72,18 @@ class ExportCommandsTest extends TestCase
     {
         $this->configureChannel();
         WaKnowledgeEntry::create(['title' => 'الدوام', 'content' => 'من 9 إلى 5', 'is_active' => true, 'sort_order' => 1]);
+        Offer::factory()->ready()->withCanaryInternals()->create(['title' => 'عمرة التصدير']);
 
         $this->assertSame(0, Artisan::call('wa:export-config', ['--with-offers' => true]));
         $json = File::get($this->written());
 
-        foreach (['test-token', 'test-app-secret', 'test-llm-key', self::TEST_VERIFY_TOKEN, (string) config('app.key')] as $secret) {
+        $canaries = [(string) OfferFactory::CANARY_ROOM_RATE, (string) OfferFactory::CANARY_UNIT_COST, (string) OfferFactory::CANARY_AGENT_ID, (string) OfferFactory::CANARY_TOTAL_SEATS, 'CANARY'];
+        foreach (['test-token', 'test-app-secret', 'test-llm-key', self::TEST_VERIFY_TOKEN, (string) config('app.key'), ...$canaries] as $secret) {
             $this->assertStringNotContainsString($secret, $json);
         }
         $data = json_decode($json, true);
         $this->assertSame('الدوام', $data['knowledge'][0]['title']);
+        $this->assertSame('عمرة التصدير', $data['offers'][0]['title']);
         $this->assertArrayNotHasKey('wa_token', $data['wa_bot_settings']);
         $this->assertTrue(AuditLog::where('action', 'config.export')->sole()->changes['with_offers']);
     }
