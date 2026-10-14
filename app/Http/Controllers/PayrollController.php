@@ -214,10 +214,9 @@ class PayrollController extends Controller
     {
         $user = auth()->user();
 
-        // الموظف يمكنه رؤية قسيمته فقط، المدير يمكنه رؤية الكل
-        if ($user->employee && $user->employee->id !== $employee->id && !$user->can('payroll.view')) {
-            abort(403);
-        }
+        // قسيمة الموظف نفسه، أو لمن يملك payroll.view (حساب بلا ملف موظف لا يرى قسائم غيره)
+        $ownPayslip = $user->employee && $user->employee->id === $employee->id;
+        abort_unless($ownPayslip || $user->can('payroll.view'), 403);
 
         $item = PayrollItem::with(['payroll', 'employee.user', 'employee.department'])
             ->where('employee_id', $employee->id)
