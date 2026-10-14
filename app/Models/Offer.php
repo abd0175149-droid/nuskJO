@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\SellOption;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -18,6 +19,8 @@ use Illuminate\Support\Collection;
  */
 class Offer extends Model
 {
+    use HasFactory;
+
     /** التصنيفات وتسمياتها */
     public const CATEGORIES = [
         'package' => 'باقة',

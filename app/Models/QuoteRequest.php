@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class QuoteRequest extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'request_number', 'conversation_id', 'client_id', 'offer_id', 'phone', 'customer_name',
         'type', 'route_from', 'route_to', 'depart_date', 'return_date',

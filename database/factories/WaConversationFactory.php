@@ -38,6 +38,12 @@ class WaConversationFactory extends Factory
         return $this->state(fn () => ['bot_enabled' => false]);
     }
 
+    /** البوت موقوف مؤقتاً لهذه المحادثة (كما بعد ردّ موظف) */
+    public function paused(int $minutes = 30): static
+    {
+        return $this->state(fn () => ['bot_paused_until' => now()->addMinutes($minutes)]);
+    }
+
     public function linkedTo(Client $client): static
     {
         return $this->state(fn () => ['client_id' => $client->id]);

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\WhatsApp\PhoneNormalizer;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -15,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class WaAdminNumber extends Model
 {
+    use HasFactory;
+
     protected $table = 'wa_admin_numbers';
 
     protected $fillable = [
