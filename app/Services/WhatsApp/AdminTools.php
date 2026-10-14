@@ -369,7 +369,9 @@ class AdminTools
             'count' => $clients->count(),
             'clients' => $clients->map(fn ($c) => [
                 'name' => $c->name, 'code' => $c->code, 'phone' => $c->phone,
-                'balance_jod' => round((float) ($c->account?->balance ?? 0), 3),
+                // بلا حساب محاسبي: لا صفر يُقرأ «مسدّد» (E12.7)
+                'balance_jod' => $c->account ? round((float) $c->account->balance, 3) : null,
+                'balance_status' => $c->account ? 'ok' : 'no_account',
                 'last_invoices' => Invoice::where('client_id', $c->id)->where('status', 'approved')
                     ->orderByDesc('invoice_date')->limit(3)->get(['invoice_number', 'invoice_date', 'trip_date', 'total_sell_jod'])
                     ->map(fn ($i) => [
@@ -377,7 +379,7 @@ class AdminTools
                         'trip' => $i->trip_date?->toDateString(), 'total_jod' => round((float) $i->total_sell_jod, 3),
                     ])->all(),
             ])->all(),
-            'note' => $clients->isEmpty() ? 'لا نتائج — اقترح صيغة أخرى للبحث.' : 'الرصيد الموجب = مبلغ على العميل.',
+            'note' => $clients->isEmpty() ? 'لا نتائج — اقترح صيغة أخرى للبحث.' : 'الرصيد الموجب = مبلغ على العميل. balance_status=no_account: لا حساب محاسبي مربوط، فالرصيد غير متاح.',
         ];
     }
 

@@ -23,7 +23,8 @@ interface LlmProvider
 
     /**
      * نداء واحد للنموذج. $timeout بالثواني (null: الافتراضي 40)، يحدّده المحرّك من ميزانية الرد.
-     * يرمي LlmTransientException عند خلل عابر (429 و5xx ومهلة أو شبكة)، وRuntimeException لغيره.
+     * يرمي LlmException مصنَّفاً (LlmErrorClassifier): غير متاح، أو خنق، أو مفتاح/نموذج مرفوض، أو حصة منتهية، أو طلب مرفوض.
+     *
      * @return array{text:string, tool_calls:array<array{id:string,name:string,input:array}>,
      *               raw_assistant:mixed, usage:array{in:int,out:int,cache_read:int,cache_write:int}}
      */
@@ -34,7 +35,8 @@ interface LlmProvider
 
     /**
      * إلحاق نتائج الأدوات.
-     * @param array<array{id:string,name:string,output:array}> $results
+     *
+     * @param  array<array{id:string,name:string,output:array}>  $results
      */
     public function appendToolResults(array &$history, array $results): void;
 }

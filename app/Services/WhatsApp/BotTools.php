@@ -330,15 +330,26 @@ class BotTools
         if (!$conv->financialClientId()) {
             return self::notLinked();
         }
+        // غياب العميل أو حسابه «غير متاح» صريحاً، لا رصيد صفري يُقرأ «مسدّدة» (E12.7)
         $client = $conv->client;
-        $balance = round((float) ($client?->account?->balance ?? 0), 3);
+        if (!$client) {
+            return ['ok' => false, 'error' => 'تعذّر جلب الحساب', 'note' => self::UNAVAILABLE_NOTE];
+        }
+        if (!$client->account) {
+            return ['ok' => false, 'available' => false,
+                'note' => 'الرصيد غير متاح الآن. لا تذكر أي رقم ولا تقل إن ذمّته مسدّدة. اعتذر واعرض تحويله لموظف.'];
+        }
+        $balance = round((float) $client->account->balance, 3);
 
         return [
-            'client' => $client?->name,
+            'ok' => true,
+            'client' => $client->name,
             'balance_jod' => $balance,
-            'note' => $balance > 0
-                ? 'أبلغ العميل بالمبلغ المتبقي عليه كما هو — لا تحسب ولا تقرّب.'
-                : 'أبلغه أنّ ذمّته مسدّدة ولا يوجد مبلغ متبقٍ.',
+            'note' => match (true) {
+                $balance > 0 => 'أبلغ العميل بالمبلغ المتبقي عليه كما هو — لا تحسب ولا تقرّب.',
+                $balance < 0 => 'له رصيد دائن لدينا بهذا المبلغ (القيمة بالسالب). اذكره كما هو، ولا تقل إن عليه مبلغاً.',
+                default => 'أبلغه أنّ ذمّته مسدّدة ولا يوجد مبلغ متبقٍ.',
+            },
         ];
     }
 
@@ -360,13 +371,14 @@ class BotTools
             'date' => $i->invoice_date?->toDateString(),
             'trip_date' => $i->trip_date?->toDateString(),
             'total_jod' => round((float) $i->total_sell_jod, 3),
-            'remaining_jod' => $remaining[$i->id] ?? round((float) $i->total_sell_jod, 3),
+            // غير محسوب = غير متاح، لا «الإجمالي كله متبقٍ»
+            'remaining_jod' => $remaining[$i->id] ?? null,
         ])->all();
 
         return [
             'count' => count($rows),
             'invoices' => $rows,
-            'note' => 'اذكر الأرقام كما وردت حرفياً. المتبقي محسوب بالنظام — لا تعد حسابه.',
+            'note' => 'اذكر الأرقام كما وردت حرفياً. المتبقي محسوب بالنظام — لا تعد حسابه. remaining_jod=null يعني «غير متاح الآن»: لا تذكر له رقماً.',
         ];
     }
 
@@ -424,6 +436,8 @@ class BotTools
                 . 'لا تذكر أي سعر ولا تؤكّد توفّر مقعد. جملة واحدة قصيرة تكفي.'.self::askForPhone($conv),
         ];
     }
+
+    private const UNAVAILABLE_NOTE = 'المعلومة غير متاحة الآن. لا تستنتج قيمة ولا تقل لا يوجد أو مسدّد. اعتذر واعرض تحويله لموظف.';
 
     /** اسم الطلب: العميل المربوط، ثم الاسم المحفوظ، ثم لقب واتساب (غير موثّق) */
     private static function customerName(WaConversation $conv): ?string

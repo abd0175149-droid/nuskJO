@@ -9,7 +9,7 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Llm\LlmFactory;
 use App\Services\WhatsApp\Llm\LlmProvider;
-use App\Services\WhatsApp\Llm\LlmTransientException;
+use App\Services\WhatsApp\Llm\LlmException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Sleep;
 
@@ -68,6 +68,7 @@ TXT;
 - «⚠️ رسالة غير مدعومة»: لم تصلك محتوياتها (استطلاع أو نوع لا يدعمه واتساب للأعمال). اعتذر بلطف واطلب منه كتابة طلبه نصّاً.
 - «👤 جهة اتصال»: بطاقة شخص أرسلها العميل. اشكره ولا تستخدم أي رقم فيها ولا تراسله، وإن تعلّقت بحجز فحوّله لموظف.
 - «[ردّاً على: «…»]» في أول رسالة العميل: هي الرسالة التي اقتبسها في المحادثة نفسها؛ افهم ردّه في سياقها.
+- إذا أعادت أداة ok=false أو error فالمعلومة غير متاحة الآن: لا تستنتج قيمة، ولا تقل «لا يوجد» أو «مسدّد»، واعتذر واعرض التحويل لموظف.
 TXT;
 
     /** شخصية المساعد الإداري — ثابتة في الكود، لا تُعدَّل من الإعدادات */
@@ -251,7 +252,7 @@ TXT;
                         : BotTools::execute($tc['name'], $tc['input'], $conv->fresh());
                 } catch (\Throwable $e) {
                     WaLog::error('bot.tool.failed', ['tool' => $tc['name'], 'conv_id' => $conv->id, 'exception' => $e]);
-                    $out = ['error' => 'تعذّر تنفيذ العملية', 'note' => 'اعتذر بإيجاز واقترح تحويل المحادثة لموظف.'];
+                    $out = ['ok' => false, 'error' => 'تعذّر تنفيذ العملية', 'note' => 'اعتذر بإيجاز واقترح تحويل المحادثة لموظف.'];
                 }
                 $usage['tools'][] = $tc['name'];
                 $results[] = ['id' => $tc['id'], 'name' => $tc['name'], 'output' => $out];
@@ -272,15 +273,15 @@ TXT;
     }
 
     /**
-     * نداء واحد بمهلة من الميزانية. خلل عابر (ازدحام، 5xx، مهلة) يُعاد مرة واحدة بعد 1.5 ثانية
-     * إن بقي وقت يكفي، وإلا يصعد الاستثناء إلى failSafe.
+     * نداء واحد بمهلة من الميزانية. خلل عابر (غير متاح، أو خنق قصير ≤ 5 ثوانٍ) يُعاد مرة واحدة بعد 1.5 ثانية
+     * إن بقي وقت يكفي، وإلا يصعد الاستثناء. القاطع يعدّ الإخفاق النهائي وحده (E12).
      */
     private static function generate(LlmProvider $provider, #[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, WaConversation $conv, ?ReplyRun $run): array
     {
         try {
             return $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
-        } catch (LlmTransientException $e) {
-            if ($run && $run->remaining() <= ReplyRun::RETRY_MIN_SECONDS) {
+        } catch (LlmException $e) {
+            if (!$e->retryable() || ($run && $run->remaining() <= ReplyRun::RETRY_MIN_SECONDS)) {
                 throw $e;
             }
             WaLog::warning('bot.llm.retry', ['conv_id' => $conv->id, 'exception' => $e]);
@@ -340,7 +341,9 @@ TXT;
         // البيانات المالية بالرقم وحده (financialClientId)، لا بمعرّف ولا باسم
         if ($conv->financialClientId() && ($c = $conv->client)) {
             $lines[] = 'بطاقة العميل: مربوط بحساب مسجّل — الاسم: ' . $c->name . ' · الكود: ' . $c->code;
-            $lines[] = 'رصيد ذمّته الحالي: ' . round((float) ($c->account?->balance ?? 0), 3) . ' د.أ';
+            $lines[] = $c->account
+                ? 'رصيد ذمّته الحالي: ' . round((float) $c->account->balance, 3) . ' د.أ'
+                : 'رصيد ذمّته: غير متاح (لا حساب محاسبي مربوط). لا تذكر رصيداً ولا تقل إنه مسدّد.';
         } else {
             $lines[] = 'بطاقة العميل: هذا الرقم غير مربوط بأي حساب عميل — لا تكشف بيانات مالية.';
         }

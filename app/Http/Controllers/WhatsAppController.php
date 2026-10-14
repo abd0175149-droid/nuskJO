@@ -608,6 +608,18 @@ class WhatsAppController extends Controller
 
         try {
             $models = \App\Services\WhatsApp\Llm\LlmFactory::make($data['provider'])->models($key);
+        } catch (\App\Services\WhatsApp\Llm\LlmException $e) {
+            if ($e->httpStatus === null) {
+                // لا رد من المزوّد (مهلة أو شبكة): رقم مرجعي بدل التفاصيل
+                $ref = \App\Support\ErrorRef::log($e, 'llm.key_test.failed');
+
+                return response()->json(['ok' => false, 'error' => "تعذّر الاتصال بالمزوّد (مهلة أو شبكة) — حاول لاحقاً. رقم المرجع: {$ref}"], 422);
+            }
+            // رسالة المزوّد مصنّفة ومنقّاة («Gemini HTTP 400: …»)، ومعها المفتاح المفحوص
+            $error = \App\Support\SecretRedactor::clean(mb_substr($e->getMessage(), 0, 300), [$key]);
+            \Illuminate\Support\Facades\Log::warning('llm.key_test.rejected', ['reason' => $error]);
+
+            return response()->json(['ok' => false, 'error' => $error], 422);
         } catch (\RuntimeException $e) {
             // رسالة المزوّد كما بنيناها في المزوّد («Google: …»)، منقّحة ومعها المفتاح المفحوص
             $error = \App\Support\SecretRedactor::clean(mb_substr($e->getMessage(), 0, 300), [$key]);

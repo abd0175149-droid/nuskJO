@@ -2,7 +2,6 @@
 
 namespace App\Services\WhatsApp\Llm;
 
-use App\Support\SecretRedactor;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -14,6 +13,7 @@ use Illuminate\Support\Facades\Http;
 class AnthropicProvider implements LlmProvider
 {
     private const API = 'https://api.anthropic.com/v1';
+
     private const VERSION = '2023-06-01';
 
     public function key(): string
@@ -32,10 +32,13 @@ class AnthropicProvider implements LlmProvider
 
     public function models(#[\SensitiveParameter] string $apiKey): array
     {
-        $res = $this->client($apiKey, 20)->get(self::API . '/models', ['limit' => 50]);
-
+        try {
+            $res = $this->client($apiKey, 20)->get(self::API.'/models', ['limit' => 50]);
+        } catch (ConnectionException $e) {
+            throw LlmErrorClassifier::fromThrowable('anthropic', $e);
+        }
         if (!$res->successful()) {
-            throw new \RuntimeException(SecretRedactor::clean('Anthropic: ' . data_get($res->json(), 'error.message', 'HTTP ' . $res->status()), [$apiKey]));
+            throw LlmErrorClassifier::fromResponse('anthropic', $res);
         }
 
         $out = [];
@@ -82,15 +85,13 @@ class AnthropicProvider implements LlmProvider
         }
 
         try {
-            $res = $this->client($apiKey, $timeout ?? 40)->asJson()->post(self::API . '/messages', $body);
-        } catch (ConnectionException) {
-            throw new LlmTransientException('Claude: connection failed (timeout or network)');
+            $res = $this->client($apiKey, $timeout ?? 40)->asJson()->post(self::API.'/messages', $body);
+        } catch (ConnectionException $e) {
+            throw LlmErrorClassifier::fromThrowable('anthropic', $e);
         }
 
         if (!$res->successful()) {
-            $class = LlmTransientException::isTransient($res->status()) ? LlmTransientException::class : \RuntimeException::class;
-            throw new $class(SecretRedactor::clean('Claude HTTP ' . $res->status() . ': '
-                . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300), [$apiKey]));
+            throw LlmErrorClassifier::fromResponse('anthropic', $res);
         }
 
         $json = $res->json() ?? [];

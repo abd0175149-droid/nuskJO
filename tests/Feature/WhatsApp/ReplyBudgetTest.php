@@ -11,7 +11,7 @@ use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\HandoffGuard;
 use App\Services\WhatsApp\Llm\AnthropicProvider;
 use App\Services\WhatsApp\Llm\GeminiProvider;
-use App\Services\WhatsApp\Llm\LlmTransientException;
+use App\Services\WhatsApp\Llm\LlmException;
 use App\Services\WhatsApp\ReplyRun;
 use App\Services\WhatsApp\VoiceTranscriber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -224,8 +224,9 @@ class ReplyBudgetTest extends TestCase
     public static function statuses(): array
     {
         return [
+            // 429 بلا retry-after: خنق عند Gemini، وسقف إنفاق عند Anthropic (LlmErrorClassifierTest)
             '400' => [400, false], '401' => [401, false], '404' => [404, false],
-            '429' => [429, true], '500' => [500, true], '502' => [502, true], '503' => [503, true], '504' => [504, true],
+            '500' => [500, true], '502' => [502, true], '503' => [503, true], '504' => [504, true],
         ];
     }
 
@@ -242,7 +243,7 @@ class ReplyBudgetTest extends TestCase
                 $provider->generate('k', 'm', ['s'], [], []);
                 $this->fail('لم يُرمَ استثناء');
             } catch (\RuntimeException $e) {
-                $this->assertSame($transient, $e instanceof LlmTransientException, $provider->key().' '.$status);
+                $this->assertSame($transient, $e instanceof LlmException && $e->retryable(), $provider->key().' '.$status);
             }
         }
     }
@@ -251,8 +252,12 @@ class ReplyBudgetTest extends TestCase
     {
         Http::fake(['api.anthropic.com/*' => Http::response(['error' => ['message' => 'Overloaded']], 529)]);
 
-        $this->expectException(LlmTransientException::class);
-        (new AnthropicProvider)->generate('k', 'm', ['s'], [], []);
+        try {
+            (new AnthropicProvider)->generate('k', 'm', ['s'], [], []);
+            $this->fail('لم يُرمَ استثناء');
+        } catch (LlmException $e) {
+            $this->assertTrue($e->retryable());
+        }
     }
 
     public function test_a_connection_failure_is_transient_and_carries_no_url(): void
@@ -266,7 +271,8 @@ class ReplyBudgetTest extends TestCase
             try {
                 $provider->generate('k', 'm', ['s'], [], [], 7);
                 $this->fail('لم يُرمَ استثناء');
-            } catch (LlmTransientException $e) {
+            } catch (LlmException $e) {
+                $this->assertTrue($e->retryable());
                 $this->assertStringNotContainsString('https://', $e->getMessage());
                 $this->assertStringNotContainsString('cURL', $e->getMessage());
             }
