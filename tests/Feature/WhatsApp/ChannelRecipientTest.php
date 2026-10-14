@@ -9,6 +9,7 @@ use App\Models\WaMessage;
 use App\Services\WhatsApp\IdentityMode;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\ConfiguresWhatsApp;
@@ -68,6 +69,19 @@ class ChannelRecipientTest extends TestCase
 
         $this->assertSame([true, true, null], [$result['ok'], $result['unconfirmed'], $result['message_id']]);
         $this->assertSame(['unconfirmed', null], [WaMessage::sole()->status, WaMessage::sole()->wamid]);
+    }
+
+    public function test_a_staff_message_lost_to_a_timeout_stays_visible_as_unconfirmed(): void
+    {
+        Http::fake(['graph.facebook.com/*' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+        $conv = WaConversation::factory()->windowOpen()->create();
+
+        $staff = WhatsAppChannel::sendText($conv, 'موعدك غداً', 'staff', $this->staff->id);
+        $bot = WhatsAppChannel::sendText($conv, 'أهلاً');
+
+        $this->assertSame([false, 'HTTP_ERROR', false, 'HTTP_ERROR'], [$staff['ok'], $staff['code'], $bot['ok'], $bot['code']]);
+        $row = WaMessage::sole();
+        $this->assertSame(['unconfirmed', 'staff', 'موعدك غداً', 'HTTP_ERROR', null], [$row->status, $row->source, $row->body, $row->error_code, $row->wamid]);
     }
 
     public function test_the_contact_request_button_is_built_for_meta_and_labelled_in_the_inbox(): void

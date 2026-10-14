@@ -618,6 +618,10 @@ class WhatsAppChannel
             // نص الاستثناء يحمل الرابط: للسجل منقّحاً، ورقم مرجعي للواجهة
             WaLog::error('send.connection_failed', ['conv_id' => $conv->id, 'exception' => $e]);
             $ref = \App\Support\ErrorRef::log($e, 'wa.send.connection_failed', ['conv_id' => $conv->id]);
+            // رسالة الموظف تترك أثراً «غير مؤكد»: المهلة قد تقع بعد أن سلّمتها ميتا، فلا يعيد كتابتها دون أن يرى ذلك
+            if ($source === 'staff') {
+                self::store($conv, null, $displayBody, $msgType, $source, 'unconfirmed', "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}", $staffId, $payload, errorCode: 'HTTP_ERROR', phoneNumberId: $s->phoneNumberId());
+            }
 
             return self::fail('HTTP_ERROR', "تعذّر الاتصال بميتا (مهلة أو شبكة). رقم المرجع: {$ref}");
         }
