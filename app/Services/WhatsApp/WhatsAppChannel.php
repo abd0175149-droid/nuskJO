@@ -304,6 +304,31 @@ class WhatsAppChannel
      *
      * @return array{reached: bool, status: ?int, json: array<string, mixed>}
      */
+    /**
+     * حذف وسيط من خوادم ميتا (E13: حذف بيانات بطلب صاحبها): DELETE {v}/{media-id}، بلا تحويلات وبمهلة 10 ثوانٍ.
+     * null: القناة غير مهيّأة. الفشل لا يوقف الحذف عندنا، ويُعدّ فقط.
+     */
+    public static function deleteMedia(string $mediaId): ?bool
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return null;
+        }
+        try {
+            $url = self::graphPath($mediaId);
+            $res = self::graph($s, 10)->withQueryParameters(array_filter(['phone_number_id' => $s->phoneNumberId()]))->delete($url);
+        } catch (\Throwable $e) {
+            WaLog::warning('media.delete_failed', ['type' => $e::class]);
+
+            return false;
+        }
+        if (!$res->successful()) {
+            WaLog::warning('media.delete_failed', ['http' => $res->status()]);
+        }
+
+        return $res->successful();
+    }
+
     public static function healthStatus(): array
     {
         $s = WaBotSetting::current();
