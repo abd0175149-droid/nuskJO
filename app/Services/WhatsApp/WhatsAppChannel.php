@@ -5,16 +5,30 @@ namespace App\Services\WhatsApp;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
+use App\Support\SecretRedactor;
+use App\Support\UrlPath;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
  * بوّابة الإرسال الوحيدة إلى ميتا — كل صادر (بوت/موظف/نظام) يمرّ من هنا.
  *
- * ثلاثة أقفال بالترتيب:
+ * السائق الوحيد المسموح هو WhatsApp Cloud API الرسمية عبر graph.facebook.com. يُمنع إضافة
+ * whatsapp-web.js أو Baileys أو أي عميل غير رسمي، لأن ذلك يخالف شروط واتساب ويعرّض الرقم الوحيد للحظر.
+ *
+ * مرفوض عمداً، ويعيد UNSUPPORTED لا نجاحاً وهمياً: القوالب (قرار المالك)، والمجموعات، والحالات (stories).
+ *
+ * الأقفال بالترتيب:
+ *   0) الموظف يرى المحادثة (لرسائل الموظف وحدها)
  *   1) القناة مهيّأة (رمز + معرّف رقم)
  *   2) قفل الإرسال الطارئ (wa_suspended)
  *   3) نافذة 24 ساعة من آخر رسالة واردة — لا استثناء لأحد
+ *
+ * عميل Graph رفيع (graph/graphPath): الإصدار من الإعداد وحده، وكل مقطع مسار مرمَّز، ولا تحويلات،
+ * وappsecret_proof خلف WA_APPSECRET_PROOF، وأخطاء ميتا تتحول إلى رموز صريحة (META_CODES).
  */
 class WhatsAppChannel
 {
@@ -22,47 +36,271 @@ class WhatsAppChannel
     public const ERR_SUSPENDED = 'SENDING_SUSPENDED';
     public const ERR_WINDOW = 'WINDOW_EXPIRED';
     public const ERR_OUT_OF_SCOPE = 'OUT_OF_SCOPE';
+    public const ERR_UNSUPPORTED = 'UNSUPPORTED';
+    public const ERR_CONFIG = 'GRAPH_CONFIG_INVALID';
+    public const ERR_TOKEN = 'TOKEN_INVALID';
+    public const ERR_RATE = 'RATE_LIMITED';
+    public const ERR_ACCOUNT = 'ACCOUNT_RESTRICTED';
+    public const ERR_PROOF = 'APPSECRET_PROOF_INVALID';
+    public const ERR_TOO_LARGE = 'TOO_LARGE';
+    public const ERR_MEDIA_HOST = 'MEDIA_HOST_BLOCKED';
+    public const ERR_MEDIA_INTEGRITY = 'MEDIA_INTEGRITY';
 
-    private static function graphBase(): string
+    private const RATE_TEXT = 'تجاوزنا حد الإرسال عند ميتا — أعد المحاولة بعد قليل.';
+    private const ACCOUNT_TEXT = 'حساب واتساب مقيّد من ميتا — راجع حالة الحساب في لوحة ميتا.';
+
+    /** رمز خطأ ميتا => [رمزنا، النص المحفوظ مع الرسالة الفاشلة] */
+    private const META_CODES = [
+        190 => [self::ERR_TOKEN, 'رمز ميتا منتهٍ أو مُلغى — يحدّثه المدير من إعدادات الواتساب.'],
+        131047 => [self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة عند ميتا — لا يمكن الإرسال حتى يراسلنا العميل.'],
+        131051 => [self::ERR_UNSUPPORTED, 'نوع الرسالة غير مدعوم في واتساب.'],
+        130429 => [self::ERR_RATE, self::RATE_TEXT],
+        131056 => [self::ERR_RATE, self::RATE_TEXT],
+        4 => [self::ERR_RATE, self::RATE_TEXT],
+        80007 => [self::ERR_RATE, self::RATE_TEXT],
+        131031 => [self::ERR_ACCOUNT, self::ACCOUNT_TEXT],
+        368 => [self::ERR_ACCOUNT, self::ACCOUNT_TEXT],
+    ];
+
+    /** أنواع الصوت التي نفرّغها؛ غيرها لا يُنزَّل */
+    private const AUDIO_MIME = ['audio/ogg', 'audio/opus', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr'];
+
+    // ==================== عميل Graph ====================
+
+    /** الإصدار من الإعداد وحده (لا قيمة احتياطية هنا) */
+    private static function graphVersion(): ?string
     {
-        return 'https://graph.facebook.com/' . (config('services.whatsapp.graph_version') ?: 'v25.0');
+        $version = config('services.whatsapp.graph_version');
+
+        return GraphVersions::isValid($version) ? $version : null;
     }
 
-    private static function graphUrl(string $phoneNumberId): string
+    /** @throws \InvalidArgumentException إصدار غير صالح أو مقطع يغيّر المسار */
+    private static function graphPath(string ...$segments): string
     {
-        return self::graphBase() . "/{$phoneNumberId}/messages";
+        $version = self::graphVersion() ?? throw new \InvalidArgumentException('GRAPH_VERSION_INVALID');
+
+        return 'https://graph.facebook.com/' . $version . '/' . implode('/', array_map(UrlPath::segment(...), $segments));
+    }
+
+    private static function graph(WaBotSetting $s, int $timeout): PendingRequest
+    {
+        $request = Http::withToken((string) $s->token())
+            ->withoutRedirecting()
+            ->connectTimeout(10)
+            ->timeout($timeout)
+            ->acceptJson();
+
+        $secret = $s->appSecret();
+        if (config('services.whatsapp.appsecret_proof') && $secret) {
+            $request = $request->withQueryParameters(['appsecret_proof' => hash_hmac('sha256', (string) $s->token(), $secret)]);
+        }
+
+        return $request;
+    }
+
+    /** @return array{code: ?int, message: string, details: ?string, trace: ?string, status: int} */
+    private static function graphError(Response $res): array
+    {
+        $json = $res->json() ?? [];
+
+        return [
+            'code' => is_numeric(data_get($json, 'error.code')) ? (int) data_get($json, 'error.code') : null,
+            'message' => (string) data_get($json, 'error.message', 'HTTP ' . $res->status()),
+            'details' => data_get($json, 'error.error_data.details'),
+            'trace' => data_get($json, 'error.fbtrace_id'),
+            'status' => $res->status(),
+        ];
     }
 
     /**
-     * تنزيل وسائط رسالة واردة (رسالة صوتية مثلاً) بمعرّفها.
-     * ميتا تعيد رابطاً مؤقّتاً لا يُفتح إلا بنفس التوكن، فالتنزيل على خطوتين.
+     * خطأ ميتا => [رمزنا، النص المحفوظ]. السجل يحمل الرمز وfbtrace_id وحالة HTTP فقط.
      *
-     * @return array{bytes:string, mime:string}|null
+     * @return array{0: string, 1: string}
+     */
+    private static function mapGraphError(Response $res): array
+    {
+        $e = self::graphError($res);
+        Log::error('WA graph error', ['code' => $e['code'], 'http' => $e['status'], 'fbtrace_id' => $e['trace']]);
+
+        if ($e['code'] === null) {
+            return ['META_ERROR', $e['message']];
+        }
+        if ($e['code'] === 100 && str_contains(strtolower($e['message']), 'appsecret_proof')) {
+            self::alertOnce('proof', '⛔ ميتا رفضت appsecret_proof',
+                'كل نداءات Graph تُرفض. عطّل WA_APPSECRET_PROOF أو صحّح سر التطبيق، ثم config:cache.', '/whatsapp/settings');
+
+            return [self::ERR_PROOF, '[100] إثبات سر التطبيق مرفوض — راجع WA_APPSECRET_PROOF وسر التطبيق.'];
+        }
+        if (isset(self::META_CODES[$e['code']])) {
+            [$ours, $text] = self::META_CODES[$e['code']];
+            if ($ours === self::ERR_ACCOUNT) {
+                // لا إيقاف تلقائي هنا: الإيقاف من ويبهوك account_update
+                self::alertOnce('account', '⚠️ ميتا تقيّد حساب الواتساب', "رفضت ميتا الإرسال بالرمز {$e['code']}. راجع حالة الحساب في لوحة ميتا.", '/whatsapp/settings');
+            }
+
+            return [$ours, "[{$e['code']}] {$text}"];
+        }
+
+        return ['META_ERROR', SecretRedactor::clean("[{$e['code']}] {$e['message']}")];
+    }
+
+    /** تنبيه للمدير مرة في اليوم لكل نوع */
+    private static function alertOnce(string $kind, string $title, string $body, string $url): void
+    {
+        if (Cache::add("wa:graph-alert:{$kind}:" . now()->toDateString(), 1, now()->addDay())) {
+            WhatsAppInbox::notifyAdmins($title, $body, $url);
+        }
+    }
+
+    // ==================== الوسائط الواردة ====================
+
+    /**
+     * تنزيل وسائط رسالة واردة (الصوت اليوم) على خطوتين: Graph يعيد رابطاً مؤقتاً وحجماً وبصمة، ثم التنزيل بالرمز نفسه.
+     * الرابط https إلزامياً، ومضيفه من قائمة ميتا (WA_MEDIA_HOST_MODE: log يسجّل ويكمل، enforce يرفض قبل إرسال الرمز)،
+     * والحجم مقيّد أثناء القراءة، والبصمة sha256 تُطابق بعدها.
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, bytes?: string, mime?: string, host?: string}
+     */
+    public static function fetchMedia(string $mediaId, string $kind = 'audio', int $maxBytes = 15_000_000): array
+    {
+        $s = WaBotSetting::current();
+        $token = $s->token();
+        if (!$token) {
+            return self::mediaFail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة.');
+        }
+        if ($kind !== 'audio') {
+            return self::mediaFail(self::ERR_UNSUPPORTED, 'تنزيل هذا النوع من الوسائط غير مدعوم.');
+        }
+
+        // (أ) البيانات الوصفية
+        try {
+            $lookupUrl = self::graphPath($mediaId);
+        } catch (\InvalidArgumentException) {
+            return self::mediaFail(self::ERR_CONFIG, 'معرّف الوسائط أو إصدار Graph غير صالح.');
+        }
+        try {
+            $meta = self::graph($s, 20)->get($lookupUrl, array_filter(['phone_number_id' => $s->phoneNumberId()]));
+        } catch (\Throwable $e) {
+            Log::error('WA media lookup connection failed: ' . SecretRedactor::clean($e->getMessage()));
+
+            return self::mediaFail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        $url = (string) $meta->json('url', '');
+        if (!$meta->successful() || $url === '') {
+            Log::error('WA media lookup failed', ['status' => $meta->status(), 'code' => data_get($meta->json(), 'error.code')]);
+
+            return self::mediaFail('META_ERROR', 'تعذّر جلب بيانات الوسائط من ميتا.');
+        }
+
+        // (ب) قبل التنزيل
+        $mime = (string) ($meta->json('mime_type') ?: 'audio/ogg');
+        if (!in_array(strtolower(trim(explode(';', $mime)[0])), self::AUDIO_MIME, true)) {
+            return self::mediaFail(self::ERR_UNSUPPORTED, 'نوع الملف الصوتي غير مدعوم.');
+        }
+        if ((int) $meta->json('file_size', 0) > $maxBytes) {
+            return self::mediaFail(self::ERR_TOO_LARGE, 'الملف أكبر من الحد المسموح.');
+        }
+        $enforce = config('services.whatsapp.media_host_mode') === 'enforce';
+        $sha = strtolower((string) $meta->json('sha256', ''));
+        if (!preg_match('/^[a-f0-9]{64}$/', $sha)) {
+            Log::error('WA media without a valid sha256');
+            if ($enforce) {
+                return self::mediaFail(self::ERR_MEDIA_INTEGRITY, 'بصمة الملف من ميتا غير صالحة.');
+            }
+            $sha = '';
+        }
+
+        // (ج) الرابط: https دائماً، ومضيف من القائمة
+        $parts = parse_url($url) ?: [];
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        if (($parts['scheme'] ?? '') !== 'https' || $host === '') {
+            Log::error('WA media url is not https', ['host' => $host]);
+
+            return self::mediaFail(self::ERR_MEDIA_HOST, 'رابط الوسائط ليس https.');
+        }
+        if (!self::isMetaMediaHost($host)) {
+            Log::error('WA media host outside allowlist', ['host' => $host]);
+            if ($enforce) {
+                return self::mediaFail(self::ERR_MEDIA_HOST, 'مضيف الوسائط خارج قائمة ميتا.');
+            }
+            self::alertOnce('media-host', '⚠️ مضيف وسائط غير متوقع', "رابط وسائط من ميتا على المضيف {$host} خارج القائمة. أضفه إلى WA_MEDIA_HOSTS إن كان لميتا قبل تفعيل الرفض.", '/whatsapp/settings');
+        }
+
+        // (د) التنزيل بقطع 64KB مع سقف أثناء القراءة
+        $redirects = $enforce ? false : [
+            'max' => 1, 'strict' => true, 'protocols' => ['https'],
+            'on_redirect' => fn ($request, $response, $uri) => Log::error('WA media download redirected', ['host' => $uri->getHost()]),
+        ];
+        try {
+            $file = Http::withToken($token)->connectTimeout(10)->timeout(40)
+                ->withOptions(['stream' => true, 'allow_redirects' => $redirects])
+                ->get($url);
+        } catch (\Throwable $e) {
+            Log::error('WA media download connection failed: ' . SecretRedactor::clean($e->getMessage()));
+
+            return self::mediaFail('HTTP_ERROR', 'تعذّر تنزيل الوسائط (مهلة أو شبكة).');
+        }
+        if (!$file->successful()) {
+            Log::error('WA media download failed', ['status' => $file->status(), 'host' => $host]);
+
+            return self::mediaFail('META_ERROR', 'تعذّر تنزيل الوسائط.');
+        }
+        if ((int) $file->header('Content-Length') > $maxBytes) {
+            return self::mediaFail(self::ERR_TOO_LARGE, 'الملف أكبر من الحد المسموح.');
+        }
+        $body = $file->toPsrResponse()->getBody();
+        $bytes = '';
+        while (!$body->eof()) {
+            $bytes .= $body->read(65536);
+            if (strlen($bytes) > $maxBytes) {
+                $body->close();
+
+                return self::mediaFail(self::ERR_TOO_LARGE, 'الملف أكبر من الحد المسموح.');
+            }
+        }
+
+        // (هـ) البصمة
+        if ($sha !== '' && !hash_equals($sha, hash('sha256', $bytes))) {
+            Log::error('WA media sha256 mismatch', ['host' => $host]);
+            if ($enforce) {
+                return self::mediaFail(self::ERR_MEDIA_INTEGRITY, 'الملف المنزَّل لا يطابق بصمة ميتا.');
+            }
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'bytes' => $bytes, 'mime' => $mime, 'host' => $host];
+    }
+
+    /**
+     * الغلاف القديم: null عند أي فشل.
+     *
+     * @return array{bytes: string, mime: string, host: string}|null
      */
     public static function downloadMedia(string $mediaId, int $maxBytes = 15_000_000): ?array
     {
-        $token = WaBotSetting::current()->token();
-        if (!$token || $mediaId === '') {
+        if ($mediaId === '') {
             return null;
+        }
+        $media = self::fetchMedia($mediaId, 'audio', $maxBytes);
+
+        return $media['ok'] ? ['bytes' => $media['bytes'], 'mime' => $media['mime'], 'host' => $media['host']] : null;
+    }
+
+    private static function isMetaMediaHost(string $host): bool
+    {
+        foreach ((array) config('services.whatsapp.media_hosts', []) as $allowed) {
+            $allowed = strtolower(ltrim(trim((string) $allowed), '.'));
+            if ($allowed !== '' && ($host === $allowed || str_ends_with($host, '.' . $allowed))) {
+                return true;
+            }
         }
 
-        $meta = Http::withToken($token)->timeout(20)->acceptJson()->get(self::graphBase() . '/' . rawurlencode($mediaId));
-        $url = $meta->json('url');
-        if (!$meta->successful() || !$url) {
-            Log::warning('WA media lookup failed', ['media' => $mediaId, 'status' => $meta->status()]);
-            return null;
-        }
-        if ((int) $meta->json('file_size', 0) > $maxBytes) {
-            return null;
-        }
+        return false;
+    }
 
-        $file = Http::withToken($token)->timeout(40)->get($url);
-        if (!$file->successful() || strlen($file->body()) > $maxBytes) {
-            Log::warning('WA media download failed', ['media' => $mediaId, 'status' => $file->status()]);
-            return null;
-        }
-
-        return ['bytes' => $file->body(), 'mime' => (string) ($meta->json('mime_type') ?: 'audio/ogg')];
+    private static function mediaFail(string $code, string $error): array
+    {
+        return ['ok' => false, 'code' => $code, 'error' => $error];
     }
 
     /** تحقّق توقيع ميتا على الجسم الخام — إلزامي في الإنتاج */
@@ -219,21 +457,29 @@ class WhatsAppChannel
         }
 
         try {
-            $res = Http::withToken($s->token())
-                ->timeout(25)
-                ->acceptJson()
-                ->post(self::graphUrl($s->phoneNumberId()), $payload);
+            $url = self::graphPath((string) $s->phoneNumberId(), 'messages');
+        } catch (\InvalidArgumentException $e) {
+            Log::error('WA graph config invalid', ['reason' => $e->getMessage()]);
+
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        }
+
+        try {
+            $res = self::graph($s, 25)->post($url, $payload);
         } catch (\Throwable $e) {
-            Log::error('WA send exception: ' . $e->getMessage());
-            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا: ' . $e->getMessage());
+            // نص الاستثناء يحمل الرابط: للسجل منقّحاً، لا للواجهة
+            Log::error('WA send connection failed: ' . SecretRedactor::clean($e->getMessage()));
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
         }
 
         $json = $res->json() ?? [];
 
         if (!$res->successful()) {
-            $err = data_get($json, 'error.message', 'HTTP ' . $res->status());
+            [$code, $err] = self::mapGraphError($res);
             self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload);
-            return self::fail('META_ERROR', $err);
+
+            return self::fail($code, $err);
         }
 
         $wamid = data_get($json, 'messages.0.id');

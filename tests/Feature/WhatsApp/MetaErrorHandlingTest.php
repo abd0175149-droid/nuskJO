@@ -15,7 +15,8 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * رد ميتا المتزامن بخطأ لا يرمي استثناءً: يعود META_ERROR، وتُحفظ الرسالة failed مع سبب ميتا.
+ * رد ميتا المتزامن بخطأ لا يرمي استثناءً: يعود برمز صريح من جدول WhatsAppChannel::META_CODES (أو META_ERROR)،
+ * وتُحفظ الرسالة failed مع رمز ميتا ونص عربي.
  *
  * الرمز 131047 (انتهاء النافذة عند ميتا) لا يُختبر هنا: القفل المحلي يمنع الطلب قبل وصوله،
  * وميتا تبلّغ عنه في حمولة statuses (تغطيه اختبارات الويبهوك).
@@ -36,7 +37,7 @@ class MetaErrorHandlingTest extends TestCase
     public static function metaErrors(): array
     {
         return [
-            'rate limit 130429' => [400, [
+            'rate limit 130429' => [400, 'RATE_LIMITED', '[130429] تجاوزنا حد الإرسال عند ميتا — أعد المحاولة بعد قليل.', [
                 'message' => '(#130429) Rate limit hit',
                 'type' => 'OAuthException',
                 'code' => 130429,
@@ -46,19 +47,25 @@ class MetaErrorHandlingTest extends TestCase
                 ],
                 'fbtrace_id' => 'AbCdEfGhIjKlMnOpQrStUvW',
             ]],
-            'expired token 190' => [401, [
+            'expired token 190' => [401, 'TOKEN_INVALID', '[190] رمز ميتا منتهٍ أو مُلغى — يحدّثه المدير من إعدادات الواتساب.', [
                 'message' => 'Error validating access token: Session has expired.',
                 'type' => 'OAuthException',
                 'code' => 190,
                 'error_subcode' => 463,
                 'fbtrace_id' => 'AbCdEfGhIjKlMnOpQrStUvX',
             ]],
+            'unknown code' => [400, 'META_ERROR', '[100] (#100) Invalid parameter', [
+                'message' => '(#100) Invalid parameter',
+                'type' => 'OAuthException',
+                'code' => 100,
+                'fbtrace_id' => 'AbCdEfGhIjKlMnOpQrStUvY',
+            ]],
         ];
     }
 
     #[Group('INV-07')]
     #[DataProvider('metaErrors')]
-    public function test_meta_error_response_returns_meta_error_and_stores_failed_message(int $status, array $error): void
+    public function test_meta_error_response_returns_its_code_and_stores_failed_message(int $status, string $code, string $stored, array $error): void
     {
         $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => $error], $status)]);
         $conv = WaConversation::factory()->windowOpen()->create();
@@ -67,8 +74,8 @@ class MetaErrorHandlingTest extends TestCase
 
         $this->assertSame([
             'ok' => false,
-            'error' => $error['message'],
-            'code' => 'META_ERROR',
+            'error' => $stored,
+            'code' => $code,
             'message_id' => null,
         ], $result);
 
@@ -78,7 +85,7 @@ class MetaErrorHandlingTest extends TestCase
         $msg = WaMessage::sole();
         $this->assertSame('out', $msg->direction);
         $this->assertSame('failed', $msg->status);
-        $this->assertSame($error['message'], $msg->error_message);
+        $this->assertSame($stored, $msg->error_message);
         $this->assertNull($msg->wamid);
         $this->assertSame('أهلاً', $msg->body);
         $this->assertSame('أهلاً', data_get($msg->payload, 'text.body'));
@@ -86,7 +93,7 @@ class MetaErrorHandlingTest extends TestCase
 
     #[Group('INV-07')]
     #[DataProvider('metaErrors')]
-    public function test_failed_send_does_not_mark_conversation_as_answered(int $status, array $error): void
+    public function test_failed_send_does_not_mark_conversation_as_answered(int $status, string $code, string $stored, array $error): void
     {
         $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => $error], $status)]);
         $conv = WaConversation::factory()->windowOpen()->create([
@@ -96,7 +103,7 @@ class MetaErrorHandlingTest extends TestCase
 
         $result = WhatsAppChannel::sendText($conv, 'معك فريق المبيعات', 'staff', User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create()->id);
 
-        $this->assertSame('META_ERROR', $result['code']);
+        $this->assertSame($code, $result['code']);
         Http::assertSentCount(1);
 
         $conv->refresh();

@@ -54,8 +54,18 @@ class VoiceTranscriber
             $mediaId = (string) data_get($payload, 'audio.id', '');
 
             // Claude لا يقبل الصوت — نُبقي العنصر النائب ويطلب البوت الكتابة
+            if (!$provider instanceof GeminiProvider && $mediaId !== '') {
+                $payload['_media_error'] = WhatsAppChannel::ERR_UNSUPPORTED;
+            }
             if ($provider instanceof GeminiProvider && $mediaId !== '') {
-                $media = WhatsAppChannel::downloadMedia($mediaId);
+                $fetched = WhatsAppChannel::fetchMedia($mediaId);
+                // مضيف شبكة ميتا (لا بيانات شخصية): يُراجع خلال أسبوع وضع التسجيل قبل الرفض
+                if ($fetched['ok']) {
+                    $payload['_media_host'] = $fetched['host'];
+                } else {
+                    $payload['_media_error'] = $fetched['code'];
+                }
+                $media = $fetched['ok'] ? $fetched : null;
                 if ($media) {
                     $mime = explode(';', $media['mime'])[0] ?: 'audio/ogg';
                     $r = $provider->transcribe((string) $s->llmKey(), (string) $s->model, $media['bytes'], $mime);

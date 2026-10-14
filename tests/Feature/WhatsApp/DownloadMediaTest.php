@@ -22,6 +22,8 @@ class DownloadMediaTest extends TestCase
 
     private const MEDIA_ID = '1037543291543636';
 
+    private const LOOKUP_QUERY = '?phone_number_id=106540352242922';
+
     private const LOOKASIDE_URL = 'https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=1037543291543636&ext=1690244445&hash=ARfDHQhsMbXwAbCdEf';
 
     protected function setUp(): void
@@ -38,7 +40,7 @@ class DownloadMediaTest extends TestCase
             'messaging_product' => 'whatsapp',
             'url' => self::LOOKASIDE_URL,
             'mime_type' => 'audio/ogg; codecs=opus',
-            'sha256' => 'a3c1b6f1e7d2c4b5a6f7e8d9c0b1a2f3e4d5c6b7a8f9e0d1c2b3a4f5e6d7c8b9',
+            'sha256' => hash('sha256', 'MEDIA-BYTES'),
             'file_size' => '7744',
             'id' => self::MEDIA_ID,
         ], $overrides);
@@ -55,13 +57,13 @@ class DownloadMediaTest extends TestCase
 
         $media = WhatsAppChannel::downloadMedia(self::MEDIA_ID);
 
-        $this->assertSame(['bytes' => 'MEDIA-BYTES', 'mime' => 'audio/ogg; codecs=opus'], $media);
+        $this->assertSame(['bytes' => 'MEDIA-BYTES', 'mime' => 'audio/ogg; codecs=opus', 'host' => 'lookaside.fbsbx.com'], $media);
 
         Http::assertSentCount(2);
         [$lookup, $download] = Http::recorded()->map(fn (array $pair) => $pair[0])->all();
 
         $this->assertSame('GET', $lookup->method());
-        $this->assertSame('https://graph.facebook.com/v25.0/'.self::MEDIA_ID, $lookup->url());
+        $this->assertSame('https://graph.facebook.com/v25.0/'.self::MEDIA_ID.self::LOOKUP_QUERY, $lookup->url());
         $this->assertTrue($lookup->hasHeader('Authorization', 'Bearer test-token'));
 
         $this->assertSame('GET', $download->method());
@@ -76,7 +78,7 @@ class DownloadMediaTest extends TestCase
 
         $this->assertNotNull(WhatsAppChannel::downloadMedia(self::MEDIA_ID));
 
-        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v26.0/'.self::MEDIA_ID);
+        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v26.0/'.self::MEDIA_ID.self::LOOKUP_QUERY);
     }
 
     public function test_declared_file_size_above_limit_stops_before_download(): void
@@ -124,7 +126,7 @@ class DownloadMediaTest extends TestCase
         $this->assertNull(WhatsAppChannel::downloadMedia(self::MEDIA_ID));
 
         Http::assertSentCount(1);
-        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v25.0/'.self::MEDIA_ID);
+        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v25.0/'.self::MEDIA_ID.self::LOOKUP_QUERY);
     }
 
     public function test_failed_second_step_returns_null(): void
@@ -151,13 +153,14 @@ class DownloadMediaTest extends TestCase
         Http::assertSentCount(2);
     }
 
-    public function test_media_id_is_url_encoded_into_a_single_path_segment(): void
+    public function test_a_media_id_that_would_change_the_path_requests_nothing(): void
     {
         $this->fakeMedia();
 
-        WhatsAppChannel::downloadMedia('../me/accounts');
+        $this->assertNull(WhatsAppChannel::downloadMedia('../me/accounts'));
+        $this->assertSame(WhatsAppChannel::ERR_CONFIG, WhatsAppChannel::fetchMedia('..')['code']);
 
-        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v25.0/..%2Fme%2Faccounts');
+        Http::assertNothingSent();
     }
 
     public function test_without_token_nothing_is_requested(): void

@@ -12,9 +12,17 @@ return [
         'phone_number_id' => env('WA_PHONE_NUMBER_ID'),
         'verify_token' => env('WA_WEBHOOK_VERIFY_TOKEN'),
         'app_secret' => env('WA_APP_SECRET'),
-        // إصدار Graph للطلبات الصادرة. v21.0 يُزال في 2027-01-21؛ v25.0 ينتهي 2028-07-29.
-        // للتراجع: WA_GRAPH_VERSION=v21.0 في .env (صالح حتى 2027-01-21).
-        'graph_version' => env('WA_GRAPH_VERSION', 'v25.0'),
+        // إصدار Graph للطلبات الصادرة — القيمة الافتراضية الوحيدة في المستودع. تواريخ النهاية في
+        // App\Services\WhatsApp\GraphVersions، والتنبيه قبل 60 يوماً (whatsapp:graph-version-check).
+        // للتراجع: WA_GRAPH_VERSION=<إصدار سابق ما زال مدعوماً> ثم config:cache.
+        'graph_version' => env('WA_GRAPH_VERSION') ?: 'v25.0',
+        // إصدار الويبهوك المضبوط في لوحة ميتا (لا يُقرأ من الطلبات): للتنبيه قبل نهايته فقط
+        'webhook_version' => env('WA_WEBHOOK_VERSION'),
+        // appsecret_proof مع كل نداء Graph. يُفعَّل قبل «Require App Secret» في لوحة ميتا بأسبوع على الأقل
+        'appsecret_proof' => (bool) env('WA_APPSECRET_PROOF', false),
+        // تنزيل الوسائط: log يسجّل المضيف الغريب ويكمل، enforce يرفضه. https إلزامي في الوضعين
+        'media_host_mode' => env('WA_MEDIA_HOST_MODE', 'log'),
+        'media_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_MEDIA_HOSTS', 'fbsbx.com,whatsapp.net,facebook.com,fbcdn.net'))))),
         'suspended' => (bool) env('WA_SUSPENDED', false),
         // طلبات التسعير بنطاق المحادثات نفسه (E04). يُفعَّل بعد ملء /whatsapp/routing ومراجعة whatsapp:fence-report
         'fence_quotes' => (bool) env('WA_FENCE_QUOTES', false),
@@ -66,6 +74,8 @@ return [
     // مُصيّر بطاقات العروض — يُكتشف تلقائياً إن تُرك فارغاً
     'chromium' => [
         'path' => env('CHROMIUM_PATH'),
+        // بلا شبكة: بروكسي ميت وحلّ أسماء فاشل (القالب كله data:). false للتراجع دون تعديل الكود
+        'net_isolation' => (bool) env('CHROMIUM_NET_ISOLATION', true),
     ],
 
 ];
