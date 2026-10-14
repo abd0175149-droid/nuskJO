@@ -10,7 +10,7 @@
                 <div>
                     <p class="font-bold text-red-700 dark:text-red-300">🔴 مراجعة ما بعد الاستعادة معلّقة</p>
                     <p class="mt-1 text-sm text-red-700 dark:text-red-300">
-                        استُعيدت النسخة <span class="font-mono" dir="ltr">{{ status.review.snapshot }}</span>
+                        استُعيدت النسخة <span class="font-mono inline-block" dir="ltr">{{ status.review.snapshot }}</span>
                         <template v-if="status.review.restored_at"> في {{ formatDate(status.review.restored_at) }}</template>.
                         البوت مطفأ والإرسال مقفل حتى تعتمد المراجعة، ثم ترفع القفل من إعدادات البوت.
                     </p>
