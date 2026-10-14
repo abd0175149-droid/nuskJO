@@ -19,6 +19,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // صفحة الخصوصية تسمّي كل مزوّد ذكاء مفعّل، أساسياً واحتياطياً (E12.6). composer لا Closure في المسار،
+        // فلا يتجمّد النص مع route:cache
+        \Illuminate\Support\Facades\View::composer('legal.privacy', function ($view) {
+            $view->with('aiProviders', rescue(function () {
+                $s = \App\Models\WaBotSetting::current();
+                $names = [\App\Services\WhatsApp\Llm\LlmFactory::PROVIDERS[$s->provider] ?? 'Google Gemini'];
+                if ($s->fallbackReady()) {
+                    $names[] = \App\Services\WhatsApp\Llm\LlmFactory::PROVIDERS[$s->fallback_provider] ?? $s->fallback_provider;
+                }
+
+                return array_values(array_unique($names));
+            }, ['Google Gemini'], false));
+        });
+
         \App\Models\Agent::observe(\App\Observers\AgentObserver::class);
         \App\Models\Client::observe(\App\Observers\ClientObserver::class);
         \App\Models\Service::observe(\App\Observers\ServiceObserver::class);

@@ -287,6 +287,35 @@
                         <SettingField v-for="f in fields" :key="f.key" :field="f" v-model="form[f.key]"
                                       :default-value="defaults[f.key]" :error="errors[f.key]" :dirty="isDirty(f.key)"/>
                     </div>
+
+                    <!-- مزوّد احتياطي (E12): معطّل حتى يُضبط، ويُستعمل حين يكون قاطع الأساسي مفتوحاً -->
+                    <details class="mt-5 rounded-xl border border-gray-200 dark:border-gray-700 p-4" :open="!!form.fallback_provider">
+                        <summary class="cursor-pointer text-sm font-bold text-gray-800 dark:text-gray-100">🛟 مزوّد احتياطي (اختياري)</summary>
+                        <p class="text-xs text-amber-700 dark:text-amber-400 mt-2">تفعيل مزوّد مختلف يرسل نص المحادثة لجهة ثانية، ويُذكر اسمه تلقائياً في صفحة الخصوصية.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                            <div>
+                                <label for="wa-fallback-provider" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المزوّد</label>
+                                <select id="wa-fallback-provider" v-model="form.fallback_provider"
+                                        class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white"
+                                        :class="isDirty('fallback_provider') ? 'ring-1 ring-gold-400' : ''">
+                                    <option :value="null">— بلا احتياطي</option>
+                                    <option v-for="(label, key) in providers" :key="key" :value="key">{{ label }}</option>
+                                </select>
+                                <p v-if="errors.fallback_provider" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.fallback_provider }}</p>
+                            </div>
+                            <div>
+                                <label for="wa-fallback-model" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">النموذج</label>
+                                <input id="wa-fallback-model" v-model="form.fallback_model" dir="ltr" :disabled="!form.fallback_provider"
+                                       class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono dark:text-white disabled:opacity-50"
+                                       :class="isDirty('fallback_model') ? 'ring-1 ring-gold-400' : ''"/>
+                                <p v-if="errors.fallback_model" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.fallback_model }}</p>
+                                <p v-else class="text-xs text-gray-500 mt-1">نموذج Gemini آخر بالمفتاح نفسه لا يضيف جهة جديدة، لكنه لا ينفع إن انتهت الحصة.</p>
+                            </div>
+                            <SecretCard name="fallback_api_key" :secret="secrets.fallback_api_key" @changed="(v) => { secrets.fallback_api_key = v; refreshVersion(); }">
+                                <template #hint><span class="block">يُترك فارغاً إن كان مفتاح مزوّده في البيئة.</span></template>
+                            </SecretCard>
+                        </div>
+                    </details>
                 </div>
 
                 <!-- ================= 4. الشخصية وقاعدة المعرفة ================= -->
@@ -363,6 +392,32 @@
                             <span class="block text-xs text-gray-500 mt-0.5">يمنع تكرار الأخطاء على كل العملاء ويُبقي الأمر تحت أعين الموظفين.</span>
                         </span>
                     </label>
+
+                    <!-- قاطع مزوّد الذكاء (E12) -->
+                    <div id="breaker" class="mt-6 scroll-mt-20">
+                        <h4 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-1">🔌 قاطع مزوّد الذكاء</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">إن تعطّل المزوّد: يُحوَّل كل عميل لموظف برسالة ثابتة بدل رسالة الخلل، ويصل المدراء إشعار عند البدء وعند العودة فقط.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                            <div>
+                                <label for="wa-breaker-mode" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ LABELS.breaker_mode }}</label>
+                                <select id="wa-breaker-mode" v-model="form.breaker_mode"
+                                        class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white"
+                                        :class="isDirty('breaker_mode') ? 'ring-1 ring-gold-400' : ''">
+                                    <option value="off">إيقاف (السلوك القديم)</option>
+                                    <option value="shadow">مراقبة فقط (يسجّل ولا يحوّل)</option>
+                                    <option value="on">مفعّل</option>
+                                </select>
+                            </div>
+                            <div v-for="k in ['breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes']" :key="k">
+                                <label :for="`wa-${k}`" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ LABELS[k] }}</label>
+                                <input :id="`wa-${k}`" v-model.number="form[k]" type="number" dir="ltr"
+                                       class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white"
+                                       :class="isDirty(k) ? 'ring-1 ring-gold-400' : ''"/>
+                                <p v-if="errors[k]" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors[k] }}</p>
+                            </div>
+                        </div>
+                        <BreakerPanel :breaker="breaker" @changed="(v) => { breaker = v; }"/>
+                    </div>
                 </div>
 
                 <IdentityModePanel :mode="identityMode"/>
@@ -396,6 +451,7 @@ import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
+import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
@@ -418,6 +474,7 @@ const props = defineProps({
     signature: { type: Object, default: () => ({}) },
     killSwitch: { type: Object, default: () => ({}) },
     flags: { type: Array, default: () => [] },
+    breaker: { type: Object, default: () => ({}) },
     identityMode: { type: String, default: 'store' },
     can: { type: Object, default: () => ({}) },
     webhookUrl: String,
@@ -439,15 +496,20 @@ const verify = ref({ ...props.verify });
 const signature = ref({ ...props.signature });
 const killSwitch = ref({ ...props.killSwitch });
 const flags = ref([...props.flags]);
+const breaker = ref({ ...props.breaker });
+watch(() => props.breaker, (v) => { breaker.value = { ...v }; });
 watch(() => props.sources, (v) => { sources.value = { ...v }; });
 
 const LABELS = {
     enabled: 'تشغيل البوت', wa_phone_number_id: 'Phone Number ID', wa_app_id: 'App ID', provider: 'المزوّد', model: 'الموديل',
     system_prompt: 'نص الشخصية', fail_message: 'رسالة الاعتذار', fail_handoff: 'التحويل عند الفشل',
+    breaker_mode: 'وضع القاطع', breaker_threshold: 'إخفاقات متتالية تفتحه', breaker_window_minutes: 'نافذة العدّ (دقائق)',
+    breaker_open_minutes: 'مدة وضع التحويل (دقائق)', fallback_provider: 'المزوّد الاحتياطي', fallback_model: 'نموذج الاحتياطي',
 };
 props.fields.forEach((f) => { LABELS[f.key] = f.label; });
-const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff'];
-const SENSITIVE = ['wa_phone_number_id', 'provider'];
+const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff',
+    'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes', 'fallback_provider', 'fallback_model'];
+const SENSITIVE = ['wa_phone_number_id', 'provider', 'fallback_provider'];
 const handoffTools = ['request_quote', 'confirm_booking'];
 
 // القيم القابلة للحفظ من صف الإعدادات؛ الأدوات: غياب المفتاح = مفعّلة
@@ -501,6 +563,7 @@ const adopt = (data) => {
     if (data.signature) signature.value = { ...data.signature };
     if (data.killSwitch) killSwitch.value = { ...data.killSwitch };
     if (data.flags) flags.value = [...data.flags];
+    if (data.breaker) breaker.value = { ...data.breaker };
 };
 
 // تعارض أو تغيير من نفس الصفحة رفع النسخة: نجلب الحالي، ونأخذ ما غيّره غيرنا، ونُبقي تعديلاتنا فوقه
@@ -545,7 +608,7 @@ const save = async (confirmed = false) => {
         conflict.value = { fields: [], others: [] };
         savedMsg.value = '✅ حُفظت التغييرات';
         setTimeout(() => { savedMsg.value = ''; }, 3000);
-        router.reload({ only: ['sources', 'health', 'meta'] });
+        router.reload({ only: ['sources', 'health', 'meta', 'breaker'] });
     } catch (e) {
         const status = e.response?.status;
         if (status === 422) {

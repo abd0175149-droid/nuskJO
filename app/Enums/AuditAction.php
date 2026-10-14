@@ -84,6 +84,7 @@ enum AuditAction: string
     case WaLinkClient = 'wa.link_client';
     case WaUnlinkClient = 'wa.unlink_client';
     case WaBackfillIdentity = 'wa.backfill_identity';
+    case WaBreakerManual = 'wa.breaker_manual';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -119,7 +120,7 @@ enum AuditAction: string
             self::WaSettingsUpdate, self::WaBotEnabled, self::WaSuspendManual, self::WaRoutingUpdate,
             self::WaReliabilityFlag, self::WaIdentityMode, self::WaSecurity, self::AuditExport,
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
-            self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity => AuditSeverity::Warn,
+            self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -215,6 +216,7 @@ enum AuditAction: string
             self::WaLinkClient => 'ربط محادثة بعميل',
             self::WaUnlinkClient => 'فك ربط محادثة بعميل',
             self::WaBackfillIdentity => 'تعبئة هوية المحادثات القديمة',
+            self::WaBreakerManual => 'فتح أو إغلاق وضع التحويل يدوياً',
             self::WaAccountUpdate => 'حدث حساب ميتا',
             self::WaAccountAlert => 'تنبيه حساب ميتا',
             self::WaSecurity => 'حدث أمان ميتا',

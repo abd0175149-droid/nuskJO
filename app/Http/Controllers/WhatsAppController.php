@@ -37,6 +37,8 @@ class WhatsAppController extends Controller
                 'meta_blocked' => data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED'
                     || data_get($s->wa_credentials_status, 'state') === 'critical',
             ],
+            // وضع التحويل (E12): الحالة والأوقات فقط، بلا سبب تقني
+            'llm' => \App\Services\WhatsApp\LlmCircuitBreaker::publicStatus(),
             'canReply' => auth()->user()->can('whatsapp.reply'),
             'canAssign' => auth()->user()->can('whatsapp.assign'),
             'canToggleBot' => auth()->user()->can('whatsapp.bot_toggle'),
@@ -64,6 +66,7 @@ class WhatsAppController extends Controller
         return response()->json([
             'conversations' => $this->conversationList($request),
             'unread_total' => (int) WaConversation::query()->visibleTo(auth()->user())->sum('unread_count'),
+            'llm' => \App\Services\WhatsApp\LlmCircuitBreaker::publicStatus(),
         ]);
     }
 

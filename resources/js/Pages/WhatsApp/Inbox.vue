@@ -29,6 +29,17 @@
         ⛔ القناة متوقفة من جهة ميتا — أبلغ المدير.
       </div>
 
+      <!-- وضع التحويل (E12): مزوّد الذكاء متعطّل، والبوت يحوّل كل عميل لموظف -->
+      <div v-if="llm.state && llm.state !== 'closed'" role="alert"
+           class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm font-bold text-amber-800 dark:text-amber-300">
+        🔌 البوت في وضع التحويل<span v-if="llm.opened_at"> منذ {{ hhmm(llm.opened_at) }}</span>. مزوّد الذكاء متعطّل — ردّوا على العملاء يدوياً.
+      </div>
+      <!-- فشل الاستطلاع مرتين متتاليتين: القائمة قد تكون قديمة -->
+      <div v-if="staleSince" role="status"
+           class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-2.5 text-xs text-gray-600 dark:text-gray-300">
+        ⚠️ تعذّر التحديث منذ {{ staleSince }} — تحقّق من الاتصال، وستتحدّث القائمة تلقائياً عند عودته.
+      </div>
+
       <!-- محادثة لم تعد ضمن نطاقك -->
       <div v-if="notice" role="alert"
            class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm text-amber-800 dark:text-amber-300 flex items-start gap-3">
@@ -291,6 +302,7 @@ const props = defineProps({
   seesAll: Boolean,
   canSeeAdminChats: Boolean,
   canLinkClient: Boolean,
+  llm: { type: Object, default: () => ({ state: 'closed' }) },
   identityMode: { type: String, default: 'store' },
   topics: { type: Object, default: () => ({}) },
   staff: { type: Array, default: () => [] },
@@ -303,6 +315,10 @@ const reasonLabel = (key) => props.attentionReasons[key] || key;
 const OUT_OF_SCOPE = 'هذه المحادثة غير متاحة لك: ربما نُقلت لموظف آخر أو أُزيل وسم اختصاصك. اطلب من المدير توكيلها لك إن كنت تحتاجها';
 
 const list = ref([...props.conversations]);
+const llm = ref({ ...props.llm });
+const staleSince = ref('');
+let pollFailures = 0;
+const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
 
 // الوقت الباقي في نافذة الـ24 ساعة بصيغة مقروءة: «5س 20د» أو «40د»
 const windowLabel = (mins) => {
@@ -375,7 +391,14 @@ const load = async () => {
       },
     });
     list.value = data.conversations || [];
-  } catch (e) { /* تجاهل — يُعاد في الدورة التالية */ }
+    if (data.llm) llm.value = data.llm;
+    pollFailures = 0;
+    staleSince.value = '';
+  } catch (e) {
+    // يُعاد في الدورة التالية؛ بعد فشلين متتاليين يظهر أن القائمة قد تكون قديمة
+    pollFailures++;
+    if (pollFailures === 2) staleSince.value = new Date().toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
+  }
 };
 
 const debounceLoad = () => { clearTimeout(t); t = setTimeout(load, 400); };

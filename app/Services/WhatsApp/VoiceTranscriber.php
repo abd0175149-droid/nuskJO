@@ -39,9 +39,15 @@ class VoiceTranscriber
             ->where('msg_type', 'audio')
             ->orderByDesc('id')->limit(3)->get()
             ->filter(fn (WaMessage $m) => !data_get($m->payload, '_transcribed'));
-        // قاطع المزوّد مفتوح (E12): لا نداء، وتبقى بلا _transcribed فتُفرَّغ بعد التعافي
-        if ($pending->isNotEmpty() && LlmCircuitBreaker::allow((string) $s->provider) === LlmCircuitBreaker::BLOCK) {
-            return;
+        // قاطع المزوّد مفتوح (E12): الاحتياطي إن كان Gemini (Claude لا يقبل الصوت)، وإلا لا نداء،
+        // وتبقى بلا _transcribed فتُفرَّغ بعد التعافي
+        $route = ['provider' => (string) $s->provider, 'model' => (string) $s->model, 'key' => (string) $s->llmKey()];
+        if ($pending->isNotEmpty() && LlmCircuitBreaker::allow($route['provider']) === LlmCircuitBreaker::BLOCK) {
+            if ($s->fallbackReady() && $s->fallback_provider === 'google' && LlmCircuitBreaker::allow('google') !== LlmCircuitBreaker::BLOCK) {
+                $route = ['provider' => 'google', 'model' => (string) $s->fallback_model, 'key' => (string) $s->fallbackKey()];
+            } else {
+                return;
+            }
         }
 
         foreach ($pending as $m) {
@@ -50,7 +56,7 @@ class VoiceTranscriber
 
                 continue;
             }
-            self::one($m, $s, $run);
+            self::one($m, $s, $run, $route);
         }
     }
 
@@ -64,14 +70,14 @@ class VoiceTranscriber
         ]);
     }
 
-    private static function one(WaMessage $m, WaBotSetting $s, ?ReplyRun $run = null): void
+    private static function one(WaMessage $m, WaBotSetting $s, ?ReplyRun $run, array $route): void
     {
         $payload = $m->payload ?? [];
         $text = null;
         $t0 = microtime(true);
 
         try {
-            $provider = LlmFactory::make($s->provider);
+            $provider = LlmFactory::make($route['provider']);
             $mediaId = (string) data_get($payload, 'audio.id', '');
 
             // Claude لا يقبل الصوت — نُبقي العنصر النائب ويطلب البوت الكتابة
@@ -89,14 +95,14 @@ class VoiceTranscriber
                 $media = $fetched['ok'] ? $fetched : null;
                 if ($media) {
                     $mime = explode(';', $media['mime'])[0] ?: 'audio/ogg';
-                    $r = $provider->transcribe((string) $s->llmKey(), (string) $s->model, $media['bytes'], $mime, $run?->voiceTimeout());
+                    $r = $provider->transcribe($route['key'], $route['model'], $media['bytes'], $mime, $run?->voiceTimeout());
                     LlmCircuitBreaker::recordSuccess($provider->key());
                     $text = $r['text'] !== '' && $r['text'] !== '[غير مفهومة]' ? $r['text'] : null;
 
                     WaBotUsage::create([
                         'conversation_id' => $m->conversation_id,
                         'source' => 'voice',
-                        'model' => (string) $s->model,
+                        'model' => $route['model'],
                         'calls' => 1,
                         'prompt_tokens' => $r['usage']['in'],
                         'output_tokens' => $r['usage']['out'],
@@ -114,7 +120,7 @@ class VoiceTranscriber
             WaLog::error('voice.transcription_failed', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'exception' => $e]);
             // خطأ المزوّد يُعدّ في القاطع قبل ابتلاعه (E12)
             if ($e instanceof \App\Services\WhatsApp\Llm\LlmException) {
-                LlmCircuitBreaker::recordFailure((string) $s->provider, $e, (string) $s->model);
+                LlmCircuitBreaker::recordFailure($route['provider'], $e, $route['model']);
             }
         }
 

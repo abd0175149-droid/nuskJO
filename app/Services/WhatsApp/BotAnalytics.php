@@ -252,6 +252,9 @@ class BotAnalytics
             ['key' => 'leaks',      'label' => 'تسريب أدوات',        'value' => $leaks, 'unit' => '', 'good' => 'low'],
             ['key' => 'voice',      'label' => 'رسائل صوتية',        'value' => $voice, 'unit' => '', 'good' => 'neutral'],
             ['key' => 'tool_rate',  'label' => 'ردود استعملت أداة',  'value' => $usage->count() ? round($withTools * 100 / $usage->count()) : 0, 'unit' => '%', 'good' => 'high'],
+            // قاطع المزوّد (E12): ما حُوِّل لموظف لأن مزوّد الذكاء تعطّل، وعدد الحوادث (المراقبة shadow معها)
+            ['key' => 'llm_outage', 'label' => 'تحويلات بسبب تعطّل المزوّد', 'value' => \App\Models\WaBotUsage::where('source', 'outage')->count(), 'unit' => '', 'good' => 'low'],
+            ['key' => 'llm_incidents', 'label' => 'حوادث المزوّد (30 يوماً)', 'value' => rescue(fn () => \App\Models\WaLlmIncident::where('opened_at', '>=', now()->subDays(30))->count(), 0, false), 'unit' => '', 'good' => 'low'],
         ];
 
         // ── ما يحتاج نظرك: آخر 40 موضعاً عجز فيه البوت أو حوّل أو تعطّل

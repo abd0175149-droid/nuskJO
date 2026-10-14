@@ -271,6 +271,47 @@ class WhatsAppSettingsController extends Controller
         return response()->json(['flags' => FeatureFlags::panel()]);
     }
 
+    /** POST api/whatsapp/settings/llm-breaker/open: وضع تحويل يدوي (تمرين، أو عطل يعرفه المدير قبل النظام) */
+    public function breakerOpen(Request $request): JsonResponse
+    {
+        $this->authorizeSettings();
+        $data = $request->validate(['minutes' => 'required|integer|min:5|max:240']);
+        $provider = (string) WaBotSetting::current()->provider;
+
+        LlmCircuitBreaker::forceOpen($provider, (int) $data['minutes'], auth()->id());
+        AuditLog::log(AuditAction::WaBreakerManual, 'setting', null, 'llm_breaker', ['action' => 'open', 'provider' => $provider, 'minutes' => (int) $data['minutes']]);
+
+        return response()->json(['breaker' => $this->breakerState(WaBotSetting::current())]);
+    }
+
+    /** POST api/whatsapp/settings/llm-breaker/close */
+    public function breakerClose(): JsonResponse
+    {
+        $this->authorizeSettings();
+        $s = WaBotSetting::current();
+        foreach (array_filter([(string) $s->provider, $s->fallback_provider]) as $provider) {
+            LlmCircuitBreaker::forceClose($provider, auth()->id(), 'manual');
+        }
+        AuditLog::log(AuditAction::WaBreakerManual, 'setting', null, 'llm_breaker', ['action' => 'close', 'provider' => (string) $s->provider]);
+
+        return response()->json(['breaker' => $this->breakerState($s)]);
+    }
+
+    /** حالة القاطع للأساسي والاحتياطي، وآخر 10 حوادث: أنواع وأوقات وأعداد، بلا بيانات عملاء */
+    private function breakerState(WaBotSetting $s): array
+    {
+        return [
+            'primary' => LlmCircuitBreaker::status((string) $s->provider),
+            'fallback' => $s->fallback_provider ? LlmCircuitBreaker::status((string) $s->fallback_provider) + ['ready' => $s->fallbackReady()] : null,
+            'incidents' => rescue(fn () => \App\Models\WaLlmIncident::latest('id')->limit(10)->get()->map(fn ($i) => [
+                'id' => $i->id, 'provider' => $i->provider, 'model' => $i->model, 'kind' => $i->kind, 'http_status' => $i->http_status,
+                'reason' => $i->reason, 'shadow' => $i->shadow, 'opened_at' => $i->opened_at?->toIso8601String(),
+                'closed_at' => $i->closed_at?->toIso8601String(), 'close_reason' => $i->close_reason,
+                'failed_probes' => $i->failed_probes, 'handoffs' => $i->handoffs,
+            ])->all(), [], false),
+        ];
+    }
+
     /**
      * PATCH api/whatsapp/settings/identity-mode: التعامل مع عميل بلا رقم ظاهر (E11.9). مثل أمر
      * whatsapp:identity-mode تماماً: Setting لا عمود في wa_bot_settings، والسجل بالقيمتين.
@@ -328,6 +369,7 @@ class WhatsAppSettingsController extends Controller
                 'failures_last_hour' => (int) Cache::get('wa:sig:fail:'.now()->format('YmdH'), 0),
             ],
             'killSwitch' => $this->killSwitchState($s),
+            'breaker' => $this->breakerState($s),
             'flags' => FeatureFlags::panel(),
             'identityMode' => IdentityMode::current(),
             'can' => [
@@ -360,6 +402,13 @@ class WhatsAppSettingsController extends Controller
             'rate_limit_per_hour' => (int) $s->rate_limit_per_hour,
             'fail_message' => $s->fail_message,
             'fail_handoff' => (bool) $s->fail_handoff,
+            // قاطع المزوّد والاحتياطي (E12)
+            'breaker_mode' => LlmCircuitBreaker::mode($s),
+            'breaker_threshold' => (int) ($s->breaker_threshold ?? SettingsSchema::default('breaker_threshold')),
+            'breaker_window_minutes' => (int) ($s->breaker_window_minutes ?? SettingsSchema::default('breaker_window_minutes')),
+            'breaker_open_minutes' => (int) ($s->breaker_open_minutes ?? SettingsSchema::default('breaker_open_minutes')),
+            'fallback_provider' => $s->fallback_provider,
+            'fallback_model' => $s->fallback_model,
             'tools_config' => $s->tools_config ?? (object) [],
             'env_app_id' => !empty(config('services.whatsapp.app_id')),
         ];
