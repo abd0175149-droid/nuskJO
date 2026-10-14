@@ -8,7 +8,10 @@ use App\Models\WaBotUsage;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Llm\LlmFactory;
+use App\Services\WhatsApp\Llm\LlmProvider;
+use App\Services\WhatsApp\Llm\LlmTransientException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Sleep;
 
 /**
  * محرّك الوكيل: حلقة أدوات صغيرة محاطة بحواجز حتمية.
@@ -147,6 +150,13 @@ TXT;
         try {
             [$text, $usage] = self::runLoop($conv, $s, null, null, null, $run);
 
+            // نفد الوقت قبل رد كامل: موظف يكمل، لا رد مبتور ولا صمت
+            if ($run->abort === 'budget' && !$run->escalated) {
+                self::recordUsage($conv->id, $s->model, $usage);
+
+                return self::forceHandoff($conv, $s, $pending, 'تجاوز زمن الرد', $run, 'budget');
+            }
+
             if (trim((string) $text) === '') {
                 $text = 'تلقّيت رسالتك. سيتواصل معك أحد موظفينا حالاً.';
             }
@@ -199,7 +209,14 @@ TXT;
         $loops = max(1, min(8, (int) $s->max_tool_loops));
 
         for ($i = 0; $i < $loops; $i++) {
-            $r = $provider->generate($apiKey, $model, $system, $history, $tools);
+            // لا دورة بلا وقت يكفيها ويكفي الإرسال بعدها
+            if ($run && !$run->hasAtLeast(ReplyRun::MIN_TURN_SECONDS)) {
+                $run->abort = 'budget';
+                WaLog::warning('bot.reply.budget', ['conv_id' => $conv->id, 'count' => $i]);
+                break;
+            }
+
+            $r = self::generate($provider, $apiKey, $model, $system, $history, $tools, $conv, $run);
 
             $usage['calls']++;
             foreach (['in', 'out', 'cache_read', 'cache_write'] as $k) {
@@ -243,6 +260,25 @@ TXT;
         $usage['ms'] = (int) ((microtime(true) - $t0) * 1000);
 
         return [$clean, $usage];
+    }
+
+    /**
+     * نداء واحد بمهلة من الميزانية. خلل عابر (ازدحام، 5xx، مهلة) يُعاد مرة واحدة بعد 1.5 ثانية
+     * إن بقي وقت يكفي، وإلا يصعد الاستثناء إلى failSafe.
+     */
+    private static function generate(LlmProvider $provider, #[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, WaConversation $conv, ?ReplyRun $run): array
+    {
+        try {
+            return $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
+        } catch (LlmTransientException $e) {
+            if ($run && $run->remaining() <= ReplyRun::RETRY_MIN_SECONDS) {
+                throw $e;
+            }
+            WaLog::warning('bot.llm.retry', ['conv_id' => $conv->id, 'exception' => $e]);
+            Sleep::for(ReplyRun::RETRY_DELAY_MS)->milliseconds();
+
+            return $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
+        }
     }
 
     // ==================== تركيب الموجّه ====================
@@ -403,7 +439,9 @@ TXT;
             [$text, $usage] = self::runLoop($conv, $s, $system, $tools,
                 fn (string $name, array $in, WaConversation $c) => AdminTools::execute($name, $in, $c, $admin), $run);
 
-            if (trim((string) $text) === '') {
+            if ($run->abort === 'budget') {
+                $text = 'استغرق الطلب وقتاً أطول من المسموح فلم يكتمل. أعد المحاولة أو جزّئه إلى طلبات أقصر.';
+            } elseif (trim((string) $text) === '') {
                 $text = 'لم أفهم الطلب تماماً — وضّحه أكثر من فضلك.';
             }
 
@@ -503,11 +541,15 @@ TXT;
     }
 
     /** تحويل يقرّره الكود: أداة التحويل نفسها + رسالة تأكيد يبنيها الكود بلغة العميل */
-    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null): array
+    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null, ?string $attention = null): array
     {
         BotTools::execute('handoff_to_human', ['reason' => $reason], $conv);
         if ($run) {
             $run->escalated = true;
+        }
+        // سبب أدق من «handoff» في رقاقة الصندوق (مثل budget)
+        if ($attention !== null && ReplyState::available()) {
+            $conv->update(['attention_reason' => $attention]);
         }
 
         self::recordUsage($conv->id, $s->model, [

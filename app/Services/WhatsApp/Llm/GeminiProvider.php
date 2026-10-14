@@ -4,7 +4,9 @@ namespace App\Services\WhatsApp\Llm;
 
 use App\Support\SecretRedactor;
 use App\Support\UrlPath;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -29,9 +31,25 @@ class GeminiProvider implements LlmProvider
     {
         return Http::withHeaders(['x-goog-api-key' => $apiKey])
             ->withoutRedirecting()
-            ->connectTimeout(10)
+            ->connectTimeout(5)
             ->timeout($timeout)
             ->acceptJson();
+    }
+
+    /** POST واحد: مهلة الاتصال أو الشبكة خلل عابر، ورسالته بلا رابط ولا تفاصيل cURL */
+    private function post(#[\SensitiveParameter] string $apiKey, int $timeout, string $url, array $body, string $prefix): Response
+    {
+        try {
+            $res = $this->client($apiKey, $timeout)->post($url, $body);
+        } catch (ConnectionException) {
+            throw new LlmTransientException($prefix.': connection failed (timeout or network)');
+        }
+
+        if (!$res->successful()) {
+            throw self::failure($prefix, $res, $apiKey);
+        }
+
+        return $res;
     }
 
     private function generateUrl(string $model): string
@@ -39,9 +57,11 @@ class GeminiProvider implements LlmProvider
         return self::BASE . '/models/' . UrlPath::segment($model) . ':generateContent';
     }
 
-    private static function failure(string $prefix, \Illuminate\Http\Client\Response $res, #[\SensitiveParameter] string $apiKey): \RuntimeException
+    private static function failure(string $prefix, Response $res, #[\SensitiveParameter] string $apiKey): \RuntimeException
     {
-        return new \RuntimeException(SecretRedactor::clean($prefix . ' HTTP ' . $res->status() . ': '
+        $class = LlmTransientException::isTransient($res->status()) ? LlmTransientException::class : \RuntimeException::class;
+
+        return new $class(SecretRedactor::clean($prefix . ' HTTP ' . $res->status() . ': '
             . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300), [$apiKey]));
     }
 
@@ -88,7 +108,7 @@ class GeminiProvider implements LlmProvider
         return $h;
     }
 
-    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools): array
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, ?int $timeout = null): array
     {
         $body = [
             'systemInstruction' => ['parts' => array_map(fn ($t) => ['text' => $t], $system)],
@@ -103,11 +123,7 @@ class GeminiProvider implements LlmProvider
             $body['tools'] = [['functionDeclarations' => array_map([$this, 'declaration'], $tools)]];
         }
 
-        $res = $this->client($apiKey, 40)->post($this->generateUrl($model), $body);
-
-        if (!$res->successful()) {
-            throw self::failure('Gemini', $res, $apiKey);
-        }
+        $res = $this->post($apiKey, $timeout ?? 40, $this->generateUrl($model), $body, 'Gemini');
 
         $json = $res->json() ?? [];
         $parts = (array) data_get($json, 'candidates.0.content.parts', []);
@@ -151,7 +167,7 @@ class GeminiProvider implements LlmProvider
      *
      * @return array{text:string, usage:array{in:int,out:int}}
      */
-    public function transcribe(#[\SensitiveParameter] string $apiKey, string $model, string $bytes, string $mime): array
+    public function transcribe(#[\SensitiveParameter] string $apiKey, string $model, string $bytes, string $mime, ?int $timeout = null): array
     {
         $body = [
             'contents' => [[
@@ -166,11 +182,7 @@ class GeminiProvider implements LlmProvider
             'generationConfig' => ['temperature' => 0, 'maxOutputTokens' => 1024],
         ];
 
-        $res = $this->client($apiKey, 60)->post($this->generateUrl($model), $body);
-
-        if (!$res->successful()) {
-            throw self::failure('Gemini transcribe', $res, $apiKey);
-        }
+        $res = $this->post($apiKey, $timeout ?? 60, $this->generateUrl($model), $body, 'Gemini transcribe');
 
         $text = '';
         foreach ((array) data_get($res->json(), 'candidates.0.content.parts', []) as $p) {

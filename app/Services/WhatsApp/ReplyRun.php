@@ -17,6 +17,27 @@ final class ReplyRun
     /** ميزانية الحلقة كلها من بداية الوظيفة، ومعها التفريغ الصوتي (ReplyTimingInvariantsTest) */
     public const BUDGET_SECONDS = 95;
 
+    /** أقل من هذا قبل دورة نموذج: تنقطع الحلقة (budget) ويُحوَّل العميل لموظف */
+    public const MIN_TURN_SECONDS = 15;
+
+    /** إعادة نداء النموذج بعد خلل عابر: مرة واحدة، وبعد 1.5 ثانية، وفقط إن بقي أكثر من هذا */
+    public const RETRY_MIN_SECONDS = 25;
+
+    public const RETRY_DELAY_MS = 1500;
+
+    /** توليد بطاقة عرض (Chromium) لا يبدأ بأقل من هذا */
+    public const CARD_MIN_SECONDS = 40;
+
+    /** تفريغ صوتي لا يبدأ بأقل من هذا، ويترك للحلقة بعده VOICE_RESERVE_SECONDS */
+    public const VOICE_MIN_SECONDS = 50;
+
+    public const VOICE_RESERVE_SECONDS = 45;
+
+    /** أطول مهلة لنداء نموذج واحد، وللتفريغ */
+    public const CALL_TIMEOUT_SECONDS = 40;
+
+    public const VOICE_TIMEOUT_SECONDS = 60;
+
     public float $startedAt;
 
     /** أعلى وارد دخل سياق النموذج: إليه تتحرك العلامة بعد الإرسال */
@@ -43,6 +64,23 @@ final class ReplyRun
     public function remaining(): float
     {
         return self::BUDGET_SECONDS - (microtime(true) - $this->startedAt);
+    }
+
+    public function hasAtLeast(int $seconds): bool
+    {
+        return $this->remaining() >= $seconds;
+    }
+
+    /** مهلة نداء النموذج التالي: ما بقي ناقص 5 ثوانٍ للإرسال، بين 5 و40 */
+    public function callTimeout(): int
+    {
+        return (int) max(5, min(self::CALL_TIMEOUT_SECONDS, $this->remaining() - 5));
+    }
+
+    /** مهلة التفريغ: ما بقي ناقص حصة الحلقة، بين 5 و60 */
+    public function voiceTimeout(): int
+    {
+        return (int) max(5, min(self::VOICE_TIMEOUT_SECONDS, $this->remaining() - self::VOICE_RESERVE_SECONDS));
     }
 
     public static function current(): ?self

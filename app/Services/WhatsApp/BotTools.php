@@ -257,6 +257,8 @@ class BotTools
         ];
     }
 
+    private const CARD_AS_TEXT = 'تعذّر إرسال الصورة. اذكر تفاصيل العرض وأسعاره نصّاً بإيجاز بدلاً منها، ولا تعتذر عن الصورة.';
+
     /** إرسال بطاقة العرض كصورة — تُولَّد عند الطلب إن لم تكن جاهزة */
     private static function sendOfferCard(array $in, WaConversation $conv): array
     {
@@ -267,8 +269,17 @@ class BotTools
 
         $path = $offer->cardImage();
 
-        // البطاقة غير موجودة أو قديمة بعد تعديل الأسعار → نولّدها الآن
+        // البطاقة غير موجودة أو قديمة بعد تعديل الأسعار → نولّدها الآن، إن بقي وقت يكفي Chromium
         if (!$path || $offer->cardIsStale()) {
+            $run = ReplyRun::current();
+            if ($run && !$run->hasAtLeast(ReplyRun::CARD_MIN_SECONDS)) {
+                WaLog::warning('bot.card.skipped_budget', ['offer_id' => $offer->id, 'conv_id' => $conv->id]);
+
+                return [
+                    'sent' => false,
+                    'note' => self::CARD_AS_TEXT,
+                ];
+            }
             try {
                 $path = OfferCardService::generate($offer);
             } catch (\Throwable $e) {
@@ -276,7 +287,7 @@ class BotTools
 
                 return [
                     'sent' => false,
-                    'note' => 'تعذّر إرسال الصورة. اذكر تفاصيل العرض وأسعاره نصّاً بإيجاز بدلاً منها، ولا تعتذر عن الصورة.',
+                    'note' => self::CARD_AS_TEXT,
                 ];
             }
         }

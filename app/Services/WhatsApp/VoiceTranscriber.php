@@ -22,8 +22,11 @@ class VoiceTranscriber
 {
     public const FAILED_BODY = '🎤 رسالة صوتية (تعذّر تفريغها)';
 
-    /** يفرّغ آخر الصوتيات غير المفرّغة في المحادثة */
-    public static function run(WaConversation $conv): void
+    /**
+     * يفرّغ آخر الصوتيات غير المفرّغة في المحادثة، داخل ميزانية الرد إن مُرّر تشغيلها:
+     * بأقل من VOICE_MIN_SECONDS يُترك الصوت بلا تفريغ فيطلب البوت الكتابة (SYSTEM_RULES).
+     */
+    public static function run(WaConversation $conv, ?ReplyRun $run = null): void
     {
         $s = WaBotSetting::current();
         // أرقام الإدارة تُفرَّغ صوتياتها حتى لو كان بوت العملاء موقوفاً
@@ -38,11 +41,26 @@ class VoiceTranscriber
             ->filter(fn (WaMessage $m) => !data_get($m->payload, '_transcribed'));
 
         foreach ($pending as $m) {
-            self::one($m, $s);
+            if ($run && !$run->hasAtLeast(ReplyRun::VOICE_MIN_SECONDS)) {
+                self::skipForBudget($m);
+
+                continue;
+            }
+            self::one($m, $s, $run);
         }
     }
 
-    private static function one(WaMessage $m, WaBotSetting $s): void
+    /** لا وقت لتفريغه: يُعامل كتفريغ فاشل، فيطلب البوت من العميل الكتابة بدل أن يتجاوز الرد مهلته */
+    private static function skipForBudget(WaMessage $m): void
+    {
+        WaLog::warning('voice.skipped_budget', ['message_id' => $m->id, 'conv_id' => $m->conversation_id]);
+        $m->update([
+            'body' => self::FAILED_BODY,
+            'payload' => array_merge($m->payload ?? [], ['_transcribed' => true, '_media_error' => 'budget']),
+        ]);
+    }
+
+    private static function one(WaMessage $m, WaBotSetting $s, ?ReplyRun $run = null): void
     {
         $payload = $m->payload ?? [];
         $text = null;
@@ -67,7 +85,7 @@ class VoiceTranscriber
                 $media = $fetched['ok'] ? $fetched : null;
                 if ($media) {
                     $mime = explode(';', $media['mime'])[0] ?: 'audio/ogg';
-                    $r = $provider->transcribe((string) $s->llmKey(), (string) $s->model, $media['bytes'], $mime);
+                    $r = $provider->transcribe((string) $s->llmKey(), (string) $s->model, $media['bytes'], $mime, $run?->voiceTimeout());
                     $text = $r['text'] !== '' && $r['text'] !== '[غير مفهومة]' ? $r['text'] : null;
 
                     WaBotUsage::create([

@@ -133,8 +133,8 @@ class ProcessWhatsAppReply implements ShouldQueue
             $conv = WaConversation::find($this->conversationId);
             if ($conv) {
                 $run = ReplyRun::start($conv, $this->token);
-                // الصوتيات تُفرَّغ أولاً، فيقرؤها البوت نصّاً ضمن السياق
-                VoiceTranscriber::run($conv);
+                // الصوتيات تُفرَّغ أولاً، فيقرؤها البوت نصّاً ضمن السياق؛ ومن ميزانية الرد نفسها
+                VoiceTranscriber::run($conv, $run);
                 $result = BotEngine::reply($conv, $run);
                 self::rerunIfNewer($conv, $run, $result);
             }

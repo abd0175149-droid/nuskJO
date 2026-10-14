@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Jobs\ProcessWhatsAppReply;
+use App\Services\WhatsApp\ReplyRun;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
@@ -41,7 +42,24 @@ class ReplyTimingInvariantsTest extends TestCase
     public function test_the_model_budget_and_final_send_fit_in_the_job(): void
     {
         // الإرسال إلى ميتا مهلته 25 ثانية بعد الميزانية
-        $this->assertLessThanOrEqual((new ProcessWhatsAppReply(1, 't'))->timeout, \App\Services\WhatsApp\ReplyRun::BUDGET_SECONDS + 25);
+        $this->assertLessThanOrEqual((new ProcessWhatsAppReply(1, 't'))->timeout, ReplyRun::BUDGET_SECONDS + 25);
+    }
+
+    public function test_budget_thresholds_keep_their_order(): void
+    {
+        // الحلقة تتوقف قبل الإعادة، والإعادة قبل البطاقة، والبطاقة قبل الصوت، وكلها داخل الميزانية
+        $order = [ReplyRun::MIN_TURN_SECONDS, ReplyRun::RETRY_MIN_SECONDS, ReplyRun::CARD_MIN_SECONDS, ReplyRun::VOICE_MIN_SECONDS, ReplyRun::BUDGET_SECONDS];
+        $sorted = $order;
+        sort($sorted);
+        $this->assertSame($sorted, $order);
+        $this->assertSame(count($order), count(array_unique($order)));
+
+        // نداء بأطول مهلة بعد بدء دورة يبقى منه وقت للإرسال
+        $this->assertGreaterThan(5, ReplyRun::MIN_TURN_SECONDS);
+        $this->assertLessThan(ReplyRun::BUDGET_SECONDS, ReplyRun::CALL_TIMEOUT_SECONDS + ReplyRun::MIN_TURN_SECONDS);
+        // أقصر تفريغ مسموح يترك للحلقة حصتها
+        $this->assertGreaterThanOrEqual(5, ReplyRun::VOICE_MIN_SECONDS - ReplyRun::VOICE_RESERVE_SECONDS);
+        $this->assertGreaterThan(ReplyRun::MIN_TURN_SECONDS, ReplyRun::VOICE_RESERVE_SECONDS);
     }
 
     public function test_lock_retry_and_debounce_outlast_the_job(): void

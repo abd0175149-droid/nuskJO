@@ -3,6 +3,7 @@
 namespace App\Services\WhatsApp\Llm;
 
 use App\Support\SecretRedactor;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
@@ -26,7 +27,7 @@ class AnthropicProvider implements LlmProvider
         return Http::withHeaders([
             'x-api-key' => $apiKey,
             'anthropic-version' => self::VERSION,
-        ])->withoutRedirecting()->connectTimeout(10)->timeout($timeout)->acceptJson();
+        ])->withoutRedirecting()->connectTimeout(5)->timeout($timeout)->acceptJson();
     }
 
     public function models(#[\SensitiveParameter] string $apiKey): array
@@ -57,7 +58,7 @@ class AnthropicProvider implements LlmProvider
         ], $messages);
     }
 
-    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools): array
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, ?int $timeout = null): array
     {
         // أول كتلة (الشخصية + قاعدة المعرفة) تُخزَّن مؤقتاً
         $systemBlocks = [];
@@ -80,10 +81,15 @@ class AnthropicProvider implements LlmProvider
             $body['tools'] = $tools;
         }
 
-        $res = $this->client($apiKey, 40)->asJson()->post(self::API . '/messages', $body);
+        try {
+            $res = $this->client($apiKey, $timeout ?? 40)->asJson()->post(self::API . '/messages', $body);
+        } catch (ConnectionException) {
+            throw new LlmTransientException('Claude: connection failed (timeout or network)');
+        }
 
         if (!$res->successful()) {
-            throw new \RuntimeException(SecretRedactor::clean('Claude HTTP ' . $res->status() . ': '
+            $class = LlmTransientException::isTransient($res->status()) ? LlmTransientException::class : \RuntimeException::class;
+            throw new $class(SecretRedactor::clean('Claude HTTP ' . $res->status() . ': '
                 . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300), [$apiKey]));
         }
 

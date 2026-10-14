@@ -22,11 +22,12 @@ interface LlmProvider
     public function buildHistory(array $messages): array;
 
     /**
-     * نداء واحد للنموذج.
+     * نداء واحد للنموذج. $timeout بالثواني (null: الافتراضي 40)، يحدّده المحرّك من ميزانية الرد.
+     * يرمي LlmTransientException عند خلل عابر (429 و5xx ومهلة أو شبكة)، وRuntimeException لغيره.
      * @return array{text:string, tool_calls:array<array{id:string,name:string,input:array}>,
      *               raw_assistant:mixed, usage:array{in:int,out:int,cache_read:int,cache_write:int}}
      */
-    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools): array;
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, ?int $timeout = null): array;
 
     /** إلحاق ردّ النموذج بالسجلّ — كما وصل حرفياً (مهم لنماذج التفكير) */
     public function appendAssistant(array &$history, mixed $rawAssistant): void;
