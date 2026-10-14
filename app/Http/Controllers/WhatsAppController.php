@@ -360,6 +360,21 @@ class WhatsAppController extends Controller
         return response()->json($res, $res['ok'] ? 200 : 422);
     }
 
+    /** زر «طلب الرقم» لمحادثة بلا رقم (E11.6): نص ثابت يبنيه الكود، داخل النافذة ووفق وضع الهوية */
+    public function requestContact(WaConversation $conversation)
+    {
+        abort_unless(auth()->user()->can('whatsapp.reply'), 403);
+        if (filled($conversation->phone)) {
+            return response()->json(['ok' => false, 'code' => 'HAS_PHONE', 'error' => 'رقم العميل معروف — لا حاجة لطلبه.'], 422);
+        }
+
+        $res = WhatsAppChannel::sendContactRequest($conversation, self::CONTACT_REQUEST_BODY, 'staff', auth()->id());
+
+        return response()->json($res, $res['ok'] ? 200 : 422);
+    }
+
+    private const CONTACT_REQUEST_BODY = 'لنكمل خدمتك، شارك رقم هاتفك بالضغط على الزر أدناه.';
+
     public function toggleBot(WaConversation $conversation)
     {
         abort_unless(auth()->user()->can('whatsapp.bot_toggle'), 403);

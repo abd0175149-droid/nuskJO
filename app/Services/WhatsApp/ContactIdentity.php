@@ -259,7 +259,7 @@ final class ContactIdentity
         foreach ((array) data_get($value, 'user_id_update', [$value]) as $item) {
             $previous = data_get($item, 'user_id.previous') ?? data_get($item, 'previous_user_id');
             $current = data_get($item, 'user_id.current') ?? data_get($item, 'user_id');
-            if (!is_string($current) || $current === '') {
+            if (!is_string($current) || !preg_match(InboundMessage::BSUID, $current) || str_contains($current, '.ENT.')) {
                 continue;
             }
             $phone = self::phoneFrom(data_get($item, 'wa_id'));

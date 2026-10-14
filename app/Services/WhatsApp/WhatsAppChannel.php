@@ -46,6 +46,9 @@ class WhatsAppChannel
     public const ERR_MEDIA_INTEGRITY = 'MEDIA_INTEGRITY';
     public const ERR_NO_RECIPIENT = 'NO_RECIPIENT';
 
+    /** نص الزر المعروض في الصندوق (الجسم المرسل للعميل غيره) */
+    public const CONTACT_REQUEST_LABEL = '📱 طلب مشاركة رقم الهاتف';
+
     /** أنواع الصوت التي نفرّغها؛ غيرها لا يُنزَّل */
     private const AUDIO_MIME = ['audio/ogg', 'audio/opus', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr'];
 
@@ -502,6 +505,24 @@ class WhatsAppChannel
         ], $body, 'interactive', $source);
     }
 
+    /**
+     * زر «مشاركة رقم الهاتف» (request_contact_info): يرد العميل ببطاقة رقمه (contacts بأصل contact_request)
+     * فتُملأ محادثته بلا رقم (ContactIdentity::acceptSharedPhone). داخل نافذة 24 ساعة كأي رسالة.
+     */
+    public static function sendContactRequest(WaConversation $conv, string $body, string $source = 'staff', ?int $staffId = null): array
+    {
+        return self::dispatch($conv, [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'type' => 'interactive',
+            'interactive' => [
+                'type' => 'request_contact_info',
+                'body' => ['text' => mb_substr($body, 0, 1024)],
+                'action' => ['name' => 'request_contact_info'],
+            ],
+        ], self::CONTACT_REQUEST_LABEL, 'interactive', $source, $staffId);
+    }
+
     // ==================== المحرّك ====================
 
     /** @return array{to: string}|array{recipient: string}|null */
@@ -580,14 +601,14 @@ class WhatsAppChannel
 
         if (!$res->successful()) {
             [$code, $err, $metaCode, $trace] = self::mapGraphError($res);
-            self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload, $metaCode, $trace);
+            self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload, $metaCode, $trace, $code, $s->phoneNumberId());
             WaLog::warning('wa.send.failed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType, 'code' => $code, 'meta_code' => $metaCode, 'fbtrace_id' => $trace]);
 
             return self::fail($code, $err);
         }
 
         $wamid = data_get($json, 'messages.0.id');
-        self::store($conv, $wamid, $displayBody, $msgType, $source, 'sent', null, $staffId, $payload);
+        self::store($conv, $wamid, $displayBody, $msgType, $source, 'sent', null, $staffId, $payload, phoneNumberId: $s->phoneNumberId());
         WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType]);
 
         // ردّ الموظف يُوقف البوت مؤقتاً ويصفّر المؤشرات
@@ -616,14 +637,21 @@ class WhatsAppChannel
 
     private static ?bool $hasMetaColumns = null;
 
+    private static ?bool $hasE11Columns = null;
+
     private static function store(
         WaConversation $conv, ?string $wamid, string $body, string $msgType,
         string $source, string $status, ?string $error, ?int $staffId, array $payload,
-        ?int $metaCode = null, ?string $fbtraceId = null
+        ?int $metaCode = null, ?string $fbtraceId = null, ?string $errorCode = null, ?string $phoneNumberId = null
     ): void {
-        // بين النشر والهجرة 2026_10_14_000006 لا عمودين بعد، والرسالة تُحفظ رغم ذلك
+        // بين النشر والهجرة 2026_10_14_000006 (و000012) لا أعمدة بعد، والرسالة تُحفظ رغم ذلك
         self::$hasMetaColumns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['meta_code', 'fbtrace_id']);
+        self::$hasE11Columns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['phone_number_id', 'error_code']);
         $meta = self::$hasMetaColumns ? ['meta_code' => $metaCode, 'fbtrace_id' => $fbtraceId] : [];
+        if (self::$hasE11Columns) {
+            // الرقم الذي أُرسل منه: إن بُدّل رقم القناة لاحقاً بقي معروفاً لكل رسالة
+            $meta += ['phone_number_id' => $phoneNumberId, 'error_code' => $errorCode];
+        }
 
         WaMessage::create($meta + [
             'conversation_id' => $conv->id,

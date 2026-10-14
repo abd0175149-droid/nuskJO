@@ -24,7 +24,10 @@ class ConversationScopeTest extends TestCase
     use ConfiguresWhatsApp;
     use RefreshDatabase;
 
-    /** كل مسار فيه {conversation}: [الطريقة، الحمولة]. ConversationRouteCoverageTest يفشل إن غاب عنها مسار. */
+    /**
+     * كل مسار فيه {conversation}: [الطريقة، الحمولة، وحالة المحادثة التي ينجح عليها إن لزمت].
+     * ConversationRouteCoverageTest يفشل إن غاب عنها مسار.
+     */
     public const ROUTES = [
         'messages' => ['GET', []],
         'send' => ['POST', ['body' => 'مرحباً']],
@@ -33,6 +36,8 @@ class ConversationScopeTest extends TestCase
         'topic' => ['POST', ['topic' => 'visa', 'attach' => true]],
         'assign' => ['POST', ['user_id' => null]],
         'read' => ['POST', []],
+        // طلب الرقم لمحادثة بلا رقم وحدها، بالمعرّف في وضع staff
+        'request-contact' => ['POST', [], ['phone' => null, 'wa_phone' => null, 'wa_user_id' => 'US.13491208655302741918']],
     ];
 
     protected function setUp(): void
@@ -40,6 +45,7 @@ class ConversationScopeTest extends TestCase
         parent::setUp();
         $this->configureChannel();
         $this->fakeGraph();
+        \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
     }
 
     public static function routes(): array
@@ -89,7 +95,7 @@ class ConversationScopeTest extends TestCase
     {
         $specialist = $this->staffWith('umrah-desk', self::INBOX_PERMISSIONS, ['umrah']);
 
-        $this->hit($specialist, $this->conversationTagged(['umrah']), $route)->assertOk();
+        $this->hit($specialist, $this->conversationTagged(['umrah'], self::ROUTES[$route][2] ?? []), $route)->assertOk();
     }
 
     #[DataProvider('routes')]
@@ -97,7 +103,7 @@ class ConversationScopeTest extends TestCase
     {
         $assignee = $this->staffWith('desk', self::INBOX_PERMISSIONS);
 
-        $this->hit($assignee, $this->conversationTagged([], ['assigned_to' => $assignee->id]), $route)->assertOk();
+        $this->hit($assignee, $this->conversationTagged([], ['assigned_to' => $assignee->id] + (self::ROUTES[$route][2] ?? [])), $route)->assertOk();
     }
 
     public function test_view_all_reaches_any_conversation_but_unknown_ids_are_still_not_found(): void
