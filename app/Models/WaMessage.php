@@ -12,7 +12,7 @@ class WaMessage extends Model
 
     protected $fillable = [
         'conversation_id', 'wamid', 'direction', 'source', 'msg_type',
-        'body', 'payload', 'status', 'error_message', 'staff_id',
+        'body', 'payload', 'status', 'error_message', 'staff_id', 'meta_code', 'fbtrace_id',
     ];
 
     protected $casts = ['payload' => 'array'];

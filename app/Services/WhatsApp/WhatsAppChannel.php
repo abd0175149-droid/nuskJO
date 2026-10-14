@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Http;
  *   3) نافذة 24 ساعة من آخر رسالة واردة — لا استثناء لأحد
  *
  * عميل Graph رفيع (graph/graphPath): الإصدار من الإعداد وحده، وكل مقطع مسار مرمَّز، ولا تحويلات،
- * وappsecret_proof خلف WA_APPSECRET_PROOF، وأخطاء ميتا تتحول إلى رموز صريحة (META_CODES).
+ * وappsecret_proof خلف WA_APPSECRET_PROOF، وأخطاء ميتا تتحول إلى رموز صريحة (MetaErrorCatalog).
  */
 class WhatsAppChannel
 {
@@ -44,22 +44,6 @@ class WhatsAppChannel
     public const ERR_TOO_LARGE = 'TOO_LARGE';
     public const ERR_MEDIA_HOST = 'MEDIA_HOST_BLOCKED';
     public const ERR_MEDIA_INTEGRITY = 'MEDIA_INTEGRITY';
-
-    private const RATE_TEXT = 'تجاوزنا حد الإرسال عند ميتا — أعد المحاولة بعد قليل.';
-    private const ACCOUNT_TEXT = 'حساب واتساب مقيّد من ميتا — راجع حالة الحساب في لوحة ميتا.';
-
-    /** رمز خطأ ميتا => [رمزنا، النص المحفوظ مع الرسالة الفاشلة] */
-    private const META_CODES = [
-        190 => [self::ERR_TOKEN, 'رمز ميتا منتهٍ أو مُلغى — يحدّثه المدير من إعدادات الواتساب.'],
-        131047 => [self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة عند ميتا — لا يمكن الإرسال حتى يراسلنا العميل.'],
-        131051 => [self::ERR_UNSUPPORTED, 'نوع الرسالة غير مدعوم في واتساب.'],
-        130429 => [self::ERR_RATE, self::RATE_TEXT],
-        131056 => [self::ERR_RATE, self::RATE_TEXT],
-        4 => [self::ERR_RATE, self::RATE_TEXT],
-        80007 => [self::ERR_RATE, self::RATE_TEXT],
-        131031 => [self::ERR_ACCOUNT, self::ACCOUNT_TEXT],
-        368 => [self::ERR_ACCOUNT, self::ACCOUNT_TEXT],
-    ];
 
     /** أنواع الصوت التي نفرّغها؛ غيرها لا يُنزَّل */
     private const AUDIO_MIME = ['audio/ogg', 'audio/opus', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr'];
@@ -113,35 +97,31 @@ class WhatsAppChannel
     }
 
     /**
-     * خطأ ميتا => [رمزنا، النص المحفوظ]. السجل يحمل الرمز وfbtrace_id وحالة HTTP فقط.
+     * خطأ ميتا => [رمزنا، النص المحفوظ، رمز ميتا، fbtrace_id]، ثم فعل الجدول (تنبيه أو إيقاف).
+     * السجل يحمل الرمز وfbtrace_id وحالة HTTP فقط.
      *
-     * @return array{0: string, 1: string}
+     * @return array{0: string, 1: string, 2: ?int, 3: ?string}
      */
     private static function mapGraphError(Response $res): array
     {
         $e = self::graphError($res);
         WaLog::error('graph.error', ['meta_code' => $e['code'], 'http' => $e['status'], 'fbtrace_id' => $e['trace']]);
 
-        if ($e['code'] === null) {
-            return ['META_ERROR', $e['message']];
-        }
         if ($e['code'] === 100 && str_contains(strtolower($e['message']), 'appsecret_proof')) {
             self::alertOnce('proof', '⛔ ميتا رفضت appsecret_proof',
                 'كل نداءات Graph تُرفض. عطّل WA_APPSECRET_PROOF أو صحّح سر التطبيق، ثم config:cache.', '/whatsapp/settings');
 
-            return [self::ERR_PROOF, '[100] إثبات سر التطبيق مرفوض — راجع WA_APPSECRET_PROOF وسر التطبيق.'];
-        }
-        if (isset(self::META_CODES[$e['code']])) {
-            [$ours, $text] = self::META_CODES[$e['code']];
-            if ($ours === self::ERR_ACCOUNT) {
-                // لا إيقاف تلقائي هنا: الإيقاف من ويبهوك account_update
-                self::alertOnce('account', '⚠️ ميتا تقيّد حساب الواتساب', "رفضت ميتا الإرسال بالرمز {$e['code']}. راجع حالة الحساب في لوحة ميتا.", '/whatsapp/settings');
-            }
-
-            return [$ours, "[{$e['code']}] {$text}"];
+            return [self::ERR_PROOF, '[100] إثبات سر التطبيق مرفوض — راجع WA_APPSECRET_PROOF وسر التطبيق.', 100, $e['trace']];
         }
 
-        return ['META_ERROR', SecretRedactor::clean("[{$e['code']}] {$e['message']}")];
+        MetaErrorCatalog::react($e['code']);
+
+        return [
+            MetaErrorCatalog::codeFor($e['code']),
+            SecretRedactor::clean(MetaErrorCatalog::message($e['code'], $e['message'])),
+            $e['code'],
+            $e['trace'],
+        ];
     }
 
     /** تنبيه للمدير مرة في اليوم لكل نوع */
@@ -509,9 +489,9 @@ class WhatsAppChannel
         $json = $res->json() ?? [];
 
         if (!$res->successful()) {
-            [$code, $err] = self::mapGraphError($res);
-            self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload);
-            WaLog::warning('wa.send.failed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType, 'code' => $code]);
+            [$code, $err, $metaCode, $trace] = self::mapGraphError($res);
+            self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload, $metaCode, $trace);
+            WaLog::warning('wa.send.failed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType, 'code' => $code, 'meta_code' => $metaCode, 'fbtrace_id' => $trace]);
 
             return self::fail($code, $err);
         }
@@ -536,11 +516,18 @@ class WhatsAppChannel
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $wamid];
     }
 
+    private static ?bool $hasMetaColumns = null;
+
     private static function store(
         WaConversation $conv, ?string $wamid, string $body, string $msgType,
-        string $source, string $status, ?string $error, ?int $staffId, array $payload
+        string $source, string $status, ?string $error, ?int $staffId, array $payload,
+        ?int $metaCode = null, ?string $fbtraceId = null
     ): void {
-        WaMessage::create([
+        // بين النشر والهجرة 2026_10_14_000006 لا عمودين بعد، والرسالة تُحفظ رغم ذلك
+        self::$hasMetaColumns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['meta_code', 'fbtrace_id']);
+        $meta = self::$hasMetaColumns ? ['meta_code' => $metaCode, 'fbtrace_id' => $fbtraceId] : [];
+
+        WaMessage::create($meta + [
             'conversation_id' => $conv->id,
             'wamid' => $wamid,
             'direction' => 'out',

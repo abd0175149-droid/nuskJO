@@ -174,6 +174,7 @@
                     <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
                     <span v-if="m.status === 'failed'" class="text-red-200" :title="m.error || ''">· فشل</span>
                   </div>
+                  <p v-if="m.status === 'failed' && m.error" class="mt-0.5 text-[10px] leading-4 opacity-80 break-words">{{ m.error }}</p>
                 </div>
               </div>
               <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>

@@ -60,11 +60,16 @@ class MetaErrorHandlingTest extends TestCase
             'unsupported 131051' => [400, 'UNSUPPORTED', '[131051] نوع الرسالة غير مدعوم في واتساب.', [
                 'message' => 'Unsupported message type', 'type' => 'OAuthException', 'code' => 131051,
             ]],
-            'unknown code' => [400, 'META_ERROR', '[100] (#100) Invalid parameter', [
+            'invalid parameter 100' => [400, 'META_ERROR', '[100] معامل غير صالح في الطلب.', [
                 'message' => '(#100) Invalid parameter',
                 'type' => 'OAuthException',
                 'code' => 100,
                 'fbtrace_id' => 'AbCdEfGhIjKlMnOpQrStUvY',
+            ]],
+            'code missing from the catalog' => [400, 'META_ERROR', '[132000] Number of parameters does not match', [
+                'message' => 'Number of parameters does not match',
+                'type' => 'OAuthException',
+                'code' => 132000,
             ]],
         ];
     }

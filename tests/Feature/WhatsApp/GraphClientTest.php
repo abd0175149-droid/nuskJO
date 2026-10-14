@@ -92,7 +92,7 @@ class GraphClientTest extends TestCase
         $this->assertMatchesRegularExpression('/^تعذّر الاتصال بميتا \(مهلة أو شبكة\)\. رقم المرجع: [0-9a-f]{8}$/u', $result['error']);
     }
 
-    public function test_account_restriction_alerts_admins_once_a_day_without_suspending(): void
+    public function test_131031_alerts_admins_once_an_hour_without_suspending(): void
     {
         $admin = User::factory()->admin()->create();
         $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => ['message' => 'Account restricted', 'code' => 131031, 'fbtrace_id' => 'T']], 400)]);
@@ -102,7 +102,7 @@ class GraphClientTest extends TestCase
         WhatsAppChannel::sendText($conv, 'ب');
 
         $this->assertSame(WhatsAppChannel::ERR_ACCOUNT, $first['code']);
-        $this->assertSame(1, Notification::where('user_id', $admin->id)->where('title', '⚠️ ميتا تقيّد حساب الواتساب')->count());
+        $this->assertSame(1, Notification::where('user_id', $admin->id)->where('title', '⚠️ تنبيه من ميتا')->count());
         $this->assertFalse(WaBotSetting::current()->wa_suspended);
     }
 

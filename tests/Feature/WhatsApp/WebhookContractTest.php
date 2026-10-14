@@ -311,7 +311,7 @@ class WebhookContractTest extends TestCase
         $this->assertSame(['sent', 'delivered', 'read'], array_column($out->payload['statusHistory'], 'status'));
     }
 
-    public function test_failed_131047_marks_the_message_failed_with_code_and_title(): void
+    public function test_failed_131047_marks_the_message_failed_with_code_and_arabic_reason(): void
     {
         $out = $this->outboundMessage($this->fixtureStatus('status_failed_131047.json')['id']);
 
@@ -319,7 +319,8 @@ class WebhookContractTest extends TestCase
 
         $out->refresh();
         $this->assertSame('failed', $out->status);
-        $this->assertSame('[131047] Re-engagement message', $out->error_message);
+        $this->assertSame('[131047] انتهت نافذة الـ24 ساعة عند ميتا — لا يمكن الإرسال حتى يراسلنا العميل.', $out->error_message);
+        $this->assertSame(131047, $out->meta_code);
     }
 
     public function test_status_for_an_unknown_message_creates_nothing(): void

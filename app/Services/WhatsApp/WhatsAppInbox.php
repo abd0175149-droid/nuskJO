@@ -216,22 +216,26 @@ class WhatsAppInbox
         $payload = $m->payload ?? [];
         $payload['statusHistory'][] = ['status' => $status, 'at' => now()->toIso8601String()];
 
-        // الرمز مع العنوان، مثل «[131047] Re-engagement message»: ميتا توصي بالبناء على code لا على title
-        $code = data_get($st, 'errors.0.code');
-        $error = trim(($code ? "[{$code}] " : '') . data_get($st, 'errors.0.title', ''));
+        // ميتا توصي بالبناء على code لا على title: الرمز مع نص عربي من الجدول، أو عنوان ميتا لما لا يعرفه
+        $code = is_numeric(data_get($st, 'errors.0.code')) ? (int) data_get($st, 'errors.0.code') : null;
+        $error = $code !== null ? MetaErrorCatalog::message($code, (string) data_get($st, 'errors.0.title', '')) : '';
 
-        $m->update([
+        $update = [
             'status' => $status,
             'payload' => $payload,
             'error_message' => $error !== '' ? $error : $m->error_message,
-        ]);
+        ];
+        if ($code !== null && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_code')) {
+            $update['meta_code'] = $code;
+        }
+        $m->update($update);
+
+        if ($code !== null) {
+            WaLog::warning('wa.status.failed', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'meta_code' => $code]);
+            MetaErrorCatalog::react($code);
+        }
     }
 
-    /**
-     * أحداث الحساب: الحدث السلبي وحده يقفل الإرسال.
-     * كان أيّ account_update يقفله — ومنها أحداث عادية تصل عند ربط الحساب أو توثيقه —
-     * فيسكت البوت بلا خطأ ظاهر. الأحداث الأخرى تُسجَّل فقط.
-     */
     /**
      * حمولة messages لرقمنا تعرّفنا بحساب الأعمال (entry.id) والرقم المعروض، لنميّز بهما أحداث الحساب.
      * يُحفظ عند التغيّر فقط.
@@ -258,7 +262,8 @@ class WhatsAppInbox
     }
 
     /**
-     * أحداث صحة الحساب. الويبهوك واحد للتطبيق، فحدث رقم آخر أو حساب آخر يُتجاهل حين نعرف رقمنا وحسابنا.
+     * أحداث صحة الحساب: الحدث السلبي وحده يقفل الإرسال (أحداث عادية تصل عند ربط الحساب أو توثيقه تُسجَّل فقط).
+     * الويبهوك واحد للتطبيق، فحدث رقم آخر أو حساب آخر يُتجاهل حين نعرف رقمنا وحسابنا.
      * ما لم نعرفهما بعد (لم تصل رسالة لرقمنا)، يبقى الإيقاف الاحتياطي.
      */
     private static function handleAccountEvent(string $field, array $value, string $entryId, WaBotSetting $settings): void

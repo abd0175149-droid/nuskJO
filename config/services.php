@@ -24,6 +24,10 @@ return [
         'media_host_mode' => env('WA_MEDIA_HOST_MODE', 'log'),
         'media_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_MEDIA_HOSTS', 'fbsbx.com,whatsapp.net,facebook.com,fbcdn.net'))))),
         'suspended' => (bool) env('WA_SUSPENDED', false),
+        // إيقاف الإرسال آلياً عند رمز ميتا خطير. 368 وحده افتراضياً: 131031 قد يعني PIN تحقق خاطئاً،
+        // فهو و131048 للتنبيه فقط (App\Services\WhatsApp\MetaErrorCatalog)
+        'health_autosuspend' => (bool) env('WA_HEALTH_AUTOSUSPEND', true),
+        'autosuspend_codes' => env('WA_AUTOSUSPEND_CODES', '368'),
         // طلبات التسعير بنطاق المحادثات نفسه (E04). يُفعَّل بعد ملء /whatsapp/routing ومراجعة whatsapp:fence-report
         'fence_quotes' => (bool) env('WA_FENCE_QUOTES', false),
     ],
