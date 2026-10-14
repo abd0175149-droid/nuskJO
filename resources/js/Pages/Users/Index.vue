@@ -45,7 +45,7 @@
                             </td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap actions-cell">
                                 <button @click="openModal(user)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg mr-1 btn-mobile-sm" title="تعديل">✏️</button>
-                                <button @click="openReset(user)" class="px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 rounded-lg mr-1 btn-mobile-sm" title="إعادة تعيين كلمة المرور">🔑</button>
+                                <button v-if="$page.props.auth.isAdmin" @click="openReset(user)" class="px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 rounded-lg mr-1 btn-mobile-sm" title="إعادة تعيين كلمة المرور">🔑</button>
                                 <button v-if="$page.props.auth.user.id !== user.id" @click="delUser(user)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm" title="حذف">🗑️</button>
                             </td>
                         </tr>
@@ -111,15 +111,16 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الدور (الصلاحية) *</label>
-                        <select v-model="form.role_id" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-gold-500 dark:text-white">
+                        <select v-model="form.role_id" required :disabled="editingSelf" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-gold-500 dark:text-white disabled:opacity-60">
                             <option value="" disabled>اختر الدور</option>
-                            <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
+                            <option v-for="r in roleOptions" :key="r.id" :value="r.id" :disabled="r.locked">{{ r.name }}</option>
                         </select>
+                        <p v-if="editingSelf" class="text-xs text-gray-400 mt-1">لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.</p>
                         <div v-if="form.errors.role_id" class="text-red-500 text-xs mt-1">{{ form.errors.role_id }}</div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">كلمة المرور <span v-if="!form.id">*</span><span v-else class="text-gray-400 font-normal">(اتركها فارغة إذا لم ترد تغييرها)</span></label>
-                        <input v-model="form.password" type="password" :required="!form.id" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-gold-500 dark:text-white"/>
+                        <input v-model="form.password" type="password" :required="!form.id" :disabled="form.id && !$page.props.auth.isAdmin" dir="ltr" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-gold-500 dark:text-white"/>
                         <div v-if="form.errors.password" class="text-red-500 text-xs mt-1">{{ form.errors.password }}</div>
                     </div>
                     <div>
@@ -128,7 +129,7 @@
                         <div v-if="form.errors.phone" class="text-red-500 text-xs mt-1">{{ form.errors.phone }}</div>
                     </div>
                     <div class="flex items-center gap-2 mt-2">
-                        <input type="checkbox" v-model="form.is_active" id="isActive" class="rounded text-gold-500 focus:ring-gold-500"/>
+                        <input type="checkbox" v-model="form.is_active" id="isActive" :disabled="editingSelf" class="rounded text-gold-500 focus:ring-gold-500 disabled:opacity-60"/>
                         <label for="isActive" class="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">حساب نشط (يمكنه تسجيل الدخول)</label>
                     </div>
 
@@ -145,11 +146,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { useForm, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 
-const props = defineProps({ users: Object, roles: Array, filters: Object });
+const props = defineProps({ users: Object, roles: Array, assignableRoles: { type: Array, default: () => [] }, filters: Object });
+const page = usePage();
 const search = ref(props.filters?.search || '');
 const roleFilter = ref(props.filters?.role_id || '');
 const showModal = ref(false);
@@ -163,6 +165,17 @@ const form = useForm({
     role_id: '',
     phone: '',
     is_active: true
+});
+
+// يُعرض فقط ما يحق للمستخدم إسناده؛ ودور المستخدم الحالي يظهر معطّلاً إن لم يكن ضمنها
+const editingSelf = computed(() => !!form.id && form.id === page.props.auth?.user?.id);
+const roleOptions = computed(() => {
+    const options = props.assignableRoles.map((r) => ({ ...r, locked: false }));
+    if (form.role_id && !options.some((r) => r.id === form.role_id)) {
+        const current = props.roles.find((r) => r.id === form.role_id);
+        if (current) options.unshift({ ...current, locked: true });
+    }
+    return options;
 });
 
 const openModal = (user = null) => {

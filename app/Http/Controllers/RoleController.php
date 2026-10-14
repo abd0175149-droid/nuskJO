@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\Permission;
 use Illuminate\Http\Request;
@@ -9,10 +10,20 @@ use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * إدارة الأدوار للمدير فقط حتى تُنشأ الصلاحية roles.manage (E03 T4).
+ */
 class RoleController extends Controller
 {
+    private function authorizeAdmin(): void
+    {
+        abort_unless(auth()->user()?->isAdmin(), 403);
+    }
+
     public function index()
     {
+        $this->authorizeAdmin();
+
         $roles = Role::withCount('users')->get();
         // Group permissions by module
         $permissions = Permission::all()->groupBy('module');
@@ -25,6 +36,8 @@ class RoleController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorizeAdmin();
+
         $request->validate([
             'name' => 'required|string|max:255',
             'permissions' => 'array',
@@ -40,6 +53,8 @@ class RoleController extends Controller
             if ($request->has('permissions')) {
                 $role->permissions()->sync($request->permissions);
             }
+
+            AuditLog::log('role.create', 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
         });
 
         return back()->with('success', 'تم إنشاء الصلاحية بنجاح');
@@ -47,6 +62,8 @@ class RoleController extends Controller
 
     public function edit(Role $role)
     {
+        $this->authorizeAdmin();
+
         return response()->json([
             'role' => $role,
             'permission_ids' => $role->permissions()->pluck('permissions.id'),
@@ -55,6 +72,8 @@ class RoleController extends Controller
 
     public function update(Request $request, Role $role)
     {
+        $this->authorizeAdmin();
+
         if ($role->slug === 'admin') {
             return back()->with('error', 'لا يمكن تعديل صلاحيات المدير العام');
         }
@@ -75,6 +94,8 @@ class RoleController extends Controller
             } else {
                 $role->permissions()->detach();
             }
+
+            AuditLog::log('role.update', 'Role', $role->id, $role->name, ['permissions' => $request->permissions ?? []]);
         });
 
         return back()->with('success', 'تم تحديث الصلاحية بنجاح');
@@ -82,6 +103,8 @@ class RoleController extends Controller
 
     public function destroy(Role $role)
     {
+        $this->authorizeAdmin();
+
         if ($role->slug === 'admin') {
             return back()->with('error', 'لا يمكن حذف دور المدير العام');
         }
@@ -90,6 +113,7 @@ class RoleController extends Controller
             return back()->with('error', 'لا يمكن حذف هذا الدور لوجود مستخدمين مرتبطين به');
         }
 
+        AuditLog::log('role.delete', 'Role', $role->id, $role->name);
         $role->delete();
         return back()->with('success', 'تم حذف الصلاحية');
     }

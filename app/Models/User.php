@@ -15,9 +15,11 @@ class User extends Authenticatable implements WebAuthnAuthenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, WebAuthnAuthentication;
 
+    // role_id و is_active ليسا هنا عمداً: يُضبطان بـ forceFill بعد فحص الصلاحية
+    // (RoleAssignmentGuard و AdminInvariant)، فلا يغيّرهما أي ملء جماعي من طلب.
     protected $fillable = [
-        'name', 'email', 'password', 'role_id', 'phone',
-        'avatar', 'locale', 'theme', 'is_active', 'last_login_at',
+        'name', 'email', 'password', 'phone',
+        'avatar', 'locale', 'theme', 'last_login_at',
     ];
 
     protected $hidden = ['password', 'remember_token'];

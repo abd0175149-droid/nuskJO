@@ -40,11 +40,14 @@ class EmployeeController extends Controller
 
     public function create()
     {
+        abort_unless(auth()->user()->can('employees.create'), 403);
+
         // Only users without an employee profile
         $users = User::whereDoesntHave('employee')->whereIsActive(true)->select('id', 'name', 'email')->get();
         $departments = Department::select('id', 'name')->whereIsActive(true)->get();
         $shifts = Shift::select('id', 'name')->whereIsActive(true)->get();
-        $roles = \App\Models\Role::select('id', 'name')->get();
+        // الأدوار التي يحق لهذا المستخدم إسنادها فقط
+        $roles = \App\Services\Security\RoleAssignmentGuard::assignableRoles(auth()->user());
 
         return Inertia::render('HR/Employees/Create', [
             'title' => 'إضافة موظف جديد',
@@ -57,6 +60,8 @@ class EmployeeController extends Controller
 
     public function store(Request $request, NumberingService $numberingService)
     {
+        abort_unless(auth()->user()->can('employees.create'), 403);
+
         $validated = $request->validate([
             'user_mode' => 'required|in:existing,new',
             'user_id' => 'required_if:user_mode,existing|nullable|exists:users,id|unique:employees,user_id',
@@ -94,17 +99,28 @@ class EmployeeController extends Controller
             'is_active' => 'boolean',
         ]);
 
+        // إنشاء حساب دخول جديد يخضع لنفس قيود إدارة المستخدمين
+        if (($validated['user_mode'] ?? 'existing') === 'new') {
+            $actor = auth()->user();
+            abort_unless($actor->can('users.create'), 403);
+            $role = \App\Models\Role::findOrFail($validated['new_user_role_id']);
+            abort_unless(\App\Services\Security\RoleAssignmentGuard::canAssign($actor, $role), 403, 'لا تملك صلاحية إسناد هذا الدور');
+        }
+
         DB::transaction(function () use ($validated, $request, $numberingService) {
             // إنشاء مستخدم جديد تلقائياً إن اختار المستخدم ذلك
             if (($validated['user_mode'] ?? 'existing') === 'new') {
-                $user = User::create([
+                $user = new User([
                     'name' => $validated['new_user_name'],
                     'email' => $validated['new_user_email'],
                     'password' => \Illuminate\Support\Facades\Hash::make($validated['new_user_password']),
-                    'role_id' => $validated['new_user_role_id'],
                     'phone' => $request->input('phone'),
-                    'is_active' => true,
                 ]);
+                $user->forceFill([
+                    'role_id' => $validated['new_user_role_id'],
+                    'is_active' => true,
+                ])->save();
+                \App\Models\AuditLog::log('user.create', 'User', $user->id, $user->name, ['via' => 'employee']);
                 $validated['user_id'] = $user->id;
             }
 
