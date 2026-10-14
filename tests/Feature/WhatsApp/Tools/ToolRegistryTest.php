@@ -112,6 +112,30 @@ class ToolRegistryTest extends TestCase
         }
     }
 
+    /** كل فعل إداري له صلاحية من CATALOG، وكل صلاحية لها سطر في RBAC_REQUIRES (E15.5) */
+    public function test_every_admin_action_names_a_known_permission_with_a_role_requirement(): void
+    {
+        foreach (AdminTools::TOOLS as $name => $tool) {
+            foreach ($tool['actions'] as $action => $a) {
+                foreach ((array) $a['perm'] as $perm) {
+                    $this->assertArrayHasKey($perm, AdminTools::CATALOG, "{$name}:{$action}");
+                    $this->assertArrayHasKey($perm, AdminTools::RBAC_REQUIRES, "{$name}:{$action}");
+                }
+            }
+        }
+    }
+
+    /** كل قراءة لعرض بمعرّف من النموذج تمر بـ Offer::forBot (العروض الظاهرة للبوت وحدها) */
+    public function test_every_offer_id_from_the_model_goes_through_offer_for_bot(): void
+    {
+        $lines = array_filter(file(app_path('Services/WhatsApp/BotTools.php')), fn ($l) => str_contains($l, "\$in['offer_id']"));
+
+        $this->assertNotEmpty($lines);
+        foreach ($lines as $line) {
+            $this->assertStringContainsString('Offer::forBot()', $line, trim($line));
+        }
+    }
+
     public function test_the_leak_guard_strips_every_registered_name(): void
     {
         $strip = new \ReflectionMethod(BotEngine::class, 'stripToolLeak');
