@@ -100,7 +100,7 @@ class OutboundLlmCallsTest extends TestCase
         Http::fake(fn () => throw new ConnectionException('cURL error 28 for https://generativelanguage.googleapis.com/v1beta/models?key='.self::KEY));
         $response = $this->actingAs($owner)->postJson('/api/whatsapp/test-key', ['provider' => 'google', 'api_key' => self::KEY])
             ->assertStatus(422)
-            ->assertJsonPath('error', 'تعذّر الاتصال بالمزوّد (مهلة أو شبكة) — حاول لاحقاً.');
+            ->assertJsonPath('error', fn ($e) => preg_match('/^تعذّر الاتصال بالمزوّد \(مهلة أو شبكة\) — حاول لاحقاً\. رقم المرجع: [0-9a-f]{8}$/u', $e) === 1);
         $this->assertStringNotContainsString(self::KEY, $response->getContent());
     }
 

@@ -499,10 +499,11 @@ class WhatsAppChannel
         try {
             $res = self::graph($s, 25)->post($url, $payload);
         } catch (\Throwable $e) {
-            // نص الاستثناء يحمل الرابط: للسجل منقّحاً، لا للواجهة
+            // نص الاستثناء يحمل الرابط: للسجل منقّحاً، ورقم مرجعي للواجهة
             WaLog::error('send.connection_failed', ['conv_id' => $conv->id, 'exception' => $e]);
+            $ref = \App\Support\ErrorRef::log($e, 'wa.send.connection_failed', ['conv_id' => $conv->id]);
 
-            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+            return self::fail('HTTP_ERROR', "تعذّر الاتصال بميتا (مهلة أو شبكة). رقم المرجع: {$ref}");
         }
 
         $json = $res->json() ?? [];

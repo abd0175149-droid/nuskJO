@@ -88,7 +88,8 @@ class GraphClientTest extends TestCase
 
         $result = WhatsAppChannel::sendText(WaConversation::factory()->windowOpen()->create(), 'أهلاً', 'staff', $staff->id);
 
-        $this->assertSame(['ok' => false, 'error' => 'تعذّر الاتصال بميتا (مهلة أو شبكة).', 'code' => 'HTTP_ERROR', 'message_id' => null], $result);
+        $this->assertSame('HTTP_ERROR', $result['code']);
+        $this->assertMatchesRegularExpression('/^تعذّر الاتصال بميتا \(مهلة أو شبكة\)\. رقم المرجع: [0-9a-f]{8}$/u', $result['error']);
     }
 
     public function test_account_restriction_alerts_admins_once_a_day_without_suspending(): void

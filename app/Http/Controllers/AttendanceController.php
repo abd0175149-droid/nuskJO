@@ -107,8 +107,13 @@ class AttendanceController extends Controller
                 'message' => 'تم تسجيل الحضور بنجاح',
                 'attendance' => $attendance
             ]);
-        } catch (\Exception $e) {
+        } catch (\DomainException $e) {
+            // رسائل قواعد الحضور نفسها (مسجّل مسبقاً)
             return response()->json(['message' => $e->getMessage()], 400);
+        } catch (\Throwable $e) {
+            $ref = \App\Support\ErrorRef::log($e, 'attendance.record.failed');
+
+            return response()->json(['message' => "تعذّر التسجيل. رقم المرجع: {$ref}"], 500);
         }
     }
 
@@ -164,8 +169,13 @@ class AttendanceController extends Controller
                 'message' => 'تم تسجيل الانصراف بنجاح',
                 'attendance' => $attendance
             ]);
-        } catch (\Exception $e) {
+        } catch (\DomainException $e) {
+            // رسائل قواعد الحضور نفسها (مسجّل مسبقاً)
             return response()->json(['message' => $e->getMessage()], 400);
+        } catch (\Throwable $e) {
+            $ref = \App\Support\ErrorRef::log($e, 'attendance.record.failed');
+
+            return response()->json(['message' => "تعذّر التسجيل. رقم المرجع: {$ref}"], 500);
         }
     }
 

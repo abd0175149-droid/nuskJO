@@ -454,6 +454,9 @@ class WhatsAppController extends Controller
 
         $settings->update($data);
 
+        // أسماء الحقول فقط، لا قيمة أي سر
+        \App\Models\AuditLog::log('update', 'wa_bot_settings', $settings->id, 'إعدادات البوت', ['changed' => array_keys($data)]);
+
         return back()->with('success', 'تم حفظ إعدادات البوت');
     }
 
@@ -547,16 +550,17 @@ class WhatsAppController extends Controller
 
         try {
             $models = \App\Services\WhatsApp\Llm\LlmFactory::make($data['provider'])->models($key);
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            // نص استثناء الاتصال يحمل الرابط كاملاً: لا يُعاد للواجهة
-            \Illuminate\Support\Facades\Log::error('LLM key test: connection failed: ' . \App\Support\SecretRedactor::clean($e->getMessage(), [$key]));
-
-            return response()->json(['ok' => false, 'error' => 'تعذّر الاتصال بالمزوّد (مهلة أو شبكة) — حاول لاحقاً.'], 422);
-        } catch (\Throwable $e) {
+        } catch (\RuntimeException $e) {
+            // رسالة المزوّد كما بنيناها في المزوّد («Google: …»)، منقّحة ومعها المفتاح المفحوص
             $error = \App\Support\SecretRedactor::clean(mb_substr($e->getMessage(), 0, 300), [$key]);
-            \Illuminate\Support\Facades\Log::error('LLM key test failed: ' . $error);
+            \Illuminate\Support\Facades\Log::warning('llm.key_test.rejected', ['reason' => $error]);
 
             return response()->json(['ok' => false, 'error' => $error], 422);
+        } catch (\Throwable $e) {
+            // ومنها ConnectionException: نصه يحمل الرابط كاملاً، فلا يُعاد للواجهة
+            $ref = \App\Support\ErrorRef::log($e, 'llm.key_test.failed');
+
+            return response()->json(['ok' => false, 'error' => "تعذّر الاتصال بالمزوّد (مهلة أو شبكة) — حاول لاحقاً. رقم المرجع: {$ref}"], 422);
         }
 
         return response()->json([

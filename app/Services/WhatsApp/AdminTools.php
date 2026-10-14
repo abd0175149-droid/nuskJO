@@ -183,9 +183,10 @@ class AdminTools
 
             return $out;
         } catch (\Throwable $e) {
-            $error = \App\Support\SecretRedactor::clean($e->getMessage());
             WaLog::error('admin.tool.failed', ['tool' => $name, 'conv_id' => $conv->id, 'exception' => $e]);
-            self::log($a, $conv, $name, $action ?: null, 'error', mb_substr($error, 0, 300), $in);
+            // نص الاستثناء لا يُحفظ في wa_admin_actions (تعرضه صفحة أرقام الإدارة)
+            $ref = \App\Support\ErrorRef::log($e, 'admin.tool.failed', ['conv_id' => $conv->id]);
+            self::log($a, $conv, $name, $action ?: null, 'error', "خطأ داخلي — المرجع: {$ref}", $in);
 
             return ['error' => 'تعذّر تنفيذ الطلب', 'note' => 'اعتذر بإيجاز واقترح المحاولة من لوحة التحكم.'];
         }

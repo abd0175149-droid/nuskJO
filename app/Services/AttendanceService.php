@@ -123,7 +123,7 @@ class AttendanceService
         ]);
 
         if ($attendance->exists && $attendance->check_in) {
-            throw new \Exception('تم تسجيل الحضور مسبقاً لهذا اليوم.');
+            throw new \DomainException('تم تسجيل الحضور مسبقاً لهذا اليوم.');
         }
 
         $attendance->check_in = Carbon::now();
@@ -145,7 +145,7 @@ class AttendanceService
     public function checkOut(Attendance $attendance, array $data)
     {
         if ($attendance->check_out) {
-            throw new \Exception('تم تسجيل الانصراف مسبقاً لهذا اليوم.');
+            throw new \DomainException('تم تسجيل الانصراف مسبقاً لهذا اليوم.');
         }
 
         $attendance->check_out = Carbon::now();
