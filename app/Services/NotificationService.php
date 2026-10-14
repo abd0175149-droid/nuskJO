@@ -33,7 +33,12 @@ class NotificationService
             report($e);
         }
         try {
-            SendPushNotification::dispatch($userId, $title, $body, $notification->action_url, 'n' . $notification->id);
+            // sync_push: تنبيهات التشغيل تُدفع مباشرة، فتصل والطابور متوقف (OpsAlerts)
+            if (!empty($options['sync_push'])) {
+                PushService::toUser($userId, $title, $body, $notification->action_url, 'n' . $notification->id);
+            } else {
+                SendPushNotification::dispatch($userId, $title, $body, $notification->action_url, 'n' . $notification->id);
+            }
         } catch (\Throwable $e) {
             report($e);
         }

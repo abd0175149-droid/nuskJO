@@ -45,6 +45,9 @@ services:
       - DB_BUSY_TIMEOUT=60000
       - DB_SYNCHRONOUS=normal
       - DB_TRANSACTION_MODE=DEFERRED
+      # E08: فحص /up الحقيقي وفحوص ميتا. false في النشر الأول، ثم true مرحلةً مرحلة (docs/RELEASE.md)
+      - OPS_HEALTH_CHECKS=false
+      - WA_META_CHECKS=false
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database

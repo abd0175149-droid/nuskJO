@@ -1,0 +1,137 @@
+<?php
+
+namespace App\Services\Ops;
+
+use App\Exceptions\HealthCheckFailed;
+use App\Jobs\ProcessWhatsAppReply;
+use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * صحة التشغيل على /up (DiagnosingHealth): القاعدة، ونبضة المجدول، ونبضة كل عامل، ووظائف لم يلتقطها أحد.
+ * رموز فقط بلا تفاصيل، ولا نداء لميتا هنا: حالة ميتا لا تُسقط الحاوية.
+ * كان فحص Docker يطلب / فيأخذ تحويلاً إلى صفحة الدخول ويعدّه نجاحاً، والعامل أو المجدول ميت.
+ */
+final class OpsHealth
+{
+    public const SCHEDULE_BEAT = 'ops:schedule:beat';
+
+    /** نبضة لكل طابور يخدمه عامل (laravel-queue على default، وlaravel-wa على طابور الردود) */
+    public const QUEUE_BEAT = 'ops:queue:beat:';
+
+    /** الرموز الممكنة، بالترتيب الذي تُعرض به */
+    public const CODES = ['db', 'schedule_stale', 'queue_stale', 'reply_queue_stale', 'backlog'];
+
+    public static function store(): Repository
+    {
+        return Cache::store(config('ops.cache_store', 'file'));
+    }
+
+    /** @return list<string> */
+    public static function queues(): array
+    {
+        return array_values(array_unique(['default', ProcessWhatsAppReply::queueName()]));
+    }
+
+    public static function beatKey(string $queue): string
+    {
+        return self::QUEUE_BEAT.$queue;
+    }
+
+    /**
+     * رموز الأعطال. محفوظة 10 ثوانٍ، فلا يصير /up العام وسيلة لإغراق القاعدة.
+     *
+     * @return list<string>
+     */
+    public function diagnose(): array
+    {
+        return self::store()->remember('ops:health:diagnosis', 10, fn () => $this->check());
+    }
+
+    /** @return list<string> */
+    private function check(): array
+    {
+        try {
+            DB::select('select 1');
+            $now = now()->getTimestamp();
+            $codes = [];
+
+            if ($now - (int) Cache::get(self::SCHEDULE_BEAT, 0) > (int) config('ops.schedule_stale_seconds')) {
+                $codes[] = 'schedule_stale';
+            }
+            foreach (self::queues() as $queue) {
+                if ($now - (int) Cache::get(self::beatKey($queue), 0) > (int) config('ops.queue_stale_seconds')) {
+                    $codes[] = $queue === 'default' ? 'queue_stale' : 'reply_queue_stale';
+                }
+            }
+            $backlog = DB::table('jobs')->whereNull('reserved_at')
+                ->where('available_at', '<=', $now - (int) config('ops.backlog_stale_seconds'))
+                ->exists();
+            if ($backlog) {
+                $codes[] = 'backlog';
+            }
+
+            return $codes;
+        } catch (\Throwable) {
+            // الكاش والطابور في القاعدة نفسها: أي فشل هنا فشل قاعدة
+            return ['db'];
+        }
+    }
+
+    /**
+     * أعمار النبضات بالثواني (null: لا نبضة) وعدد الوظائف الفاشلة في 24 ساعة، لبطاقة الإعدادات وops:status.
+     *
+     * @return array{enabled: bool, codes: list<string>, schedule_age: ?int, queues: array<string, ?int>, failed_24h: ?int}
+     */
+    public function snapshot(): array
+    {
+        $now = now()->getTimestamp();
+        $age = function (string $key) use ($now): ?int {
+            try {
+                $beat = Cache::get($key);
+            } catch (\Throwable) {
+                return null;
+            }
+
+            return $beat ? max(0, $now - (int) $beat) : null;
+        };
+
+        try {
+            $failed = DB::table('failed_jobs')->where('failed_at', '>=', now()->subDay())->count();
+        } catch (\Throwable) {
+            $failed = null;
+        }
+
+        return [
+            'enabled' => (bool) config('ops.health_checks'),
+            'codes' => $this->check(),
+            'schedule_age' => $age(self::SCHEDULE_BEAT),
+            'queues' => collect(self::queues())->mapWithKeys(fn ($q) => [$q => $age(self::beatKey($q))])->all(),
+            'failed_24h' => $failed,
+        ];
+    }
+
+    /**
+     * لمستمع DiagnosingHealth: يرمي فيرد /up بـ 500. سطر سجل لكل رمز مرة في الساعة،
+     * وتنبيه للمدراء بعد إرسال الرد (من طلب يمر بـ nginx وphp-fpm، لا بالعامل أو المجدول المعطّل).
+     */
+    public function assertHealthy(): void
+    {
+        $codes = $this->diagnose();
+        if ($codes === []) {
+            return;
+        }
+
+        foreach ($codes as $code) {
+            if (self::store()->add('ops:health:logged:'.$code, 1, 3600)) {
+                Log::error('ops.health_failed', ['code' => $code]);
+            }
+        }
+        // always: المؤجَّل لا يعمل افتراضياً حين يكون الرد 400 فما فوق، و/up هنا يرد 500
+        defer(fn () => app(OpsAlerts::class)->healthDegraded($codes))->always();
+
+        throw new HealthCheckFailed(implode(',', $codes));
+    }
+}

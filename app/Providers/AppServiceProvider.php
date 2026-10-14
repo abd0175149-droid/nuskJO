@@ -34,11 +34,26 @@ class AppServiceProvider extends ServiceProvider
         $this->definePermissionGate();
         $this->defineLoginRateLimit();
         $this->bindVisibleConversations();
+        $this->watchOperations();
 
         // لا يتبع أي نداء Http تحويلاً ما لم يطلبه صراحة (المفاتيح في الترويسات قد تُحمل لمضيف آخر)
         if (config('services.outbound.block_redirects')) {
             \Illuminate\Support\Facades\Http::globalOptions(['allow_redirects' => false]);
         }
+    }
+
+    /**
+     * صحة التشغيل (E08): /up يفشل إن توقفت القاعدة أو المجدول أو أحد العاملين، وكل وظيفة تفشل نهائياً
+     * تُسجَّل منقّاة ويُنبَّه المدراء مرة في الساعة لكل صنف.
+     */
+    private function watchOperations(): void
+    {
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Foundation\Events\DiagnosingHealth::class, function () {
+            if (config('ops.health_checks')) {
+                app(\App\Services\Ops\OpsHealth::class)->assertHealthy();
+            }
+        });
+        \Illuminate\Support\Facades\Queue::failing(fn (\Illuminate\Queue\Events\JobFailed $e) => app(\App\Services\Ops\OpsAlerts::class)->jobFailed($e));
     }
 
     /**

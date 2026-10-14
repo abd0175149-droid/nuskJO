@@ -164,6 +164,19 @@ Artisan::command('whatsapp:reliability {flag?} {state?}', function () {
     return 0;
 })->purpose('عرض أعلام موثوقية رد الواتساب أو تبديلها: whatsapp:reliability [flag] [on|off]');
 
+// نبضات التشغيل (E08): المجدول يكتب نبضته، ويدفع لكل عامل وظيفة تكتب نبضته (OpsHealth على /up)
+Schedule::call(fn () => \Illuminate\Support\Facades\Cache::put(\App\Services\Ops\OpsHealth::SCHEDULE_BEAT, now()->getTimestamp()))
+    ->everyMinute()
+    ->name('ops:schedule-beat')
+    ->withoutOverlapping();
+foreach (\App\Services\Ops\OpsHealth::queues() as $queue) {
+    Schedule::job(new \App\Jobs\OpsHeartbeat($queue), $queue)
+        ->everyMinute()
+        ->name("ops:queue-beat:{$queue}");
+}
+// الوظائف الفاشلة تحمل بيانات عملاء في payload والاستثناء: أسبوع ثم تُحذف
+Schedule::command('queue:prune-failed --hours=168')->daily();
+
 Schedule::command('whatsapp:window-reminders')
     ->everyFifteenMinutes()
     ->withoutOverlapping();

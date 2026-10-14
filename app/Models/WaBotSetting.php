@@ -15,6 +15,7 @@ class WaBotSetting extends Model
         'context_messages', 'pause_minutes', 'max_tool_loops', 'rate_limit_per_hour',
         'fail_message', 'fail_handoff', 'tools_config', 'model_prices', 'cache_discount',
         'max_reply_age_minutes', 'reliability',
+        'wa_app_id', 'wa_credentials_status', 'wa_channel_health',
     ];
 
     /** أعلام موثوقية الرد (E07) وقيمها الافتراضية؛ تُبدَّل وقت التشغيل بـ whatsapp:reliability */
@@ -32,6 +33,8 @@ class WaBotSetting extends Model
         'tools_config' => 'array',
         'model_prices' => 'array',
         'reliability' => 'array',
+        'wa_credentials_status' => 'array',
+        'wa_channel_health' => 'array',
         'wa_token' => 'encrypted',
         'wa_app_secret' => 'encrypted',
         'api_key' => 'encrypted',
@@ -65,6 +68,9 @@ class WaBotSetting extends Model
     public function phoneNumberId(): ?string { return config('services.whatsapp.phone_number_id') ?: $this->wa_phone_number_id; }
     public function verifyToken(): ?string { return config('services.whatsapp.verify_token') ?: $this->wa_verify_token; }
     public function appSecret(): ?string { return config('services.whatsapp.app_secret') ?: $this->wa_app_secret; }
+    /** معرّف تطبيق ميتا (عام): لفحص الرمز بـ debug_token */
+    public function appId(): ?string { return config('services.whatsapp.app_id') ?: $this->wa_app_id; }
+    public function metaChecksReady(): bool { return !empty($this->token()) && !empty($this->appId()) && !empty($this->appSecret()); }
     /** مفتاح المزوّد — البيئة أولاً ثم المحفوظ، وحسب المزوّد المختار */
     public function llmKey(): ?string
     {

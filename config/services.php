@@ -15,6 +15,8 @@ return [
         'phone_number_id' => env('WA_PHONE_NUMBER_ID'),
         'verify_token' => env('WA_WEBHOOK_VERIFY_TOKEN'),
         'app_secret' => env('WA_APP_SECRET'),
+        // معرّف التطبيق (App settings › Basic): عام لا سري، لفحص الرمز اليومي (E08)
+        'app_id' => env('WA_APP_ID'),
         // إصدار Graph للطلبات الصادرة — القيمة الافتراضية الوحيدة في المستودع. تواريخ النهاية في
         // App\Services\WhatsApp\GraphVersions، والتنبيه قبل 60 يوماً (whatsapp:graph-version-check).
         // للتراجع: WA_GRAPH_VERSION=<إصدار سابق ما زال مدعوماً> ثم config:cache.
