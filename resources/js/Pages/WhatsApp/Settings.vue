@@ -121,9 +121,17 @@
 
                         <div>
                             <label for="wa-verify" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Verify Token</label>
-                            <input id="wa-verify" v-model="form.wa_verify_token" dir="ltr" placeholder="نص تختاره أنت ويُكتب نفسه في لوحة Meta"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                            <p class="text-xs text-gray-500 mt-1">يجب أن يطابق ما تكتبه في خانة Verify Token عند إعداد الـ Webhook.</p>
+                            <div class="flex gap-2">
+                                <input id="wa-verify" v-model="form.wa_verify_token" dir="ltr" placeholder="نص تختاره أنت ويُكتب نفسه في لوحة Meta"
+                                       class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
+                                <button type="button" @click="generateVerifyToken"
+                                        class="shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gold-50 dark:hover:bg-gold-900/20">
+                                    🎲 توليد رمز
+                                </button>
+                            </div>
+                            <p v-if="form.errors.wa_verify_token" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ form.errors.wa_verify_token }}</p>
+                            <p v-if="verifyGenerated" class="text-xs font-bold text-amber-700 dark:text-amber-400 mt-1">احفظ هنا أولاً، ثم حدّث الرمز في لوحة Meta.</p>
+                            <p class="text-xs text-gray-500 mt-1">يجب أن يطابق ما تكتبه في خانة Verify Token عند إعداد الـ Webhook (16 حرفاً على الأقل).</p>
                         </div>
 
                         <!-- WA Token -->
@@ -373,6 +381,15 @@ const props = defineProps({
     providers: { type: Object, default: () => ({ google: 'Google Gemini', anthropic: 'Anthropic Claude' }) },
     graph: Object,
 });
+
+// رمز تحقق عشوائي: 32 خانة hex من مولّد المتصفح الآمن
+const verifyGenerated = ref(false);
+const generateVerifyToken = () => {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    form.wa_verify_token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    verifyGenerated.value = true;
+};
 
 // أسوأ حالة بين إصدار الطلبات وإصدار الويبهوك
 const graphAlert = computed(() => {

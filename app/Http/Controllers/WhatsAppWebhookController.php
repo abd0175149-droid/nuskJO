@@ -18,14 +18,21 @@ class WhatsAppWebhookController extends Controller
     public function verify(Request $request)
     {
         $s = WaBotSetting::current();
-        $expected = $s->verifyToken();
+        $expected = (string) $s->verifyToken();
 
-        if ($request->query('hub_mode') === 'subscribe'
-            && $expected
-            && hash_equals((string) $expected, (string) $request->query('hub_verify_token'))) {
-            return response($request->query('hub_challenge'), 200)
-                ->header('Content-Type', 'text/plain');
+        // مقارنة بصمتين بطول ثابت: hash_equals على النصين يكشف الطول عند الاختلاف
+        $key = (string) config('app.key');
+        $given = (string) $request->query('hub_verify_token', '');
+        $matches = $expected !== '' && hash_equals(hash_hmac('sha256', $expected, $key), hash_hmac('sha256', $given, $key));
+
+        // التحدي يُعاد نصاً كما هو: نقبل الشكل الذي ترسله ميتا فقط
+        $challenge = (string) $request->query('hub_challenge', '');
+
+        if ($request->query('hub_mode') === 'subscribe' && $matches && preg_match('/^[A-Za-z0-9_-]{1,128}$/', $challenge)) {
+            return response($challenge, 200)->header('Content-Type', 'text/plain');
         }
+
+        \App\Services\WhatsApp\WaLog::warning('webhook.verify.denied');
 
         return response('Forbidden', 403);
     }

@@ -128,6 +128,8 @@ class WebhookSignatureTest extends TestCase
             'token missing' => ['hub.mode=subscribe&hub.challenge=123'],
             'wrong mode' => ['hub.mode=unsubscribe&hub.verify_token=test-verify&hub.challenge=123'],
             'mode missing' => ['hub.verify_token=test-verify&hub.challenge=123'],
+            'token prefix' => ['hub.mode=subscribe&hub.verify_token=test-veri&hub.challenge=123'],
+            'challenge with markup' => ['hub.mode=subscribe&hub.verify_token=test-verify&hub.challenge=%3Cscript%3E123'],
         ];
     }
 

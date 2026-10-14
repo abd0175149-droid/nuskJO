@@ -54,7 +54,7 @@ final class MetaErrorCatalog
             return $fallback;
         }
 
-        return "[{$metaCode}] " . (self::describe($metaCode) ?? $fallback);
+        return "[{$metaCode}] ".(self::describe($metaCode) ?? $fallback);
     }
 
     public static function react(?int $metaCode): void
@@ -80,7 +80,7 @@ final class MetaErrorCatalog
         }
 
         if (($action === 'alert' || $action === 'suspend') && Cache::add("wa:alert:{$metaCode}", 1, 3600)) {
-            WhatsAppInbox::notifyAdmins('⚠️ تنبيه من ميتا', "[{$metaCode}] " . self::CODES[$metaCode][1], '/whatsapp/settings');
+            WhatsAppInbox::notifyAdmins('⚠️ تنبيه من ميتا', "[{$metaCode}] ".self::CODES[$metaCode][1], '/whatsapp/settings');
         }
     }
 

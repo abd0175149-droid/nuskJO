@@ -409,7 +409,11 @@ class WhatsAppController extends Controller
             'enabled' => 'boolean',
             'wa_suspended' => 'boolean',
             'wa_phone_number_id' => 'nullable|string|max:64',
-            'wa_verify_token' => 'nullable|string|max:128',
+            // 16 حرفاً عند التغيير فقط: النموذج يُرسل كاملاً، فلا يمنع رمزٌ قديم قصير حفظ القفل الطارئ نفسه
+            'wa_verify_token' => ['nullable', 'string', 'max:128', \Illuminate\Validation\Rule::when(
+                fn () => filled($request->input('wa_verify_token')) && $request->input('wa_verify_token') !== WaBotSetting::current()->wa_verify_token,
+                'min:16'
+            )],
             'wa_token' => 'nullable|string',
             'wa_app_secret' => 'nullable|string',
             'api_key' => 'nullable|string',
@@ -427,6 +431,7 @@ class WhatsAppController extends Controller
         ], [
             // اسم النموذج يدخل مسار رابط المزوّد
             'model.regex' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط',
+            'wa_verify_token.min' => 'رمز التحقق 16 حرفاً على الأقل',
         ]);
 
         // الأسرار الفارغة لا تمسح المحفوظ
