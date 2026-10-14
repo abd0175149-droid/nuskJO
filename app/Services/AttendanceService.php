@@ -69,12 +69,11 @@ class AttendanceService
         }
 
         foreach ($locations as $location) {
-            // Check exact IP or IP range (simplified logic)
-            if ($location->ip_range === $ip) {
+            // عنوان مفرد أو نطاق CIDR، أو أكثر من واحد مفصولاً بفواصل (IPv4 وIPv6)
+            $ranges = array_values(array_filter(array_map('trim', explode(',', (string) $location->ip_range))));
+            if ($ip && $ranges && \Symfony\Component\HttpFoundation\IpUtils::checkIp($ip, $ranges)) {
                 return true;
             }
-            // For true CIDR check, additional logic would be needed.
-            // Using a simple check for now.
         }
 
         return false;

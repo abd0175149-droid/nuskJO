@@ -91,6 +91,23 @@ bash $M $ARGS                  # في نافذة هادئة: نسخة وسحب �
 فحص مضيف الوسائط: أسبوع بـ `WA_MEDIA_HOST_MODE=log` بلا «WA media host outside allowlist» ولا «sha256 mismatch» في السجل، ثم `enforce`.
 appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بلا APPSECRET_PROOF_INVALID، والتأكد أن لا مستهلك آخر لرموز التطبيق، ثم «Require App Secret» في اللوحة. التراجع: ألغِ الخيار في اللوحة أولاً ثم أطفئ المتغير.
 
+## الأسرار خارج الصورة (مرة واحدة، قبل أول نشر لها)
+
+1. **قبل النشر** طابق بصمة المفتاح الفعّال ببصمة الملف (8 خانات، لا المفتاح):
+   `docker exec nuskjo-app php -r '$c=require "/var/www/html/bootstrap/cache/config.php"; echo substr(hash("sha256",$c["app"]["key"]),0,8);'`
+   و`grep '^APP_KEY=' /opt/nuskJO/.env.production | cut -d= -f2- | tr -d '"\r' | sha256sum | cut -c1-8`.
+   إن اختلفتا فالمفتاح الفعّال مخبوز في الصورة: انقله إلى `.env.production` قبل النشر، وإلا لن تُقرأ الإعدادات المشفّرة. واحفظ المفتاح في مدير كلمات المرور.
+2. انشر. الإقلاع يرفض الآن مفتاحاً لا يُفك إلى 32 بايتاً أو `APP_DEBUG=true` (`BOOT_GUARD=warn` للطوارئ)، ويطبع بصمة المفتاح فقط. `docker compose logs nuskjo-app | grep fingerprint` يجب أن يطابق البصمة أعلاه، و`whatsapp:doctor` يطبع ملاحظات الصحة.
+3. البناء يمر بـ `docker/check-context.sh` (ضمن deploy.sh)، وVITE_* تصل الواجهة كسرّ بناء. تحقق: `docker run --rm --entrypoint sh nuskjo-nuskjo-app -c 'ls -a /var/www/html | grep "^\.env"'` فارغ، وجرس الإشعارات اللحظي يعمل.
+
+## ربط المنفذ على loopback (مرة واحدة، Demo أولاً)
+
+1. تأكد: `docker version` 28 أو أحدث، ولا أحد يطرق 4020 مباشرة غير بوابة شبكة الحاوية (سجل nginx في `docker compose logs`)، وسجّل البوابة: `docker network inspect nuskjo_default -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}'`.
+2. غيّر قاعدة النفق لـ nuskjo وحدها في Zero Trust إلى `http://127.0.0.1:4020` (النفق مشترك بين المشاريع: لا تستبدل قائمة ingress كلها).
+3. أنشئ `/opt/nuskJO/.env` (لتعويض compose لا للتطبيق) فيه `NUSKJO_BIND_ADDRESS=127.0.0.1`، ثم `docker compose up -d nuskjo-app`. تحقق: `ss -ltnp | grep 4020` يعرض 127.0.0.1 فقط، والموقع والدخول والجرس اللحظي وويبهوك ميتا وبطاقات العروض تعمل.
+4. بعد يوم مستقر: `TRUSTED_PROXIES=127.0.0.1,<البوابة>/32` في `.env.production` ثم `up -d`. تحقق: آخر صفوف `audit_logs.ip_address` عناوين عامة، والحضور بالشبكة يعمل، ولا `proxy.untrusted_forwarded` في السجل، و`whatsapp:doctor` بلا TRUST_ALL_PROXIES.
+5. التراجع: احذف السطر من `/opt/nuskJO/.env` ثم `up -d`، وأعد قاعدة النفق.
+
 ## مغادرة موظف
 
 بالترتيب، في اليوم نفسه:

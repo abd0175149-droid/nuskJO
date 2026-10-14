@@ -19,8 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // رقم مرجعي لكل طلب (بعد TrustProxies): الويبهوك و/up والصفحات
         $middleware->append(\App\Http\Middleware\AssignRequestId::class);
 
-        // Trust Cloudflare proxy headers
-        $middleware->trustProxies(at: '*');
+        // الوكلاء الموثوقون من config/trustedproxy.php (TRUSTED_PROXIES) وقت الطلب، لا ثابتاً هنا:
+        // env() في bootstrap لا يصل بعد config:cache
 
         // ويبهوك واتساب: لا CSRF (ميتا لا ترسل رمزاً) — الحماية بتوقيع HMAC داخل المتحكّم
         $middleware->validateCsrfTokens(except: [
