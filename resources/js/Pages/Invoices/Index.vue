@@ -52,8 +52,8 @@
                                 <button v-if="inv.status==='pending' && inv.offer_id && (can('invoices.update') || can('invoices.create'))" @click="openPOS(inv)" class="px-2 py-1 text-xs font-bold rounded-lg btn-mobile-sm" :class="costsMissing(inv) ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'">📝 {{ costsMissing(inv) ? 'إكمال التكاليف' : 'تعديل' }}</button>
                                 <button v-if="inv.status==='pending' && can('invoices.approve')" @click="approveInv(inv)" :disabled="!!costsMissing(inv)" :title="costsMissing(inv) ? 'لا تُعتمد قبل اكتمال التكاليف: لكل بند وكيل وتكلفة' : 'اعتماد'" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm disabled:opacity-30 disabled:cursor-not-allowed">✅</button>
                                 <button v-if="inv.status==='pending' && can('invoices.reject')" @click="rejectInv(inv)" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg btn-mobile-sm">❌</button>
-                                <button v-if="inv.status!=='approved' && can('invoices.delete')" @click="delInv(inv)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button>
-                                <button v-if="inv.status==='approved' && can('invoices.edit_approved')" @click="startEditInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button>
+                                <button v-if="inv.status!=='approved' && $page.props.auth?.isAdmin" @click="delInv(inv)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button>
+                                <button v-if="inv.status==='approved' && $page.props.auth?.isAdmin" @click="startEditInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button>
                                 <button v-if="inv.status==='editing'" @click="openPOS(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل الفاتورة</button>
                             </td>
                         </tr>

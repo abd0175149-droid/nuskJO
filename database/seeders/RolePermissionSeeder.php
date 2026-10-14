@@ -10,6 +10,11 @@ class RolePermissionSeeder extends Seeder
 {
     public function run(): void
     {
+        // sync() أدناه يمسح أي منح خصّصه المدير من صفحة الأدوار. الصلاحيات الجديدة على الإنتاج تصل بهجرات.
+        if (app()->isProduction() && env('ALLOW_ROLE_SEED') !== '1') {
+            throw new \RuntimeException('لا تشغّله على الإنتاج: sync() يمسح منح الأدوار المخصّصة (ALLOW_ROLE_SEED=1 لتجاوز ذلك عمداً)');
+        }
+
         // إنشاء الأدوار
         $admin = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'مدير عام', 'description' => 'صلاحيات كاملة']);
         $sales = Role::firstOrCreate(['slug' => 'sales'], ['name' => 'موظف مبيعات', 'description' => 'إدخال عمليات']);
@@ -47,6 +52,10 @@ class RolePermissionSeeder extends Seeder
 
             // النسخ الاحتياطي (للمدير وحده افتراضياً؛ لا تُمنح لأي دور أدناه)
             'backups' => ['view', 'run', 'restore_ack'],
+
+            // المحاسبة وإدارة الأدوار
+            'accounting' => ['view', 'manage', 'close'],
+            'roles' => ['manage'],
         ];
 
         $moduleNames = [
@@ -57,6 +66,7 @@ class RolePermissionSeeder extends Seeder
             'users' => 'المستخدمين', 'employees' => 'الموظفين', 'attendance' => 'الحضور',
             'leaves' => 'الإجازات', 'advances' => 'السلف', 'payroll' => 'الرواتب',
             'hr_reports' => 'تقارير HR', 'backups' => 'النسخ الاحتياطي',
+            'accounting' => 'المحاسبة', 'roles' => 'الأدوار والصلاحيات',
         ];
 
         $actionNames = [
@@ -67,6 +77,7 @@ class RolePermissionSeeder extends Seeder
             'reply' => 'الردّ على المحادثات', 'bot_toggle' => 'تشغيل/إيقاف البوت',
             'price' => 'التسعير والإرسال', 'view_cost' => 'عرض تكاليف',
             'run' => 'تشغيل نسخة الآن', 'restore_ack' => 'اعتماد مراجعة ما بعد الاستعادة',
+            'manage' => 'إدارة', 'close' => 'إقفال الفترات والسنة',
         ];
 
         $allPermissions = [];
@@ -102,7 +113,7 @@ class RolePermissionSeeder extends Seeder
             'agents.view', 'clients.view', 'services.view',
             'disbursements.view', 'disbursements.create',
             'receipts.view', 'receipts.create',
-            'reports.view',
+            'reports.view', 'accounting.view',
         ];
 
         // صلاحيات مدير الموارد البشرية

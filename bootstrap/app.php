@@ -24,9 +24,21 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/whatsapp/webhook',
         ]);
 
+        $middleware->alias([
+            'perm' => \App\Http\Middleware\RequirePermission::class,
+            'authz.fence' => \App\Http\Middleware\EnsureRoutePermission::class,
+        ]);
+
         $middleware->redirectGuestsTo('/login');
         $middleware->redirectUsersTo('/');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // رفض صلاحية داخل صفحة Inertia: رسالة في الصفحة نفسها بدل صفحة 403 خام
+        $exceptions->respond(function ($response, \Throwable $e, \Illuminate\Http\Request $request) {
+            if ($response->getStatusCode() === 403 && $request->header('X-Inertia')) {
+                return back()->with('error', 'ليست لديك صلاحية لهذا الإجراء');
+            }
+
+            return $response;
+        });
     })->create();

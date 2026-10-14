@@ -686,6 +686,8 @@ class AccountingController extends Controller
 
     public function closePeriod(Request $request)
     {
+        abort_unless(auth()->user()->can('accounting.close'), 403);
+
         $validated = $request->validate([
             'year' => 'required|integer|min:2020|max:2099',
             'month' => 'required|integer|min:0|max:12',
@@ -709,6 +711,8 @@ class AccountingController extends Controller
 
     public function openPeriod(Request $request)
     {
+        abort_unless(auth()->user()->can('accounting.close'), 403);
+
         $validated = $request->validate([
             'year' => 'required|integer',
             'month' => 'required|integer|min:0|max:12',
@@ -727,6 +731,8 @@ class AccountingController extends Controller
 
     public function closeYear(Request $request)
     {
+        abort_unless(auth()->user()->can('accounting.close'), 403);
+
         $validated = $request->validate(['year' => 'required|integer|min:2020|max:2099']);
 
         try {

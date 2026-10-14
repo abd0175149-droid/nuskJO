@@ -79,6 +79,8 @@ class DisbursementController extends Controller
 
     public function approve(Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('disbursements.approve'), 403);
+
         if (!$disbursement->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
@@ -105,6 +107,8 @@ class DisbursementController extends Controller
 
     public function reject(Request $request, Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('disbursements.reject'), 403);
+
         if (!$disbursement->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
@@ -120,6 +124,8 @@ class DisbursementController extends Controller
 
     public function startEdit(Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$disbursement->isApproved()) {
             return back()->with('error', 'يمكن تعديل السندات المعتمدة فقط');
         }
@@ -140,6 +146,8 @@ class DisbursementController extends Controller
 
     public function updateApproved(Request $request, Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$disbursement->isEditing()) {
             return back()->with('error', 'هذا السند ليس في وضع التعديل');
         }
@@ -166,6 +174,8 @@ class DisbursementController extends Controller
 
     public function destroy(Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$disbursement->isPending()) {
             return back()->with('error', 'لا يمكن حذف سند صرف معتمد');
         }

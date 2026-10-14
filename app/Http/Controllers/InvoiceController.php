@@ -563,6 +563,8 @@ class InvoiceController extends Controller
 
     public function approve(Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('invoices.approve'), 403);
+
         if (!$invoice->isPending()) {
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
         }
@@ -629,6 +631,8 @@ class InvoiceController extends Controller
 
     public function reject(Request $request, Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('invoices.reject'), 403);
+
         if (!$invoice->isPending()) {
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
         }
@@ -646,6 +650,8 @@ class InvoiceController extends Controller
 
     public function startEdit(Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$invoice->isApproved()) {
             return back()->with('error', 'يمكن تعديل الفواتير المعتمدة فقط');
         }
@@ -786,6 +792,8 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if ($invoice->isApproved()) {
             return back()->with('error', 'لا يمكن حذف فاتورة معتمدة');
         }

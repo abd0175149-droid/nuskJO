@@ -57,9 +57,9 @@
                                     <button @click="toggleModule(perms)" type="button" class="text-xs text-blue-500 hover:underline">تحديد الكل</button>
                                 </div>
                                 <div class="space-y-2">
-                                    <label v-for="p in perms" :key="p.id" class="flex items-center gap-2 cursor-pointer text-sm" :title="getPermDescription(p, moduleName)">
-                                        <input type="checkbox" :value="p.id" v-model="form.permissions" class="rounded text-gold-500 focus:ring-gold-500 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600"/>
-                                        <span class="text-gray-700 dark:text-gray-300">{{ translatePerm(p) }}</span>
+                                    <label v-for="p in perms" :key="p.id" class="flex items-center gap-2 text-sm" :class="locked(p) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'" :title="getPermDescription(p, moduleName)">
+                                        <input type="checkbox" :value="p.id" v-model="form.permissions" :disabled="locked(p)" class="rounded text-gold-500 focus:ring-gold-500 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600"/>
+                                        <span class="text-gray-700 dark:text-gray-300">{{ translatePerm(p) }}<span v-if="sensitive.includes(p.slug)" class="mr-1 text-xs text-red-500">🔒</span></span>
                                     </label>
                                 </div>
                             </div>
@@ -81,13 +81,18 @@
 
 <script setup>
 import { ref } from 'vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { useForm, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 
 const props = defineProps({
     roles: Array,
     permissions: Object,
+    sensitive: { type: Array, default: () => [] },
 });
+
+// الصلاحيات الحساسة يمنحها المدير وحده (والخادم يرفض غير ذلك)
+const isAdmin = !!usePage().props.auth?.isAdmin;
+const locked = (p) => !isAdmin && props.sensitive.includes(p.slug);
 
 const moduleTranslations = {
     agents: 'الوكلاء',
@@ -104,7 +109,10 @@ const moduleTranslations = {
     leaves: 'الإجازات',
     advances: 'السلف',
     payroll: 'مسيرات الرواتب',
-    hr_reports: 'تقارير الموارد البشرية'
+    hr_reports: 'تقارير الموارد البشرية',
+    accounting: 'المحاسبة',
+    roles: 'الأدوار والصلاحيات',
+    backups: 'النسخ الاحتياطي',
 };
 
 const actionTranslations = {
@@ -123,7 +131,11 @@ const actionTranslations = {
     reply: 'الردّ على العملاء',
     assign: 'نقل المحادثات بين الموظفين',
     bot_toggle: 'تشغيل البوت وإيقافه',
-    settings: 'الإعدادات والتوجيه'
+    settings: 'الإعدادات والتوجيه',
+    manage: 'إدارة',
+    close: 'إقفال الفترات والسنة',
+    run: 'تشغيل نسخة الآن',
+    restore_ack: 'اعتماد مراجعة ما بعد الاستعادة',
 };
 
 const translateModule = (mod) => moduleTranslations[mod] || mod;
@@ -133,6 +145,7 @@ const translatePerm = (p) => {
     return actionTranslations[action] || p.name || action;
 };
 const getPermDescription = (p, mod) => {
+    if (locked(p)) return 'صلاحية حساسة: يمنحها المدير وحده';
     const modAr = moduleTranslations[mod] || mod;
     return `يسمح للمستخدم بـ «${translatePerm(p)}» ضمن قسم ${modAr}`;
 };
@@ -165,7 +178,7 @@ const openModal = async (role = null) => {
 };
 
 const toggleModule = (modulePermissions) => {
-    const ids = modulePermissions.map(p => p.id);
+    const ids = modulePermissions.filter(p => !locked(p)).map(p => p.id);
     const allSelected = ids.every(id => form.permissions.includes(id));
     
     if (allSelected) {

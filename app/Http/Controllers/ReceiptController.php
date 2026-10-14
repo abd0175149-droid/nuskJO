@@ -66,6 +66,8 @@ class ReceiptController extends Controller
 
     public function approve(Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('receipts.approve'), 403);
+
         if (!$receipt->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
@@ -93,6 +95,8 @@ class ReceiptController extends Controller
 
     public function reject(Request $request, Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('receipts.reject'), 403);
+
         if (!$receipt->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
@@ -110,6 +114,8 @@ class ReceiptController extends Controller
      */
     public function startEdit(Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$receipt->isApproved()) {
             return back()->with('error', 'يمكن تعديل السندات المعتمدة فقط');
         }
@@ -134,6 +140,8 @@ class ReceiptController extends Controller
      */
     public function updateApproved(Request $request, Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$receipt->isEditing()) {
             return back()->with('error', 'هذا السند ليس في وضع التعديل');
         }
@@ -163,6 +171,8 @@ class ReceiptController extends Controller
 
     public function destroy(Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$receipt->isPending()) {
             return back()->with('error', 'لا يمكن حذف سند معتمد');
         }
