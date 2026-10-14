@@ -26,7 +26,7 @@ Artisan::command('whatsapp:window-reminders', function () {
 
             $left = (int) $c->windowMinutesLeft();
             $title = '⏳ عميل ينتظر ردّاً';
-            $body = ($c->display_name ?: $c->phone) . ' — تبقّى ' . intdiv($left, 60) . 'س ' . ($left % 60)
+            $body = $c->noticeLabel() . ' — تبقّى ' . intdiv($left, 60) . 'س ' . ($left % 60)
                 . 'د قبل إغلاق نافذة الرد، وبعدها لا يمكن مراسلته حتى يكتب من جديد.';
             $url = '/whatsapp/inbox?conv=' . $c->id;
 

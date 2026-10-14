@@ -671,11 +671,10 @@ class BotTools
             'title' => $title, 'quote_request_id' => $qr?->id, 'assigned_to' => $assignee,
         ]);
 
-        $who = $conv->label();
-        $body = $qr
-            ? "{$who} — طلب {$qr->request_number}: ".mb_substr((string) $qr->details, 0, 140)
-            : "{$who} — يحتاج تدخّلاً بشرياً.";
-        $url = $qr ? '/quote-requests' : '/whatsapp/inbox';
+        // الجرس: الاسم بلا رقم ورقم الطلب، والتفاصيل في صفحة الطلب (E15.10)
+        $who = $conv->noticeLabel();
+        $body = $qr ? "{$who} — طلب {$qr->request_number}" : "{$who} — يحتاج تدخّلاً بشرياً.";
+        $url = $qr ? '/quote-requests?status=all&search='.rawurlencode((string) $qr->request_number) : '/whatsapp/inbox?conv='.$conv->id;
 
         WhatsAppInbox::notifyAdmins($title, $body, $url);
 

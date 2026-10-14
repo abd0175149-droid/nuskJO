@@ -80,6 +80,16 @@ class WaConversation extends Model
             ?: 'محادثة #'.$this->id;
     }
 
+    /** للإشعارات والجرس (E15.10): مثل label() بلا رقم الهاتف */
+    public function noticeLabel(): string
+    {
+        return $this->client?->name
+            ?: $this->display_name
+            ?: $this->wa_profile_name
+            ?: ($this->wa_username ? '@'.$this->wa_username : null)
+            ?: 'محادثة #'.$this->id;
+    }
+
     /** نافذة ميتا: 24 ساعة من آخر رسالة واردة */
     public function isWindowOpen(): bool
     {

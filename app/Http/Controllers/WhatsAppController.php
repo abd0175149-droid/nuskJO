@@ -314,8 +314,8 @@ class WhatsAppController extends Controller
                 \App\Services\NotificationService::send(
                     (int) $data['user_id'],
                     '💬 محادثة واتساب مُحوّلة إليك',
-                    $conversation->label() . ' — حوّلها ' . auth()->user()->name,
-                    ['type' => 'whatsapp', 'icon' => '💬', 'action_url' => '/whatsapp/inbox']
+                    $conversation->noticeLabel() . ' — حوّلها ' . auth()->user()->name,
+                    ['type' => 'whatsapp', 'icon' => '💬', 'action_url' => '/whatsapp/inbox?conv=' . $conversation->id]
                 );
             } catch (\Throwable $e) {
                 // الإشعار ليس حرجاً — التوكيل محفوظ

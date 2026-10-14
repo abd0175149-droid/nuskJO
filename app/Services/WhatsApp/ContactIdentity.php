@@ -244,7 +244,8 @@ final class ContactIdentity
         ]));
 
         $title = '🔄 تغيّر رقم عميل واتساب';
-        $body = $conv->label().' — '.($note ?? $in->body);
+        // نص ميتا يحمل الرقمين القديم والجديد: يبقى في ملاحظة المحادثة لا في الجرس (E15.10)
+        $body = $conv->noticeLabel().' — غيّر رقمه أو معرّفه في واتساب. التفاصيل في المحادثة.';
         if ($conv->assigned_to) {
             rescue(fn () => \App\Services\NotificationService::send((int) $conv->assigned_to, $title, $body, ['type' => 'whatsapp', 'icon' => '💬', 'action_url' => '/whatsapp/inbox?conv='.$conv->id]), null, false);
         }
