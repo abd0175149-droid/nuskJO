@@ -11,9 +11,10 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY resources/ resources/
-COPY .env.production .env
 COPY vite.config.js postcss.config.js tailwind.config.js ./
-RUN npm run build
+# متغيرات VITE_* من .env.production عبر سرّ بناء: Vite يقرأ .env.production ويضمّن VITE_* وحدها،
+# والملف لا يبقى في أي طبقة (docker-compose.yml: build.secrets)
+RUN --mount=type=secret,id=vite_env,target=/app/.env.production,required=true npm run build
 
 # ---- Stage 2: PHP Production Image ----
 FROM php:8.3-fpm-alpine AS production
@@ -86,6 +87,7 @@ RUN mkdir -p \
     storage/framework/views \
     storage/logs \
     storage/app/backups \
+    storage/app/private \
     database/data \
     bootstrap/cache
 

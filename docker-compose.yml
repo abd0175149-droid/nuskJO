@@ -8,6 +8,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # VITE_* لمرحلة الواجهة دون خبز .env.production في الصورة
+      secrets:
+        - vite_env
     container_name: nuskjo-app
     restart: unless-stopped
     ports:
@@ -77,6 +80,10 @@ services:
       - BACKUP_PRE_MIGRATE=false
       - LOG_CHANNEL=stderr
     entrypoint: ["/bin/sh", "/var/www/html/docker/drill-inside.sh"]
+
+secrets:
+  vite_env:
+    file: ./.env.production
 
 volumes:
   nuskjo-storage:

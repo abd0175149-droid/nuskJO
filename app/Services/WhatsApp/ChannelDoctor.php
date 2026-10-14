@@ -8,7 +8,6 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
-use Throwable;
 
 /**
  * فحص صحة القناة والإعداد (whatsapp:doctor وشريط صفحة الإعدادات). قراءة فقط، ولا تُعاد أي قيمة سرية:

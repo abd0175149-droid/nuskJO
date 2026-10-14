@@ -3,7 +3,6 @@
 namespace Tests\Feature\WhatsApp;
 
 use App\Models\User;
-use App\Models\WaBotSetting;
 use App\Services\WhatsApp\ChannelDoctor;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;

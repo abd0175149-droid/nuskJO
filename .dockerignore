@@ -15,10 +15,10 @@ Dockerfile.test.dockerignore
 scripts/
 .github/
 
-# Development
+# Development — لا ملف بيئة في الصورة أبداً: البيئة من env_file، ومتغيرات VITE_* سرّ بناء (docker-compose.yml)
 .env
+.env.*
 .env.backup
-.env.example
 .vscode/
 .idea/
 .cursor/
@@ -49,10 +49,20 @@ Thumbs.db
 
 # قواعد ونسخ وأسرار لا تدخل الصورة أبداً (COPY . . ينسخ كل ما في /opt/nuskJO)
 database/*.sqlite*
+*.sqlite*
+**/*.sqlite*
 database/data/
-storage/app/backups/
-storage/app/firebase-auth.json
+storage/
 *.age
+*.sql
+*.bak
+**/*.sql
+**/*.bak
+.mcp.json
+mcp.log
+testsprite_tests/
+*.pdf
+*.log
 
 # Misc
 *.png

@@ -53,6 +53,12 @@ if docker ps --format '{{.Names}}' | grep -qx "$APP_CONTAINER"; then
     fi
 fi
 
+# 3ب) حارس سياق البناء: لا ملف بيئة ولا قاعدة ولا نسخة ولا مفتاح يدخل الصورة (E06)
+if ! sh docker/check-context.sh; then
+    log "sha=$SHA build context carries env files, databases or keys; deploy stopped before build"
+    exit 1
+fi
+
 # 4) حارس فصل الحجم: compose بالتخطيط الجديد قبل نقل القاعدة يُقلع على حجم فارغ (فيرفض الإقلاع)
 DB_VOLUME="${DB_VOLUME:-nuskjo_nuskjo-dbdata}"
 if grep -q '^ *- nuskjo-dbdata:/var/www/html/database/data' docker-compose.yml \
