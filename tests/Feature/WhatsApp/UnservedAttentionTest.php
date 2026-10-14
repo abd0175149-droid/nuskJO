@@ -10,6 +10,7 @@ use App\Models\WaMessage;
 use App\Services\WhatsApp\BotEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
@@ -51,7 +52,7 @@ class UnservedAttentionTest extends TestCase
         ];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('reasons')]
+    #[DataProvider('reasons')]
     public function test_an_unserved_inbound_becomes_attention_with_a_reason(array $settings, array $conversation, string $reason): void
     {
         if ($settings) {

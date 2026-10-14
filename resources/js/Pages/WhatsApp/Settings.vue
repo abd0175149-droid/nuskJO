@@ -277,6 +277,12 @@
                             <p class="text-xs text-gray-500 mt-1">يصمت البوت في المحادثة بعد ردّ موظف (1–1440).</p>
                         </div>
                         <div>
+                            <label for="wa-max-age" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">أقصى عمر للرسالة كي يرد البوت (دقيقة)</label>
+                            <input id="wa-max-age" v-model.number="form.max_reply_age_minutes" type="number" min="2" max="120" dir="ltr"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
+                            <p class="text-xs text-gray-500 mt-1">الرسالة الأقدم من هذا لا يرد عليها البوت، بل تُحوَّل لموظف (2–120).</p>
+                        </div>
+                        <div>
                             <label for="wa-rate" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">حدّ الرسائل للعميل في الساعة</label>
                             <input id="wa-rate" v-model.number="form.rate_limit_per_hour" type="number" min="1" max="200" dir="ltr"
                                    class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
@@ -430,6 +436,7 @@ const form = useForm({
     system_prompt: props.settings?.system_prompt || props.defaultPrompt || '',
     context_messages: Number(props.settings?.context_messages ?? 12),
     pause_minutes: Number(props.settings?.pause_minutes ?? 60),
+    max_reply_age_minutes: Number(props.settings?.max_reply_age_minutes ?? 10),
     max_tool_loops: Number(props.settings?.max_tool_loops ?? 4),
     rate_limit_per_hour: Number(props.settings?.rate_limit_per_hour ?? 30),
     fail_message: props.settings?.fail_message || '',

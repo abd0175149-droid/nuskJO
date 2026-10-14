@@ -69,6 +69,36 @@ class WhatsAppInbox
         return array_values(array_unique($touched));
     }
 
+    private static ?bool $hasMetaAt = null;
+
+    private static function hasMetaAt(): bool
+    {
+        return self::$hasMetaAt ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_at');
+    }
+
+    /**
+     * رسالة بلا رقم مرسل (from): أسماء مستخدمي واتساب تُخفي الرقم أحياناً، والرسالة تُسقط حتى E11.
+     * لا تضيع بصمت: سجل بمعرّف مقطوع البصمة بلا نص ولا اسم، وتنبيه للمدير مرة في الساعة، وعدّاد يومي.
+     */
+    private static function noSenderNumber(array $msg): void
+    {
+        $userId = (string) data_get($msg, 'from_user_id', '');
+        if ($userId === '') {
+            return;
+        }
+
+        WaLog::warning('webhook.inbound.no_from', [
+            'wamid' => data_get($msg, 'id'), 'type' => data_get($msg, 'type'), 'reason' => substr(hash('sha256', $userId), 0, 12),
+        ]);
+        $day = 'wa:nofrom:count:' . now()->format('Ymd');
+        \Illuminate\Support\Facades\Cache::add($day, 0, now()->addDays(2));
+        \Illuminate\Support\Facades\Cache::increment($day);
+
+        if (\Illuminate\Support\Facades\Cache::add('wa:nofrom:alert:' . now()->format('YmdH'), 1, now()->addHour())) {
+            self::notifyAdmins('⚠️ رسالة واتساب بلا رقم مرسل', 'وصلت رسالة من عميل يخفي رقمه (اسم مستخدم واتساب) ولم تُحفظ بعد. التفاصيل في السجل.', '/whatsapp/inbox');
+        }
+    }
+
     /** @return int|null معرّف المحادثة إن كانت الرسالة تستحق ردّ البوت */
     private static function storeInbound(array $msg, $contacts): ?int
     {
@@ -77,6 +107,8 @@ class WhatsAppInbox
         $type = data_get($msg, 'type', 'text');
 
         if (!$wamid || !$from) {
+            self::noSenderNumber($msg);
+
             return null;
         }
 
@@ -100,6 +132,10 @@ class WhatsAppInbox
         [$body, $buttonId] = self::extract($msg, $type);
         \Illuminate\Support\Facades\Context::push('wamid_in', $wamid);
 
+        // وقت ميتا للرسالة (لا وقت وصولها إلينا): عليه تُبنى النافذة وبوابة الحداثة. لا يتجاوز «الآن»
+        $ts = (int) data_get($msg, 'timestamp', 0);
+        $metaAt = $ts > 0 ? min(\Illuminate\Support\Carbon::createFromTimestamp($ts, config('app.timezone')), now()) : now();
+
         WaMessage::create([
             'conversation_id' => $conv->id,
             'wamid' => $wamid,
@@ -108,16 +144,18 @@ class WhatsAppInbox
             'msg_type' => $type,
             'body' => $body,
             'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []),
-        ]);
+        ] + (self::hasMetaAt() ? ['meta_at' => $metaAt] : []));
 
-        // فتح نافذة 24 ساعة + تحديث المؤشرات
-        $conv->update([
-            'last_inbound_at' => now(),
-            'last_message_at' => now(),
-            'last_message_preview' => mb_substr(trim((string) $body), 0, 160),
-            'unread_count' => $conv->unread_count + 1,
-            'status' => 'open',
-        ]);
+        // النافذة والمعاينة لا تتراجع: رسالة أقدم أعادت ميتا إرسالها لا تكتبهما
+        WaConversation::whereKey($conv->id)
+            ->where(fn ($q) => $q->whereNull('last_inbound_at')->orWhere('last_inbound_at', '<', $metaAt))
+            ->update([
+                'last_inbound_at' => $metaAt,
+                'last_message_at' => $metaAt,
+                'last_message_preview' => mb_substr(trim((string) $body), 0, 160),
+            ]);
+        WaConversation::whereKey($conv->id)->update(['unread_count' => \Illuminate\Support\Facades\DB::raw('unread_count + 1'), 'status' => 'open']);
+        $conv->refresh();
 
         // إيقاف التسويق بنصّ مطابق
         // رقم الإدارة لا يُسجَّل رافضاً للتسويق: «إيقاف» منه تعني غالباً إيقاف البوت
@@ -220,19 +258,31 @@ class WhatsAppInbox
         $code = is_numeric(data_get($st, 'errors.0.code')) ? (int) data_get($st, 'errors.0.code') : null;
         $error = $code !== null ? MetaErrorCatalog::message($code, (string) data_get($st, 'errors.0.title', '')) : '';
 
-        $update = [
-            'status' => $status,
-            'payload' => $payload,
-            'error_message' => $error !== '' ? $error : $m->error_message,
-        ];
-        if ($code !== null && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_code')) {
-            $update['meta_code'] = $code;
+        // الحالات تتقدّم ولا تتراجع (ميتا لا تضمن الترتيب): الأدنى يُضاف إلى السجل وحده، وfailed نهائية
+        $rank = ['sent' => 1, 'delivered' => 2, 'read' => 3, 'played' => 4];
+        $advances = $status === 'failed'
+            ? $m->status !== 'failed'
+            : $m->status !== 'failed' && ($rank[$status] ?? 0) > ($rank[$m->status] ?? 0);
+
+        $update = ['payload' => $payload];
+        if ($advances) {
+            $update['status'] = $status;
+            $update['error_message'] = $error !== '' ? $error : $m->error_message;
+            if ($code !== null && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_code')) {
+                $update['meta_code'] = $code;
+            }
         }
         $m->update($update);
 
         if ($code !== null) {
             WaLog::warning('wa.status.failed', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'meta_code' => $code]);
             MetaErrorCatalog::react($code);
+        }
+
+        // رد آلي لم يصل: المحادثة تحتاج موظفاً
+        if ($advances && $status === 'failed' && $m->direction === 'out' && in_array($m->source, ['bot', 'system'], true)
+            && ($conv = WaConversation::find($m->conversation_id)) && ReplyState::available()) {
+            ReplyState::markUnserved($conv, 'send_failed');
         }
     }
 

@@ -124,6 +124,13 @@ TXT;
             return self::skip($unserved);
         }
 
+        // بوابة الحداثة: رسالة تأخرت (عطل، أو إعادة من ميتا بعد ساعات) لا يرد عليها البوت آلياً، بل موظف
+        if (self::watermarkOn($s) && $s->flag('stale_gate') && self::isStale($conv, $s)) {
+            ReplyState::markUnserved($conv, 'stale');
+
+            return self::skip('stale');
+        }
+
         $pending = self::pendingCustomerText($conv, $s);
 
         // ① طلب صريح لموظف: يُحوَّل بالكود، ولا يُترك للنموذج أن يزعم التحويل
@@ -457,6 +464,16 @@ TXT;
         $last = $conv->messages()->orderByDesc('id')->first();
 
         return $last && $last->direction === 'in';
+    }
+
+    /** عمر أحدث وارد معلّق (بوقت ميتا، وإلا وقت وصوله) أكبر من max_reply_age_minutes */
+    private static function isStale(WaConversation $conv, WaBotSetting $s): bool
+    {
+        $newest = ReplyState::newestPending($conv);
+        $at = $newest?->meta_at ?? $newest?->created_at;
+        $maxAge = max(2, (int) ($s->max_reply_age_minutes ?? 10));
+
+        return $at !== null && $at->lt(now()->subMinutes($maxAge));
     }
 
     private static function rateKey(WaConversation $conv): string
