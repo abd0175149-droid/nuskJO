@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Setting;
 use App\Models\WaBotSetting;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -26,6 +27,17 @@ class BackupSafeMode extends Command
         'forget_requests' => 'إعادة تطبيق طلبات حذف بيانات العملاء المنفّذة بعد النسخة',
         'diff_report' => 'إعادة إدخال الفواتير والسندات من تقرير الفرق',
     ];
+
+    /** وقت النسخة المستعادة (من اسمها) إن كانت مراجعة ما بعد الاستعادة معلّقة، لاستعماله كـ --since. */
+    public static function pendingSince(): ?string
+    {
+        $pending = json_decode((string) Setting::get(self::REVIEW_KEY), true);
+        if (!is_array($pending) || !preg_match('/^(\d{8}T\d{6}Z)/', (string) ($pending['snapshot'] ?? ''), $m)) {
+            return null;
+        }
+
+        return Carbon::createFromFormat('Ymd\THis\Z', $m[1], 'UTC')->toIso8601String();
+    }
 
     private const VOLATILE_TABLES = ['jobs', 'job_batches', 'cache', 'cache_locks', 'sessions'];
 
