@@ -446,6 +446,10 @@ TXT;
                 'latency_ms' => (int) ($u['ms'] ?? 0),
                 'created_at' => now(),
             ]);
+            WaLog::info('bot.reply', [
+                'conv_id' => $convId, 'source' => $source, 'model' => $model, 'ms' => (int) ($u['ms'] ?? 0),
+                'tokens_in' => $u['in'], 'tokens_out' => $u['out'], 'tool' => implode(',', array_unique($u['tools'] ?? [])),
+            ]);
         } catch (\Throwable $e) {
             // القياس ليس حرجاً
         }

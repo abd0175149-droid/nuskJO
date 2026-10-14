@@ -98,6 +98,7 @@ class WhatsAppInbox
         }
 
         [$body, $buttonId] = self::extract($msg, $type);
+        \Illuminate\Support\Facades\Context::push('wamid_in', $wamid);
 
         WaMessage::create([
             'conversation_id' => $conv->id,

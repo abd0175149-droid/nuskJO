@@ -41,6 +41,9 @@ class ProcessWhatsAppReply implements ShouldQueue
 
     public function handle(): void
     {
+        // request_id يصل وحده مع الوظيفة (Context)؛ ومعرّف المحادثة لكل سطر سجل في هذه المعالجة
+        \Illuminate\Support\Facades\Context::add('conv_id', $this->conversationId);
+
         // تجاوزته رسالة أحدث؟ اتركه لها
         if (Cache::get(self::debounceKey($this->conversationId)) !== $this->token) {
             return;

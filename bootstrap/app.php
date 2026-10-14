@@ -16,6 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
 
+        // رقم مرجعي لكل طلب (بعد TrustProxies): الويبهوك و/up والصفحات
+        $middleware->append(\App\Http\Middleware\AssignRequestId::class);
+
         // Trust Cloudflare proxy headers
         $middleware->trustProxies(at: '*');
 

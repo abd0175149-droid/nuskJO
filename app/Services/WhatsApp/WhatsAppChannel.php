@@ -510,12 +510,14 @@ class WhatsAppChannel
         if (!$res->successful()) {
             [$code, $err] = self::mapGraphError($res);
             self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $payload);
+            WaLog::warning('wa.send.failed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType, 'code' => $code]);
 
             return self::fail($code, $err);
         }
 
         $wamid = data_get($json, 'messages.0.id');
         self::store($conv, $wamid, $displayBody, $msgType, $source, 'sent', null, $staffId, $payload);
+        WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType]);
 
         // ردّ الموظف يُوقف البوت مؤقتاً ويصفّر المؤشرات
         $update = [
