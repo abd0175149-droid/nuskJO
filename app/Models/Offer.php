@@ -440,6 +440,26 @@ class Offer extends Model
      * ما يُعاد للبوت. لا يوجد أي حقل داخلي (وكيل، تكلفة، عدد مقاعد) إطلاقاً،
      * والحمولة تتبع شكل التصنيف فلا تُرسل حقولاً لا معنى لها.
      */
+    /**
+     * ملخص العرض في قائمة get_offers (E15.7): قائمة بيضاء مضغوطة. الخيارات والإقامات والإضافات في
+     * get_offer_details وحده، فلا تُقصّ قائمة طويلة فيظن النموذج عرضاً موجوداً غير متاح.
+     */
+    public function toBotSummary(): array
+    {
+        $isVisa = $this->isVisa();
+
+        return array_filter([
+            'id' => $this->id,
+            'title' => $this->title,
+            'category' => $this->categoryLabel(),
+            'price_from_per_person_jod' => $this->priceFrom(),
+            'trip_date' => $this->is_ready ? $this->trip_date?->toDateString() : null,
+            'nights' => $isVisa ? null : $this->nights,
+            'availability' => $this->is_ready ? $this->availabilityLabel() : null,
+            'pricing_note' => $isVisa ? 'السعر للفرد الواحد.' : $this->pricingNote($this->sellOptions(), $this->supplements()),
+        ], fn ($v) => $v !== null && $v !== '');
+    }
+
     public function toBotArray(): array
     {
         $base = [

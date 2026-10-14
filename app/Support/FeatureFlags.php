@@ -18,6 +18,7 @@ final class FeatureFlags
         'retention_purge' => ['label' => 'حذف دوري بحسب مدة الاحتفاظ', 'capability' => 'C287', 'available' => true],
         'media_archive' => ['label' => 'أرشفة مرفقات العملاء (صور ووثائق)', 'capability' => 'C283', 'available' => true],
         'media_consent_prompt' => ['label' => 'إشعار العميل بحفظ ملفاته مع زر «احذف ملفاتي»', 'capability' => 'C283', 'available' => true],
+        'tool_validation_enforce' => ['label' => 'رفض مدخلات الأدوات غير الصالحة (بدل التسجيل والقصّ)', 'capability' => 'C272', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

@@ -135,7 +135,7 @@ class BotTools
             'description' => 'العميل يريد تأكيد حجز عرض معيّن. استدعِها عند موافقته الصريحة على الحجز. تُنشئ طلب حجز وتحوّل المحادثة لموظف ليُتمّه. لا تؤكّد للعميل أنّ الحجز مكتمل — قل إنّ موظفاً سيتواصل لإتمامه.',
             'properties' => [
                 'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه', 'minimum' => 1],
-                'option_ref' => ['type' => 'string', 'description' => 'قيمة ref للخيار الذي اختاره العميل من options في get_offers أو get_offer_details — انسخها كما هي', 'maxLength' => 64],
+                'option_ref' => ['type' => 'string', 'description' => 'قيمة ref للخيار الذي اختاره العميل من options في get_offer_details — انسخها كما هي', 'maxLength' => 64],
                 'supplement_refs' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 64], 'maxItems' => 10, 'description' => 'قيم ref للإضافات التي طلبها العميل من supplements (مثل باص VIP) — اتركها فارغة إن لم يطلب إضافة'],
                 'hotel' => ['type' => 'string', 'description' => 'الخيار الذي اختاره العميل: اسم الفندق، أو الفندقين معاً في عمرة مكة والمدينة', 'maxLength' => 150],
                 'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية', 'maxLength' => 30],
@@ -272,13 +272,14 @@ class BotTools
         // الترتيب النهائي بـ «يبدأ من» يجري في PHP لأنّ السعر صار داخل الفنادق
         $offers = $q->limit(12)->get()
             ->sortBy(fn ($o) => $o->priceFrom() ?? INF)
-            ->map(fn ($o) => $o->toBotArray())->values()->all();
+            ->map(fn ($o) => $o->toBotSummary())->values()->all();
 
         return [
             'count' => count($offers),
             'offers' => $offers,
             'note' => $offers
                 ? 'اعرض العروض بإيجاز (الاسم والسعر والمدة، وتاريخ الانطلاق إن وُجد trip_date). لا تخترع تفاصيل غير مذكورة. '
+                    .'الفنادق والخيارات وأسعارها في get_offer_details للعرض الذي يختاره العميل. '
                     .'availability تقريبية: قلها كما هي («متوفر» أو «مقاعد محدودة») ولا تذكر عدد مقاعد ولا تؤكّد مقعداً. اسأل العميل أيّ عرض يهمّه.'
                 : 'لا توجد عروض منشورة حالياً — اعتذر واسأل العميل عمّا يبحث عنه بالتحديد، ثم استدعِ request_quote.',
         ];
@@ -700,6 +701,15 @@ class BotTools
         ]);
 
         return ['saved' => true, 'note' => 'لا تذكر للعميل أنك حفظت ملاحظة — تابع الحديث طبيعياً.'];
+    }
+
+    /**
+     * تحويل يقرّره الكود (طلب صريح لموظف، حارس الوعد، الميزانية، حد المعدّل…): مدخل موثوق لا يراه النموذج ولا يمر
+     * بالمنفّذ، ويعمل ولو كانت الأداة مخفية.
+     */
+    public static function handoffFromCode(WaConversation $conv, string $reason): array
+    {
+        return self::handoff(['reason' => $reason], $conv);
     }
 
     private static function handoff(array $in, WaConversation $conv): array

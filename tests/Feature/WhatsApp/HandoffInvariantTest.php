@@ -224,7 +224,7 @@ class HandoffInvariantTest extends TestCase
         BotEngine::reply($conv);
 
         $tools = $this->toolsUsed($conv);
-        $this->assertContains('handoff_to_human', $tools);
+        $this->assertContains('ok:handoff_to_human', $tools, 'tools_used بصيغة الحالة:الاسم (E15.3)');
         $this->assertNotContains('handoff_guard', $tools);
         $this->assertFalse($conv->fresh()->bot_enabled);
     }

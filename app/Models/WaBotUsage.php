@@ -17,7 +17,7 @@ class WaBotUsage extends Model
     protected $fillable = [
         'conversation_id', 'source', 'model', 'calls',
         'prompt_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens',
-        'tools_used', 'leaked', 'latency_ms', 'created_at',
+        'tools_used', 'leaked', 'latency_ms', 'created_at', 'tool_result_bytes',
     ];
 
     protected $casts = ['created_at' => 'datetime', 'tools_used' => 'array', 'leaked' => 'boolean'];

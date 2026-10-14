@@ -13,5 +13,6 @@ return [
         'retention_purge' => env('WA_FEATURE_RETENTION_PURGE'),
         'media_archive' => env('WA_FEATURE_MEDIA_ARCHIVE'),
         'media_consent_prompt' => env('WA_FEATURE_MEDIA_CONSENT_PROMPT'),
+        'tool_validation_enforce' => env('WA_FEATURE_TOOL_VALIDATION_ENFORCE'),
     ],
 ];

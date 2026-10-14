@@ -274,6 +274,10 @@ class BotAnalytics
             // قاطع المزوّد (E12): ما حُوِّل لموظف لأن مزوّد الذكاء تعطّل، وعدد الحوادث (المراقبة shadow معها)
             ['key' => 'llm_outage', 'label' => 'تحويلات بسبب تعطّل المزوّد', 'value' => \App\Models\WaBotUsage::where('source', 'outage')->count(), 'unit' => '', 'good' => 'low'],
             ['key' => 'llm_incidents', 'label' => 'حوادث المزوّد (30 يوماً)', 'value' => rescue(fn () => \App\Models\WaLlmIncident::where('opened_at', '>=', now()->subDays(30))->count(), 0, false), 'unit' => '', 'good' => 'low'],
+            // سجل الأدوات (E15): أداة لم تُعلن أو أطفأها المالك، وأداة أعادت خطأ
+            ['key' => 'tools_denied', 'label' => 'استدعاءات أدوات مرفوضة', 'value' => self::toolStatusCount($usage, 'denied'), 'unit' => '', 'good' => 'low'],
+            ['key' => 'tools_failed', 'label' => 'أدوات فشلت', 'value' => self::toolStatusCount($usage, 'failed'), 'unit' => '', 'good' => 'low'],
+            ...self::toolBytesMetrics($usage),
         ];
 
         // ── ما يحتاج نظرك: آخر 40 موضعاً عجز فيه البوت أو حوّل أو تعطّل
@@ -297,11 +301,12 @@ class BotAnalytics
             ];
         }
 
-        // ── أكثر الأدوات استعمالاً
+        // ── أكثر الأدوات استعمالاً (E15: «الحالة:الاسم»، والصفوف القديمة بالاسم وحده)
         $toolCounts = [];
         foreach ($usage as $u) {
             foreach ((array) $u->tools_used as $t) {
-                $toolCounts[$t] = ($toolCounts[$t] ?? 0) + 1;
+                $name = str_contains((string) $t, ':') ? explode(':', (string) $t, 2)[1] : (string) $t;
+                $toolCounts[$name] = ($toolCounts[$name] ?? 0) + 1;
             }
         }
         arsort($toolCounts);
@@ -326,6 +331,26 @@ class BotAnalytics
             'attention' => array_slice($attention, 0, 40),
             'tools' => $tools,
             'weekly' => $weeks,
+        ];
+    }
+
+    private static function toolStatusCount($usage, string $status): int
+    {
+        return $usage->sum(fn ($u) => count(array_filter((array) $u->tools_used, fn ($t) => str_starts_with((string) $t, $status.':'))));
+    }
+
+    /** حجم نتائج الأدوات (E15.7): المتوسط وp90 بالكيلوبايت للردود التي استعملت أداة */
+    private static function toolBytesMetrics($usage): array
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('wa_bot_usage', 'tool_result_bytes')) {
+            return [];
+        }
+        $bytes = $usage->pluck('tool_result_bytes')->map(fn ($b) => (int) $b)->filter()->sort()->values();
+        $n = $bytes->count();
+
+        return [
+            ['key' => 'tool_bytes_avg', 'label' => 'متوسط حجم نتائج الأدوات', 'value' => $n ? round($bytes->avg() / 1024, 1) : 0, 'unit' => 'KB', 'good' => 'low'],
+            ['key' => 'tool_bytes_p90', 'label' => 'p90 لحجم نتائج الأدوات', 'value' => $n ? round($bytes[min($n - 1, (int) floor($n * 0.9))] / 1024, 1) : 0, 'unit' => 'KB', 'good' => 'low'],
         ];
     }
 }

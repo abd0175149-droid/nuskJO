@@ -106,6 +106,17 @@ class OfferBotArrayLeakTest extends TestCase
         $this->assertNoCanaries($json, 'toBotArray');
     }
 
+    /** الملخص في قائمة get_offers (E15.7): مفاتيح مسموحة صراحة، فلا يتسرب حقل يُضاف للعرض لاحقاً */
+    public function test_to_bot_summary_keeps_an_explicit_allow_list(): void
+    {
+        $summary = $this->offer->fresh()->toBotSummary();
+
+        $this->assertSame([], array_diff(array_keys($summary),
+            ['id', 'title', 'category', 'price_from_per_person_jod', 'trip_date', 'nights', 'availability', 'pricing_note']));
+        $this->assertSame(220.0, $summary['price_from_per_person_jod'], 'أقل سعر للفرد بين الخيارات');
+        $this->assertNoCanaries($this->encode($summary), 'toBotSummary');
+    }
+
     #[Group('INV-08')]
     public function test_get_offers_and_get_offer_details_results_have_no_internals(): void
     {

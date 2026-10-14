@@ -188,7 +188,7 @@ TXT;
             // ② ردٌّ يَعِد بموظف دون أداة تحويل ← يُنفَّذ التحويل فعلاً
             $escalated = HandoffGuard::escalated($usage['tools']);
             if (!$escalated && HandoffGuard::claimsHandoff($text)) {
-                BotTools::execute('handoff_to_human', ['reason' => 'الردّ وعد بموظف دون تحويل فعلي'], $conv->fresh());
+                BotTools::handoffFromCode($conv->fresh(), 'الردّ وعد بموظف دون تحويل فعلي');
                 $usage['tools'][] = 'handoff_guard';
             }
 
@@ -299,7 +299,7 @@ TXT;
      * حلقة النموذج والأدوات — واحدة للمسارين.
      * بلا وسائط إضافية: بوت العملاء بشخصيته وأدواته. ومع $system و$tools و$exec: المساعد الإداري.
      */
-    private static function runLoop(WaConversation $conv, WaBotSetting $s, ?array $system = null, ?array $tools = null, ?callable $exec = null, ?ReplyRun $run = null, ?array $route = null): array
+    private static function runLoop(WaConversation $conv, WaBotSetting $s, ?array $system = null, ?array $tools = null, ?WaAdminNumber $admin = null, ?ReplyRun $run = null, ?array $route = null): array
     {
         // المسار محسوم مسبقاً (الأساسي أو الاحتياطي، E12)
         $route ??= ['provider' => (string) $s->provider, 'model' => (string) $s->model, 'key' => (string) $s->llmKey()];
@@ -312,7 +312,9 @@ TXT;
         $tools ??= BotTools::declarations($s, $conv);
 
         $usage = ['calls' => 0, 'in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0,
-                  'tools' => [], 'leaked' => false, 'ms' => 0];
+                  'tools' => [], 'leaked' => false, 'ms' => 0, 'tool_bytes' => 0];
+        // الأسماء المعلنة لهذه الجولة: ما سواها لا يُنفَّذ ولو طلبه النموذج (E15.3)
+        $declared = array_column($tools, 'name');
         $t0 = microtime(true);
         $final = '';
         $loops = max(1, min(8, (int) $s->max_tool_loops));
@@ -345,16 +347,11 @@ TXT;
 
             $results = [];
             foreach ($r['tool_calls'] as $tc) {
-                try {
-                    $out = $exec
-                        ? $exec($tc['name'], $tc['input'], $conv->fresh())
-                        : BotTools::execute($tc['name'], $tc['input'], $conv->fresh());
-                } catch (\Throwable $e) {
-                    WaLog::error('bot.tool.failed', ['tool' => $tc['name'], 'conv_id' => $conv->id, 'exception' => $e]);
-                    $out = ['ok' => false, 'error' => 'تعذّر تنفيذ العملية', 'note' => 'اعتذر بإيجاز واقترح تحويل المحادثة لموظف.'];
-                }
-                $usage['tools'][] = $tc['name'];
-                $results[] = ['id' => $tc['id'], 'name' => $tc['name'], 'output' => $out];
+                // الاسم المعلن ثم الإذن ثم التطبيع والتحقق ثم التنفيذ ثم السقف؛ التحويل يُحسب من ok وحده
+                $res = Tools\ToolInvoker::run((string) $tc['name'], (array) ($tc['input'] ?? []), $conv->fresh(), $declared, $admin);
+                $usage['tools'][] = $res['status'].':'.$tc['name'];
+                $usage['tool_bytes'] += $res['bytes'];
+                $results[] = ['id' => $tc['id'], 'name' => $tc['name'], 'output' => $res['output']];
             }
             $provider->appendToolResults($history, $results);
 
@@ -592,8 +589,7 @@ TXT;
         $tools = AdminTools::declarations($admin);
 
         try {
-            [$text, $usage] = self::runLoop($conv, $s, $system, $tools,
-                fn (string $name, array $in, WaConversation $c) => AdminTools::execute($name, $in, $c, $admin), $run, $route);
+            [$text, $usage] = self::runLoop($conv, $s, $system, $tools, $admin, $run, $route);
 
             if ($run->abort === 'budget') {
                 $text = 'استغرق الطلب وقتاً أطول من المسموح فلم يكتمل. أعد المحاولة أو جزّئه إلى طلبات أقصر.';
@@ -722,7 +718,7 @@ TXT;
     /** تحويل يقرّره الكود: أداة التحويل نفسها + رسالة تأكيد يبنيها الكود بلغة العميل */
     private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null, ?string $attention = null, ?string $text = null): array
     {
-        BotTools::execute('handoff_to_human', ['reason' => $reason], $conv);
+        BotTools::handoffFromCode($conv, $reason);
         if ($run) {
             $run->escalated = true;
         }
@@ -765,6 +761,9 @@ TXT;
         return ['sent' => true, 'reason' => 'fail-safe'];
     }
 
+    /** @var bool|null عمود tool_result_bytes (E15.7) موجود */
+    private static ?bool $hasToolBytes = null;
+
     private static function recordUsage(?int $convId, string $model, array $u, string $source = 'live'): void
     {
         try {
@@ -781,7 +780,8 @@ TXT;
                 'leaked' => (bool) ($u['leaked'] ?? false),
                 'latency_ms' => (int) ($u['ms'] ?? 0),
                 'created_at' => now(),
-            ]);
+            ] + ((self::$hasToolBytes ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_bot_usage', 'tool_result_bytes'))
+                ? ['tool_result_bytes' => (int) ($u['tool_bytes'] ?? 0)] : []));
             WaLog::info('bot.reply', [
                 'conv_id' => $convId, 'source' => $source, 'model' => $model, 'ms' => (int) ($u['ms'] ?? 0),
                 'tokens_in' => $u['in'], 'tokens_out' => $u['out'], 'tool' => implode(',', array_unique($u['tools'] ?? [])),
