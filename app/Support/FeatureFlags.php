@@ -15,7 +15,7 @@ final class FeatureFlags
     public const DEFINITIONS = [
         'llm_circuit_breaker' => ['label' => 'قاطع دائرة مزوّد الذكاء', 'capability' => 'C256', 'available' => false],
         'inbound_event_log' => ['label' => 'سجل أحداث الوارد', 'capability' => 'C261', 'available' => false],
-        'retention_purge' => ['label' => 'حذف دوري بحسب مدة الاحتفاظ', 'capability' => 'C287', 'available' => false],
+        'retention_purge' => ['label' => 'حذف دوري بحسب مدة الاحتفاظ', 'capability' => 'C287', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

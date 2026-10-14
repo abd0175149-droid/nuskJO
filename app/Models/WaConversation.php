@@ -34,6 +34,7 @@ class WaConversation extends Model
         'last_message_at' => 'datetime',
         'referral' => 'array',
         'client_linked_at' => 'datetime',
+        'erased_at' => 'datetime',
     ];
 
     /**

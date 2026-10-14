@@ -117,6 +117,19 @@ class SnapshotServiceTest extends TestCase
         }
     }
 
+    public function test_shrink_recorded_by_retention_is_allowed_once_then_cleared(): void
+    {
+        config(['retention.shrink_ledger' => $this->dir.'/shrink.json']);
+        $this->service()->run('manual', 'a');
+        (new PDO('sqlite:'.$this->db))->exec('DELETE FROM journal_entries WHERE id > 10');
+        \App\Support\Retention::recordShrink(['journal_entries' => 30]);
+
+        $this->service()->run('manual', 'b');
+
+        $this->assertCount(2, $this->service()->snapshots(), 'الحذف المسجّل لا يُعدّ «قاعدة خطأ»');
+        $this->assertSame([], \App\Support\Retention::shrinkAllowance(), 'يُمسح بعد نسخة ناجحة');
+    }
+
     public function test_rotation_keeps_latest_and_latest_pre_migrate(): void
     {
         config(['backup.local_keep' => 2]);

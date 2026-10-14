@@ -25,7 +25,8 @@ return [
     'required_nonempty' => ['users', 'invoices', 'journal_entries'],
 
     // جداول تُضاف إليها الصفوف فقط؛ النسخة لا تقل عن عددها الحي قبل النسخ.
-    'append_only' => ['wa_messages', 'audit_logs'],
+    // wa_messages خرجت منها (E13): الحذف بطلب صاحبها والتقليم يقلّصانها شرعاً
+    'append_only' => ['audit_logs'],
 
     // أي جدول أساسي يقل عن هذه النسبة من آخر نسخة ناجحة يُفشل النسخ (إلا مع --allow-shrink).
     'shrink_tolerance' => 0.9,

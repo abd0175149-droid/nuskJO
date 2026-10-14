@@ -85,6 +85,10 @@ enum AuditAction: string
     case WaUnlinkClient = 'wa.unlink_client';
     case WaBackfillIdentity = 'wa.backfill_identity';
     case WaBreakerManual = 'wa.breaker_manual';
+    case WaErasureRequest = 'wa.erasure_request';
+    case WaErasureVerify = 'wa.erasure_verify';
+    case WaErasureReject = 'wa.erasure_reject';
+    case WaDataErase = 'wa.data_erase';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -102,9 +106,21 @@ enum AuditAction: string
     case SystemReset = 'system.reset';
     case AuditPruned = 'audit.pruned';
     case AppKeyReencrypt = 'system.reencrypt';
+    case RetentionPruned = 'retention.pruned';
+    case ClientDataExport = 'client.data_export';
+    case ConfigExport = 'config.export';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [];
+    public const INTENTIONALLY_UNEMITTED = [
+        // مؤقت أثناء بناء E13 على دفعات؛ يُحذف كل سطر مع الدفعة التي تكتبه
+        'WaErasureRequest' => 'E13.4 قيد البناء',
+        'WaErasureVerify' => 'E13.4 قيد البناء',
+        'WaErasureReject' => 'E13.4 قيد البناء',
+        'WaDataErase' => 'E13.5 قيد البناء',
+        'RetentionPruned' => 'E13.6 قيد البناء',
+        'ClientDataExport' => 'E13.8 قيد البناء',
+        'ConfigExport' => 'E13.8 قيد البناء',
+    ];
 
     public function severity(): AuditSeverity
     {
@@ -120,7 +136,8 @@ enum AuditAction: string
             self::WaSettingsUpdate, self::WaBotEnabled, self::WaSuspendManual, self::WaRoutingUpdate,
             self::WaReliabilityFlag, self::WaIdentityMode, self::WaSecurity, self::AuditExport,
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
-            self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual => AuditSeverity::Warn,
+            self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
+            self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -142,7 +159,8 @@ enum AuditAction: string
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange => 'meta',
-            self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity => 'system',
+            self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
+            self::RetentionPruned, self::ConfigExport => 'system',
             default => 'whatsapp',
         };
     }
@@ -217,6 +235,13 @@ enum AuditAction: string
             self::WaUnlinkClient => 'فك ربط محادثة بعميل',
             self::WaBackfillIdentity => 'تعبئة هوية المحادثات القديمة',
             self::WaBreakerManual => 'فتح أو إغلاق وضع التحويل يدوياً',
+            self::WaErasureRequest => 'طلب حذف بيانات',
+            self::WaErasureVerify => 'تحقّق من هوية طالب الحذف',
+            self::WaErasureReject => 'رفض طلب حذف',
+            self::WaDataErase => 'حذف بيانات عميل',
+            self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
+            self::ClientDataExport => 'تصدير بيانات عميل',
+            self::ConfigExport => 'تصدير إعدادات البوت',
             self::WaAccountUpdate => 'حدث حساب ميتا',
             self::WaAccountAlert => 'تنبيه حساب ميتا',
             self::WaSecurity => 'حدث أمان ميتا',
