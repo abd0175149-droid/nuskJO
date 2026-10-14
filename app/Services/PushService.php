@@ -18,6 +18,11 @@ class PushService
 {
     public static function toUser(int $userId, string $title, string $body, ?string $url = null, ?string $tag = null): int
     {
+        // خط أخير: الإشعارات تحمل أسماء عملاء ومبالغ، فلا تصل لحساب معطّل
+        if (!\App\Models\User::where('id', $userId)->where('is_active', true)->exists()) {
+            return 0;
+        }
+
         $tokens = FcmToken::where('user_id', $userId)->pluck('token')->all();
         if (!$tokens || !self::configured()) {
             return 0;

@@ -26,7 +26,7 @@ Route::get('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookControl
 Route::post('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookController::class, 'receive']);
 
 // Authenticated Routes
-Route::middleware(['auth', 'authz.fence'])->group(function () {
+Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(function () {
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 

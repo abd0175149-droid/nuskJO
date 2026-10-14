@@ -28,7 +28,7 @@
                                 👔 {{ n.name }}
                                 <span v-if="!n.is_active" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">موقوف</span>
                             </p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span class="font-mono" dir="ltr">+{{ n.phone }}</span><span v-if="n.user_name"> · حساب: {{ n.user_name }}</span><span v-if="n.last_used"> · آخر استخدام {{ n.last_used }}</span></p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span class="font-mono" dir="ltr">+{{ n.phone }}</span><span v-if="n.user_name"> · حساب: {{ n.user_name }}</span><span v-if="n.user_inactive" class="mr-1 px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 font-bold">المستخدم المرتبط معطّل — يُعامَل كعميل</span><span v-if="n.last_used"> · آخر استخدام {{ n.last_used }}</span></p>
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
                             <button type="button" @click="openForm(n)" class="px-2 py-1 rounded-lg text-xs font-bold text-gold-700 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20">✏️ تعديل</button>

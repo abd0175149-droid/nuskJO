@@ -118,21 +118,20 @@ class UserManagementTest extends TestCase
     public function test_last_active_admin_cannot_be_demoted_deactivated_or_deleted(): void
     {
         $last = User::factory()->admin()->create();
-        // مدير معطّل ما زالت جلسته مفتوحة: Gate::before يرفض كل فحوصه قبل الوصول إلى ثابت «آخر مدير»
+        // مدير معطّل ما زالت جلسته مفتوحة: يخرج في طلبه التالي (active) قبل أي فحص
         $stale = User::factory()->admin()->inactive()->create();
         $sales = $this->roleWith(['clients.view'], 'sales');
 
-        $this->actingAs($stale);
-
-        $this->put("/users/{$last->id}", [
+        $this->actingAs($stale)->put("/users/{$last->id}", [
             'name' => $last->name, 'email' => $last->email, 'role_id' => $last->role_id, 'is_active' => false,
-        ])->assertForbidden();
+        ])->assertRedirect('/login');
+        $this->assertGuest();
 
-        $this->put("/users/{$last->id}", [
+        $this->actingAs($stale)->put("/users/{$last->id}", [
             'name' => $last->name, 'email' => $last->email, 'role_id' => $sales->id, 'is_active' => true,
-        ])->assertForbidden();
+        ])->assertRedirect('/login');
 
-        $this->delete("/users/{$last->id}")->assertForbidden();
+        $this->actingAs($stale)->delete("/users/{$last->id}")->assertRedirect('/login');
 
         $fresh = $last->fresh();
         $this->assertNotNull($fresh);

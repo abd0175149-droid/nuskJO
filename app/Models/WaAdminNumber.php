@@ -44,7 +44,10 @@ class WaAdminNumber extends Model
         }
 
         try {
-            return self::where('phone', $canonical)->where('is_active', true)->first();
+            // رقم موظف عُطّل حسابه يُعامَل كعميل: لا أدوات إدارية ولا أرقام إيرادات
+            return self::where('phone', $canonical)->where('is_active', true)
+                ->where(fn ($q) => $q->whereNull('user_id')->orWhereHas('user', fn ($u) => $u->where('is_active', true)))
+                ->first();
         } catch (\Throwable $e) {
             return null;   // قبل تشغيل الهجرة — لا أرقام إدارة بعد
         }

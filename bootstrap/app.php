@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
             'perm' => \App\Http\Middleware\RequirePermission::class,
             'authz.fence' => \App\Http\Middleware\EnsureRoutePermission::class,
         ]);

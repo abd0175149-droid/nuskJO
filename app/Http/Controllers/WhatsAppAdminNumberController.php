@@ -22,7 +22,7 @@ class WhatsAppAdminNumberController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
-        $numbers = WaAdminNumber::with('user:id,name')->orderBy('name')->get();
+        $numbers = WaAdminNumber::with('user:id,name,is_active')->orderBy('name')->get();
 
         return Inertia::render('WhatsApp/AdminNumbers', [
             'title' => 'أرقام الإدارة',
@@ -32,6 +32,7 @@ class WhatsAppAdminNumberController extends Controller
                 'name' => $n->name,
                 'user_id' => $n->user_id,
                 'user_name' => $n->user?->name,
+                'user_inactive' => $n->user && !$n->user->is_active,
                 'permissions' => $n->permissions ?? [],
                 'is_active' => (bool) $n->is_active,
                 'notes' => $n->notes,

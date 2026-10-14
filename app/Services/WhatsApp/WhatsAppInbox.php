@@ -241,7 +241,7 @@ class WhatsAppInbox
     public static function notifyAdmins(string $title, string $body, string $url = '/whatsapp/inbox'): void
     {
         try {
-            $ids = \App\Models\User::whereHas('role', fn ($q) => $q->where('slug', 'admin'))->pluck('id');
+            $ids = \App\Models\User::whereHas('role', fn ($q) => $q->where('slug', 'admin'))->where('is_active', true)->pluck('id');
             foreach ($ids as $id) {
                 \App\Services\NotificationService::send($id, $title, $body, [
                     'type' => 'whatsapp', 'icon' => '💬', 'action_url' => $url,

@@ -73,6 +73,7 @@ class NotificationService
     public static function notifyAdmins(string $title, string $body, array $options = []): void
     {
         $adminIds = User::whereHas('role', fn($q) => $q->where('slug', 'admin'))
+            ->where('is_active', true)
             ->where('id', '!=', auth()->id())
             ->pluck('id')
             ->toArray();
@@ -85,7 +86,7 @@ class NotificationService
      */
     public static function broadcast(string $title, string $body, array $options = [], ?int $excludeUserId = null): void
     {
-        $users = User::query();
+        $users = User::where('is_active', true);
         if ($excludeUserId) {
             $users->where('id', '!=', $excludeUserId);
         }
