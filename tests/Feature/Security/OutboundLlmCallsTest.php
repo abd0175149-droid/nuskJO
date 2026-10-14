@@ -93,6 +93,15 @@ class OutboundLlmCallsTest extends TestCase
         $this->assertStringNotContainsString(self::KEY, $response->getContent());
     }
 
+    public function test_key_check_needs_the_settings_permission(): void
+    {
+        Http::fake();
+        $agent = User::factory()->withPermissions(['whatsapp.view'], 'agent')->create();
+
+        $this->actingAs($agent)->postJson('/api/whatsapp/test-key', ['provider' => 'google', 'api_key' => self::KEY])->assertForbidden();
+        Http::assertNothingSent();
+    }
+
     public function test_key_check_redacts_provider_errors(): void
     {
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();

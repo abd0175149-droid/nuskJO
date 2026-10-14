@@ -54,6 +54,12 @@ class MetaErrorHandlingTest extends TestCase
                 'error_subcode' => 463,
                 'fbtrace_id' => 'AbCdEfGhIjKlMnOpQrStUvX',
             ]],
+            'window closed at meta 131047' => [400, 'WINDOW_EXPIRED', '[131047] انتهت نافذة الـ24 ساعة عند ميتا — لا يمكن الإرسال حتى يراسلنا العميل.', [
+                'message' => 'Re-engagement message', 'type' => 'OAuthException', 'code' => 131047,
+            ]],
+            'unsupported 131051' => [400, 'UNSUPPORTED', '[131051] نوع الرسالة غير مدعوم في واتساب.', [
+                'message' => 'Unsupported message type', 'type' => 'OAuthException', 'code' => 131051,
+            ]],
             'unknown code' => [400, 'META_ERROR', '[100] (#100) Invalid parameter', [
                 'message' => '(#100) Invalid parameter',
                 'type' => 'OAuthException',

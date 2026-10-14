@@ -50,6 +50,20 @@ class GraphVersionCheckTest extends TestCase
         $this->assertSame(2, $this->alerts($admin));
     }
 
+    public function test_first_alert_comes_exactly_sixty_days_before_sunset(): void
+    {
+        $admin = User::factory()->admin()->create();
+        config(['services.whatsapp.graph_version' => 'v21.0', 'services.whatsapp.webhook_version' => 'v25.0']);
+
+        Carbon::setTestNow('2026-11-21 08:00');   // 61 يوماً قبل 2027-01-21
+        $this->artisan('whatsapp:graph-version-check')->assertExitCode(0);
+        $this->assertSame(0, $this->alerts($admin));
+
+        Carbon::setTestNow('2026-11-22 08:00');   // 60 يوماً
+        $this->artisan('whatsapp:graph-version-check')->assertExitCode(0);
+        $this->assertSame(1, $this->alerts($admin));
+    }
+
     public function test_unset_webhook_version_and_unknown_versions_alert(): void
     {
         $admin = User::factory()->admin()->create();

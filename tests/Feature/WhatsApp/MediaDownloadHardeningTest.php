@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\WaBotUsage;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\VoiceTranscriber;
@@ -116,6 +117,51 @@ class MediaDownloadHardeningTest extends TestCase
 
         $this->assertFalse(WhatsAppChannel::fetchMedia(self::MEDIA_ID)['ok']);
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'collector.example'));
+    }
+
+    public function test_log_mode_follows_one_https_redirect_and_records_its_host(): void
+    {
+        Log::spy();
+        Http::fake([
+            'graph.facebook.com/*' => Http::response(['url' => 'https://lookaside.fbsbx.com/x', 'mime_type' => 'audio/ogg', 'sha256' => hash('sha256', 'MEDIA-BYTES')]),
+            'lookaside.fbsbx.com/*' => Http::response('', 302, ['Location' => 'https://mmg.whatsapp.net/y']),
+            'mmg.whatsapp.net/*' => Http::response('MEDIA-BYTES'),
+        ]);
+
+        $this->assertTrue(WhatsAppChannel::fetchMedia(self::MEDIA_ID)['ok']);
+        Log::shouldHaveReceived('error')->with('WA media download redirected', ['host' => 'mmg.whatsapp.net']);
+    }
+
+    public function test_voice_message_is_transcribed_end_to_end_and_records_the_host(): void
+    {
+        $this->configureChannel(['provider' => 'google', 'enabled' => true]);
+        $conv = WaConversation::factory()->windowOpen()->create();
+        $voice = WaMessage::factory()->inbound()->create(['conversation_id' => $conv->id, 'msg_type' => 'audio', 'payload' => ['audio' => ['id' => self::MEDIA_ID]]]);
+        Http::fake([
+            'graph.facebook.com/*' => Http::response(['url' => 'https://lookaside.fbsbx.com/x', 'mime_type' => 'audio/ogg; codecs=opus', 'sha256' => hash('sha256', 'MEDIA-BYTES')]),
+            'lookaside.fbsbx.com/*' => Http::response('MEDIA-BYTES'),
+            'generativelanguage.googleapis.com/*' => Http::response(['candidates' => [['content' => ['parts' => [['text' => 'أريد عمرة']]]]], 'usageMetadata' => ['promptTokenCount' => 10, 'candidatesTokenCount' => 3]]),
+        ]);
+
+        VoiceTranscriber::run($conv);
+
+        $voice->refresh();
+        $this->assertSame('🎤 أريد عمرة', $voice->body);
+        $this->assertSame('lookaside.fbsbx.com', $voice->payload['_media_host']);
+        $this->assertSame(1, WaBotUsage::where('source', 'voice')->count());
+    }
+
+    public function test_voice_with_a_provider_that_cannot_hear_records_unsupported(): void
+    {
+        $this->configureChannel(['provider' => 'anthropic', 'enabled' => true]);
+        $conv = WaConversation::factory()->windowOpen()->create();
+        $voice = WaMessage::factory()->inbound()->create(['conversation_id' => $conv->id, 'msg_type' => 'audio', 'payload' => ['audio' => ['id' => self::MEDIA_ID]]]);
+        Http::fake();
+
+        VoiceTranscriber::run($conv);
+
+        $this->assertSame(WhatsAppChannel::ERR_UNSUPPORTED, $voice->fresh()->payload['_media_error']);
+        Http::assertNothingSent();
     }
 
     public function test_voice_message_records_the_media_host_or_the_error_code(): void

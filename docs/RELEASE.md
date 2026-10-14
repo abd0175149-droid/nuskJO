@@ -80,6 +80,17 @@ bash $M $ARGS                  # في نافذة هادئة: نسخة وسحب �
 3. `docker exec -u www-data nuskjo-app php artisan whatsapp:fence-report`: كل موظف في «لا يرون أي محادثة» يحتاج اختصاصاً أو توكيلاً. أرسل للموظفين: حدّثوا الصفحة.
 4. بعد يومين أو ثلاثة بلا شكاوى: أعد التقرير، ثم `WA_FENCE_QUOTES=true` في `.env.production` و`docker compose up -d nuskjo-app`.
 
+## ترقية إصدار Graph (عند كل إصدار جديد)
+
+التنبيه اليومي يبدأ قبل 60 يوماً من نهاية الإصدار، واللوحة في **إعدادات الواتساب › 🧭 الإصدارات والحماية** تعرض الحالة.
+1. `docker exec -u www-data nuskjo-app php artisan whatsapp:graph-smoke --target=<الإصدار الهدف> --media` (قراءة فقط).
+2. `WA_GRAPH_VERSION=<الهدف>` في `.env.production` ثم `docker compose up -d --force-recreate nuskjo-app`. جرّب نصاً وصورة وصوتاً وحالات التسليم، وراقب 48 ساعة.
+3. بعدها ارفع إصدار حقول الويبهوك في App Dashboard › WhatsApp › Configuration، واكتب `WA_WEBHOOK_VERSION` بالقيمة نفسها، وأرسل رسالة واردة من هاتف اختبار.
+4. التراجع: الإصدار السابق في `WA_GRAPH_VERSION` ثم force-recreate (يصلح حتى تاريخ نهايته فقط).
+
+فحص مضيف الوسائط: أسبوع بـ `WA_MEDIA_HOST_MODE=log` بلا «WA media host outside allowlist» ولا «sha256 mismatch» في السجل، ثم `enforce`.
+appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بلا APPSECRET_PROOF_INVALID، والتأكد أن لا مستهلك آخر لرموز التطبيق، ثم «Require App Secret» في اللوحة. التراجع: ألغِ الخيار في اللوحة أولاً ثم أطفئ المتغير.
+
 ## مغادرة موظف
 
 بالترتيب، في اليوم نفسه:
