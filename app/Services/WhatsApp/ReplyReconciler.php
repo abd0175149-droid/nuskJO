@@ -136,7 +136,7 @@ final class ReplyReconciler
     {
         try {
             $waiting = DB::table('jobs')
-                ->where('queue', (string) config('services.whatsapp.reply_queue', 'default'))
+                ->where('queue', ProcessWhatsAppReply::queueName())
                 ->whereNull('reserved_at')
                 ->where('available_at', '<', now()->subMinutes(self::QUEUE_LAG_MINUTES)->getTimestamp())
                 ->count();

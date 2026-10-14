@@ -200,7 +200,7 @@ class ReplyReconcilerTest extends TestCase
     private function queuedJob(int $minutesWaiting, ?int $reservedAt = null): void
     {
         DB::table('jobs')->insert([
-            'queue' => 'default', 'payload' => '{}', 'attempts' => 0, 'reserved_at' => $reservedAt,
+            'queue' => ProcessWhatsAppReply::queueName(), 'payload' => '{}', 'attempts' => 0, 'reserved_at' => $reservedAt,
             'available_at' => now()->subMinutes($minutesWaiting)->getTimestamp(), 'created_at' => now()->subMinutes($minutesWaiting)->getTimestamp(),
         ]);
     }

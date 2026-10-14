@@ -3,7 +3,9 @@
 namespace Tests\Unit;
 
 use App\Jobs\ProcessWhatsAppReply;
+use App\Jobs\SendPushNotification;
 use App\Services\WhatsApp\ReplyRun;
+use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
@@ -32,7 +34,7 @@ class ReplyTimingInvariantsTest extends TestCase
     public function test_a_running_reply_survives_a_graceful_stop(): void
     {
         $job = new ProcessWhatsAppReply(1, 't');
-        $stopwait = $this->supervisorStopwait('laravel-queue');
+        $stopwait = $this->supervisorStopwait('laravel-wa');
 
         $this->assertLessThan($stopwait, $job->timeout);
         $this->assertLessThan($this->composeGrace(), $stopwait);
@@ -75,11 +77,38 @@ class ReplyTimingInvariantsTest extends TestCase
         $this->assertGreaterThan($job->timeout, ProcessWhatsAppReply::RUNNING_SECONDS);
     }
 
-    public function test_the_queue_worker_stops_before_the_web_server(): void
+    public function test_the_queue_workers_stop_before_the_web_server(): void
     {
         $ini = parse_ini_file(base_path('docker/supervisord.conf'), true, INI_SCANNER_RAW);
 
-        $this->assertGreaterThan((int) $ini['program:nginx']['priority'], (int) $ini['program:laravel-queue']['priority']);
-        $this->assertGreaterThan((int) $ini['program:php-fpm']['priority'], (int) $ini['program:laravel-queue']['priority']);
+        foreach (['laravel-wa', 'laravel-queue'] as $worker) {
+            $this->assertGreaterThan((int) $ini['program:nginx']['priority'], (int) $ini["program:{$worker}"]['priority'], $worker);
+            $this->assertGreaterThan((int) $ini['program:php-fpm']['priority'], (int) $ini["program:{$worker}"]['priority'], $worker);
+        }
+    }
+
+    public function test_replies_have_their_own_worker_and_the_default_worker_waits_for_a_push(): void
+    {
+        $ini = parse_ini_file(base_path('docker/supervisord.conf'), true, INI_SCANNER_RAW);
+        $wa = $ini['program:laravel-wa']['command'];
+        $default = $ini['program:laravel-queue']['command'];
+
+        $this->assertSame('wa-replies', ProcessWhatsAppReply::queueName());
+        $this->assertStringContainsString('--queue='.ProcessWhatsAppReply::queueName(), $wa);
+        // retryUntil يحكم إعادة الرد، و--tries كان يُفشله بعد إطلاقات WithoutOverlapping
+        $this->assertStringNotContainsString('--tries', $wa);
+        $this->assertStringContainsString('--queue=default', $default);
+        $this->assertStringNotContainsString('wa-replies', $default);
+
+        $this->assertGreaterThan((new SendPushNotification(1, 't', 'b'))->timeout, $this->supervisorStopwait('laravel-queue'));
+    }
+
+    public function test_a_reply_is_dispatched_to_the_reply_queue(): void
+    {
+        Queue::fake();
+
+        ProcessWhatsAppReply::schedule(7);
+
+        Queue::assertPushedOn('wa-replies', ProcessWhatsAppReply::class);
     }
 }

@@ -108,6 +108,31 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 4. بعد يوم مستقر: `TRUSTED_PROXIES=127.0.0.1,<البوابة>/32` في `.env.production` ثم `up -d`. تحقق: آخر صفوف `audit_logs.ip_address` عناوين عامة، والحضور بالشبكة يعمل، ولا `proxy.untrusted_forwarded` في السجل، و`whatsapp:doctor` بلا TRUST_ALL_PROXIES.
 5. التراجع: احذف السطر من `/opt/nuskJO/.env` ثم `up -d`، وأعد قاعدة النفق.
 
+## موثوقية رد الواتساب (مرة واحدة، على مراحل)
+
+**النشر الأول (الوظيفة والهجرة `2026_10_14_000007` وWAL وفصل الطابور معاً):**
+1. نسخة: `docker exec -u www-data nuskjo-app php artisan backup:run --reason=manual --label=pre-e07`.
+2. أوقف التقاط وظائف جديدة واترك الجارية تنتهي: `docker exec -u www-data nuskjo-app php artisan queue:pause database:default`، ثم انتظر حتى يصير `docker exec -u www-data nuskjo-app sqlite3 /var/www/html/database/data/database.sqlite "SELECT count(*) FROM jobs WHERE reserved_at IS NOT NULL"` صفراً (دقيقتان على الأكثر).
+3. انشر، ثم **فوراً** `docker exec -u www-data nuskjo-app php artisan queue:continue database:default`. الإيقاف محفوظ في كاش القاعدة فيبقى بعد النشر، وبدون هذا الأمر لا تُرسل الإشعارات. ما بقي من ردود في default يعالجه عامل default مرة واحدة.
+4. تحقق: `PRAGMA journal_mode` يرجع `wal` (docs/RESTORE.md «WAL»)، و`supervisorctl status` داخل الحاوية يعرض `laravel-wa:laravel-wa_00` و`laravel-queue` يعملان، و`php artisan whatsapp:reliability` يعرض الأعلام.
+
+**الأعلام بعدها، كلٌّ وحده** (`docker exec -u www-data nuskjo-app php artisan whatsapp:reliability <العلم> on|off`):
+- `reconcile` بعد أسبوع هادئ، وبعد أن تبدو قائمة `whatsapp:reconcile-replies --dry-run` منطقية.
+- `webhook_5xx` بعد WAL فقط.
+- التراجع: `off` للعلم نفسه، بلا نشر.
+
+**الرجوع عن فصل الطابور:** `WA_REPLY_QUEUE=default` في `.env.production` ثم `docker compose up -d nuskjo-app`، ثم صرّف ما بقي: `docker exec -u www-data nuskjo-app php artisan queue:work database --queue=wa-replies --stop-when-empty`.
+
+**عامل رد ثانٍ (`numprocs=2` لـ laravel-wa وحده)**، وفقط إن تحققت كل الشروط:
+- مرّ أسبوع كامل بعد WAL وفصل الطابور.
+- `grep -c "database is locked"` على `storage/logs/laravel*.log` و`storage/logs/queue-*-error.log` يعطي صفراً.
+- لا صفوف ProcessWhatsAppReply جديدة في `failed_jobs`.
+- `docker stats nuskjo-app` يترك هامشاً للعامل الإضافي (نحو 60–80MB).
+
+بعد رفع العدد: راقب «database is locked» 72 ساعة، وقِس في الذروة الزمن من `jobs.available_at` إلى بدء التنفيذ. للتراجع: `numprocs=1` ثم إعادة النشر.
+
+لا تنشر أثناء نسخة يدوية جارية من صفحة النسخ: عامل default ينتظر 40 ثانية فقط عند الإيقاف.
+
 ## مغادرة موظف
 
 بالترتيب، في اليوم نفسه:

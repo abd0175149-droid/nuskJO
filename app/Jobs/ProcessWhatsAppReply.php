@@ -61,12 +61,18 @@ class ProcessWhatsAppReply implements ShouldQueue
         return "wa:running:{$convId}";
     }
 
+    /** طابور الردود (laravel-wa)، منفصلاً عن default */
+    public static function queueName(): string
+    {
+        return (string) config('services.whatsapp.reply_queue', 'wa-replies');
+    }
+
     /** يُستدعى من الويبهوك بعد تخزين الرسالة، ومن المُصالِح */
     public static function schedule(int $convId): void
     {
         $token = uniqid('t', true);
         Cache::put(self::debounceKey($convId), $token, now()->addMinutes(self::DEBOUNCE_MINUTES));
-        self::dispatch($convId, $token)->delay(now()->addSeconds(2));
+        self::dispatch($convId, $token)->onQueue(self::queueName())->delay(now()->addSeconds(2));
     }
 
     /**

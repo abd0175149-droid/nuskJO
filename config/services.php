@@ -8,6 +8,9 @@ return [
     | يمسح متغيّرات البيئة، فكان env() يعيد فراغاً في طلبات الويب وحدها.
     */
     'whatsapp' => [
+        // طابور ردود البوت وحده (عامل laravel-wa في supervisord): الإشعارات لا تنتظر خلف رد يطول.
+        // الرجوع: WA_REPLY_QUEUE=default ثم تصريف المتبقي (docs/RELEASE.md)
+        'reply_queue' => env('WA_REPLY_QUEUE', 'wa-replies'),
         'token' => env('WA_TOKEN'),
         'phone_number_id' => env('WA_PHONE_NUMBER_ID'),
         'verify_token' => env('WA_WEBHOOK_VERIFY_TOKEN'),
