@@ -44,6 +44,9 @@ class RolePermissionSeeder extends Seeder
             'advances' => ['view', 'create', 'approve', 'reject', 'delete'],
             'payroll' => ['view', 'generate', 'approve', 'reject'],
             'hr_reports' => ['view'],
+
+            // النسخ الاحتياطي (للمدير وحده افتراضياً؛ لا تُمنح لأي دور أدناه)
+            'backups' => ['view', 'run', 'restore_ack'],
         ];
 
         $moduleNames = [
@@ -53,7 +56,7 @@ class RolePermissionSeeder extends Seeder
             'whatsapp' => 'الواتساب', 'offers' => 'العروض', 'quotes' => 'طلبات التسعير',
             'users' => 'المستخدمين', 'employees' => 'الموظفين', 'attendance' => 'الحضور',
             'leaves' => 'الإجازات', 'advances' => 'السلف', 'payroll' => 'الرواتب',
-            'hr_reports' => 'تقارير HR',
+            'hr_reports' => 'تقارير HR', 'backups' => 'النسخ الاحتياطي',
         ];
 
         $actionNames = [
@@ -63,6 +66,7 @@ class RolePermissionSeeder extends Seeder
             'employee_profit' => 'أرباح الموظفين', 'trip_date' => 'تقارير الرحلات',
             'reply' => 'الردّ على المحادثات', 'bot_toggle' => 'تشغيل/إيقاف البوت',
             'price' => 'التسعير والإرسال', 'view_cost' => 'عرض تكاليف',
+            'run' => 'تشغيل نسخة الآن', 'restore_ack' => 'اعتماد مراجعة ما بعد الاستعادة',
         ];
 
         $allPermissions = [];

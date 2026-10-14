@@ -19,6 +19,7 @@ class Permission extends Model
     public const SENSITIVE = [
         'users.create', 'users.update', 'users.delete', 'roles.manage',
         'settings.update', 'accounting.manage', 'accounting.close', 'whatsapp.settings',
+        'backups.run', 'backups.restore_ack',
     ];
 
     public function roles(): BelongsToMany

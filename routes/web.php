@@ -63,6 +63,9 @@ Route::middleware('auth')->group(function () {
     Route::post('settings/exchange-rate', [SettingController::class, 'storeExchangeRate'])->name('settings.exchange-rate');
     Route::post('settings/upload-template', [SettingController::class, 'uploadTemplate'])->name('settings.upload-template');
     Route::post('settings/brand-asset', [SettingController::class, 'uploadBrandAsset'])->name('settings.brand-asset');
+    Route::get('settings/backups', [\App\Http\Controllers\BackupController::class, 'index'])->name('settings.backups');
+    Route::post('settings/backups/run', [\App\Http\Controllers\BackupController::class, 'runNow'])->name('settings.backups.run');
+    Route::post('settings/backups/ack-restore', [\App\Http\Controllers\BackupController::class, 'acknowledgeRestore'])->name('settings.backups.ack');
     Route::get('settings/print-layout', [SettingController::class, 'printLayout'])->name('settings.print-layout');
     Route::post('settings/print-layout', [SettingController::class, 'savePrintLayout'])->name('settings.save-print-layout');
     Route::resource('attendance-locations', \App\Http\Controllers\AttendanceLocationController::class)->only(['index', 'store', 'update', 'destroy']);

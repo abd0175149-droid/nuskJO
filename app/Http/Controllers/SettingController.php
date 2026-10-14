@@ -12,7 +12,7 @@ class SettingController extends Controller
 {
     public function index()
     {
-        $settings = Setting::all()->groupBy('group_name');
+        $settings = Setting::whereNotIn('key', Setting::INTERNAL_KEYS)->get()->groupBy('group_name');
 
         // قوالب الطباعة
         $financialTemplate = Setting::where('key', 'print_template_financial')->first();
@@ -25,6 +25,10 @@ class SettingController extends Controller
                 'financial' => $financialTemplate?->value ? Storage::url($financialTemplate->value) : null,
                 'accounting' => $accountingTemplate?->value ? Storage::url($accountingTemplate->value) : null,
             ],
+            // شارة «آخر نسخة» لمن يرى صفحة النسخ الاحتياطي
+            'lastBackup' => auth()->user()->can('backups.view') && \Illuminate\Support\Facades\Schema::hasTable('backup_runs')
+                ? ['at' => ($at = \App\Models\BackupRun::where('status', 'ok')->max('finished_at')) ? \Illuminate\Support\Carbon::parse($at)->toIso8601String() : null]
+                : null,
             // هوية بطاقات العروض
             'brand' => [
                 'logo' => ($v = Setting::get('company_logo')) ? Storage::url($v) : null,
@@ -43,6 +47,9 @@ class SettingController extends Controller
         ]);
 
         foreach ($validated['settings'] as $setting) {
+            if (in_array($setting['key'], Setting::INTERNAL_KEYS, true)) {
+                continue;
+            }
             Setting::where('key', $setting['key'])->update(['value' => $setting['value']]);
         }
 

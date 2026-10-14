@@ -4,6 +4,14 @@
         <div class="space-y-8">
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
 
+            <Link v-if="lastBackup" href="/settings/backups"
+                  class="flex items-center gap-2 p-3 rounded-xl border text-sm"
+                  :class="backupAgeHours !== null && backupAgeHours <= 26 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-800'">
+                🛟 <span v-if="backupAgeHours !== null">آخر نسخة احتياطية قبل {{ backupAgeHours }} ساعة</span>
+                <span v-else>لا توجد نسخة احتياطية ناجحة بعد</span>
+                <span class="mr-auto underline text-xs">النسخ الاحتياطي</span>
+            </Link>
+
             <!-- سعر الصرف (ثابت) -->
             <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">💱 سعر الصرف</h3>
@@ -156,10 +164,16 @@
     </AppLayout>
 </template>
 <script setup>
-import { ref, reactive } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { ref, reactive, computed } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
-const props = defineProps({ settings: Object, templates: Object, brand: Object });
+const props = defineProps({ settings: Object, templates: Object, brand: Object, lastBackup: Object });
+
+// عمر آخر نسخة احتياطية ناجحة بالساعات (null = لا نسخة بعد)
+const backupAgeHours = computed(() => {
+    const at = props.lastBackup?.at;
+    return at ? Math.floor((Date.now() - new Date(at).getTime()) / 3600000) : null;
+});
 
 const logoFile = ref(null);
 const heroFile = ref(null);

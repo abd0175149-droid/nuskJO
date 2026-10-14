@@ -56,3 +56,9 @@ Schedule::command('backup:run --reason=scheduled')
     ->dailyAt('02:30')
     ->withoutOverlapping()
     ->when(fn () => config('backup.enabled'));
+
+// مراقب النسخ: تأخر اللقطة أو التجميع أو السحب أو التمرين، وامتلاء القرص (تنبيه يومي لكل نوع)
+Schedule::command('backup:watchdog')
+    ->hourly()
+    ->withoutOverlapping()
+    ->when(fn () => config('backup.enabled'));

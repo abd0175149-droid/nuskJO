@@ -400,6 +400,7 @@ const menuGroups = [
         { icon: '🗓️', label: 'أنواع الإجازات', route: '/leave-types', permission: 'settings.view' },
         { icon: '📍', label: 'مواقع الحضور', route: '/attendance-locations', permission: 'settings.view' },
         { icon: '⚙️', label: 'إعدادات النظام', route: '/settings', permission: 'settings.view' },
+        { icon: '🛟', label: 'النسخ الاحتياطي', route: '/settings/backups', permission: 'backups.view' },
     ]},
 ];
 
