@@ -365,6 +365,8 @@
                     </label>
                 </div>
 
+                <IdentityModePanel :mode="identityMode"/>
+
                 <FeatureFlagsPanel :flags="flags"/>
 
                 <!-- ================= شريط الحفظ ================= -->
@@ -394,6 +396,7 @@ import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
+import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
 import SecretCard from '@/Components/WhatsApp/SecretCard.vue';
@@ -415,6 +418,7 @@ const props = defineProps({
     signature: { type: Object, default: () => ({}) },
     killSwitch: { type: Object, default: () => ({}) },
     flags: { type: Array, default: () => [] },
+    identityMode: { type: String, default: 'store' },
     can: { type: Object, default: () => ({}) },
     webhookUrl: String,
     defaultPrompt: String,

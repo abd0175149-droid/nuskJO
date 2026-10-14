@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Console\Commands\BackupSafeMode;
 use App\Enums\AuditAction;
 use App\Exceptions\StaleSettingsException;
+use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WaBotSetting;
@@ -14,6 +15,7 @@ use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\ChannelDoctor;
 use App\Services\WhatsApp\GraphVersions;
+use App\Services\WhatsApp\IdentityMode;
 use App\Services\WhatsApp\Llm\LlmFactory;
 use App\Services\WhatsApp\MetaHealth;
 use App\Services\WhatsApp\Settings\SettingsSchema;
@@ -24,6 +26,8 @@ use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -242,6 +246,26 @@ class WhatsAppSettingsController extends Controller
         return response()->json(['flags' => FeatureFlags::panel()]);
     }
 
+    /**
+     * PATCH api/whatsapp/settings/identity-mode: التعامل مع عميل بلا رقم ظاهر (E11.9). مثل أمر
+     * whatsapp:identity-mode تماماً: Setting لا عمود في wa_bot_settings، والسجل بالقيمتين.
+     */
+    public function identityMode(Request $request): JsonResponse
+    {
+        $this->authorizeSettings();
+        $data = $request->validate(['mode' => ['required', 'string', Rule::in(IdentityMode::MODES)]]);
+
+        $before = IdentityMode::current();
+        if ($before !== $data['mode']) {
+            DB::transaction(function () use ($before, $data) {
+                Setting::set('wa_identity_mode', $data['mode']);
+                AuditLog::log(AuditAction::WaIdentityMode, 'setting', null, 'wa_identity_mode', ['from' => $before, 'to' => $data['mode']]);
+            });
+        }
+
+        return response()->json(['identityMode' => IdentityMode::current()]);
+    }
+
     // ==================== الحمولة ====================
 
     private function payload(): array
@@ -279,6 +303,7 @@ class WhatsAppSettingsController extends Controller
             ],
             'killSwitch' => $this->killSwitchState($s),
             'flags' => FeatureFlags::panel(),
+            'identityMode' => IdentityMode::current(),
             'can' => [
                 'suspend' => auth()->user()->can('whatsapp.settings') || auth()->user()->can('whatsapp.kill_switch'),
                 'resume' => auth()->user()->can('whatsapp.settings'),

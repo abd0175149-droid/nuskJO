@@ -70,6 +70,12 @@
                 <span class="font-bold text-sm truncate">{{ c.name }}</span>
                 <span v-if="c.unread" class="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold grid place-items-center">{{ c.unread }}</span>
               </div>
+              <!-- سطر الهوية (E11): الرقم، أو اسم المستخدم، أو «رقم غير ظاهر» -->
+              <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+                <bdi v-if="c.phone" dir="ltr" class="font-mono">+{{ c.phone }}</bdi>
+                <bdi v-else-if="c.username" dir="ltr" class="font-mono">@{{ c.username }}</bdi>
+                <span v-else>رقم غير ظاهر</span>
+              </p>
               <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ c.preview || '—' }}</p>
               <div v-if="(c.topics && c.topics.length) || c.assignee" class="flex items-center gap-1 mt-1 flex-wrap">
                 <span v-for="tp in (c.topics || [])" :key="tp.key"
@@ -84,6 +90,8 @@
               </div>
               <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 <span v-if="c.needs_attention" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">⚠️ تدخّل</span>
+                <span v-if="c.phoneless" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="العميل يراسل باسم مستخدم ورقمه غير ظاهر">📵 بلا رقم</span>
+                <span v-if="c.from_ad" class="px-1.5 py-0.5 rounded text-[10px] bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" title="بدأت المحادثة من إعلان">📣 من إعلان</span>
                 <span v-if="c.needs_attention && c.attention_reason" class="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ reasonLabel(c.attention_reason) }}</span>
                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="c.bot_enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
                   {{ c.bot_enabled ? (c.paused ? '🤖 موقوف مؤقتاً' : '🤖 بوت') : '👤 بشري' }}
@@ -112,9 +120,18 @@
                   <p class="font-bold text-sm">{{ thread.name }}</p>
                   <p v-if="thread.phone" class="text-xs text-gray-400 font-mono" dir="ltr">{{ thread.phone }}<span v-if="thread.client"> · {{ thread.client }}</span></p>
                   <!-- عميل باسم مستخدم واتساب بلا رقم ظاهر (E11a) -->
-                  <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<bdi v-if="thread.username" dir="ltr" class="font-mono"> · @{{ thread.username }}</bdi></p>
+                  <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<template v-if="thread.username"> · <bdi dir="ltr" class="font-mono">@{{ thread.username }}</bdi></template><span v-if="thread.client" class="text-gray-500 dark:text-gray-400"> · {{ thread.client }}</span></p>
+                  <p v-if="thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
+                     title="اسم يضعه العميل بنفسه — غير موثّق">اسم واتساب: <bdi>{{ thread.profile_name }}</bdi></p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <!-- ربط بعميل (E11.8) -->
+                  <template v-if="props.canLinkClient && !thread.is_admin">
+                    <button type="button" @click="linkOpen = true" class="px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300">
+                      {{ thread.client_id ? '🔗 تغيير الربط' : '🔗 ربط بعميل' }}
+                    </button>
+                    <button v-if="thread.client_id" type="button" @click="unlinkClient" class="px-2.5 py-1 rounded-lg text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">فك الربط</button>
+                  </template>
                   <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ reasonLabel(thread.attention_reason) }}</span>
                   <button v-if="thread.needs_attention" @click="resolve" class="px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20">✅ تمّت المعالجة</button>
                   <button v-if="props.canToggleBot" @click="toggleBot" class="px-2.5 py-1 rounded-lg text-xs font-bold border"
@@ -175,10 +192,16 @@
                   {{ loadingOlder ? 'جارٍ تحميل الأقدم...' : '↑ رسائل أقدم' }}
                 </button>
               </div>
-              <div v-for="m in messages" :key="m.id" class="flex" :class="m.direction === 'in' ? 'justify-start' : 'justify-end'">
-                <div class="max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm" :class="bubble(m)">
+              <div v-for="m in messages" :key="m.id" class="flex" :class="m.is_system ? 'justify-center' : (m.direction === 'in' ? 'justify-start' : 'justify-end')">
+                <!-- تحديث هوية من واتساب (E11): ليس رسالة من العميل -->
+                <div v-if="m.is_system" class="max-w-[85%] rounded-full px-3 py-1 text-[11px] text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-800">
+                  {{ m.body }} <span dir="ltr" class="opacity-60">· {{ m.at }}</span>
+                </div>
+                <div v-else class="max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm" :class="bubble(m)">
                   <p v-if="m.sender" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
+                  <p v-if="m.reply_to" class="mb-1 px-2 py-1 rounded-lg border-r-2 border-gray-400/60 bg-black/5 dark:bg-white/5 text-[11px] opacity-80 break-words line-clamp-2">↩️ {{ m.reply_to }}</p>
                   <p class="whitespace-pre-wrap break-words">{{ m.body }}</p>
+                  <p v-if="m.media" class="mt-0.5 text-[10px] opacity-70 break-words" dir="ltr">{{ m.media.filename || m.media.mime }}</p>
                   <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70">
                     <span dir="ltr">{{ m.at }}</span>
                     <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
@@ -209,12 +232,22 @@
                    :class="thread.window_left <= 120 ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'">
                 ⏳ تبقّى {{ windowLabel(thread.window_left) }} للرد على هذا العميل، وبعدها لا يمكن مراسلته حتى يكتب لنا من جديد.
               </div>
+              <div v-if="cannotReachPhoneless" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
+                📵 رقم العميل غير ظاهر، والرد بالمعرّف غير مفعّل (وضع «حفظ فقط»). يفعّله المدير من إعدادات الواتساب.
+              </div>
+              <div v-else-if="canRequestPhone" class="mb-2 flex flex-wrap items-center gap-2">
+                <button type="button" :disabled="requesting" @click="requestPhone"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold border border-gold-400 text-gold-700 dark:text-gold-400 disabled:opacity-50">
+                  {{ requesting ? '...' : '📱 طلب الرقم' }}
+                </button>
+                <span class="text-[11px] text-gray-400">يصل العميلَ زرٌّ يشارك به رقمه، فيظهر هنا ويُربط بحسابه.</span>
+              </div>
               <form v-if="canReply" @submit.prevent="send" class="flex items-end gap-2">
-                <textarea v-model="draft" rows="2" :disabled="!thread.window_open || sending"
+                <textarea v-model="draft" rows="2" :disabled="!thread.window_open || sending || cannotReachPhoneless"
                           placeholder="اكتب ردّك..."
                           class="flex-1 px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm resize-none dark:text-white disabled:opacity-50"
                           @keydown.enter.exact.prevent="send"></textarea>
-                <button type="submit" :disabled="!draft.trim() || !thread.window_open || sending"
+                <button type="submit" :disabled="!draft.trim() || !thread.window_open || sending || cannotReachPhoneless"
                         class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50">
                   {{ sending ? '...' : '📤' }}
                 </button>
@@ -233,6 +266,7 @@
         </div>
       </div>
     </div>
+    <LinkClientDialog :open="linkOpen" :conversation="thread || {}" @close="linkOpen = false" @linked="onLinked" />
   </AppLayout>
 </template>
 
@@ -242,6 +276,7 @@ import axios from 'axios';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { useDrafts } from '@/composables/useDrafts';
 import { SUSPEND_SOURCES } from '@/utils/waSettings.js';
+import LinkClientDialog from '@/Components/WhatsApp/LinkClientDialog.vue';
 
 
 const props = defineProps({
@@ -254,6 +289,8 @@ const props = defineProps({
   canToggleBot: Boolean,
   seesAll: Boolean,
   canSeeAdminChats: Boolean,
+  canLinkClient: Boolean,
+  identityMode: { type: String, default: 'store' },
   topics: { type: Object, default: () => ({}) },
   staff: { type: Array, default: () => [] },
   attentionReasons: { type: Object, default: () => ({}) },
@@ -570,6 +607,42 @@ const assignTo = async (el) => {
   const value = el.value;
   const ok = await act('assign', { user_id: value === '' ? null : Number(value) }, () => poll(), 'تعذّر التوكيل');
   if (!ok) el.value = String(thread.value?.assigned_to ?? '');
+};
+
+// ===== هوية العميل (E11) =====
+const linkOpen = ref(false);
+const requesting = ref(false);
+const mode = computed(() => thread.value?.identity_mode || props.identityMode);
+// بلا رقم ووضع store: لا إرسال بالمعرّف
+const cannotReachPhoneless = computed(() => !!thread.value?.phoneless && mode.value === 'store');
+const canRequestPhone = computed(() => props.canReply && !!thread.value?.phoneless && !!thread.value?.window_open && mode.value !== 'store');
+
+const requestPhone = async () => {
+  if (requesting.value) return;
+  requesting.value = true;
+  try {
+    await act('request-contact', {}, () => poll(), 'تعذّر إرسال طلب الرقم');
+  } finally { requesting.value = false; }
+};
+
+const onLinked = (data) => {
+  if (!thread.value) return;
+  Object.assign(thread.value, { name: data.client.name, client_id: data.client.id, client: data.client.name, client_code: data.client.code, client_link: data.client_link });
+  load();
+};
+
+const unlinkClient = async () => {
+  const id = activeId.value;
+  if (!id || !window.confirm('فك ربط هذه المحادثة بالعميل؟ لن يعيد النظام ربطها آلياً.')) return;
+  sendError.value = '';
+  try {
+    await axios.delete(threadUrl(id, 'link-client'), api);
+    if (activeId.value === id && thread.value) Object.assign(thread.value, { client_id: null, client: null, client_code: null, client_link: 'blocked' });
+    load();
+  } catch (e) {
+    if (e?.response?.status === 404) closeOutOfScope();
+    else sendError.value = errorText(e, 'تعذّر فك الربط');
+  }
 };
 
 const bubble = (m) => {

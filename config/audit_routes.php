@@ -99,6 +99,7 @@ return [
     'WhatsAppSettingsController@clearSecret' => 'wa.secret_clear',
     'WhatsAppSettingsController@rotateVerifyToken' => 'wa.verify_rotate',
     'WhatsAppSettingsController@toggleFlag' => 'wa.flag_toggle',
+    'WhatsAppSettingsController@identityMode' => 'wa.identity_mode',
     'WhatsAppController@saveRouting' => 'wa.routing_update',
     'WhatsAppController@savePrices' => 'wa.model_prices',
     'WhatsAppController@toggleBot' => 'wa.bot_toggle',

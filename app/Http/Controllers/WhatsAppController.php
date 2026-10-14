@@ -42,6 +42,9 @@ class WhatsAppController extends Controller
             'canToggleBot' => auth()->user()->can('whatsapp.bot_toggle'),
             'seesAll' => auth()->user()->can('whatsapp.view_all'),
             'canSeeAdminChats' => auth()->user()->can('whatsapp.admin_chats'),
+            // ربط المحادثة بعميل (E11.8) يحتاج رؤية العملاء للبحث
+            'canLinkClient' => auth()->user()->can('whatsapp.link_client') && auth()->user()->can('clients.view'),
+            'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
             // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
@@ -76,6 +79,8 @@ class WhatsAppController extends Controller
             ->with(['client:id,name,code', 'assignee:id,name'])
             // السياج: محادثات الإدارة، ثم الاختصاص والتوكيل (الشروط أدناه تضيّق ولا توسّع)
             ->visibleTo($me)
+            // محادثة دُمجت في أخرى (E11): رسائلها انتقلت، فلا تظهر
+            ->where('status', '!=', 'merged')
             ->when($request->topic, fn ($q, $t) => $q->whereExists(function ($sub) use ($t) {
                 $sub->selectRaw(1)->from('wa_conversation_topics')
                     ->whereColumn('wa_conversation_topics.conversation_id', 'wa_conversations.id')
@@ -85,7 +90,9 @@ class WhatsAppController extends Controller
             ->when($request->search, function ($q, $s) {
                 $q->where(function ($w) use ($s) {
                     $w->where('phone', 'like', "%{$s}%")
-                      ->orWhere('display_name', 'like', "%{$s}%");
+                      ->orWhere('display_name', 'like', "%{$s}%")
+                      ->orWhere('wa_username', 'like', "%{$s}%")
+                      ->orWhere('wa_profile_name', 'like', "%{$s}%");
                 });
             })
             ->when($filter === 'unread', fn ($q) => $q->where('unread_count', '>', 0))
@@ -98,10 +105,15 @@ class WhatsAppController extends Controller
             ->map(fn ($c) => [
                 'id' => $c->id,
                 'phone' => $c->phone,
-                'name' => $c->display_name ?: $c->label(),
+                'name' => $c->label(),
                 // عميل باسم مستخدم بلا رقم (E11a): المعرّف نفسه لا يُعرض
+                'phoneless' => !$c->hasPhone(),
                 'username' => $c->wa_username,
+                // لقب يضعه العميل بنفسه: غير موثّق
+                'profile_name' => $c->wa_profile_name,
+                'from_ad' => !empty($c->referral),
                 'client' => $c->client?->name,
+                'client_code' => $c->client?->code,
                 'client_id' => $c->client_id,
                 'bot_enabled' => (bool) $c->bot_enabled,
                 'paused' => $c->bot_paused_until && $c->bot_paused_until->isFuture(),
@@ -112,7 +124,7 @@ class WhatsAppController extends Controller
                 'last_at' => $c->last_message_at?->diffForHumans(),
                 'window_open' => $c->isWindowOpen(),
                 'window_left' => $c->windowMinutesLeft(),
-                'is_admin' => (bool) $c->is_admin_chat || isset($adminPhones[$c->phone]),
+                'is_admin' => (bool) $c->is_admin_chat || ($c->phone !== null && isset($adminPhones[$c->phone])),
                 'assignee' => $c->assignee?->name,
                 'assigned_to' => $c->assigned_to,
                 'topics' => TopicRouter::topicsOf($c),
@@ -144,6 +156,11 @@ class WhatsAppController extends Controller
         $syncedAt = now()->subSeconds(5)->format('Y-m-d H:i:s');   // تداخل مقصود؛ تطبيق التحديثات بالمعرّف idempotent
         $limit = min((int) ($v['limit'] ?? 100), 100);
         $columns = ['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'staff_id', 'created_at'];
+        // الاقتباس والوسائط (E11): بعد الهجرة 000012 وحدها
+        $e11 = \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['reply_to_wamid', 'media_mime', 'media_filename']);
+        if ($e11) {
+            array_push($columns, 'reply_to_wamid', 'media_mime', 'media_filename');
+        }
 
         $hasMore = false;
         $gap = false;
@@ -171,6 +188,11 @@ class WhatsAppController extends Controller
             $rows = $rows->take($limit)->reverse()->values();
         }
 
+        // المقتبس من المحادثة نفسها وحدها: مقتطف 80 حرفاً
+        $quoted = $e11 && ($ids = $rows->pluck('reply_to_wamid')->filter()->unique()->values()->all())
+            ? $conversation->messages()->whereIn('wamid', $ids)->pluck('body', 'wamid')->map(fn ($b) => mb_substr(trim((string) $b), 0, 80))->all()
+            : [];
+
         // staff_id كان يُحفظ ولا يُرسل للواجهة، فلم يكن يظهر من أرسل الرسالة
         $msgs = $rows->map(fn ($m) => [
             'id' => $m->id,
@@ -182,6 +204,10 @@ class WhatsAppController extends Controller
             'error' => $m->error_message,
             'sender' => $m->source === 'staff' ? ($m->staff?->name ?: 'موظف') : null,
             'at' => $m->created_at?->format('Y-m-d H:i'),
+            'is_system' => $m->source === 'system' && $m->direction === 'in',
+            'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
+            // النوع والاسم فقط: لا رابط للوسائط
+            'media' => $m->media_mime ? ['mime' => $m->media_mime, 'filename' => $m->media_filename] : null,
         ])->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
@@ -194,17 +220,23 @@ class WhatsAppController extends Controller
             'synced_at' => $syncedAt,
             'conversation' => [
                 'id' => $conversation->id,
-                'name' => $conversation->display_name ?: $conversation->label(),
+                'name' => $conversation->label(),
                 'phone' => $conversation->phone,
+                'phoneless' => !$conversation->hasPhone(),
                 'username' => $conversation->wa_username,
+                'profile_name' => $conversation->wa_profile_name,
                 'client' => $conversation->client?->name,
+                'client_id' => $conversation->client_id,
+                'client_code' => $conversation->client?->code,
+                'client_link' => $conversation->client_link,
+                'identity_mode' => \App\Services\WhatsApp\IdentityMode::current(),
                 'bot_enabled' => (bool) $conversation->bot_enabled,
                 'needs_attention' => (bool) $conversation->needs_attention,
                 'attention_reason' => $conversation->attention_reason,
                 'unread' => (int) $conversation->unread_count,
                 'window_open' => $conversation->isWindowOpen(),
                 'window_left' => $conversation->windowMinutesLeft(),
-                'is_admin' => (bool) $conversation->is_admin_chat || (bool) \App\Models\WaAdminNumber::forPhone($conversation->phone),
+                'is_admin' => (bool) $conversation->is_admin_chat || ($conversation->hasPhone() && (bool) \App\Models\WaAdminNumber::forPhone($conversation->phone)),
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
