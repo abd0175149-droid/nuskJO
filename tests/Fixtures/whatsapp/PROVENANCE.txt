@@ -1,0 +1,43 @@
+مصدر حمولات ويبهوك واتساب في هذا المجلد
+=========================================
+
+كل الملفات تتبع شكل الأمثلة في المرجع الرسمي لويبهوك WhatsApp Cloud API،
+وتُستعمل مع Graph v25.0 (الإصدار الافتراضي في config/services.php وphpunit.xml).
+كُتبت في 2026-10-14. لم يُنسخ أي شيء من الإنتاج.
+
+المراجع:
+  [messages]  https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages
+  [account]   https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update
+  [quality]   https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/phone_number_quality_update
+  [errors]    https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes
+  [overview]  https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview
+
+قواعد التجهيل (يفرضها tests/Feature/Infra/FixturePiiGuardTest.php):
+  - phone_number_id = 106540352242922، وdisplay_phone_number = 15550783881 (أرقام أمثلة ميتا).
+  - wa_id وfrom وrecipient_id = 16505551234 (رقم أمثلة ميتا). والرقم الآخر في الحساب نفسه 16505553333.
+  - معرّف الحساب (entry.id) = 102290129340398 من أمثلة ميتا.
+  - wamid مولَّد بصيغة ميتا (base64) ولا يرمّز إلا 16505551234.
+  - الأسماء من أمثلة ميتا (Sheena Nelson) أو «عميل تجريبي».
+  - ممنوع نسخ wa_messages.payload أو أي حمولة حقيقية من الإنتاج: المستودع عام.
+
+الملفات:
+
+text.json                     [messages] § text. رسالة نصية واردة.
+text_arabic_escaped.json      [messages] § text. سطر واحد كما يصل على السلك: العربي والإيموجي
+                              مكتوبان \uXXXX (وأزواج surrogate). يثبت أن التوقيع يُحسب على البايتات الخام. [overview] § X-Hub-Signature-256.
+audio.json                    [messages] § audio. رسالة صوتية (voice=true) بمعرّف وسائط.
+interactive_button_reply.json [messages] § interactive (button_reply)، مع context للرسالة الصادرة.
+interactive_list_reply.json   [messages] § interactive (list_reply)، مع context.
+reaction.json                 [messages] § reaction. الإيموجي مكتوب \uXXXX كما ترسله ميتا.
+unsupported.json              [messages] § unsupported. نوع غير مدعوم مع errors (131051).
+optout_iqaf.json              [messages] § text، والنص «إيقاف».
+cancel_ilgha.json             [messages] § text، والنص «إلغاء» وحده.
+foreign_phone_number_id.json  [messages] § text، لكن metadata.phone_number_id لرقم آخر في التطبيق نفسه.
+status_sent.json              [messages] § statuses (sent)، مع pricing بنموذج PMP.
+status_delivered.json         [messages] § statuses (delivered)، مع pricing بنموذج PMP.
+status_read.json              [messages] § statuses (read).
+status_played.json            [messages] § statuses (played) لرسالة صوتية صادرة.
+status_failed_131047.json     [messages] § statuses (failed)، منسوخ شكله من المثال الرسمي مع code=131047
+                              (Re-engagement message). [errors] § 131047.
+account_update_ban.json       [account] § DISABLED_UPDATE مع ban_info (waba_ban_state=DISABLE).
+account_update_benign.json    [account] § PARTNER_ADDED مع waba_info. حدث عادي يصل عند ربط الحساب.

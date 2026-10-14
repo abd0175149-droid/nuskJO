@@ -206,10 +206,14 @@ class WhatsAppInbox
         $payload = $m->payload ?? [];
         $payload['statusHistory'][] = ['status' => $status, 'at' => now()->toIso8601String()];
 
+        // الرمز مع العنوان، مثل «[131047] Re-engagement message»: ميتا توصي بالبناء على code لا على title
+        $code = data_get($st, 'errors.0.code');
+        $error = trim(($code ? "[{$code}] " : '') . data_get($st, 'errors.0.title', ''));
+
         $m->update([
             'status' => $status,
             'payload' => $payload,
-            'error_message' => data_get($st, 'errors.0.title') ?: $m->error_message,
+            'error_message' => $error !== '' ? $error : $m->error_message,
         ]);
     }
 
