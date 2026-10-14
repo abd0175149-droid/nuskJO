@@ -132,6 +132,9 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::get('api/whatsapp/conversations/{conversation}/messages', [\App\Http\Controllers\WhatsAppController::class, 'messages'])->middleware('perm:whatsapp.view');
     Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send'])->middleware('perm:whatsapp.reply');
     Route::post('api/whatsapp/conversations/{conversation}/request-contact', [\App\Http\Controllers\WhatsAppController::class, 'requestContact'])->middleware('perm:whatsapp.reply');
+    Route::get('api/whatsapp/clients/search', [\App\Http\Controllers\WhatsAppController::class, 'searchClients'])->middleware('perm:whatsapp.link_client');
+    Route::post('api/whatsapp/conversations/{conversation}/link-client', [\App\Http\Controllers\WhatsAppController::class, 'linkClient'])->middleware('perm:whatsapp.link_client');
+    Route::delete('api/whatsapp/conversations/{conversation}/link-client', [\App\Http\Controllers\WhatsAppController::class, 'unlinkClient'])->middleware('perm:whatsapp.link_client');
     Route::post('api/whatsapp/conversations/{conversation}/toggle-bot', [\App\Http\Controllers\WhatsAppController::class, 'toggleBot'])->middleware('perm:whatsapp.bot_toggle');
     Route::post('api/whatsapp/conversations/{conversation}/resolve', [\App\Http\Controllers\WhatsAppController::class, 'resolve'])->middleware('perm:whatsapp.reply');
 

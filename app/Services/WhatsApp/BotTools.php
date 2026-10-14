@@ -401,7 +401,7 @@ class BotTools
             'client_id' => $conv->client_id,
             // عميل بلا رقم: نص فارغ (العمود NOT NULL)، والهوية من conversation_id
             'phone' => $conv->phone ?? '',
-            'customer_name' => $conv->display_name,
+            'customer_name' => self::customerName($conv),
             'type' => $in['type'] ?? 'flight',
             // كان القصّ عند 8 أحرف (طول رمز مطار) يقطع أسماء المدن: «المدينة المنورة» ← «المدينة»
             'route_from' => mb_substr((string) ($in['route_from'] ?? ''), 0, 60) ?: null,
@@ -421,8 +421,28 @@ class BotTools
         return [
             'request_number' => $qr->request_number,
             'note' => 'أبلغ العميل أنّ طلبه وصل لفريقنا وسيعود إليه موظف بالسعر النهائي وتأكيد التوفّر قريباً. '
-                . 'لا تذكر أي سعر ولا تؤكّد توفّر مقعد. جملة واحدة قصيرة تكفي.',
+                . 'لا تذكر أي سعر ولا تؤكّد توفّر مقعد. جملة واحدة قصيرة تكفي.'.self::askForPhone($conv),
         ];
+    }
+
+    /** اسم الطلب: العميل المربوط، ثم الاسم المحفوظ، ثم لقب واتساب (غير موثّق) */
+    private static function customerName(WaConversation $conv): ?string
+    {
+        return $conv->client?->name ?: ($conv->display_name ?: $conv->wa_profile_name);
+    }
+
+    /**
+     * محادثة بلا رقم (E11.7): زر «مشاركة الرقم» يصل للعميل مع الطلب إن سمح وضع الهوية، فيعرف الموظف رقمه.
+     * يعيد سطراً يُضاف لملاحظة النموذج، أو '' إن لم يُرسل.
+     */
+    private static function askForPhone(WaConversation $conv): string
+    {
+        if ($conv->hasPhone() || !IdentityMode::botServesWithoutPhone()) {
+            return '';
+        }
+        $sent = WhatsAppChannel::sendContactRequest($conv, 'ليتابع معك موظفنا بالسعر والتفاصيل، شارك رقم هاتفك بالضغط على الزر أدناه.', 'system');
+
+        return $sent['ok'] ? ' وصل العميلَ الآن زرٌّ لمشاركة رقم هاتفه: اطلب منه الضغط عليه، ولا تطلب منه كتابة الرقم.' : '';
     }
 
     /** ★ تأكيد حجز عرض → إشعار الموظف + تحويل المحادثة */
@@ -442,7 +462,7 @@ class BotTools
             'offer_id' => $offer->id,
             // عميل بلا رقم: نص فارغ (العمود NOT NULL)، والهوية من conversation_id
             'phone' => $conv->phone ?? '',
-            'customer_name' => $conv->display_name,
+            'customer_name' => self::customerName($conv),
             'type' => 'package',
             // العرض الجاهز بتاريخه؛ وإلا التاريخ الذي طلبه العميل — والموظف يثبّته عند التقفيل
             'depart_date' => $offer->is_ready ? $offer->trip_date : self::date($in['travel_date'] ?? null),
@@ -463,7 +483,7 @@ class BotTools
             'request_number' => $qr->request_number,
             'offer' => $offer->title,
             'note' => 'أبلغ العميل أنّ طلب الحجز وصل وأنّ موظفاً سيتواصل معه لإتمامه وتأكيد التوفّر والدفع. '
-                . 'لا تقل إنّ الحجز تمّ أو تأكّد. جملة قصيرة فقط.',
+                . 'لا تقل إنّ الحجز تمّ أو تأكّد. جملة قصيرة فقط.'.self::askForPhone($conv),
         ];
     }
 

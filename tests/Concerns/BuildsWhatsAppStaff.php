@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 trait BuildsWhatsAppStaff
 {
     /** صلاحيات مسارات المحادثة السبعة كلها، بلا view_all ولا admin_chats */
-    protected const INBOX_PERMISSIONS = ['whatsapp.view', 'whatsapp.reply', 'whatsapp.bot_toggle', 'whatsapp.assign'];
+    protected const INBOX_PERMISSIONS = ['whatsapp.view', 'whatsapp.reply', 'whatsapp.bot_toggle', 'whatsapp.assign', 'whatsapp.link_client'];
 
     protected function staffWith(string $role, array $permissions, array $topics = [], bool $primary = false): User
     {

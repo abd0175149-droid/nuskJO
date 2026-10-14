@@ -38,6 +38,8 @@ class ConversationScopeTest extends TestCase
         'read' => ['POST', []],
         // طلب الرقم لمحادثة بلا رقم وحدها، بالمعرّف في وضع staff
         'request-contact' => ['POST', [], ['phone' => null, 'wa_phone' => null, 'wa_user_id' => 'US.13491208655302741918']],
+        // الربط (POST) بحمولة عميل حقيقي يغطيه LinkClientTest؛ هنا فك الربط على المسار نفسه
+        'link-client' => ['DELETE', []],
     ];
 
     protected function setUp(): void

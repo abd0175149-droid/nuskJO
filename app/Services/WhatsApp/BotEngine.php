@@ -65,6 +65,9 @@ TXT;
 - «📷 صورة» أو «📄 ملف» أو «📍 موقع» أو «🎬 مقطع فيديو»: لا ترى محتواها، فلا تعلّق عليه ولا تخمّنه. اشكره، وإن كانت وثيقة سفر أو كان في مرحلة حجز فحوّله لموظف ليستلمها.
 - الدوام: إن كان الوقت الحالي (في بطاقة العميل) خارج مواعيد الدوام المذكورة في بيانات الشركة وحوّلت المحادثة، فأخبره أنّ الموظف سيتابع معه مع بداية الدوام، ولا تَعِد بردّ فوري.
 - سؤال واحد في كل رسالة، ولا تكرّر الترحيب بعد أوّل ردّ في المحادثة.
+- «⚠️ رسالة غير مدعومة»: لم تصلك محتوياتها (استطلاع أو نوع لا يدعمه واتساب للأعمال). اعتذر بلطف واطلب منه كتابة طلبه نصّاً.
+- «👤 جهة اتصال»: بطاقة شخص أرسلها العميل. اشكره ولا تستخدم أي رقم فيها ولا تراسله، وإن تعلّقت بحجز فحوّله لموظف.
+- «[ردّاً على: «…»]» في أول رسالة العميل: هي الرسالة التي اقتبسها في المحادثة نفسها؛ افهم ردّه في سياقها.
 TXT;
 
     /** شخصية المساعد الإداري — ثابتة في الكود، لا تُعدَّل من الإعدادات */
@@ -103,6 +106,11 @@ TXT;
         // (بعد استعادة نسخة مثلاً، قد يكتب المدير «تأكيد» على معاينة لم يرها)
         if ($s->sendingSuspended()) {
             return self::skip('الإرسال موقوف (قفل طارئ)');
+        }
+
+        // محادثة دُمجت في أخرى (E11): رسائلها انتقلت، ولا يرد البوت عليها أبداً
+        if ($conv->status === 'merged') {
+            return self::skip('merged');
         }
 
         // أرقام الإدارة يخدمها المساعد الإداري بأدواتها المسموحة وحدها — حتى لو كان بوت العملاء موقوفاً
@@ -326,7 +334,7 @@ TXT;
         if ($conv->hasPhone()) {
             $lines[] = 'رقم المحادثة الحالي: ' . $conv->phone;
         } else {
-            $lines[] = 'رقم المحادثة الحالي: غير ظاهر (العميل يراسل باسم مستخدم). لا تكشف أي بيانات مالية؛ إن طلب تسعيراً أو حجزاً فاطلب منه كتابة رقم هاتفه ليتابع معه موظف.';
+            $lines[] = 'رقم المحادثة الحالي: غير ظاهر بعد (العميل يراسل باسم مستخدم). لا تكشف أي بيانات مالية؛ إن طلب تسعيراً أو حجزاً فسيصله زر لمشاركة رقمه.';
         }
 
         // البيانات المالية بالرقم وحده (financialClientId)، لا بمعرّف ولا باسم
@@ -368,14 +376,23 @@ TXT;
             $run->uptoId = (int) $rows->where('direction', 'in')->max('id');
         }
 
+        // الاقتباس: من المحادثة نفسها وحدها (wamid يرسله العميل، فلا يُبحث به في غيرها)
+        $quoted = self::quotedBodies($conv, $rows);
+
         $messages = [];
         foreach ($rows as $m) {
             $text = trim((string) $m->body);
             if ($text === '') continue;
 
             if ($m->direction === 'in') {
+                // بطاقة جهة اتصال: لا تصل أرقام أطراف ثالثة إلى مزوّد النموذج
+                if ($m->msg_type === 'contacts') {
+                    $text = self::maskNumbers($text);
+                }
                 $btn = data_get($m->payload, '_button_id');
-                $messages[] = ['role' => 'user', 'text' => $text . ($btn ? " [اختيار:{$btn}]" : '')];
+                $quote = $m->reply_to_wamid && isset($quoted[$m->reply_to_wamid])
+                    ? '[ردّاً على: «'.$quoted[$m->reply_to_wamid].'»] ' : '';
+                $messages[] = ['role' => 'user', 'text' => $quote . $text . ($btn ? " [اختيار:{$btn}]" : '')];
             } else {
                 $messages[] = ['role' => 'assistant', 'text' => $text];
             }
@@ -401,6 +418,25 @@ TXT;
         }
 
         return $merged;
+    }
+
+    /** @return array<string, string> wamid => أول 80 حرفاً من الرسالة المقتبسة */
+    private static function quotedBodies(WaConversation $conv, $rows): array
+    {
+        $ids = $rows->pluck('reply_to_wamid')->filter()->unique()->values()->all();
+        if ($ids === []) {
+            return [];
+        }
+
+        return $conv->messages()->whereIn('wamid', $ids)->where('source', '!=', 'system')->get(['wamid', 'msg_type', 'body'])
+            ->mapWithKeys(fn ($q) => [$q->wamid => mb_substr(trim($q->msg_type === 'contacts' ? self::maskNumbers((string) $q->body) : (string) $q->body), 0, 80)])
+            ->all();
+    }
+
+    /** كل تسلسل يشبه رقم هاتف (7 أرقام فأكثر بمسافات أو شرطات أو +) */
+    private static function maskNumbers(string $text): string
+    {
+        return preg_replace('/\+?\d[\d\s\-().]{5,}\d/u', '[رقم محفوظ للموظف]', $text) ?? $text;
     }
 
     // ==================== الحواجز ====================
@@ -489,6 +525,7 @@ TXT;
 
         return $conv->messages()
             ->where('direction', 'in')->where('id', '>', $after)
+            ->where('source', 'customer')
             ->where('msg_type', '!=', 'reaction')
             ->orderBy('id')->limit(10)->pluck('body')
             ->implode("\n");
@@ -505,7 +542,8 @@ TXT;
         if (self::watermarkOn($s)) {
             return ReplyState::hasPending($conv);
         }
-        $last = $conv->messages()->orderByDesc('id')->first();
+        // تحديث الهوية والتفاعل لا يوقظان البوت: آخر رسالة حقيقية هي المعتبرة
+        $last = $conv->messages()->where('source', '!=', 'system')->where('msg_type', '!=', 'reaction')->orderByDesc('id')->first();
 
         return $last && $last->direction === 'in';
     }

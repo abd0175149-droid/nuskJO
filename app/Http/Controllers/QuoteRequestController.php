@@ -69,8 +69,10 @@ class QuoteRequestController extends Controller
             'request_number' => $r->request_number,
             'type' => $r->type,
             'status' => $r->status,
-            'phone' => $r->phone,
-            'customer' => $r->customer_name ?: $r->client?->name ?: $r->phone,
+            'phone' => $r->phone ?: ($r->conversation?->phone ? '+'.$r->conversation->phone : ''),
+            'customer' => $r->client?->name ?: ($r->customer_name ?: ($r->phone ?: '—')),
+            // عميل بلا رقم (E11): الرقم يُطلب من المحادثة بزر «طلب الرقم»
+            'phoneless' => $r->phone === '' && !$r->conversation?->phone,
             'client' => $r->client?->name,
             'offer' => $r->offer?->title,
             'route' => self::route($r->route_from, $r->route_to),

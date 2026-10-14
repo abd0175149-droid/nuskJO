@@ -150,7 +150,7 @@ class InvoiceController extends Controller
     /** تحويل طلب حجز من البوت إلى فاتورة عرض مملوءة */
     private function quotePrefill(int $id): ?array
     {
-        $q = QuoteRequest::query()->visibleTo(auth()->user())->with('offer.groups.options')->find($id);
+        $q = QuoteRequest::query()->visibleTo(auth()->user())->with(['offer.groups.options', 'client:id,name', 'conversation:id,phone'])->find($id);
         if (!$q || !$q->offer) {
             return null;
         }
@@ -161,8 +161,10 @@ class InvoiceController extends Controller
         return [
             'quote_id' => $q->id,
             'number' => $q->request_number,
-            'client_name' => $q->customer_name ?: $q->client?->name ?: '',
-            'client_phone' => $q->phone,
+            // الاسم الموثّق قبل لقب واتساب (E11.7)؛ والرقم من المحادثة إن عُرف بعد الطلب. client_phone يبقى
+            // مطلوباً في الفاتورة: طلب من عميل بلا رقم لا يصير فاتورة قبل أن يشارك رقمه
+            'client_name' => $q->client?->name ?: ($q->customer_name ?: ''),
+            'client_phone' => $q->phone ?: ($q->conversation?->phone ? '+'.$q->conversation->phone : ''),
             'offer_id' => $o->id,
             'trip_date' => $o->is_ready ? $o->trip_date?->toDateString() : ($q->depart_date?->toDateString() ?: now()->addWeek()->toDateString()),
             'lines' => [[

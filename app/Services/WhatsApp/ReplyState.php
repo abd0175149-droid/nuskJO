@@ -48,8 +48,10 @@ final class ReplyState
 
     public static function pendingQuery(WaConversation $conv): HasMany
     {
+        // تحديث الهوية (source=system) والتفاعل ليسا طلباً ينتظر رداً
         return $conv->messages()
             ->where('direction', 'in')
+            ->where('source', '!=', 'system')
             ->where('msg_type', '!=', 'reaction')
             ->where('id', '>', self::mark($conv));
     }

@@ -64,7 +64,8 @@
               <span v-if="r.client" class="text-[11px] text-green-600 block">✅ حساب مسجّل</span>
             </div>
             <div><span class="text-gray-400 text-xs block">الهاتف</span>
-              <span class="font-mono text-xs" dir="ltr">{{ r.phone }}</span>
+              <span v-if="r.phoneless" class="text-xs text-amber-600 dark:text-amber-400">📵 بلا رقم — اطلبه من المحادثة</span>
+              <span v-else class="font-mono text-xs" dir="ltr">{{ r.phone }}</span>
             </div>
             <div v-if="r.offer"><span class="text-gray-400 text-xs block">العرض</span><span>{{ r.offer }}</span></div>
             <div v-else-if="r.route"><span class="text-gray-400 text-xs block">المسار</span><span class="font-mono text-xs" dir="ltr">{{ r.route }}</span></div>

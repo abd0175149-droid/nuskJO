@@ -360,6 +360,75 @@ class WhatsAppController extends Controller
         return response()->json($res, $res['ok'] ? 200 : 422);
     }
 
+    // ==================== ربط المحادثة بعميل (E11.8) ====================
+
+    /** بحث للربط اليدوي: الاسم والكود ورقم مقنّع، بلا رصيد ولا رقم كامل. 10 نتائج على الأكثر */
+    public function searchClients(Request $request)
+    {
+        abort_unless(auth()->user()->can('whatsapp.link_client') && auth()->user()->can('clients.view'), 403);
+        $q = trim($request->validate(['q' => 'required|string|min:2|max:60'])['q']);
+        $digits = \App\Services\WhatsApp\PhoneNormalizer::digits($q);
+
+        $clients = \App\Models\Client::query()
+            ->where(fn ($w) => $w->where('name', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%")
+                ->when(strlen($digits) >= 4, fn ($w) => $w->orWhere('phone', 'like', "%{$digits}%")))
+            ->orderBy('name')->limit(10)->get(['id', 'name', 'code', 'phone']);
+
+        return response()->json(['clients' => $clients->map(fn ($c) => [
+            'id' => $c->id, 'name' => $c->name, 'code' => $c->code,
+            'phone_masked' => strlen($d = \App\Services\WhatsApp\PhoneNormalizer::digits($c->phone)) >= 3 ? '•••'.substr($d, -3) : null,
+        ])->values()]);
+    }
+
+    /**
+     * ربط يدوي بتأكيد خادمي أن الموظف رأى الكود (client_code يطابق). يحل محل أي ربط سابق، ويبقى الحاجز
+     * المالي على المحادثة بلا رقم. لا ملاحظة للعميل (الملاحظات تصل للبوت)، والسجل في audit_logs.
+     */
+    public function linkClient(Request $request, WaConversation $conversation)
+    {
+        abort_unless(auth()->user()->can('whatsapp.link_client'), 403);
+        $data = $request->validate([
+            'client_id' => ['required', 'integer', Rule::exists('clients', 'id')->whereNull('deleted_at')],
+            'client_code' => 'required|string|max:50',
+        ]);
+        $client = \App\Models\Client::findOrFail($data['client_id']);
+        if (!hash_equals((string) $client->code, trim($data['client_code']))) {
+            return response()->json(['message' => 'الكود لا يطابق العميل المختار.', 'errors' => ['client_code' => ['الكود لا يطابق العميل المختار.']]], 422);
+        }
+
+        $from = $conversation->client_id;
+        DB::transaction(function () use ($conversation, $client, $from) {
+            $conversation->forceFill([
+                'client_id' => $client->id, 'client_link' => 'manual',
+                'client_linked_by' => auth()->id(), 'client_linked_at' => now(),
+            ])->save();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaLinkClient, 'wa_conversation', $conversation->id, $conversation->label(), [
+                'client_from' => $from, 'client_to' => $client->id, 'client_code' => $client->code, 'phoneless' => !$conversation->hasPhone(),
+            ]);
+        });
+
+        return response()->json(['ok' => true, 'client' => ['id' => $client->id, 'name' => $client->name, 'code' => $client->code], 'client_link' => 'manual']);
+    }
+
+    /** فك الربط: blocked، فلا يعيد الربط الآلي ربطها مع الرسالة التالية */
+    public function unlinkClient(WaConversation $conversation)
+    {
+        abort_unless(auth()->user()->can('whatsapp.link_client'), 403);
+
+        $from = $conversation->client_id;
+        DB::transaction(function () use ($conversation, $from) {
+            $conversation->forceFill([
+                'client_id' => null, 'client_link' => 'blocked',
+                'client_linked_by' => auth()->id(), 'client_linked_at' => now(),
+            ])->save();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaUnlinkClient, 'wa_conversation', $conversation->id, $conversation->label(), [
+                'client_from' => $from, 'client_to' => null,
+            ]);
+        });
+
+        return response()->json(['ok' => true, 'client' => null, 'client_link' => 'blocked']);
+    }
+
     /** زر «طلب الرقم» لمحادثة بلا رقم (E11.6): نص ثابت يبنيه الكود، داخل النافذة ووفق وضع الهوية */
     public function requestContact(WaConversation $conversation)
     {

@@ -103,11 +103,7 @@ enum AuditAction: string
     case AppKeyReencrypt = 'system.reencrypt';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [
-        // مؤقت: زر الربط اليدوي في دفعة لاحقة من E11 (E11.8)، ويُحذف السطران معه
-        'WaLinkClient' => 'E11.8 لم يُبنَ بعد',
-        'WaUnlinkClient' => 'E11.8 لم يُبنَ بعد',
-    ];
+    public const INTENTIONALLY_UNEMITTED = [];
 
     public function severity(): AuditSeverity
     {

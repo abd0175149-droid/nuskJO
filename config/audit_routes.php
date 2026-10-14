@@ -106,6 +106,8 @@ return [
     'WhatsAppController@assign' => 'wa.assign',
     'WhatsAppController@send' => 'none: wa_messages.staff_id يحفظ المرسل',
     'WhatsAppController@requestContact' => 'none: رسالة صادرة كالرد، وwa_messages.staff_id يحفظ المرسل',
+    'WhatsAppController@linkClient' => 'wa.link_client',
+    'WhatsAppController@unlinkClient' => 'wa.unlink_client',
     'WhatsAppController@resolve' => 'none: حالة محادثة (شارة التدخّل) بلا أثر خارجي',
     'WhatsAppController@markRead' => 'none: عدّاد غير مقروء',
     'WhatsAppController@testKey' => 'none: فحص مفتاح للقراءة',
