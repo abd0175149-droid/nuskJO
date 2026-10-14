@@ -66,6 +66,40 @@ class SqliteInspector
         ];
     }
 
+    /** @return list<string> أسماء الهجرات المسجّلة */
+    public function migrationNames(): array
+    {
+        if (!$this->hasTable('migrations')) {
+            return [];
+        }
+
+        return $this->pdo->query('SELECT migration FROM migrations ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    public function hasColumn(string $table, string $column): bool
+    {
+        if (!$this->hasTable($table)) {
+            return false;
+        }
+
+        $cols = $this->pdo->query('PRAGMA table_info("'.str_replace('"', '', $table).'")')->fetchAll(PDO::FETCH_COLUMN, 1);
+
+        return in_array($column, $cols, true);
+    }
+
+    /** صفوف created_at فيها أحدث من الوقت المعطى (بتوقيت التطبيق UTC)، أو null إن لم يوجد العمود. */
+    public function countNewerThan(string $table, string $utc): ?int
+    {
+        if (!$this->hasColumn($table, 'created_at')) {
+            return null;
+        }
+
+        $st = $this->pdo->prepare('SELECT COUNT(*) FROM "'.str_replace('"', '', $table).'" WHERE created_at > ?');
+        $st->execute([$utc]);
+
+        return (int) $st->fetchColumn();
+    }
+
     public function journalMode(): string
     {
         return (string) $this->pdo->query('PRAGMA journal_mode')->fetchColumn();

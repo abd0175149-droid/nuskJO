@@ -68,25 +68,11 @@ class SnapshotService
             $this->assertNotWrongDatabase($counts, $liveAppendOnly, $allowShrink);
 
             $mediaBytes = $this->archiveMedia("{$partial}/storage-public.tar.gz");
-            $migrations = $snap->migrations();
-
-            $manifest = [
-                'version' => 1,
-                'created_at' => now()->utc()->toIso8601String(),
-                'reason' => $reason,
-                'label' => $label,
-                'app_commit' => config('backup.app_commit'),
-                'sqlite_version' => $snap->sqliteVersion(),
-                'journal_mode' => $live->journalMode(),
-                'integrity' => $integrity,
-                'fk_violations' => $snap->foreignKeyViolations(),
-                'row_counts' => $counts,
-                'migrations' => $migrations,
-                'files' => $this->hashes($partial),
-            ];
+            $journalMode = $live->journalMode();
             unset($snap, $live);
 
-            File::put("{$partial}/manifest.json", json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $manifest = $this->describe($partial, $reason, $label, $journalMode);
+            $migrations = $manifest['migrations'];
 
             $final = "{$this->spool}/{$name}";
             if (file_exists($final)) {
@@ -122,6 +108,36 @@ class SnapshotService
         } finally {
             umask($oldUmask);
         }
+    }
+
+    /**
+     * يكتب manifest.json لمجلد فيه database.sqlite (وربما storage-public.tar.gz) ويعيده.
+     * يستعمله run() ولقطة ما قبل الاستعادة (backup:manifest) لتكون أي لقطة قابلة للفحص والاستعادة.
+     */
+    public function describe(string $dir, string $reason, ?string $label = null, ?string $journalMode = null): array
+    {
+        $db = new SqliteInspector("{$dir}/database.sqlite");
+        $tables = array_values(array_unique(array_merge(config('backup.core_tables', []), config('backup.append_only', []))));
+
+        $manifest = [
+            'version' => 1,
+            'created_at' => now()->utc()->toIso8601String(),
+            'reason' => $reason,
+            'label' => $label,
+            'app_commit' => config('backup.app_commit'),
+            'sqlite_version' => $db->sqliteVersion(),
+            'journal_mode' => $journalMode ?? $db->journalMode(),
+            'integrity' => $db->integrity(),
+            'fk_violations' => $db->foreignKeyViolations(),
+            'row_counts' => $db->rowCounts($tables),
+            'migrations' => $db->migrations(),
+            'files' => $this->hashes($dir),
+        ];
+        unset($db);
+
+        File::put("{$dir}/manifest.json", json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return $manifest;
     }
 
     /** آخر manifest لنسخة ناجحة (للمقارنة)، أو null. */
@@ -240,7 +256,7 @@ class SnapshotService
     {
         $out = [];
         foreach (glob("{$dir}/*") ?: [] as $file) {
-            if (is_file($file)) {
+            if (is_file($file) && basename($file) !== 'manifest.json') {
                 $out[basename($file)] = ['sha256' => hash_file('sha256', $file), 'bytes' => filesize($file)];
             }
         }
