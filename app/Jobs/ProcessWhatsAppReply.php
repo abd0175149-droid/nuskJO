@@ -91,6 +91,16 @@ class ProcessWhatsAppReply implements ShouldQueue
         }
     }
 
+    /** فشل نهائي (بعد المحاولات): الوارد المعلّق يصير «تدخّل»، بلا رسالة آلية للعميل */
+    public function failed(?\Throwable $e): void
+    {
+        $conv = WaConversation::find($this->conversationId);
+        \App\Services\WhatsApp\WaLog::error('reply.job_failed', ['conv_id' => $this->conversationId, 'reason' => $e ? $e::class : null]);
+        if ($conv && \App\Services\WhatsApp\ReplyState::available() && \App\Services\WhatsApp\ReplyState::hasPending($conv)) {
+            \App\Services\WhatsApp\ReplyState::markUnserved($conv, 'job_failed');
+        }
+    }
+
     public function backoff(): array
     {
         return [10, 30];

@@ -78,6 +78,7 @@
               </div>
               <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 <span v-if="c.needs_attention" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">⚠️ تدخّل</span>
+                <span v-if="c.needs_attention && c.attention_reason" class="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ reasonLabel(c.attention_reason) }}</span>
                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="c.bot_enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
                   {{ c.bot_enabled ? (c.paused ? '🤖 موقوف مؤقتاً' : '🤖 بوت') : '👤 بشري' }}
                 </span>
@@ -106,6 +107,7 @@
                   <p class="text-xs text-gray-400 font-mono" dir="ltr">{{ thread.phone }}<span v-if="thread.client"> · {{ thread.client }}</span></p>
                 </div>
                 <div class="flex items-center gap-2">
+                  <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ reasonLabel(thread.attention_reason) }}</span>
                   <button v-if="thread.needs_attention" @click="resolve" class="px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20">✅ تمّت المعالجة</button>
                   <button v-if="props.canToggleBot" @click="toggleBot" class="px-2.5 py-1 rounded-lg text-xs font-bold border"
                           :class="thread.bot_enabled ? 'border-gray-300 text-gray-600' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20'">
@@ -244,7 +246,11 @@ const props = defineProps({
   canSeeAdminChats: Boolean,
   topics: { type: Object, default: () => ({}) },
   staff: { type: Array, default: () => [] },
+  attentionReasons: { type: Object, default: () => ({}) },
 });
+
+// سبب «تدخّل» بنص الرقاقة (ReplyState::REASONS)
+const reasonLabel = (key) => props.attentionReasons[key] || key;
 
 const OUT_OF_SCOPE = 'هذه المحادثة غير متاحة لك: ربما نُقلت لموظف آخر أو أُزيل وسم اختصاصك. اطلب من المدير توكيلها لك إن كنت تحتاجها';
 
@@ -531,7 +537,7 @@ const act = async (action, payload, onDone, fallback) => {
 
 const toggleBot = () => act('toggle-bot', {}, (data) => { thread.value.bot_enabled = data.bot_enabled; }, 'تعذّر تغيير حالة البوت');
 
-const resolve = () => act('resolve', {}, () => { thread.value.needs_attention = false; }, 'تعذّر حفظ المعالجة');
+const resolve = () => act('resolve', {}, () => { thread.value.needs_attention = false; thread.value.attention_reason = null; }, 'تعذّر حفظ المعالجة');
 
 /** إضافة/إزالة وسم موضوع للمحادثة المفتوحة */
 const setTopic = (key, attach) => {

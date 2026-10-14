@@ -525,7 +525,7 @@ class BotTools
             'bot_enabled' => false,          // تحويل كامل — لا يردّ البوت بعدها
             'needs_attention' => true,
             'assigned_to' => $assignee,
-        ]);
+        ] + (ReplyState::available() ? ['attention_reason' => 'handoff'] : []));
 
         // التحويل من التشغيل نفسه: رسالة تأكيده لا تُسقط بحجة أن البوت صار مطفأً
         if ($run = ReplyRun::current()) {

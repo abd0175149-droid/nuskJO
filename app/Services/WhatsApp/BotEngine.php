@@ -107,13 +107,21 @@ TXT;
             return self::adminReply($conv, $s, $admin, $run);
         }
 
-        // ── بوّابات خروج مبكر ───────────────────────────────────
-        if (!$s->botReady())            return self::skip('البوت غير مُهيَّأ أو مطفأ');
-        if (!$conv->botActive())        return self::skip('البوت موقوف لهذه المحادثة');
-        if (!$conv->isWindowOpen())     return self::skip('نافذة 24 ساعة مغلقة');
-
+        // ── بوّابات خروج مبكر: وارد ينتظر ولن يرد عليه البوت يصير «تدخّل» بسبب ظاهر، لا صمتاً ──
         if (!self::hasPendingInbound($conv, $s)) {
             return self::skip('لا وارد بعد آخر رد');
+        }
+        $unserved = match (true) {
+            !$s->botReady() => 'bot_off',
+            !$conv->bot_enabled => 'with_staff',
+            !$conv->botActive() => 'bot_paused',
+            !$conv->isWindowOpen() => 'window_closed',
+            default => null,
+        };
+        if ($unserved !== null) {
+            ReplyState::markUnserved($conv, $unserved);
+
+            return self::skip($unserved);
         }
 
         $pending = self::pendingCustomerText($conv, $s);

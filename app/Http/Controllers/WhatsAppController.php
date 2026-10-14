@@ -41,6 +41,7 @@ class WhatsAppController extends Controller
             'seesAll' => auth()->user()->can('whatsapp.view_all'),
             'canSeeAdminChats' => auth()->user()->can('whatsapp.admin_chats'),
             'topics' => TopicRouter::TOPICS,
+            'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
             // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
             'staff' => auth()->user()->can('whatsapp.assign')
                 ? \App\Models\User::with('role.permissions')->where('is_active', true)->orderBy('name')->get()
@@ -101,6 +102,7 @@ class WhatsAppController extends Controller
                 'bot_enabled' => (bool) $c->bot_enabled,
                 'paused' => $c->bot_paused_until && $c->bot_paused_until->isFuture(),
                 'needs_attention' => (bool) $c->needs_attention,
+                'attention_reason' => $c->attention_reason,
                 'unread' => (int) $c->unread_count,
                 'preview' => $c->last_message_preview,
                 'last_at' => $c->last_message_at?->diffForHumans(),
@@ -186,6 +188,7 @@ class WhatsAppController extends Controller
                 'client' => $conversation->client?->name,
                 'bot_enabled' => (bool) $conversation->bot_enabled,
                 'needs_attention' => (bool) $conversation->needs_attention,
+                'attention_reason' => $conversation->attention_reason,
                 'unread' => (int) $conversation->unread_count,
                 'window_open' => $conversation->isWindowOpen(),
                 'window_left' => $conversation->windowMinutesLeft(),
