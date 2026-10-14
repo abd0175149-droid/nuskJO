@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WaConversation extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'phone', 'wa_phone', 'display_name', 'client_id', 'user_id',
         'bot_enabled', 'bot_paused_until', 'last_inbound_at', 'last_outbound_at',
