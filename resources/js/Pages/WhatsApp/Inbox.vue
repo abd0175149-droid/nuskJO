@@ -23,6 +23,13 @@
         <a href="/whatsapp/settings" class="text-gold-700 dark:text-gold-400 font-bold text-xs hover:underline mr-auto">⚙️ الإعدادات</a>
       </div>
 
+      <!-- محادثة لم تعد ضمن نطاقك -->
+      <div v-if="notice" role="alert"
+           class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm text-amber-800 dark:text-amber-300 flex items-start gap-3">
+        <span class="flex-1">⚠️ {{ notice }}</span>
+        <button type="button" @click="notice = ''" aria-label="إغلاق التنبيه" class="font-bold leading-none hover:text-amber-950 dark:hover:text-amber-100">✕</button>
+      </div>
+
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         <!-- قائمة المحادثات -->
@@ -100,7 +107,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                   <button v-if="thread.needs_attention" @click="resolve" class="px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20">✅ تمّت المعالجة</button>
-                  <button @click="toggleBot" class="px-2.5 py-1 rounded-lg text-xs font-bold border"
+                  <button v-if="props.canToggleBot" @click="toggleBot" class="px-2.5 py-1 rounded-lg text-xs font-bold border"
                           :class="thread.bot_enabled ? 'border-gray-300 text-gray-600' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20'">
                     {{ thread.bot_enabled ? '⏸️ إيقاف البوت' : '▶️ تشغيل البوت' }}
                   </button>
@@ -139,7 +146,7 @@
               <!-- التوكيل -->
               <div class="flex flex-wrap items-center gap-1.5">
                 <span class="text-[11px] text-gray-400 dark:text-gray-500">الموكل إليه:</span>
-                <select v-if="props.canAssign" :value="thread.assigned_to ?? ''" @change="assignTo($event.target.value)"
+                <select v-if="props.canAssign" :value="thread.assigned_to ?? ''" @change="assignTo($event.target)"
                         aria-label="توكيل المحادثة لموظف"
                         class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[11px] dark:text-white">
                   <option value="">— بلا توكيل</option>
@@ -150,7 +157,14 @@
             </div>
 
             <!-- الفقاعات -->
-            <div ref="scroller" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-950/40">
+            <div class="relative flex-1 min-h-0 flex flex-col">
+            <div ref="scroller" @scroll.passive="onScroll" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-950/40">
+              <div v-if="hasMore || loadingOlder" class="text-center">
+                <button type="button" :disabled="loadingOlder" @click="loadOlder"
+                        class="px-3 py-1 rounded-lg text-[11px] text-gray-500 dark:text-gray-400 hover:text-gold-700 dark:hover:text-gold-400 disabled:opacity-60">
+                  {{ loadingOlder ? 'جارٍ تحميل الأقدم...' : '↑ رسائل أقدم' }}
+                </button>
+              </div>
               <div v-for="m in messages" :key="m.id" class="flex" :class="m.direction === 'in' ? 'justify-start' : 'justify-end'">
                 <div class="max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm" :class="bubble(m)">
                   <p v-if="m.sender" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
@@ -158,11 +172,16 @@
                   <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70">
                     <span dir="ltr">{{ m.at }}</span>
                     <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
-                    <span v-if="m.status === 'failed'" class="text-red-200">· فشل</span>
+                    <span v-if="m.status === 'failed'" class="text-red-200" :title="m.error || ''">· فشل</span>
                   </div>
                 </div>
               </div>
               <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>
+            </div>
+            <button v-if="newBelow" type="button" @click="jumpToNew"
+                    class="absolute bottom-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
+              رسائل جديدة ({{ newBelow }}) ↓
+            </button>
             </div>
 
             <!-- ملاحظات -->
@@ -209,7 +228,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
-import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { useDrafts } from '@/composables/useDrafts';
 
@@ -220,10 +238,14 @@ const props = defineProps({
   status: { type: Object, default: () => ({}) },
   canReply: Boolean,
   canAssign: Boolean,
+  canToggleBot: Boolean,
   seesAll: Boolean,
+  canSeeAdminChats: Boolean,
   topics: { type: Object, default: () => ({}) },
   staff: { type: Array, default: () => [] },
 });
+
+const OUT_OF_SCOPE = 'هذه المحادثة غير متاحة لك: ربما نُقلت لموظف آخر أو أُزيل وسم اختصاصك. اطلب من المدير توكيلها لك إن كنت تحتاجها';
 
 const list = ref([...props.conversations]);
 
@@ -240,6 +262,11 @@ const activeId = ref(null);
 const thread = ref(null);
 const messages = ref([]);
 const notes = ref([]);
+const hasMore = ref(false);       // في الخادم رسائل أقدم من أول رسالة معروضة
+const loadingOlder = ref(false);
+const newBelow = ref(0);          // رسائل وصلت والموظف يقرأ أعلى الخيط
+const notice = ref('');
+let syncedAt = null;              // من آخر ردّ للخادم؛ يُعاد معه لجلب تغيّر حالات الرسائل المرسلة
 // مسودة لكل محادثة: النص يتبع المحادثة المفتوحة ولا ينتقل إلى غيرها
 const drafts = useDrafts();
 const draft = computed({
@@ -250,6 +277,9 @@ const sending = ref(false);
 const sendError = ref('');
 const scroller = ref(null);
 let timer = null, t = null;
+// يزيد مع كل فتح أو إغلاق للخيط؛ أي ردّ وصل بعد تغيّره يخصّ محادثة سابقة فيُهمل
+let seq = 0;
+let inflight = null;
 
 const filterTabs = [
   { key: 'all', label: 'الكل' },
@@ -269,6 +299,15 @@ const addableTopics = computed(() => {
 });
 
 const api = { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
+const threadUrl = (id, action) => `/api/whatsapp/conversations/${id}/${action}`;
+const gone = (e) => [403, 404].includes(e?.response?.status);
+const errorText = (e, fallback) => {
+  const d = e?.response?.data || {};
+  const text = d.error || Object.values(d.errors || {})[0]?.[0] || d.message;
+  // رسائل Laravel الافتراضية إنجليزية؛ رسائلنا عربية
+  if (e?.response?.status === 403 && !/[\u0600-\u06FF]/.test(text || '')) return 'ليست لديك صلاحية لهذا الإجراء';
+  return text || fallback;
+};
 
 const load = async () => {
   try {
@@ -286,19 +325,169 @@ const load = async () => {
 
 const debounceLoad = () => { clearTimeout(t); t = setTimeout(load, 400); };
 
-const open = async (id) => {
+// ==================== الخيط ====================
+
+const lastId = () => messages.value[messages.value.length - 1]?.id ?? 0;
+const nearBottom = () => {
+  const el = scroller.value;
+  return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+};
+const scrollToBottom = async () => {
+  await nextTick();
+  if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight;
+};
+// الموظف يرى الشاشة فعلاً، لا تبويباً منسياً في الخلفية
+const viewing = () => document.visibilityState === 'visible' && document.hasFocus();
+
+const resetThread = () => {
+  seq++;
+  activeId.value = null;
+  thread.value = null;
+  messages.value = [];
+  notes.value = [];
+  hasMore.value = false;
+  loadingOlder.value = false;
+  newBelow.value = 0;
+  syncedAt = null;
+};
+
+/** المحادثة خرجت من نطاق الموظف (نُقلت أو أُزيل وسمه): تُغلق ويُشرح السبب */
+const closeOutOfScope = () => {
+  resetThread();
+  notice.value = OUT_OF_SCOPE;
+  const url = new URL(window.location.href);
+  if (url.searchParams.has('conv')) {
+    url.searchParams.delete('conv');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }
+  load();
+};
+
+/** التصفير صريح: عند الفتح، أو زر «رسائل جديدة»، أو النزول لآخر الخيط */
+const markRead = async (id) => {
+  if (!props.canReply || !id || !(thread.value?.unread > 0)) return;
+  try {
+    await axios.post(threadUrl(id, 'read'), {}, api);
+    if (activeId.value === id && thread.value) thread.value.unread = 0;
+    const row = list.value.find((c) => c.id === id);
+    if (row) row.unread = 0;
+  } catch (e) {
+    if (e?.response?.status === 404 && activeId.value === id) closeOutOfScope();
+  }
+};
+
+/** التحميل الأول: أحدث الرسائل ثم النزول إلى الأسفل */
+const open = async (id, { read = true } = {}) => {
+  const mine = ++seq;
   if (activeId.value !== id) newTopic.value = '';
   activeId.value = id;
   sendError.value = '';
+  notice.value = '';
   try {
-    const { data } = await axios.get(`/api/whatsapp/conversations/${id}/messages`, api);
+    const { data } = await axios.get(threadUrl(id, 'messages'), api);
+    if (mine !== seq) return;
     thread.value = data.conversation;
     messages.value = data.messages || [];
     notes.value = data.notes || [];
-    await nextTick();
-    if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight;
+    hasMore.value = !!data.has_more;
+    syncedAt = data.synced_at;
+    newBelow.value = 0;
+    await scrollToBottom();
+    if (read) markRead(id);
     load();
-  } catch (e) { sendError.value = 'تعذّر تحميل المحادثة'; }
+  } catch (e) {
+    if (mine !== seq) return;
+    if (gone(e)) return closeOutOfScope();
+    if (thread.value?.id === id) {
+      sendError.value = 'تعذّر تحميل المحادثة';
+    } else {
+      resetThread();
+      notice.value = 'تعذّر تحميل المحادثة، حاول مرة أخرى.';
+    }
+  }
+};
+
+/** الجديد فقط بعد آخر رسالة، مع تغيّر حالات المرسَل منذ آخر مزامنة؛ لا يصفّر غير المقروء */
+const pollOnce = async () => {
+  const id = activeId.value;
+  if (!id || !thread.value) return;
+  const mine = seq;
+  try {
+    const { data } = await axios.get(threadUrl(id, 'messages'), {
+      ...api,
+      params: { after: lastId(), since: syncedAt || undefined },
+    });
+    if (mine !== seq) return;
+    if (data.gap) return open(id, { read: false });   // فاتنا أكثر مما يعود في طلب واحد
+
+    const atBottom = nearBottom();
+    const known = new Set(messages.value.map((m) => m.id));
+    const fresh = (data.messages || []).filter((m) => !known.has(m.id));
+    for (const u of data.updates || []) {
+      const m = messages.value.find((x) => x.id === u.id);
+      if (m) { m.status = u.status; m.error = u.error; }
+    }
+    if (fresh.length) messages.value.push(...fresh);
+    thread.value = { ...thread.value, ...data.conversation };
+    syncedAt = data.synced_at;
+
+    if (fresh.length && !atBottom) {
+      newBelow.value += fresh.length;
+    } else {
+      if (fresh.length) await scrollToBottom();
+      if (viewing()) markRead(id);
+    }
+  } catch (e) {
+    if (mine === seq && gone(e)) closeOutOfScope();
+  }
+};
+
+// طلب واحد في كل مرة، حتى لا يُضاف ردّ قديم فوق ردّ أحدث
+const poll = async () => {
+  while (inflight) await inflight;
+  inflight = pollOnce().finally(() => { inflight = null; });
+  return inflight;
+};
+
+/** رسائل أقدم عند الوصول لأعلى الخيط، مع حفظ موضع القراءة */
+const loadOlder = async () => {
+  const id = activeId.value;
+  const before = messages.value[0]?.id;
+  if (!id || !before || !hasMore.value || loadingOlder.value) return;
+  const mine = seq;
+  loadingOlder.value = true;
+  try {
+    const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { before } });
+    if (mine !== seq) return;
+    const el = scroller.value;
+    const prev = el ? el.scrollHeight : 0;
+    const known = new Set(messages.value.map((m) => m.id));
+    messages.value = [...(data.messages || []).filter((m) => !known.has(m.id)), ...messages.value];
+    hasMore.value = !!data.has_more;
+    loadingOlder.value = false;
+    await nextTick();
+    if (el) el.scrollTop += el.scrollHeight - prev;
+  } catch (e) {
+    if (mine === seq && gone(e)) closeOutOfScope();
+  } finally {
+    if (mine === seq) loadingOlder.value = false;
+  }
+};
+
+const onScroll = () => {
+  const el = scroller.value;
+  if (!el) return;
+  if (el.scrollTop < 80 && hasMore.value && !loadingOlder.value) loadOlder();
+  if (newBelow.value && nearBottom()) {
+    newBelow.value = 0;
+    markRead(activeId.value);
+  }
+};
+
+const jumpToNew = async () => {
+  newBelow.value = 0;
+  await scrollToBottom();
+  markRead(activeId.value);
 };
 
 const send = async () => {
@@ -308,39 +497,48 @@ const send = async () => {
   if (!id || !body || sending.value) return;
   sending.value = true; sendError.value = '';
   try {
-    await axios.post(`/api/whatsapp/conversations/${id}/send`, { body }, api);
+    await axios.post(threadUrl(id, 'send'), { body }, api);
     drafts.clear(id);
-    if (activeId.value === id) await open(id);
+    if (activeId.value === id) {
+      await poll();
+      newBelow.value = 0;
+      await scrollToBottom();
+    }
   } catch (e) {
-    sendError.value = e.response?.data?.error || 'تعذّر الإرسال';
+    if (e?.response?.status === 404 && activeId.value === id) return closeOutOfScope();
+    sendError.value = errorText(e, 'تعذّر الإرسال');
   } finally { sending.value = false; }
 };
 
-const toggleBot = async () => {
+/** إجراء على المحادثة المفتوحة؛ 404 تعني أنها خرجت من النطاق */
+const act = async (action, payload, onDone, fallback) => {
+  const id = activeId.value;
+  if (!id) return;
+  sendError.value = '';
   try {
-    const { data } = await axios.post(`/api/whatsapp/conversations/${activeId.value}/toggle-bot`, {}, api);
-    thread.value.bot_enabled = data.bot_enabled;
+    const { data } = await axios.post(threadUrl(id, action), payload, api);
+    if (activeId.value === id && thread.value) await onDone?.(data, id);
     load();
-  } catch (e) { /* noop */ }
+    return true;
+  } catch (e) {
+    if (activeId.value !== id) return false;
+    if (e?.response?.status === 404) closeOutOfScope();
+    else sendError.value = errorText(e, fallback);
+    return false;
+  }
 };
 
-const resolve = async () => {
-  try {
-    await axios.post(`/api/whatsapp/conversations/${activeId.value}/resolve`, {}, api);
-    thread.value.needs_attention = false;
-    load();
-  } catch (e) { /* noop */ }
-};
+const toggleBot = () => act('toggle-bot', {}, (data) => { thread.value.bot_enabled = data.bot_enabled; }, 'تعذّر تغيير حالة البوت');
+
+const resolve = () => act('resolve', {}, () => { thread.value.needs_attention = false; }, 'تعذّر حفظ المعالجة');
 
 /** إضافة/إزالة وسم موضوع للمحادثة المفتوحة */
 const setTopic = (key, attach) => {
-  const id = activeId.value;
-  if (!id || !key) return;
-  router.post(`/api/whatsapp/conversations/${id}/topic`, { topic: key, attach }, {
-    preserveScroll: true,
-    preserveState: true,
-    onFinish: () => { if (activeId.value === id) open(id); },
-  });
+  if (!key) return;
+  return act('topic', { topic: key, attach }, (data) => {
+    thread.value.topics = data.topics;
+    if (!attach) poll();   // إزالة وسم اختصاصك قد تخرج المحادثة من نطاقك
+  }, 'تعذّر تعديل الوسم');
 };
 
 const addTopic = () => {
@@ -350,15 +548,11 @@ const addTopic = () => {
   setTopic(key, true);
 };
 
-/** تحويل المحادثة لموظف آخر */
-const assignTo = (value) => {
-  const id = activeId.value;
-  if (!id) return;
-  router.post(`/api/whatsapp/conversations/${id}/assign`, { user_id: value === '' ? null : Number(value) }, {
-    preserveScroll: true,
-    preserveState: true,
-    onFinish: () => { if (activeId.value === id) open(id); },
-  });
+/** تحويل المحادثة لموظف آخر؛ عند الرفض تعود القائمة لقيمتها المحفوظة */
+const assignTo = async (el) => {
+  const value = el.value;
+  const ok = await act('assign', { user_id: value === '' ? null : Number(value) }, () => poll(), 'تعذّر التوكيل');
+  if (!ok) el.value = String(thread.value?.assigned_to ?? '');
 };
 
 const bubble = (m) => {
@@ -369,11 +563,19 @@ const bubble = (m) => {
 };
 const srcLabel = (s) => ({ bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' }[s] || s);
 
+const onVisible = () => { if (document.visibilityState === 'visible') poll(); };
+
 onMounted(() => {
   // فتح محادثة مباشرة من رابط طلب التسعير: ?conv=123
   const q = new URLSearchParams(window.location.search).get('conv');
   if (q) open(Number(q));
-  timer = setInterval(() => { load(); if (activeId.value) open(activeId.value); }, 15000);
+  timer = setInterval(() => { load(); poll(); }, 15000);
+  document.addEventListener('visibilitychange', onVisible);
 });
-onUnmounted(() => { if (timer) clearInterval(timer); clearTimeout(t); });
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+  clearTimeout(t);
+  seq++;
+  document.removeEventListener('visibilitychange', onVisible);
+});
 </script>
