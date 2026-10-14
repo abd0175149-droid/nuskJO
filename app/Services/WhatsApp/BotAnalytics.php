@@ -97,6 +97,23 @@ class BotAnalytics
             $totCost += $c;
         }
 
+        // ما قُلّم خامه (أقدم من 12 شهراً، E13): يُضاف من التجميع الشهري، فلا تتغيّر الإجماليات بعد التقليم
+        $rawMonths = $rows->map(fn ($r) => Carbon::parse($r->created_at)->format('Y-m'))->unique()->flip();
+        $rolledUp = 0;
+        if (\Illuminate\Support\Facades\Schema::hasTable('wa_bot_usage_monthly')) {
+            foreach (\App\Models\WaBotUsageMonthly::where('source', 'live')->get() as $m) {
+                if ($rawMonths->has($m->month)) {
+                    continue;
+                }
+                $rolledUp++;
+                $totIn += (int) $m->prompt_tokens;
+                $totOut += (int) $m->output_tokens;
+                $totCache += (int) $m->cache_read_tokens;
+                $totCost += self::rowCost($m, $prices, $disc);
+                $extraReplies = ($extraReplies ?? 0) + (int) $m->replies;
+            }
+        }
+
         // سلسلة 30 يوماً متّصلة (أيام بلا نشاط = صفر)
         $series = [];
         for ($i = 29; $i >= 0; $i--) {
@@ -138,7 +155,7 @@ class BotAnalytics
             ];
         }
 
-        $replies = $rows->count();
+        $replies = $rows->count() + ($extraReplies ?? 0);
         $playground = WaBotUsage::where('source', 'playground')->get()
             ->sum(fn ($r) => self::rowCost($r, $prices, $disc));
 
@@ -158,6 +175,8 @@ class BotAnalytics
                 'median_conv' => round($median, 6),      // الروتينية (وسيط)
                 'mean_conv' => round($meanConv, 6),
                 'playground_cost' => round($playground, 6),
+                // أشهر قديمة مجمّعة بلا تفاصيل يومية ولا لكل محادثة
+                'rolled_up_months' => $rolledUp,
             ],
             'series' => $series,
             'top_conversations' => $top,

@@ -113,7 +113,6 @@ enum AuditAction: string
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
     public const INTENTIONALLY_UNEMITTED = [
         // مؤقت أثناء بناء E13 على دفعات؛ يُحذف كل سطر مع الدفعة التي تكتبه
-        'RetentionPruned' => 'E13.6 قيد البناء',
         'ClientDataExport' => 'E13.8 قيد البناء',
         'ConfigExport' => 'E13.8 قيد البناء',
     ];

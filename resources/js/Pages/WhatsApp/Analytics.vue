@@ -45,7 +45,7 @@
                         <div>
                             <p class="text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400 mb-1">التكلفة + منحنى 30 يوماً</p>
                             <p class="text-2xl font-bold tnum" :style="{ color: C_COST }" dir="ltr">{{ money(rangeCost) }}</p>
-                            <p class="text-xs text-gray-400 mt-1">آخر {{ range }} يوماً · اليوم {{ money(t.today_cost) }} · الإجمالي {{ money(t.cost_total) }}</p>
+                            <p class="text-xs text-gray-400 mt-1">آخر {{ range }} يوماً · اليوم {{ money(t.today_cost) }} · الإجمالي {{ money(t.cost_total) }}<span v-if="t.rolled_up_months"> · ما قبل 12 شهراً مجمّع</span></p>
                         </div>
                         <div class="flex items-center gap-2" role="group" aria-label="مدى الأيام المعروضة">
                             <button

@@ -189,12 +189,27 @@ Schedule::command('whatsapp:health-status')
 // الوظائف الفاشلة تحمل بيانات عملاء في payload والاستثناء: أسبوع ثم تُحذف
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
-// سجل التدقيق (E09): أحداث الضجيج وحدها بعد audit.noise_retention_days (AuditLog::prunable). المال والصلاحيات
-// والإعدادات وميتا لا تُحذف. جدولة model:prune الموحّدة لبقية النماذج تأتي مع E13 وتضم هذا السطر
-Schedule::command('model:prune', ['--model' => [\App\Models\AuditLog::class]])
-    ->dailyAt('02:30')
+// دورة حياة البيانات (E13): جدولة موحّدة بعد النسخة الليلية (02:30)، ولا تقليم بلا نسخة حديثة.
+// model:prune للقائمة البيضاء config('retention.prunable_models') وحدها: ضجيج التدقيق (E09) والإشعارات
+// وإجراءات المساعد الإداري واستهلاك البوت بعد تجميعه. لا جدول مالي أبداً
+Schedule::command('whatsapp:usage-rollup')
     ->timezone('Asia/Amman')
+    ->monthlyOn(1, '03:10')
     ->withoutOverlapping();
+Schedule::command('model:prune', ['--model' => config('retention.prunable_models'), '--chunk' => 500])
+    ->timezone('Asia/Amman')
+    ->dailyAt('03:30')
+    ->withoutOverlapping()
+    ->when(fn () => \App\Support\Retention::backupFresh());
+Schedule::command('ops:prune-cache')
+    ->timezone('Asia/Amman')
+    ->dailyAt('03:40')
+    ->withoutOverlapping();
+Schedule::command('whatsapp:prune')
+    ->timezone('Asia/Amman')
+    ->dailyAt('03:45')
+    ->withoutOverlapping()
+    ->when(fn () => \App\Support\FeatureFlags::on('retention_purge') && \App\Support\Retention::backupFresh());
 
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {

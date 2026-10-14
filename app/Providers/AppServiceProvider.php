@@ -50,10 +50,14 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
-            if ($event->model === \App\Models\AuditLog::class && $event->count > 0) {
-                \App\Support\AuditActor::as('system', 'artisan:model:prune', fn () => \App\Models\AuditLog::safe(
-                    \App\Enums\AuditAction::AuditPruned, 'audit_log', null, null, ['count' => $event->count]));
+            if ($event->count <= 0) {
+                return;
             }
+            // التدقيق نفسه (E09) بفعله، وبقية الجداول بـ retention.pruned وعدد صفوفها (E13)
+            $audit = $event->model === \App\Models\AuditLog::class;
+            \App\Support\AuditActor::as('system', 'artisan:model:prune', fn () => \App\Models\AuditLog::safe(
+                $audit ? \App\Enums\AuditAction::AuditPruned : \App\Enums\AuditAction::RetentionPruned,
+                $audit ? 'audit_log' : 'retention', null, $audit ? null : class_basename($event->model), ['count' => $event->count]));
         });
         $this->bindVisibleConversations();
         $this->watchOperations();

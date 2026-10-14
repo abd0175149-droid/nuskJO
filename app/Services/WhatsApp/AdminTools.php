@@ -224,11 +224,16 @@ class AdminTools
         };
     }
 
+    /** الأدوات وأفعالها التي تكتب (E13): منها وحدها يُعرف الإجراء الكاتب، وبها يحفظ التقليم الكتابات المنفّذة أطول */
+    public const WRITES = [
+        'manage_knowledge' => ['add', 'update', 'delete'],
+        'manage_bot_tools' => ['enable', 'disable'],
+        'set_customer_bot' => ['on', 'off'],
+    ];
+
     private static function isWrite(string $name, string $action): bool
     {
-        return ($name === 'manage_knowledge' && in_array($action, ['add', 'update', 'delete'], true))
-            || ($name === 'manage_bot_tools' && in_array($action, ['enable', 'disable'], true))
-            || ($name === 'set_customer_bot' && in_array($action, ['on', 'off'], true));
+        return in_array($action, self::WRITES[$name] ?? [], true);
     }
 
     // ==================== التقارير ====================
