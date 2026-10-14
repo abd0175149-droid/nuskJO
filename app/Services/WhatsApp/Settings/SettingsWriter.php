@@ -92,6 +92,37 @@ final class SettingsWriter
         return $result;
     }
 
+    /**
+     * إعادة تشفير أسرار محفوظة بالمفتاح الحالي (بعد تدوير APP_KEY مع APP_PREVIOUS_KEYS). القيم نفسها، فلا ترفع
+     * النسخة؛ وapply لا يصلح هنا لأن القيمة غير «متغيّرة». ما لا يُفك أصلاً يُترك ويُعاد في unreadable.
+     *
+     * @param  list<string>  $columns
+     * @return array{rewritten: list<string>, unreadable: list<string>}
+     */
+    public static function rewriteEncrypted(array $columns): array
+    {
+        $settings = WaBotSetting::current();
+        $current = AppKeys::current();
+        $updates = [];
+        $unreadable = [];
+        foreach ($columns as $column) {
+            if (($settings->getAttributes()[$column] ?? null) === null) {
+                continue;
+            }
+            try {
+                $updates[$column] = $current->encryptString((string) $settings->{$column});
+            } catch (DecryptException) {
+                $unreadable[] = $column;
+            }
+        }
+        if ($updates !== []) {
+            DB::table('wa_bot_settings')->where('id', $settings->id)->update($updates);
+            SecretRedactor::forget();
+        }
+
+        return ['rewritten' => array_keys($updates), 'unreadable' => $unreadable];
+    }
+
     /** صف الفعل نفسه، وصف «تشغيل البوت أو إيقافه» مستقل إن تغيّر enabled ضمن غيره (للبحث عن «من أطفأ البوت؟») */
     private static function rows(AuditAction $action, WaBotSetting $fresh, array $diff, array $meta, ?string $label): array
     {

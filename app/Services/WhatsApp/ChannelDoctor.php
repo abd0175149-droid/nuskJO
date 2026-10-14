@@ -82,4 +82,35 @@ final class ChannelDoctor
 
         return $out;
     }
+
+    /**
+     * تحذيرات مصادر الإعدادات (E10) لـ whatsapp:doctor وحده: بيئة تظلل قيمة محفوظة، وإيقاف من البيئة،
+     * وسر يُفك بمفتاح سابق فقط (تدوير APP_KEY لم يكتمل)، ورمز تحقق مكتوب يدوياً لم يُولَّد.
+     *
+     * @return list<array{level: string, code: string, message: string}>
+     */
+    public static function sourceWarnings(WaBotSetting $settings): array
+    {
+        $out = [];
+        $sources = $settings->sources();
+        foreach ($sources as $key => $src) {
+            if ($src['db_shadowed']) {
+                $out[] = ['level' => 'warn', 'code' => 'ENV_SHADOWS_DB', 'message' => "{$src['env_var']} في البيئة يظلل قيمة {$key} المحفوظة — احذف أحدهما كي لا يختلط مصدرها."];
+            }
+        }
+        if ($sources['wa_suspended']['source'] === 'env') {
+            $out[] = ['level' => 'warn', 'code' => 'ENV_SUSPENDED', 'message' => 'WA_SUSPENDED مضبوط في البيئة: كل الإرسال موقوف ولا يُرفع من الإعدادات.'];
+        }
+        foreach (['wa_token', 'wa_app_secret', 'api_key'] as $field) {
+            $raw = $settings->getRawOriginal($field);
+            if (Settings\AppKeys::decryptsWithCurrent($raw) === false && $settings->decryptOk($field) === true) {
+                $out[] = ['level' => 'warn', 'code' => 'SECRET_ON_PREVIOUS_KEY', 'message' => "{$field} يُفك بمفتاح سابق فقط — شغّل whatsapp:reencrypt-secrets قبل حذف APP_PREVIOUS_KEYS."];
+            }
+        }
+        if ($sources['wa_verify_token']['source'] === 'db' && !empty($settings->wa_verify_token)) {
+            $out[] = ['level' => 'warn', 'code' => 'VERIFY_TOKEN_PLAIN', 'message' => 'رمز التحقق مكتوب يدوياً ومحفوظ نصاً — ولّد رمزاً من الإعدادات، ثم whatsapp:settings-finalize يمسح النص.'];
+        }
+
+        return $out;
+    }
 }

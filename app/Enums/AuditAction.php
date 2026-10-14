@@ -78,6 +78,7 @@ enum AuditAction: string
     case WaSecretClear = 'wa.secret_clear';
     case WaVerifyRotate = 'wa.verify_rotate';
     case WaFlagToggle = 'wa.flag_toggle';
+    case WaSettingsFinalize = 'wa.settings_finalize';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -94,6 +95,7 @@ enum AuditAction: string
     case AuditExport = 'audit.export';
     case SystemReset = 'system.reset';
     case AuditPruned = 'audit.pruned';
+    case AppKeyReencrypt = 'system.reencrypt';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
     public const INTENTIONALLY_UNEMITTED = [];
@@ -111,7 +113,8 @@ enum AuditAction: string
             self::OfferPriceChange, self::OfferBotVisibility, self::QuotePrice,
             self::WaSettingsUpdate, self::WaBotEnabled, self::WaSuspendManual, self::WaRoutingUpdate,
             self::WaReliabilityFlag, self::WaIdentityMode, self::WaSecurity, self::AuditExport,
-            self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle => AuditSeverity::Warn,
+            self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
+            self::WaSettingsFinalize, self::AppKeyReencrypt => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -133,7 +136,7 @@ enum AuditAction: string
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto => 'meta',
-            self::AuditExport, self::SystemReset, self::AuditPruned => 'system',
+            self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt => 'system',
             default => 'whatsapp',
         };
     }
@@ -201,6 +204,7 @@ enum AuditAction: string
             self::WaSecretClear => 'مسح سر القناة',
             self::WaVerifyRotate => 'توليد رمز تحقق الويبهوك',
             self::WaFlagToggle => 'تبديل علم ميزة',
+            self::WaSettingsFinalize => 'إقفال ترقية الإعدادات',
             self::WaAccountUpdate => 'حدث حساب ميتا',
             self::WaAccountAlert => 'تنبيه حساب ميتا',
             self::WaSecurity => 'حدث أمان ميتا',
@@ -213,6 +217,7 @@ enum AuditAction: string
             self::AuditExport => 'تصدير سجل التدقيق',
             self::SystemReset => 'مسح بيانات النظام',
             self::AuditPruned => 'تقليم سجل التدقيق',
+            self::AppKeyReencrypt => 'إعادة تشفير الأسرار',
         };
     }
 

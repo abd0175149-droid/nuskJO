@@ -31,10 +31,34 @@ class ChannelDoctorTest extends TestCase
 
     public function test_a_healthy_setup_reports_nothing(): void
     {
-        $this->configureChannel(['wa_verify_token' => str_repeat('v', 32)]);
+        // رمز تحقق مولَّد (هاشه وحده محفوظ)، لا مكتوب يدوياً
+        $this->configureChannel(['wa_verify_token' => null, 'wa_verify_token_hash' => hash('sha256', str_repeat('v', 64))]);
 
         $this->assertSame([], ChannelDoctor::checks());
         $this->artisan('whatsapp:doctor', ['--strict' => true])->expectsOutputToContain('لا ملاحظات')->assertExitCode(0);
+    }
+
+    public function test_the_doctor_lists_sources_and_warns_about_shadowing_and_old_keys_without_values(): void
+    {
+        $this->configureChannel(['wa_verify_token' => 'typed-by-hand-token-0001']);
+        config(['services.whatsapp.token' => 'env-token-value-0000000001']);
+        // سر مشفّر بمفتاح سابق ما زال في APP_PREVIOUS_KEYS
+        $old = 'base64:'.base64_encode(random_bytes(32));
+        $raw = (new Encrypter(base64_decode(substr($old, 7)), 'AES-256-CBC'))->encryptString('old-key-app-secret-00001');
+        DB::table('wa_bot_settings')->update(['wa_app_secret' => $raw]);
+        config(['app.previous_keys' => [$old]]);
+        $this->app->forgetInstance('encrypter');
+        \Illuminate\Support\Facades\Crypt::clearResolvedInstance('encrypter');
+
+        $this->assertSame(1, \Illuminate\Support\Facades\Artisan::call('whatsapp:doctor', ['--strict' => true]));
+        $output = \Illuminate\Support\Facades\Artisan::output();
+
+        foreach (['wa_phone_number_id', 'WA_TOKEN', 'ENV_SHADOWS_DB', 'SECRET_ON_PREVIOUS_KEY', 'VERIFY_TOKEN_PLAIN'] as $expected) {
+            $this->assertStringContainsString($expected, $output);
+        }
+        foreach (['old-key-app-secret', 'env-token-value', 'typed-by-hand-token'] as $secret) {
+            $this->assertStringNotContainsString($secret, $output);
+        }
     }
 
     public function test_secret_saved_under_another_app_key_is_reported_without_its_value(): void

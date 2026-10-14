@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\WaBotSetting;
 use App\Services\WhatsApp\ChannelDoctor;
 use Illuminate\Console\Command;
 
@@ -14,7 +15,16 @@ class WhatsAppDoctor extends Command
 
     public function handle(): int
     {
-        $checks = ChannelDoctor::checks();
+        // المصادر: من أين تأتي كل قيمة، بلا القيمة نفسها (E10)
+        $settings = WaBotSetting::current();
+        $yesNo = fn (?bool $v) => $v === null ? '—' : ($v ? 'نعم' : 'لا');
+        $rows = [];
+        foreach ($settings->sources() as $key => $src) {
+            $rows[] = [$key, $src['source'], $src['env_var'] ?? '—', $src['db_shadowed'] ? 'نعم' : '—', $yesNo($src['decrypt_ok'])];
+        }
+        $this->table(['المفتاح', 'المصدر', 'المتغير', 'محفوظ مظلَّل', 'يُفك'], $rows);
+
+        $checks = [...ChannelDoctor::checks(), ...ChannelDoctor::sourceWarnings($settings)];
         if ($checks === []) {
             $this->info('✅ صحة القناة: لا ملاحظات');
 
