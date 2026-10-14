@@ -26,7 +26,7 @@ class AdminInvariant
     {
         $adminId = self::adminRoleId();
 
-        if (! $adminId || (int) $target->role_id !== $adminId || ! $target->is_active) {
+        if (!$adminId || (int) $target->role_id !== $adminId || !$target->is_active) {
             return false;
         }
 
@@ -55,7 +55,7 @@ class AdminInvariant
         $adminId = self::adminRoleId();
         $query = DB::table('users')->where('id', $target->id);
 
-        if (! $adminId) {
+        if (!$adminId) {
             return $query;
         }
 

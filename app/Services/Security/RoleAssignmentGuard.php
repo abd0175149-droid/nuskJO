@@ -57,7 +57,7 @@ class RoleAssignmentGuard
 
     private static function slugs(?Role $role): Collection
     {
-        if (! $role) {
+        if (!$role) {
             return collect();
         }
 

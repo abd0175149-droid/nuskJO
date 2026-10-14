@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Http;
 trait ConfiguresWhatsApp
 {
     protected const TEST_PHONE_NUMBER_ID = '106540352242922';
+
     protected const TEST_APP_SECRET = 'test-app-secret';
+
     protected const TEST_VERIFY_TOKEN = 'test-verify';
 
     protected function configureChannel(array $overrides = []): WaBotSetting

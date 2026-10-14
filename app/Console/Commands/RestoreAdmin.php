@@ -26,7 +26,7 @@ class RestoreAdmin extends Command
     {
         $user = User::where('email', $this->argument('email'))->first();
 
-        if (! $user) {
+        if (!$user) {
             $this->error('لا يوجد مستخدم بهذا البريد.');
 
             return self::FAILURE;

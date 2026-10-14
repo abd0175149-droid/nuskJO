@@ -15,7 +15,9 @@ class SnapshotServiceTest extends TestCase
     use RefreshDatabase;
 
     private string $dir;
+
     private string $db;
+
     private string $spool;
 
     protected function setUp(): void
