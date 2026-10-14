@@ -8,10 +8,11 @@ use App\Models\User;
 use App\Services\Security\AdminInvariant;
 use App\Services\Security\RoleAssignmentGuard;
 use App\Services\Security\SessionRevoker;
+use App\Http\Requests\StoreUserRequest;
+use App\Http\Requests\UpdateUserRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -47,28 +48,16 @@ class UserController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(StoreUserRequest $request)
     {
-        $actor = auth()->user();
-        abort_unless($actor->can('users.create'), 403);
-
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8',
-            'role_id' => 'required|exists:roles,id',
-            'phone' => 'nullable|string|max:20',
-            'is_active' => 'boolean',
-        ]);
-
-        $role = Role::findOrFail($request->role_id);
-        abort_unless(RoleAssignmentGuard::canAssign($actor, $role), 403, 'لا تملك صلاحية إسناد هذا الدور');
+        $data = $request->validated();
+        $role = Role::findOrFail($data['role_id']);
 
         $user = new User([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'phone' => $request->phone,
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+            'phone' => $data['phone'] ?? null,
         ]);
         $user->forceFill([
             'role_id' => $role->id,
@@ -80,26 +69,10 @@ class UserController extends Controller
         return back()->with('success', 'تم إضافة الموظف بنجاح');
     }
 
-    public function update(Request $request, User $user)
+    public function update(UpdateUserRequest $request, User $user)
     {
         $actor = auth()->user();
-        abort_unless($actor->can('users.update'), 403);
-        abort_unless(RoleAssignmentGuard::canManageUser($actor, $user), 403, 'لا تملك صلاحية تعديل هذا المستخدم');
-
-        $rules = [
-            'name' => 'required|string|max:255',
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'role_id' => 'required|exists:roles,id',
-            'phone' => 'nullable|string|max:20',
-            'is_active' => 'boolean',
-        ];
-
-        if ($request->filled('password')) {
-            abort_unless($actor->isAdmin(), 403, 'تغيير كلمة المرور للمدير فقط');
-            $rules['password'] = 'string|min:8';
-        }
-
-        $request->validate($rules);
+        $validated = $request->validated();
 
         $newRoleId = (int) $request->role_id;
         $newActive = $request->has('is_active') ? $request->boolean('is_active') : (bool) $user->is_active;
@@ -119,7 +92,7 @@ class UserController extends Controller
 
         $before = ['role_id' => $user->role_id, 'is_active' => (bool) $user->is_active];
 
-        $applied = DB::transaction(function () use ($user, $request, $newRoleId, $newActive, $roleChanged, $activeChanged) {
+        $applied = DB::transaction(function () use ($user, $validated, $newRoleId, $newActive, $roleChanged, $activeChanged) {
             if ($roleChanged || $activeChanged) {
                 $columns = ['role_id' => $newRoleId, 'is_active' => $newActive];
 
@@ -132,9 +105,9 @@ class UserController extends Controller
                 }
             }
 
-            $data = $request->only(['name', 'email', 'phone']);
-            if ($request->filled('password')) {
-                $data['password'] = Hash::make($request->password);
+            $data = array_intersect_key($validated, array_flip(['name', 'email', 'phone']));
+            if (!empty($validated['password'])) {
+                $data['password'] = Hash::make($validated['password']);
             }
             $user->update($data);
 
@@ -169,7 +142,7 @@ class UserController extends Controller
         abort_unless(auth()->user()->isAdmin(), 403);
 
         $request->validate([
-            'password' => 'required|string|min:8|confirmed',
+            'password' => ['required', 'string', \Illuminate\Validation\Rules\Password::min(8), 'confirmed'],
         ]);
 
         $user->update(['password' => Hash::make($request->password)]);

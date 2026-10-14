@@ -31,13 +31,13 @@
             </div>
 
             <!-- الإعدادات العامة -->
-            <div v-for="(items, group) in settings" :key="group" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <div v-for="(items, group) in settings" v-show="editable(items).length" :key="group" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                     {{ {company:'🏢 بيانات الشركة',printing:'🖨️ الطباعة',notifications:'🔔 الإشعارات',financial:'💰 المالية'}[group]||('⚙️ '+group) }}
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <!-- إعدادات الصور تُدار من قسم «هوية بطاقات العروض» لا كمسار نصّي -->
-                    <div v-for="item in items.filter(i => i.type !== 'image')" :key="item.key">
+                    <div v-for="item in editable(items)" :key="item.key">
                         <label class="block text-sm font-medium text-gray-700 mb-1">{{ item.description || item.key }}</label>
                         <template v-if="item.type==='boolean'">
                             <label class="flex items-center gap-2"><input v-model="settingsData[item.key]" type="checkbox" true-value="1" false-value="0" class="w-4 h-4 rounded text-gold-500"/><span class="text-sm text-gray-600">تفعيل</span></label>
@@ -48,6 +48,7 @@
                         <template v-else>
                             <input v-model="settingsData[item.key]" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
                         </template>
+                        <p v-if="$page.props.errors?.['values.' + item.key]" class="mt-1 text-xs text-red-600">{{ $page.props.errors['values.' + item.key] }}</p>
                     </div>
                 </div>
             </div>
@@ -167,7 +168,13 @@
 import { ref, reactive, computed } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
-const props = defineProps({ settings: Object, templates: Object, brand: Object, lastBackup: Object });
+const props = defineProps({
+    settings: Object, templates: Object, brand: Object, lastBackup: Object,
+    editableKeys: { type: Array, default: () => [] },
+});
+
+// الحقول القابلة للتعديل من هنا فقط (الخادم يُسقط غيرها)؛ الصور تُدار من «هوية بطاقات العروض»
+const editable = (items) => items.filter(i => i.type !== 'image' && props.editableKeys.includes(i.key));
 
 // عمر آخر نسخة احتياطية ناجحة بالساعات (null = لا نسخة بعد)
 const backupAgeHours = computed(() => {
@@ -198,7 +205,9 @@ if (props.settings) {
 const saving = ref(false);
 const saveSettings = () => {
     saving.value = true;
-    const payload = Object.entries(settingsData).map(([key, value]) => ({ key, value }));
+    const payload = Object.entries(settingsData)
+        .filter(([key]) => props.editableKeys.includes(key))
+        .map(([key, value]) => ({ key, value }));
     router.put('/settings', { settings: payload }, {
         preserveScroll: true,
         onFinish: () => { saving.value = false; },

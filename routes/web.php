@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 // Auth Routes (Guest only)
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
-    Route::post('/login', [LoginController::class, 'login']);
+    Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:login');
 });
 
 // صفحات قانونية عامة (تطلبها ميتا) — بلا تسجيل دخول

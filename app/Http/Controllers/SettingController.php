@@ -12,7 +12,7 @@ class SettingController extends Controller
 {
     public function index()
     {
-        $settings = Setting::whereNotIn('key', Setting::INTERNAL_KEYS)->get()->groupBy('group_name');
+        $settings = Setting::whereNotIn('key', [...Setting::INTERNAL_KEYS, 'reconcile_signature'])->get()->groupBy('group_name');
 
         // قوالب الطباعة
         $financialTemplate = Setting::where('key', 'print_template_financial')->first();
@@ -21,6 +21,7 @@ class SettingController extends Controller
         return Inertia::render('Settings/Index', [
             'title' => 'الإعدادات',
             'settings' => $settings,
+            'editableKeys' => array_keys(\App\Http\Requests\UpdateSettingsRequest::EDITABLE),
             'templates' => [
                 'financial' => $financialTemplate?->value ? Storage::url($financialTemplate->value) : null,
                 'accounting' => $accountingTemplate?->value ? Storage::url($accountingTemplate->value) : null,
@@ -38,19 +39,11 @@ class SettingController extends Controller
         ]);
     }
 
-    public function update(Request $request)
+    public function update(\App\Http\Requests\UpdateSettingsRequest $request)
     {
-        $validated = $request->validate([
-            'settings' => 'required|array',
-            'settings.*.key' => 'required|string',
-            'settings.*.value' => 'nullable|string',
-        ]);
-
-        foreach ($validated['settings'] as $setting) {
-            if (in_array($setting['key'], Setting::INTERNAL_KEYS, true)) {
-                continue;
-            }
-            Setting::where('key', $setting['key'])->update(['value' => $setting['value']]);
+        // المفاتيح المسموحة فقط (UpdateSettingsRequest::EDITABLE)، وعلى الصفوف الموجودة وحدها
+        foreach ($request->validated()['values'] ?? [] as $key => $value) {
+            Setting::where('key', $key)->update(['value' => $value === null ? null : (string) $value]);
         }
 
         return redirect()->back()->with('success', 'تم تحديث الإعدادات بنجاح');
@@ -71,8 +64,8 @@ class SettingController extends Controller
 
         // حذف الملف القديم
         $old = Setting::where('key', $key)->first();
-        if ($old?->value && Storage::exists($old->value)) {
-            Storage::delete($old->value);
+        if (self::ownedUpload($old?->value, 'templates/')) {
+            Storage::disk('public')->delete($old->value);
         }
 
         // رفع الملف الجديد
@@ -107,7 +100,7 @@ class SettingController extends Controller
         };
 
         $old = Setting::where('key', $key)->first();
-        if ($old?->value && Storage::disk('public')->exists($old->value)) {
+        if (self::ownedUpload($old?->value, 'brand/')) {
             Storage::disk('public')->delete($old->value);
         }
 
@@ -215,5 +208,15 @@ class SettingController extends Controller
         );
 
         return redirect()->back()->with('success', 'تم حفظ التخطيط بنجاح');
+    }
+
+    /** مسار مخزّن رفعناه نحن: داخل مجلده المتوقع، بلا صعود، وموجود. غير ذلك لا يُحذف أبداً. */
+    private static function ownedUpload(?string $path, string $prefix): bool
+    {
+        return $path
+            && str_starts_with($path, $prefix)
+            && !str_contains($path, '..')
+            && !str_contains($path, '\\')
+            && Storage::disk('public')->exists($path);
     }
 }
