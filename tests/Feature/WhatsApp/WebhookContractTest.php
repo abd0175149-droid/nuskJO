@@ -9,6 +9,7 @@ use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Models\WaOptout;
+use App\Services\WhatsApp\ReplyState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
@@ -123,14 +124,50 @@ class WebhookContractTest extends TestCase
     // ==================== INV-02: منع التكرار ====================
 
     #[Group('INV-02')]
-    public function test_same_payload_twice_stores_one_row_and_schedules_once(): void
+    public function test_same_payload_twice_stores_one_row_and_is_answered_once(): void
     {
+        $this->receivedShortlyAfter('text.json');
+        $this->fakeGemini('نعم، يتوفر بألوان أخرى.');
+
         $this->postMetaWebhook('text.json')->assertOk();
         $this->postMetaWebhook('text.json')->assertOk();
 
         $this->assertSame(1, WaMessage::count());
         $this->assertSame(1, WaConversation::sole()->unread_count);
+
+        // المكرر وهي بلا رد يعيد التمرير (جدولة فشلت بعد التخزين لا تضيع)، والرمز الأحدث وحده يعمل
+        $jobs = Queue::pushed(ProcessWhatsAppReply::class);
+        $this->assertCount(2, $jobs);
+        $jobs->each->handle();
+        $this->assertSame(1, WaMessage::where('direction', 'out')->where('source', 'bot')->count());
+    }
+
+    #[Group('INV-02')]
+    public function test_a_duplicate_after_the_reply_schedules_nothing(): void
+    {
+        $this->receivedShortlyAfter('text.json');
+        $this->fakeGemini('نعم، يتوفر بألوان أخرى.');
+        $this->postMetaWebhook('text.json')->assertOk();
+        Queue::pushed(ProcessWhatsAppReply::class)->first()->handle();
+
+        $this->postMetaWebhook('text.json')->assertOk();
+
         Queue::assertPushed(ProcessWhatsAppReply::class, 1);
+        $this->assertSame(1, WaMessage::where('direction', 'out')->count());
+    }
+
+    #[Group('INV-02')]
+    public function test_a_duplicate_opt_out_does_not_wake_the_bot(): void
+    {
+        $this->receivedShortlyAfter('optout_iqaf.json');
+
+        $this->postMetaWebhook('optout_iqaf.json')->assertOk();
+        $this->postMetaWebhook('optout_iqaf.json')->assertOk();
+
+        Queue::assertNothingPushed();
+        Http::assertSentCount(1);
+        // إشعار النظام هو الرد: لا وارد معلّق يلتقطه المُصالِح
+        $this->assertFalse(ReplyState::hasPending(WaConversation::sole()));
     }
 
     // ==================== INV-03: رقم آخر في التطبيق نفسه ====================

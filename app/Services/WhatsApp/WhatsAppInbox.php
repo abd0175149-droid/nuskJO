@@ -6,6 +6,8 @@ use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Models\WaOptout;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * طبقة الإنبوكس: خزّن أولاً ثمّ قرّر من يردّ.
@@ -15,11 +17,11 @@ class WhatsAppInbox
 {
     /**
      * معالجة حمولة الويبهوك كاملة.
-     * @return array<int> معرّفات المحادثات التي وصلتها رسالة عميل جديدة (للتمرير للبوت)
+     * @param  array<int>  $touched  يُملأ أولاً بأول، فيجد المتحكم ما خُزّن قبل أي استثناء لاحق في الحمولة
+     * @return array<int> معرّفات المحادثات التي وصلتها رسالة عميل تنتظر رداً (للتمرير للبوت)
      */
-    public static function handleWebhook(array $payload): array
+    public static function handleWebhook(array $payload, array &$touched = []): array
     {
-        $touched = [];
         // للتطبيق أكثر من رقم، والويبهوك واحد للتطبيق كلّه — نعالج رقمنا وحده
         $settings = WaBotSetting::current();
         $ownId = (string) $settings->phoneNumberId();
@@ -113,10 +115,50 @@ class WhatsAppInbox
         }
 
         // منع التكرار — ميتا تعيد الإرسال عند عدم الردّ بـ200
-        if (WaMessage::where('wamid', $wamid)->exists()) {
+        if ($existing = WaMessage::where('wamid', $wamid)->first()) {
+            return self::pendingDuplicate($existing);
+        }
+
+        try {
+            [$conv, $optOut] = DB::transaction(fn () => self::storeInboundRows($msg, $contacts, (string) $wamid, (string) $from, (string) $type));
+        } catch (UniqueConstraintViolationException) {
+            // نسختان من الإشعار نفسه في وقت واحد: الأخرى خزّنته
+            $existing = WaMessage::where('wamid', $wamid)->first();
+
+            return $existing ? self::pendingDuplicate($existing) : null;
+        }
+        if ($conv === null) {
             return null;
         }
 
+        // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
+        if ($optOut) {
+            WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system');
+
+            return null;
+        }
+
+        return $conv->id;
+    }
+
+    /**
+     * مكرر من ميتا لوارد ما زال بلا رد: جدولته فشلت بعد التخزين (أو أُعيد بعد 503)، فيُعاد تمريره.
+     * آمن: الرمز الأحدث يُبطل أي وظيفة منتظرة، والعلامة تمنع الرد المزدوج.
+     */
+    private static function pendingDuplicate(WaMessage $m): ?int
+    {
+        $pending = $m->direction === 'in' && $m->msg_type !== 'reaction' && ReplyState::available()
+            && $m->id > (int) WaConversation::whereKey($m->conversation_id)->value('bot_answered_in_id');
+
+        return $pending ? (int) $m->conversation_id : null;
+    }
+
+    /**
+     * صفوف الوارد كلها في معاملة واحدة: المحادثة والرسالة والنافذة، أو لا شيء.
+     * @return array{0: ?WaConversation, 1: bool} المحادثة إن استحقت المتابعة، وهل طلب إيقاف التسويق
+     */
+    private static function storeInboundRows(array $msg, $contacts, string $wamid, string $from, string $type): array
+    {
         $conv = self::conversationFor($from, data_get($contacts->get($from), 'profile.name'));
 
         // التفاعلات (reaction) مسار منفصل: تُخزَّن ولا تفتح نافذة ولا تُمرَّر للبوت
@@ -126,7 +168,8 @@ class WhatsAppInbox
                 'source' => 'customer', 'msg_type' => 'reaction',
                 'body' => data_get($msg, 'reaction.emoji', '👍'), 'payload' => $msg,
             ]);
-            return null;
+
+            return [null, false];
         }
 
         [$body, $buttonId] = self::extract($msg, $type);
@@ -136,7 +179,7 @@ class WhatsAppInbox
         $ts = (int) data_get($msg, 'timestamp', 0);
         $metaAt = $ts > 0 ? min(\Illuminate\Support\Carbon::createFromTimestamp($ts, config('app.timezone')), now()) : now();
 
-        WaMessage::create([
+        $message = WaMessage::create([
             'conversation_id' => $conv->id,
             'wamid' => $wamid,
             'direction' => 'in',
@@ -154,7 +197,7 @@ class WhatsAppInbox
                 'last_message_at' => $metaAt,
                 'last_message_preview' => mb_substr(trim((string) $body), 0, 160),
             ]);
-        WaConversation::whereKey($conv->id)->update(['unread_count' => \Illuminate\Support\Facades\DB::raw('unread_count + 1'), 'status' => 'open']);
+        WaConversation::whereKey($conv->id)->update(['unread_count' => DB::raw('unread_count + 1'), 'status' => 'open']);
         $conv->refresh();
 
         // إيقاف التسويق بنصّ مطابق
@@ -164,11 +207,13 @@ class WhatsAppInbox
                 ['phone' => $conv->phone],
                 ['reason' => 'طلب العميل', 'created_at' => now()]
             );
-            WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system');
-            return null;
+            // إشعار النظام هو الرد: لا يجيب البوت عنها لاحقاً (المُصالِح أو مكرر من ميتا)
+            ReplyState::advance($conv, $message->id);
+
+            return [$conv, true];
         }
 
-        return $conv->id;
+        return [$conv, false];
     }
 
     /** إيجاد/إنشاء محادثة وربطها بالعميل أو الموظف */

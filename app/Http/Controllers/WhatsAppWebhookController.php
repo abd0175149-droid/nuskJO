@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Jobs\ProcessWhatsAppReply;
 use App\Models\WaBotSetting;
 use App\Services\WhatsApp\WhatsAppChannel;
+use App\Services\WhatsApp\WaLog;
 use App\Services\WhatsApp\WhatsAppInbox;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 /**
  * ويبهوك ميتا — خارج auth وخارج CSRF.
- * قاعدة حاكمة: تحقّق التوقيع، ثمّ ردّ 200 فوراً، ثمّ عالِج (وإلا تعيد ميتا الإرسال وقد تعطّل الويبهوك).
+ * قاعدة حاكمة: تحقّق التوقيع، ثمّ خزّن، ثمّ ردّ 200 (وإلا تعيد ميتا الإرسال وقد تعطّل الويبهوك).
+ * الاستثناء الوحيد: عطل القاعدة مع العلم webhook_5xx يرد 503 لتعيد ميتا ما لم يُخزَّن.
  */
 class WhatsAppWebhookController extends Controller
 {
@@ -32,7 +35,7 @@ class WhatsAppWebhookController extends Controller
             return response($challenge, 200)->header('Content-Type', 'text/plain');
         }
 
-        \App\Services\WhatsApp\WaLog::warning('webhook.verify.denied');
+        WaLog::warning('webhook.verify.denied');
 
         return response('Forbidden', 403);
     }
@@ -45,23 +48,36 @@ class WhatsAppWebhookController extends Controller
 
         // التوقيع إلزامي — لا استثناء في الإنتاج
         if (!WhatsAppChannel::verifySignature($raw, $request->header('X-Hub-Signature-256'), $s->appSecret())) {
-            \App\Services\WhatsApp\WaLog::warning('webhook.bad_signature');
+            WaLog::warning('webhook.bad_signature');
             return response()->json(['ok' => false], 403);
         }
 
+        $touched = [];
+        $status = 200;
         try {
             $payload = json_decode($raw, true) ?: [];
-            $convIds = WhatsAppInbox::handleWebhook($payload);
-
-            // التمرير للبوت عبر الطابور — لا معالجة ثقيلة داخل الويبهوك
-            foreach ($convIds as $id) {
-                ProcessWhatsAppReply::schedule($id);
+            WhatsAppInbox::handleWebhook($payload, $touched);
+        } catch (QueryException|\PDOException $e) {
+            // عطل قاعدة (مقفلة، قرص ممتلئ): 503 تجعل ميتا تعيد الإرسال، وwamid الفريد يمنع الازدواج.
+            // خلف العلم webhook_5xx (يُفعَّل بعد WAL)، وإلا 200 كما كان
+            WaLog::error('webhook.db_error', ['exception' => $e]);
+            if ($s->flag('webhook_5xx')) {
+                $status = 503;
             }
         } catch (\Throwable $e) {
-            // لا نُفشل الويبهوك أبداً — نسجّل ونردّ 200
-            \App\Services\WhatsApp\WaLog::error('webhook.error', ['exception' => $e]);
+            // حمولة معطوبة أو خلل منطق: 200 دائماً، فالإعادة لن تصلحه وميتا تعيد 7 أيام
+            WaLog::error('webhook.error', ['exception' => $e]);
         }
 
-        return response()->json(['ok' => true], 200);
+        // ما خُزّن قبل أي استثناء يُمرَّر للبوت أيضاً. كل جدولة مستقلة، وفشلها لا يغيّر الرد (يلتقطه المُصالِح)
+        foreach (array_unique($touched) as $id) {
+            try {
+                ProcessWhatsAppReply::schedule($id);
+            } catch (\Throwable $e) {
+                WaLog::error('webhook.schedule_failed', ['conv_id' => $id, 'exception' => $e]);
+            }
+        }
+
+        return response()->json(['ok' => $status === 200], $status);
     }
 }
