@@ -112,6 +112,9 @@ const moduleTranslations = {
     hr_reports: 'تقارير الموارد البشرية',
     accounting: 'المحاسبة',
     roles: 'الأدوار والصلاحيات',
+    offers: 'العروض',
+    whatsapp: 'الواتساب',
+    quotes: 'طلبات التسعير',
     backups: 'النسخ الاحتياطي',
 };
 
@@ -136,6 +139,7 @@ const actionTranslations = {
     close: 'إقفال الفترات والسنة',
     run: 'تشغيل نسخة الآن',
     restore_ack: 'اعتماد مراجعة ما بعد الاستعادة',
+    price: 'التسعير والإرسال',
 };
 
 const translateModule = (mod) => moduleTranslations[mod] || mod;
