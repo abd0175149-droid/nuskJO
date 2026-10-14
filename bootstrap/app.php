@@ -10,6 +10,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
+        then: function () {
+            // ويبهوك ميتا بلا وسيط مجموعة: لا جلسة ولا CSRF ولا Inertia (routes/webhooks.php)
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/webhooks.php'));
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
@@ -21,11 +25,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // الوكلاء الموثوقون من config/trustedproxy.php (TRUSTED_PROXIES) وقت الطلب، لا ثابتاً هنا:
         // env() في bootstrap لا يصل بعد config:cache
-
-        // ويبهوك واتساب: لا CSRF (ميتا لا ترسل رمزاً) — الحماية بتوقيع HMAC داخل المتحكّم
-        $middleware->validateCsrfTokens(except: [
-            'api/whatsapp/webhook',
-        ]);
 
         $middleware->alias([
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,

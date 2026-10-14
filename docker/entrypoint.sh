@@ -69,6 +69,8 @@ as_www "php artisan whatsapp:doctor --no-ansi" || true
 
 # ما قد يكون أنشأه root أثناء الإقلاع (التخزين المؤقت للعروض والإعدادات)
 chown -R www-data:www-data storage/framework storage/logs bootstrap/cache
+# ملفا -wal و-shm إن أنشأهما root تصير القاعدة للقراءة فقط عند www-data
+find "$DB_DIR" -maxdepth 1 -name "$(basename "$DB_FILE")*" -exec chown www-data:www-data {} + 2>/dev/null || true
 
 echo "✅ NUSKJO is ready! Listening on port 4020"
 

@@ -81,3 +81,17 @@ bash scripts/backup/restore.sh --dir ~/backups/nuskjo/<الطابع>-pre-restore
 ## إن تعطّل شيء في منتصف الاستعادة
 
 السكربت يطبع عند أي فشل بعد إيقاف التطبيق أمرَي الرجوع. القاعدة الأصلية محفوظة في لقطة ما قبل الاستعادة قبل أي تغيير، والاستبدال يتم بملف مؤقت ثم إعادة تسمية، فلا تبقى قاعدة نصف مكتوبة. إن فشل الوضع الآمن، فلا تُقلع التطبيق قبل إصلاحه: الإرسال لن يكون مقفلاً.
+
+## القاعدة في وضع WAL
+
+منذ E07 تعمل القاعدة في وضع WAL (`DB_JOURNAL_MODE=wal` في docker-compose.yml). يبقى بجانب `database.sqlite` ملفان: `database.sqlite-wal` و`database.sqlite-shm`. آخر ما كُتب قد يكون في ملف -wal ولم يُنقل بعد إلى الملف الرئيسي.
+
+- **التحقق:** `docker exec -u www-data nuskjo-app php artisan tinker --execute="echo DB::selectOne('PRAGMA journal_mode')->journal_mode;"` يطبع `wal`.
+- **لا تنسخ الملف الحي بـ cp ولا docker cp.** نسخة الملف وحده تفقد ما في -wal، ونسخه مع -wal في لحظتين مختلفتين تعطي قاعدة تالفة. النسخ بـ `php artisan backup:run`، فهو يستعمل `VACUUM INTO` ثم يفحص النسخة بـ `integrity_check`. إن احتجت نسخة يدوية فبأداة sqlite3:
+  ```bash
+  docker exec -u www-data nuskjo-app sqlite3 /var/www/html/database/data/database.sqlite ".backup '/var/www/html/storage/app/backups/manual-$(date +%F).sqlite'"
+  docker exec -u www-data nuskjo-app sqlite3 /var/www/html/storage/app/backups/manual-$(date +%F).sqlite "PRAGMA integrity_check;"
+  ```
+- **الاستعادة:** `restore.sh` يوقف التطبيق ويحذف `-wal` و`-shm` قبل وضع النسخة، ويعيد الملكية لـ www-data (82:82). إن استبدلت القاعدة يدوياً لأي سبب، فافعل الثلاثة بنفسك والتطبيق متوقف (`docker compose stop nuskjo-app`): ملف -wal قديم بجانب قاعدة جديدة يُطبَّق عليها عند أول فتح فيفسدها.
+- **كل أمر artisan أو sqlite3 بـ `docker exec -u www-data`.** إن فتح root القاعدة أنشأ -wal و-shm مملوكين له، فتصير القاعدة للقراءة فقط عند التطبيق. الإقلاع يصحّح الملكية (entrypoint.sh)، لكن الأمر الخاطئ أثناء التشغيل يوقف الكتابة إلى أن يُعاد التشغيل.
+- **الرجوع عن WAL** (نادراً): `DB_JOURNAL_MODE=delete` في docker-compose.yml ثم إعادة النشر. يُكتب الوضع في الملف عند أول فتح.

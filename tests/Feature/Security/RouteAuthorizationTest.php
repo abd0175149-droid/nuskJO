@@ -6,7 +6,6 @@ use App\Models\AuditLog;
 use App\Models\Permission;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as Router;
@@ -158,26 +157,21 @@ class RouteAuthorizationTest extends TestCase
         }
     }
 
-    /** ميتا لا تسجّل دخولاً ولا ترسل رمز CSRF، والحماية بتوقيع HMAC؛ والحد يُسقط إعادة إرسالها */
+    /**
+     * ميتا لا تسجّل دخولاً ولا ترسل رمز CSRF، والحماية بتوقيع HMAC؛ والحد يُسقط إعادة إرسالها.
+     * المسار خارج مجموعة web (routes/webhooks.php)، فلا CSRF ولا جلسة أصلاً (WebhookSessionlessTest).
+     */
     public function test_whatsapp_webhook_is_public_without_csrf_or_throttle(): void
     {
         foreach (['GET', 'POST'] as $method) {
             $route = collect(Router::getRoutes()->getRoutes())->first(fn (Route $r) => $r->uri() === 'api/whatsapp/webhook' && in_array($method, $r->methods(), true));
             $this->assertNotNull($route);
             $middleware = $route->gatherMiddleware();
+            $this->assertNotContains('web', $middleware);
             $this->assertNotContains('auth', $middleware);
             $this->assertNotContains('authz.fence', $middleware);
             $this->assertEmpty(array_filter($middleware, fn ($m) => is_string($m) && str_starts_with($m, 'throttle')));
         }
-
-        $csrf = new class(app(), app('encrypter')) extends VerifyCsrfToken
-        {
-            public function excluded(): array
-            {
-                return array_merge($this->except, self::$neverVerify ?? []);
-            }
-        };
-        $this->assertContains('api/whatsapp/webhook', $csrf->excluded());
     }
 
     public function test_conversation_routes_use_scoped_binding(): void

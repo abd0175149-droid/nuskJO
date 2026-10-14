@@ -38,10 +38,15 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            // WAL: القرّاء لا ينتظرون الكاتب ولا الكاتب القرّاء (ويبهوك ميتا أثناء رد البوت والصفحات).
+            // يُكتب في ملف القاعدة ويبقى. النسخ بـ VACUUM INTO لا بنسخ الملف (docs/RESTORE.md «WAL»)
+            'journal_mode' => env('DB_JOURNAL_MODE', 'wal'),
+            // 60 ثانية كمهلة pdo_sqlite الضمنية اليوم: أقل منها تراجع يظهر «database is locked»
+            'busy_timeout' => env('DB_BUSY_TIMEOUT', 60000),
+            // normal آمن مع WAL (قد يضيع آخر اعتماد عند انقطاع الكهرباء، لا تتلف القاعدة)
+            'synchronous' => env('DB_SYNCHRONOUS', 'normal'),
+            // IMMEDIATE يُجرَّب على نسخة من قاعدة الإنتاج أولاً: مع DEFERRED قد تفشل ترقية القراءة إلى كتابة فوراً
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'DEFERRED'),
         ],
 
         'mysql' => [

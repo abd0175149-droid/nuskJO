@@ -40,6 +40,11 @@ services:
       - WA_LOG_LEVEL=info
       - DB_CONNECTION=sqlite
       - DB_DATABASE=/var/www/html/database/data/database.sqlite
+      # E07.11: WAL ومهلة القفل 60 ثانية (صريحة هنا لا في الافتراضي وحده)؛ IMMEDIATE بعد تجربته على نسخة
+      - DB_JOURNAL_MODE=wal
+      - DB_BUSY_TIMEOUT=60000
+      - DB_SYNCHRONOUS=normal
+      - DB_TRANSACTION_MODE=DEFERRED
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database

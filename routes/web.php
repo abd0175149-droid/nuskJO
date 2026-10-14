@@ -21,9 +21,7 @@ Route::view('/privacy', 'legal.privacy')->name('legal.privacy');
 Route::view('/terms', 'legal.terms')->name('legal.terms');
 Route::view('/data-deletion', 'legal.data-deletion')->name('legal.data-deletion');
 
-// ويبهوك واتساب — خارج auth وخارج CSRF (الحماية بتوقيع HMAC)
-Route::get('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookController::class, 'verify']);
-Route::post('api/whatsapp/webhook', [\App\Http\Controllers\WhatsAppWebhookController::class, 'receive']);
+// ويبهوك واتساب في routes/webhooks.php، خارج مجموعة web (بلا جلسة ولا CSRF ولا Inertia)
 
 // Authenticated Routes
 Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(function () {
