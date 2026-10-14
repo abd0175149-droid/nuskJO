@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\QuoteRequest;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 
 /**
@@ -112,7 +113,30 @@ class QuoteRequestController extends Controller
             'quoted_price_jod' => 'required|numeric|min:0',
             'quoted_note' => 'nullable|string|max:1000',
             'send_to_client' => 'boolean',
+            'confirm_resend' => 'boolean',
         ]);
+
+        // موظفان يسعّران الطلب نفسه معاً: الثاني ينتظر بدل أن يصل العميل سعران
+        $lock = Cache::lock("quote:{$quoteRequest->id}", 30);
+        if (!$lock->get()) {
+            return back()->with('error', 'زميل يسعّر هذا الطلب الآن. انتظر لحظة ثم حدّث الصفحة.');
+        }
+
+        try {
+            return $this->priceLocked($request, $quoteRequest->fresh(), $data);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function priceLocked(Request $request, QuoteRequest $quoteRequest, array $data)
+    {
+        // أُرسل سعر لهذا الطلب بعد فتح النموذج: لا إرسال ثانٍ للعميل دون تأكيد صريح
+        if (!empty($data['send_to_client']) && $quoteRequest->status === 'sent' && empty($data['confirm_resend'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'confirm_resend' => 'أُرسل سعر لهذا الطلب للعميل بالفعل. أكّد إعادة الإرسال.',
+            ]);
+        }
 
         $quoteRequest->update([
             'quoted_price_jod' => $data['quoted_price_jod'],

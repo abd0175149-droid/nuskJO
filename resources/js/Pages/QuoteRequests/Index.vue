@@ -163,6 +163,15 @@
             </span>
           </label>
 
+          <label v-if="pForm.send_to_client && (target.status === 'sent' || pForm.errors.confirm_resend)"
+                 class="flex items-start gap-2.5 p-3 rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 cursor-pointer">
+            <input type="checkbox" v-model="pForm.confirm_resend" class="mt-0.5 rounded text-amber-600"/>
+            <span class="text-sm text-amber-800 dark:text-amber-300">
+              <b>أُرسل سعر لهذا الطلب للعميل من قبل.</b> أؤكد إرسال السعر الجديد أيضاً.
+              <span v-if="pForm.errors.confirm_resend" class="block text-xs text-red-600 mt-0.5">{{ pForm.errors.confirm_resend }}</span>
+            </span>
+          </label>
+
           <div class="flex gap-3">
             <button type="submit" :disabled="pForm.processing"
                     class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50">
@@ -226,7 +235,7 @@ const setStatus = (s) => router.get('/quote-requests', { status: s, search: sear
 const debounceSearch = () => { clearTimeout(t); t = setTimeout(go, 400); };
 
 const target = ref(null);
-const pForm = useForm({ quoted_price_jod: null, quoted_note: '', send_to_client: true });
+const pForm = useForm({ quoted_price_jod: null, quoted_note: '', send_to_client: true, confirm_resend: false });
 
 const openPrice = (r) => {
   target.value = r;
@@ -234,6 +243,7 @@ const openPrice = (r) => {
   pForm.quoted_price_jod = r.quoted_price_jod;
   pForm.quoted_note = r.quoted_note || '';
   pForm.send_to_client = !!r.window_open;
+  pForm.confirm_resend = false;
 };
 
 const submitPrice = () => {

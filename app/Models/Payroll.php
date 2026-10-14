@@ -49,13 +49,15 @@ class Payroll extends Model
     public function isApproved(): bool { return $this->status === 'approved'; }
     public function isDraft(): bool { return $this->status === 'draft'; }
 
+    /** ذري: لا يعتمد مستخدمان المسير نفسه (انظر HasApproval) */
     public function approve(User $approver): void
     {
-        $this->update([
-            'status' => 'approved',
-            'approved_by' => $approver->id,
-            'approved_at' => now(),
-        ]);
+        $n = static::query()->whereKey($this->getKey())->where('status', 'pending')
+            ->update(['status' => 'approved', 'approved_by' => $approver->id, 'approved_at' => now(), 'updated_at' => now()]);
+        if ($n !== 1) {
+            throw new \App\Exceptions\ApprovalConflict;
+        }
+        $this->refresh();
     }
 
     public function reject(User $approver, string $reason = ''): void

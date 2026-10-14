@@ -50,10 +50,10 @@
                                 <a :href="'/invoices/'+inv.id+'/print'" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
                                 <button @click="viewInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">👁️</button>
                                 <button v-if="inv.status==='pending' && inv.offer_id && (can('invoices.update') || can('invoices.create'))" @click="openPOS(inv)" class="px-2 py-1 text-xs font-bold rounded-lg btn-mobile-sm" :class="costsMissing(inv) ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'">📝 {{ costsMissing(inv) ? 'إكمال التكاليف' : 'تعديل' }}</button>
-                                <button v-if="inv.status==='pending' && can('invoices.approve')" @click="approveInv(inv)" :disabled="!!costsMissing(inv)" :title="costsMissing(inv) ? 'لا تُعتمد قبل اكتمال التكاليف: لكل بند وكيل وتكلفة' : 'اعتماد'" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm disabled:opacity-30 disabled:cursor-not-allowed">✅</button>
-                                <button v-if="inv.status==='pending' && can('invoices.reject')" @click="rejectInv(inv)" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg btn-mobile-sm">❌</button>
+                                <button v-if="inv.status==='pending' && can('invoices.approve') && mayApprove(inv)" @click="approveInv(inv)" :disabled="!!costsMissing(inv) || busy.has(inv.id)" :title="costsMissing(inv) ? 'لا تُعتمد قبل اكتمال التكاليف: لكل بند وكيل وتكلفة' : 'اعتماد'" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm disabled:opacity-30 disabled:cursor-not-allowed">✅</button>
+                                <button v-if="inv.status==='pending' && can('invoices.reject')" @click="rejectInv(inv)" :disabled="busy.has(inv.id)" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg btn-mobile-sm">❌</button>
                                 <button v-if="inv.status!=='approved' && $page.props.auth?.isAdmin" @click="delInv(inv)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button>
-                                <button v-if="inv.status==='approved' && $page.props.auth?.isAdmin" @click="startEditInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button>
+                                <button v-if="inv.status==='approved' && $page.props.auth?.isAdmin" @click="startEditInv(inv)" :disabled="busy.has(inv.id)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button>
                                 <button v-if="inv.status==='editing'" @click="openPOS(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل الفاتورة</button>
                             </td>
                         </tr>
@@ -227,6 +227,8 @@ import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { usePermissions } from '@/composables/usePermissions';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
+import { useRowActions } from '@/composables/useRowActions';
+const { busy, post, mayApprove } = useRowActions();
 const { isHighlighted } = useHighlight();
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import OfferInvoiceForm from '@/Components/Invoices/OfferInvoiceForm.vue';
@@ -416,9 +418,9 @@ const viewInv = async (inv) => {
 };
 // فاتورة عرض معلّقة ببنود بلا وكيل أو تكلفة: لا تُعتمد قبل إكمالها
 const costsMissing = (inv) => (inv.offer_id && ['pending', 'editing'].includes(inv.status) ? Number(inv.offer_lines?.missing || 0) : 0);
-const approveInv = (inv) => { if(confirm('اعتماد الفاتورة وتحديث الأرصدة؟')) router.post('/invoices/'+inv.id+'/approve',{},{preserveScroll:true}); };
-const rejectInv = (inv) => { const r=prompt('سبب الرفض:'); if(r!==null) router.post('/invoices/'+inv.id+'/reject',{reason:r},{preserveScroll:true}); };
-const startEditInv = (inv) => { if(confirm('تعديل الفاتورة المعتمدة؟ سيتم عكس الأثر المالي.')) router.post('/invoices/'+inv.id+'/start-edit',{},{preserveScroll:true}); };
+const approveInv = (inv) => { if(confirm('اعتماد الفاتورة وتحديث الأرصدة؟')) post('/invoices/'+inv.id+'/approve',{},inv.id); };
+const rejectInv = (inv) => { const r=prompt('سبب الرفض:'); if(r!==null) post('/invoices/'+inv.id+'/reject',{reason:r},inv.id); };
+const startEditInv = (inv) => { if(confirm('تعديل الفاتورة المعتمدة؟ سيتم عكس الأثر المالي.')) post('/invoices/'+inv.id+'/start-edit',{},inv.id); };
 const delInv = (inv) => { deleteTarget.value = inv; };
 const debounceSearch = () => { clearTimeout(t); t=setTimeout(()=>applyFilter(),400); };
 const applyFilter = () => { router.get('/invoices',{search:search.value,status:statusFilter.value},{preserveState:true,replace:true}); };

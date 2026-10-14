@@ -25,7 +25,7 @@
                     <td data-label="بواسطة" class="px-5 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ r.creator?.name || '—' }}</div><div v-if="r.status !== 'pending'" class="mt-0.5">{{ r.status === 'approved' ? '✅' : '❌' }} {{ r.approver?.name || '—' }}</div></td>
                     <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
                         <a :href="'/receipts/'+r.id+'/print'" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
-                        <template v-if="r.status==='pending'"><button v-if="can('receipts.approve')" @click="router.post('/receipts/'+r.id+'/approve')" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="$page.props.auth?.isAdmin" @click="router.delete('/receipts/'+r.id)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
+                        <template v-if="r.status==='pending'"><button v-if="can('receipts.approve') && mayApprove(r)" @click="post('/receipts/'+r.id+'/approve', {}, r.id)" :disabled="busy.has(r.id)" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="$page.props.auth?.isAdmin" @click="router.delete('/receipts/'+r.id)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
                         <template v-if="r.status==='approved'"><button v-if="$page.props.auth?.isAdmin" @click="startEdit(r)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button></template>
                         <template v-if="r.status==='editing'"><button @click="openEditForm(r)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل البيانات</button></template>
                     </td>
@@ -100,8 +100,10 @@ import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { usePermissions } from '@/composables/usePermissions';
+import { useRowActions } from '@/composables/useRowActions';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
+const { busy, post, mayApprove } = useRowActions();
 const { isHighlighted } = useHighlight();
 const props = defineProps({ receipts: Object, filters: Object, clients: Array });
 const clientOptions = computed(() => props.clients.map(c => ({ value: c.id, label: c.name })));
@@ -113,7 +115,7 @@ const openForm=()=>{form.reset();showForm.value=true;};
 
 const startEdit = (r) => {
     if(confirm('تعديل السند المعتمد؟ سيتم عكس الأثر المالي.')) {
-        router.post('/receipts/'+r.id+'/start-edit',{},{preserveScroll:true});
+        post('/receipts/'+r.id+'/start-edit', {}, r.id);
     }
 };
 

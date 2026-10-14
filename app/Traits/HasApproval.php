@@ -2,12 +2,17 @@
 
 namespace App\Traits;
 
+use App\Exceptions\ApprovalConflict;
 use App\Models\User;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * HasApproval Trait
  * يُضاف للموديلات التي تحتاج نظام اعتماد (Maker-Checker)
  * يدعم: pending → approved → editing → pending (دورة تعديل بعد الاعتماد)
+ *
+ * كل انتقال ذري: UPDATE ... WHERE status = <من>، فإن غيّر مستخدم آخر الحالة قبلنا لا يُكتب شيء
+ * ويُرمى ApprovalConflict. استدعِ الانتقال أول كتابة داخل المعاملة، قبل القيد وحركات الذمم.
  */
 trait HasApproval
 {
@@ -41,10 +46,37 @@ trait HasApproval
         return $this->belongsTo(User::class, 'modified_by');
     }
 
+    /** انتقال ذري من حالة إلى أخرى؛ false إن لم تعد الحالة كما قُرئت. */
+    public function transitionStatus(string $from, string $to, array $extra = []): bool
+    {
+        $n = static::query()->whereKey($this->getKey())->where('status', $from)
+            ->update($extra + ['status' => $to, 'updated_at' => now()]);
+
+        if ($n === 1) {
+            $this->refresh();
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /** فصل المهام: لا يعتمد المنشئ مستنده إلا المدير. */
+    public function approvableBy(User $user): bool
+    {
+        return $user->isAdmin() || (int) $this->created_by !== (int) $user->id;
+    }
+
+    private function transitionOrFail(string $from, string $to, array $extra = []): void
+    {
+        if (!$this->transitionStatus($from, $to, $extra)) {
+            throw new ApprovalConflict;
+        }
+    }
+
     public function approve(User $approver): void
     {
-        $this->update([
-            'status' => 'approved',
+        $this->transitionOrFail('pending', 'approved', [
             'approved_by' => $approver->id,
             'approved_at' => now(),
         ]);
@@ -52,8 +84,7 @@ trait HasApproval
 
     public function reject(User $approver, string $reason = ''): void
     {
-        $this->update([
-            'status' => 'rejected',
+        $this->transitionOrFail('pending', 'rejected', [
             'approved_by' => $approver->id,
             'approved_at' => now(),
             'rejection_reason' => $reason,
@@ -66,18 +97,17 @@ trait HasApproval
      */
     public function startEditing(User $modifier): void
     {
-        $updateData = [
-            'status' => 'editing',
+        $extra = [
             'modified_by' => $modifier->id,
             'modified_at' => now(),
         ];
 
         // حفظ القيم الأصلية كـ JSON إذا كان العمود موجوداً
-        if (\Schema::hasColumn($this->getTable(), 'original_values')) {
-            $updateData['original_values'] = json_encode($this->getOriginal());
+        if (Schema::hasColumn($this->getTable(), 'original_values')) {
+            $extra['original_values'] = json_encode($this->getOriginal());
         }
 
-        $this->update($updateData);
+        $this->transitionOrFail('approved', 'editing', $extra);
     }
 
     /**
@@ -85,8 +115,7 @@ trait HasApproval
      */
     public function resubmitForApproval(): void
     {
-        $this->update([
-            'status' => 'pending',
+        $this->transitionOrFail('editing', 'pending', [
             'approved_by' => null,
             'approved_at' => null,
             'rejection_reason' => null,

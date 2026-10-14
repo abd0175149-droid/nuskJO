@@ -48,22 +48,6 @@ class Receipt extends Model
     public function scopeApproved($query) { return $query->where('status', 'approved'); }
     public function isPending(): bool { return $this->status === 'pending'; }
 
-    public function approve(User $approver): void
-    {
-        $this->update([
-            'status' => 'approved',
-            'approved_by' => $approver->id,
-            'approved_at' => now(),
-        ]);
-    }
+    // approve وreject من HasApproval (انتقال ذري)
 
-    public function reject(User $approver, string $reason = ''): void
-    {
-        $this->update([
-            'status' => 'rejected',
-            'approved_by' => $approver->id,
-            'approved_at' => now(),
-            'rejection_reason' => $reason,
-        ]);
-    }
 }

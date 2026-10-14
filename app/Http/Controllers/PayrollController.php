@@ -119,6 +119,8 @@ class PayrollController extends Controller
                 // إشعار الموظفين
                 NotificationService::payrollReady($payroll);
             });
+        } catch (\App\Exceptions\ApprovalConflict $e) {
+            return redirect()->back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             \App\Services\AccountingService::notifyFailure("اعتماد مسير الرواتب {$payroll->payroll_number}", $e);
             return redirect()->back()->with('error', 'تعذّر اعتماد مسير الرواتب محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());

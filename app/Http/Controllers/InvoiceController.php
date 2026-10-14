@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApprovalConflict;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Agent;
@@ -448,11 +449,19 @@ class InvoiceController extends Controller
             }
 
             if (!empty($v['quote_request_id'])) {
-                QuoteRequest::whereKey($v['quote_request_id'])->update([
-                    'status' => 'won',
-                    'invoice_id' => $invoice->id,
-                    'client_id' => $client->id,
-                ]);
+                // ذري: الطلب يُربط بفاتورة واحدة؛ فاتورة ثانية للطلب نفسه تُلغى معاملتها كلها
+                $linked = QuoteRequest::whereKey($v['quote_request_id'])
+                    ->where(fn ($q) => $q->whereNull('invoice_id')->orWhere('invoice_id', $invoice->id))
+                    ->update([
+                        'status' => 'won',
+                        'invoice_id' => $invoice->id,
+                        'client_id' => $client->id,
+                    ]);
+                if ($linked === 0) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'quote_request_id' => 'الطلب مرتبط بفاتورة أخرى',
+                    ]);
+                }
             }
 
             return $invoice;
@@ -573,13 +582,14 @@ class InvoiceController extends Controller
             return back()->with('error', "لا تُعتمد الفاتورة {$invoice->invoice_number}: تكاليفها ناقصة ({$missing} " . ($missing >= 3 && $missing <= 10 ? 'بنود' : 'بند') . ' بلا وكيل أو تكلفة). أكملها من «تعديل» ثم اعتمدها.');
         }
 
+        if (!$invoice->approvableBy(auth()->user())) {
+            return back()->with('error', 'لا يعتمد المنشئ مستنده إلا المدير');
+        }
+
         try {
             DB::transaction(function () use ($invoice) {
-                $invoice->update([
-                    'status' => 'approved',
-                    'approved_by' => auth()->id(),
-                    'approved_at' => now(),
-                ]);
+                // أول كتابة: انتقال ذري من pending، فلا تتكرر حركات الذمم ولا القيد مع نقرة مزدوجة
+                $invoice->approve(auth()->user());
 
                 $invoice->load('items');
                 $rate = self::rate();
@@ -620,6 +630,8 @@ class InvoiceController extends Controller
                     try { \App\Services\NotificationService::send($invoice->created_by, '✅ تم اعتماد فاتورتك', "تم اعتماد الفاتورة {$invoice->invoice_number}", ['type' => 'invoice', 'icon' => '✅', 'action_url' => '/invoices']); } catch (\Throwable $e) {}
                 }
             });
+        } catch (ApprovalConflict $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             AccountingService::notifyFailure("اعتماد الفاتورة {$invoice->invoice_number}", $e);
             return back()->with('error', 'تعذّر اعتماد الفاتورة محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
@@ -636,12 +648,7 @@ class InvoiceController extends Controller
         if (!$invoice->isPending()) {
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
         }
-        $invoice->update([
-            'status' => 'rejected',
-            'rejection_reason' => $request->input('reason', ''),
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+        $invoice->reject(auth()->user(), (string) $request->input('reason', ''));
 
         try { \App\Services\NotificationService::operationRejected($invoice, 'فاتورة', $invoice->invoice_number); } catch (\Throwable $e) {}
 
@@ -657,6 +664,9 @@ class InvoiceController extends Controller
         }
 
         DB::transaction(function () use ($invoice) {
+            // أول كتابة: approved → editing ذرياً، فلا يتكرر عكس الذمم مع نقرة مزدوجة
+            $invoice->startEditing(auth()->user());
+
             $invoice->load('items');
             $rate = self::rate();
 
@@ -687,7 +697,6 @@ class InvoiceController extends Controller
                 ->where('reference_id', $invoice->id)->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل الفاتورة'); } catch (\Exception $e) {}
 
-            $invoice->startEditing(auth()->user());
             AuditLog::log('start_edit', 'invoice', $invoice->id, $invoice->invoice_number);
         });
 

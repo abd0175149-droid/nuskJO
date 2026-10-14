@@ -25,7 +25,7 @@
                     <td data-label="بواسطة" class="px-5 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ d.creator?.name || '—' }}</div><div v-if="d.status !== 'pending'" class="mt-0.5">{{ d.status === 'approved' ? '✅' : '❌' }} {{ d.approver?.name || '—' }}</div></td>
                     <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
                         <a :href="'/disbursements/'+d.id+'/print'" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
-                        <template v-if="d.status==='pending'"><button v-if="can('disbursements.approve')" @click="router.post('/disbursements/'+d.id+'/approve')" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="$page.props.auth?.isAdmin" @click="router.delete('/disbursements/'+d.id)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
+                        <template v-if="d.status==='pending'"><button v-if="can('disbursements.approve') && mayApprove(d)" @click="post('/disbursements/'+d.id+'/approve', {}, d.id)" :disabled="busy.has(d.id)" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="$page.props.auth?.isAdmin" @click="router.delete('/disbursements/'+d.id)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
                         <template v-if="d.status==='approved'"><button v-if="$page.props.auth?.isAdmin" @click="startEdit(d)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button></template>
                         <template v-if="d.status==='editing'"><button @click="openEditForm(d)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل البيانات</button></template>
                     </td>
@@ -87,8 +87,10 @@ import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { usePermissions } from '@/composables/usePermissions';
+import { useRowActions } from '@/composables/useRowActions';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
+const { busy, post, mayApprove } = useRowActions();
 const { isHighlighted } = useHighlight();
 const props = defineProps({ disbursements: Object, filters: Object, accounts: Array, offers: { type: Array, default: () => [] } });
 
@@ -105,7 +107,7 @@ const openForm=()=>{form.reset();showForm.value=true;};
 
 const startEdit = (d) => {
     if(confirm('تعديل السند المعتمد؟ سيتم عكس الأثر المالي.')) {
-        router.post('/disbursements/'+d.id+'/start-edit',{},{preserveScroll:true});
+        post('/disbursements/'+d.id+'/start-edit', {}, d.id);
     }
 };
 

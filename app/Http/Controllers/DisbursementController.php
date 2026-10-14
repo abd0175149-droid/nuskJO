@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApprovalConflict;
 use App\Models\Disbursement;
 use App\Models\Agent;
 use App\Models\Account;
@@ -84,6 +85,9 @@ class DisbursementController extends Controller
         if (!$disbursement->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
+        if (!$disbursement->approvableBy(auth()->user())) {
+            return back()->with('error', 'لا يعتمد المنشئ مستنده إلا المدير');
+        }
 
         try {
             DB::transaction(function () use ($disbursement) {
@@ -97,6 +101,8 @@ class DisbursementController extends Controller
                 // إشعار
                 try { \App\Services\NotificationService::disbursementApproved($disbursement); } catch (\Throwable $e) {}
             });
+        } catch (ApprovalConflict $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             AccountingService::notifyFailure("اعتماد سند الصرف {$disbursement->disbursement_number}", $e);
             return back()->with('error', 'تعذّر اعتماد سند الصرف محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
@@ -131,13 +137,15 @@ class DisbursementController extends Controller
         }
 
         DB::transaction(function () use ($disbursement) {
+            // أول كتابة: approved → editing ذرياً، فلا يتكرر عكس الذمة مع نقرة مزدوجة
+            $disbursement->startEditing(auth()->user());
+
             // عكس القيد المحاسبي
             $entry = \App\Models\JournalEntry::where('reference_type', 'disbursement')
                 ->where('reference_id', $disbursement->id)
                 ->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل سند الصرف'); } catch (\Exception $e) { \Log::error('Reverse Disbursement: ' . $e->getMessage()); }
 
-            $disbursement->startEditing(auth()->user());
             AuditLog::log('start_edit', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
         });
 
@@ -166,8 +174,10 @@ class DisbursementController extends Controller
 
         $validated['exchange_rate'] = self::EXCHANGE_RATE;
 
-        $disbursement->update($validated);
-        $disbursement->resubmitForApproval();
+        DB::transaction(function () use ($disbursement, $validated) {
+            $disbursement->resubmitForApproval();   // ذري: editing → pending
+            $disbursement->update($validated);
+        });
 
         return back()->with('success', "تم تعديل سند الصرف {$disbursement->disbursement_number} وإرساله للاعتماد");
     }

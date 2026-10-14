@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApprovalConflict;
 use App\Models\Receipt;
 use App\Models\Client;
 use App\Services\NumberingService;
@@ -71,6 +72,9 @@ class ReceiptController extends Controller
         if (!$receipt->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
+        if (!$receipt->approvableBy(auth()->user())) {
+            return back()->with('error', 'لا يعتمد المنشئ مستنده إلا المدير');
+        }
 
         try {
             DB::transaction(function () use ($receipt) {
@@ -85,6 +89,8 @@ class ReceiptController extends Controller
                 AccountingService::recordReceipt($receipt);
                 try { \App\Services\NotificationService::receiptApproved($receipt); } catch (\Exception $e) {}
             });
+        } catch (ApprovalConflict $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             AccountingService::notifyFailure("اعتماد سند القبض {$receipt->receipt_number}", $e);
             return back()->with('error', 'تعذّر اعتماد سند القبض محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
@@ -121,6 +127,9 @@ class ReceiptController extends Controller
         }
 
         DB::transaction(function () use ($receipt) {
+            // أول كتابة: approved → editing ذرياً، فلا يتكرر عكس الذمة مع نقرة مزدوجة
+            $receipt->startEditing(auth()->user());
+
             // عكس تسديد ذمة العميل
             BalanceService::reverseClientCredit($receipt->client, $receipt->amount_jod, 'receipt', $receipt->id);
             // عكس القيد المحاسبي
@@ -128,7 +137,6 @@ class ReceiptController extends Controller
                 ->where('reference_id', $receipt->id)->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل سند القبض'); } catch (\Exception $e) {}
 
-            $receipt->startEditing(auth()->user());
             \App\Models\AuditLog::log('start_edit', 'receipt', $receipt->id, $receipt->receipt_number);
         });
 
@@ -163,8 +171,10 @@ class ReceiptController extends Controller
             $validated['bank_commission'] = $validated['bank_commission'] ?? 0;
         }
 
-        $receipt->update($validated);
-        $receipt->resubmitForApproval();
+        DB::transaction(function () use ($receipt, $validated) {
+            $receipt->resubmitForApproval();   // ذري: editing → pending
+            $receipt->update($validated);
+        });
 
         return back()->with('success', "تم تعديل سند القبض وإرساله للاعتماد");
     }
