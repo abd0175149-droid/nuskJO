@@ -46,6 +46,8 @@ class WhatsAppController extends Controller
             'canSeeAdminChats' => auth()->user()->can('whatsapp.admin_chats'),
             // ربط المحادثة بعميل (E11.8) يحتاج رؤية العملاء للبحث
             'canLinkClient' => auth()->user()->can('whatsapp.link_client') && auth()->user()->can('clients.view'),
+            // مرفقات العملاء (E14): أزرار العرض والتنزيل، والخادم يفرضها بنفسه
+            'canMedia' => auth()->user()->can('whatsapp.media'),
             'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
@@ -164,6 +166,13 @@ class WhatsAppController extends Controller
         if ($e11) {
             array_push($columns, 'reply_to_wamid', 'media_mime', 'media_filename');
         }
+        // حالة الأرشيف (E14): بعد الهجرة 000015 وحدها
+        $e14 = $e11 && \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['media_status', 'media_size', 'media_id', 'media_error']);
+        if ($e14) {
+            array_push($columns, 'media_status', 'media_size', 'media_id', 'media_error');
+        }
+        $user = auth()->user();
+        $media = fn ($m) => \App\Services\WhatsApp\Media\MediaPresenter::forThread($m, $user);
 
         $hasMore = false;
         $gap = false;
@@ -175,12 +184,14 @@ class WhatsAppController extends Controller
             $gap = $rows->count() >= 200;
 
             if (!empty($v['since'])) {
+                // حالات الصادر، وحالة أرشفة المرفق الوارد (جارٍ الحفظ ← عرض) بلا إعادة تحميل
                 $updates = $conversation->messages()
-                    ->where('direction', 'out')->where('id', '<=', $v['after'])
+                    ->where(fn ($q) => $e14 ? $q->where('direction', 'out')->orWhereNotNull('media_status') : $q->where('direction', 'out'))
+                    ->where('id', '<=', $v['after'])
                     ->where('updated_at', '>=', $v['since'])
                     ->orderByDesc('id')->limit(100)
-                    ->get(['id', 'status', 'error_message'])
-                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message])
+                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : []))
+                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
                     ->all();
             }
         } else {
@@ -209,8 +220,8 @@ class WhatsAppController extends Controller
             'at' => $m->created_at?->format('Y-m-d H:i'),
             'is_system' => $m->source === 'system' && $m->direction === 'in',
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
-            // النوع والاسم فقط: لا رابط للوسائط
-            'media' => $m->media_mime ? ['mime' => $m->media_mime, 'filename' => $m->media_filename] : null,
+            // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
+            'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
         ])->values();
 
         $first = !isset($v['before']) && !isset($v['after']);

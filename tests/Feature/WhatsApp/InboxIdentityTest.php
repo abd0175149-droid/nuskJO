@@ -78,7 +78,8 @@ class InboxIdentityTest extends TestCase
 
         $this->assertSame(80, mb_strlen($m['نعم']['reply_to']));
         $this->assertNull($m['وهذا']['reply_to'], 'لا اقتباس من محادثة أخرى');
-        $this->assertSame(['mime' => 'application/pdf', 'filename' => 'جواز.pdf'], $m['📄 ملف: جواز.pdf']['media']);
+        // E14: الحالة وما يُسمح به؛ الاسم لمن يملك whatsapp.media وحده
+        $this->assertSame(['document', 'application/pdf', null, false], array_values(array_intersect_key($m['📄 ملف: جواز.pdf']['media'], array_flip(['kind', 'mime', 'name', 'viewable']))));
         $this->assertTrue($m['🔄 غيّر العميل رقمه']['is_system']);
         $this->assertFalse($m['نعم']['is_system']);
         $this->assertStringNotContainsString('media.1', $res->getContent());

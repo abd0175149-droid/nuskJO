@@ -212,7 +212,7 @@
                   <p v-if="m.sender" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
                   <p v-if="m.reply_to" class="mb-1 px-2 py-1 rounded-lg border-r-2 border-gray-400/60 bg-black/5 dark:bg-white/5 text-[11px] opacity-80 break-words line-clamp-2">↩️ {{ m.reply_to }}</p>
                   <p class="whitespace-pre-wrap break-words">{{ m.body }}</p>
-                  <p v-if="m.media" class="mt-0.5 text-[10px] opacity-70 break-words" dir="ltr">{{ m.media.filename || m.media.mime }}</p>
+                  <MediaChip v-if="m.media" :message-id="m.id" :media="m.media" @view="openViewer(m)" @updated="(media) => (m.media = media)"/>
                   <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70">
                     <span dir="ltr">{{ m.at }}</span>
                     <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
@@ -279,6 +279,7 @@
       </div>
     </div>
     <LinkClientDialog :open="linkOpen" :conversation="thread || {}" @close="linkOpen = false" @linked="onLinked" />
+    <MediaViewer :open="viewer.open" :message-id="viewer.id" :media="viewer.media" :watermark="viewer.watermark" @close="viewer.open = false" />
   </AppLayout>
 </template>
 
@@ -289,6 +290,9 @@ import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { useDrafts } from '@/composables/useDrafts';
 import { SUSPEND_SOURCES } from '@/utils/waSettings.js';
 import LinkClientDialog from '@/Components/WhatsApp/LinkClientDialog.vue';
+import MediaChip from '@/Components/WhatsApp/MediaChip.vue';
+import MediaViewer from '@/Components/WhatsApp/MediaViewer.vue';
+import { usePage } from '@inertiajs/vue3';
 
 
 const props = defineProps({
@@ -302,6 +306,7 @@ const props = defineProps({
   seesAll: Boolean,
   canSeeAdminChats: Boolean,
   canLinkClient: Boolean,
+  canMedia: Boolean,
   llm: { type: Object, default: () => ({ state: 'closed' }) },
   identityMode: { type: String, default: 'store' },
   topics: { type: Object, default: () => ({}) },
@@ -311,6 +316,13 @@ const props = defineProps({
 
 // سبب «تدخّل» بنص الرقاقة (ReplyState::REASONS)
 const reasonLabel = (key) => props.attentionReasons[key] || key;
+
+// عارض المرفقات (E14): علامة مائية باسم الموظف ووقت الفتح
+const viewer = ref({ open: false, id: null, media: null, watermark: '' });
+const openViewer = (m) => {
+  const name = usePage().props.auth?.user?.name || '';
+  viewer.value = { open: true, id: m.id, media: m.media, watermark: `سرّي — ${name} — ${new Date().toLocaleString('ar-JO', { dateStyle: 'short', timeStyle: 'short' })}` };
+};
 
 const OUT_OF_SCOPE = 'هذه المحادثة غير متاحة لك: ربما نُقلت لموظف آخر أو أُزيل وسم اختصاصك. اطلب من المدير توكيلها لك إن كنت تحتاجها';
 
@@ -503,7 +515,7 @@ const pollOnce = async () => {
     const fresh = (data.messages || []).filter((m) => !known.has(m.id));
     for (const u of data.updates || []) {
       const m = messages.value.find((x) => x.id === u.id);
-      if (m) { m.status = u.status; m.error = u.error; }
+      if (m) { m.status = u.status; m.error = u.error; if (u.media) m.media = u.media; }
     }
     if (fresh.length) messages.value.push(...fresh);
     thread.value = { ...thread.value, ...data.conversation };

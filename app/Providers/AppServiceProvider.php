@@ -104,6 +104,21 @@ class AppServiceProvider extends ServiceProvider
         });
 
         // طلبات التسعير بالنطاق نفسه حين يُفعَّل fence_quotes (وإلا كالربط الضمني)
+        // رسالة واتساب (مرفقات E14): عبر محادثتها المرئية للمستخدم وحدها، و404 لا 403 فلا يُكشف وجود المعرّف
+        \Illuminate\Support\Facades\Route::bind('message', function ($value) {
+            $user = auth()->user();
+            if (!$user || !ctype_digit((string) $value)) {
+                abort(404);
+            }
+            $message = \App\Models\WaMessage::whereKey((int) $value)->whereHas('conversation', fn ($q) => $q->visibleTo($user))->first();
+            if (!$message) {
+                \App\Services\WhatsApp\WaLog::notice('wa.media.fence', ['message_id' => (int) $value]);
+                abort(404);
+            }
+
+            return $message;
+        });
+
         \Illuminate\Support\Facades\Route::bind('quoteRequest', function ($value) {
             $user = auth()->user();
             if (!$user || !ctype_digit((string) $value)) {

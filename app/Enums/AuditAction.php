@@ -117,7 +117,6 @@ enum AuditAction: string
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
     public const INTENTIONALLY_UNEMITTED = [
-        'WaMediaView' => 'E14 (دفعة العرض)', 'WaMediaDownload' => 'E14 (دفعة العرض)', 'WaMediaRefetch' => 'E14 (دفعة العرض)',
         'WaMediaPurge' => 'E14 (دفعة التقليم)', 'WaMediaConsent' => 'E14 (دفعة الموافقة)',
     ];
 
@@ -266,7 +265,7 @@ enum AuditAction: string
     /** يُكتب ولو كان audit.extended مطفأً: المال، وقفل الدخول (يُدقَّق منذ E03)، والإيقاف التلقائي للإرسال، والاطّلاع على مرفقات العملاء (E14) */
     public function alwaysOn(): bool
     {
-        return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload], true);
+        return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload, self::WaMediaRefetch], true);
     }
 
     public function isNoise(): bool

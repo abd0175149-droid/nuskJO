@@ -132,6 +132,9 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::get('api/whatsapp/conversations/{conversation}/messages', [\App\Http\Controllers\WhatsAppController::class, 'messages'])->middleware('perm:whatsapp.view');
     Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send'])->middleware('perm:whatsapp.reply');
     Route::post('api/whatsapp/conversations/{conversation}/request-contact', [\App\Http\Controllers\WhatsAppController::class, 'requestContact'])->middleware('perm:whatsapp.reply');
+    // مرفقات العملاء (E14): ربط {message} محصور بنطاق المحادثة. الرابط بلا امتداد فلا تلتقطه كتلة nginx للملفات الثابتة
+    Route::get('api/whatsapp/messages/{message}/media', [\App\Http\Controllers\WhatsAppMediaController::class, 'show'])->name('whatsapp.media.show')->middleware(['perm:whatsapp.media', 'throttle:60,1']);
+    Route::post('api/whatsapp/messages/{message}/media/refetch', [\App\Http\Controllers\WhatsAppMediaController::class, 'refetch'])->name('whatsapp.media.refetch')->middleware(['perm:whatsapp.media', 'throttle:60,1']);
     Route::get('api/whatsapp/clients/search', [\App\Http\Controllers\WhatsAppController::class, 'searchClients'])->middleware('perm:whatsapp.link_client');
     // طلبات حذف البيانات (E13): عرض وتحقّق ورفض؛ التنفيذ من سطر الأوامر وحده
     Route::get('whatsapp/erasure-requests', [\App\Http\Controllers\WhatsAppErasureController::class, 'index'])->name('whatsapp.erasure')->middleware('perm:whatsapp.erase');
