@@ -22,22 +22,32 @@ class WhatsAppInbox
     {
         $touched = [];
         // للتطبيق أكثر من رقم، والويبهوك واحد للتطبيق كلّه — نعالج رقمنا وحده
-        $ownId = (string) WaBotSetting::current()->phoneNumberId();
+        $settings = WaBotSetting::current();
+        $ownId = (string) $settings->phoneNumberId();
 
         foreach (data_get($payload, 'entry', []) as $entry) {
+            $entryId = (string) data_get($entry, 'id', '');
+
             foreach (data_get($entry, 'changes', []) as $change) {
                 $field = data_get($change, 'field');
                 $value = data_get($change, 'value', []);
 
-                $to = (string) data_get($value, 'metadata.phone_number_id', '');
-                if ($field === 'messages' && $ownId !== '' && $to !== '' && $to !== $ownId) {
+                if ($field !== 'messages') {
+                    // صحّة الحساب / حالة القوالب → قفل الإرسال احتياطاً، إن كان الحدث لرقمنا أو حسابنا
+                    self::handleAccountEvent((string) $field, (array) $value, $entryId, $settings);
                     continue;
                 }
 
-                if ($field !== 'messages') {
-                    // صحّة الحساب / حالة القوالب → قفل الإرسال احتياطاً
-                    self::handleAccountEvent($field, $value);
+                // حمولة بلا phone_number_id لا يُعرف رقمها، فلا تُعامل كأنها لنا
+                $to = (string) data_get($value, 'metadata.phone_number_id', '');
+                if ($ownId !== '' && $to !== $ownId) {
+                    if ($to === '') {
+                        Log::warning('WA messages change without phone_number_id ignored', ['entry' => $entryId]);
+                    }
                     continue;
+                }
+                if ($ownId !== '') {
+                    self::learnOwnAccount($settings, $entryId, (string) data_get($value, 'metadata.display_phone_number', ''));
                 }
 
                 $contacts = collect(data_get($value, 'contacts', []))->keyBy('wa_id');
@@ -222,10 +232,50 @@ class WhatsAppInbox
      * كان أيّ account_update يقفله — ومنها أحداث عادية تصل عند ربط الحساب أو توثيقه —
      * فيسكت البوت بلا خطأ ظاهر. الأحداث الأخرى تُسجَّل فقط.
      */
-    private static function handleAccountEvent(string $field, array $value): void
+    /**
+     * حمولة messages لرقمنا تعرّفنا بحساب الأعمال (entry.id) والرقم المعروض، لنميّز بهما أحداث الحساب.
+     * يُحفظ عند التغيّر فقط.
+     */
+    private static ?bool $canLearn = null;
+
+    private static function learnOwnAccount(WaBotSetting $settings, string $entryId, string $displayPhone): void
+    {
+        // بين نشر الكود وتشغيل الهجرة: لا عمودين بعد، والرسالة يجب أن تُخزَّن رغم ذلك
+        self::$canLearn ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_bot_settings', ['wa_waba_id', 'wa_display_phone']);
+        if (!self::$canLearn) {
+            return;
+        }
+
+        $learned = array_filter([
+            'wa_waba_id' => $entryId,
+            'wa_display_phone' => PhoneNormalizer::digits($displayPhone),
+        ], fn ($v) => $v !== '');
+
+        $settings->forceFill($learned);
+        if ($settings->isDirty()) {
+            $settings->save();
+        }
+    }
+
+    /**
+     * أحداث صحة الحساب. الويبهوك واحد للتطبيق، فحدث رقم آخر أو حساب آخر يُتجاهل حين نعرف رقمنا وحسابنا.
+     * ما لم نعرفهما بعد (لم تصل رسالة لرقمنا)، يبقى الإيقاف الاحتياطي.
+     */
+    private static function handleAccountEvent(string $field, array $value, string $entryId, WaBotSetting $settings): void
     {
         $critical = ['account_update', 'phone_number_quality_update'];
         if (!in_array($field, $critical, true)) return;
+
+        $ours = (string) $settings->wa_display_phone;
+        $theirs = PhoneNormalizer::digits((string) data_get($value, 'display_phone_number', ''));
+        $otherNumber = $field === 'phone_number_quality_update' && $ours !== '' && $theirs !== '' && $theirs !== $ours;
+        $otherAccount = $field === 'account_update' && (string) $settings->wa_waba_id !== '' && $entryId !== '' && $entryId !== (string) $settings->wa_waba_id;
+        if ($otherNumber || $otherAccount) {
+            Log::warning('WA account event for another number ignored', [
+                'field' => $field, 'event' => data_get($value, 'event'), 'entry' => $entryId,
+            ]);
+            return;
+        }
 
         $event = data_get($value, 'event') ?: data_get($value, 'current_limit') ?: $field;
         Log::warning("WA account event [{$field}]: " . json_encode($value));

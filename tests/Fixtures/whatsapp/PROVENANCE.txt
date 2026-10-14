@@ -41,3 +41,4 @@ status_failed_131047.json     [messages] § statuses (failed)، منسوخ شك�
                               (Re-engagement message). [errors] § 131047.
 account_update_ban.json       [account] § DISABLED_UPDATE مع ban_info (waba_ban_state=DISABLE).
 account_update_benign.json    [account] § PARTNER_ADDED مع waba_info. حدث عادي يصل عند ربط الحساب.
+quality_update_other_number.json [quality] § FLAGGED لرقم آخر في الحساب نفسه (16505553333)، لا لرقمنا.

@@ -105,6 +105,21 @@
                         </div>
 
                         <div>
+                            <p class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المكتشف من ميتا</p>
+                            <dl class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-4 py-2.5 text-sm space-y-1">
+                                <div class="flex items-center justify-between gap-3">
+                                    <dt class="text-gray-500 dark:text-gray-400">معرّف حساب الأعمال</dt>
+                                    <dd class="font-mono dark:text-white" dir="ltr">{{ settings.wa_waba_id || '—' }}</dd>
+                                </div>
+                                <div class="flex items-center justify-between gap-3">
+                                    <dt class="text-gray-500 dark:text-gray-400">الرقم المعروض</dt>
+                                    <dd class="font-mono dark:text-white" dir="ltr">{{ settings.wa_display_phone || '—' }}</dd>
+                                </div>
+                            </dl>
+                            <p class="text-xs text-gray-500 mt-1">للقراءة فقط: يُعرفان من أول رسالة تصل لرقمنا، وبهما تُتجاهل تنبيهات ميتا لأرقام أخرى على التطبيق نفسه. قبل ذلك يوقف أي تنبيه خطير الإرسال احتياطاً.</p>
+                        </div>
+
+                        <div>
                             <label for="wa-verify" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Verify Token</label>
                             <input id="wa-verify" v-model="form.wa_verify_token" dir="ltr" placeholder="نص تختاره أنت ويُكتب نفسه في لوحة Meta"
                                    class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>

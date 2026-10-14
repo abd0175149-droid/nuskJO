@@ -370,6 +370,9 @@ class WhatsAppController extends Controller
                 'enabled' => (bool) $s->enabled,
                 'wa_suspended' => (bool) $s->wa_suspended,
                 'wa_phone_number_id' => $s->wa_phone_number_id,
+                // يُتعلّمان من أول رسالة لرقمنا؛ بهما تُميَّز أحداث الحساب لأرقام أخرى على التطبيق نفسه
+                'wa_waba_id' => $s->wa_waba_id,
+                'wa_display_phone' => $s->wa_display_phone,
                 'wa_verify_token' => $s->wa_verify_token,
                 'provider' => $s->provider ?: 'google',
                 'model' => $s->model,
@@ -437,6 +440,12 @@ class WhatsAppController extends Controller
             throw ValidationException::withMessages([
                 'wa_suspended' => 'أكمل مراجعة ما بعد الاستعادة من صفحة النسخ الاحتياطي أولاً',
             ]);
+        }
+
+        // رقم جديد: ما تعلّمناه عن الرقم القديم لا يصلح لتمييز أحداث الحساب، فيُتعلّم من جديد مع أول رسالة
+        if (array_key_exists('wa_phone_number_id', $data) && (string) $data['wa_phone_number_id'] !== (string) $settings->wa_phone_number_id
+            && \Illuminate\Support\Facades\Schema::hasColumn('wa_bot_settings', 'wa_display_phone')) {
+            $settings->forceFill(['wa_waba_id' => null, 'wa_display_phone' => null]);
         }
 
         $settings->update($data);
