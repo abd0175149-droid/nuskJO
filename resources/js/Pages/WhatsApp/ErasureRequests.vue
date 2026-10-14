@@ -54,7 +54,7 @@
                                     </select>
                                     <button type="button" @click="reject(r)" class="px-2.5 py-1 rounded-lg text-xs border border-red-300 text-red-700 dark:text-red-400">رفض</button>
                                 </div>
-                                <span v-if="r.status === 'verified'" dir="ltr" class="block mt-1.5 text-[11px] font-mono text-gray-500">--request={{ r.id }}</span>
+                                <bdi v-if="r.status === 'verified'" class="block mt-1.5"><code dir="ltr" class="text-[11px] font-mono text-gray-500">--request={{ r.id }}</code></bdi>
                             </td>
                         </tr>
                         <tr v-if="!requests.length"><td colspan="7" class="px-3 py-10 text-center text-gray-400">لا طلبات</td></tr>
