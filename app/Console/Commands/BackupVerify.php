@@ -4,8 +4,14 @@ namespace App\Console\Commands;
 
 use App\Services\Backup\BackupFailed;
 use App\Services\Backup\SqliteInspector;
+use App\Services\LedgerReconciliationService;
+use App\Services\TrialBalanceAuditor;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * فحص نسخة قبل استعادتها، أو فحص القاعدة الحية بعدها (scripts/backup/restore.sh والتمرين).
@@ -26,6 +32,7 @@ class BackupVerify extends Command
         {--strict : يشترط أرشيف الوسائط، وأن كل هجرات النسخة موجودة كملفات في هذا الإصدار}
         {--expect= : مع --live: manifest (مسار أو - من stdin)؛ يفشل إن قلّ جدول عن أعداده}
         {--compare= : مع --live: manifest نسخة مرشّحة؛ يعرض ما سيضيع ويخرج بالرمز 3 إن وُجد}
+        {--rehearse-migrations : للتمرين فقط: يهاجر النسخة نفسها ويدقّق الدفاتر وفك الأسرار (يشترط أن DB_DATABASE هي النسخة)}
         {--json : ملخص JSON}';
 
     protected $description = 'فحص سلامة نسخة احتياطية أو القاعدة الحية ومقارنتها بـ manifest';
@@ -34,11 +41,16 @@ class BackupVerify extends Command
 
     public function handle(): int
     {
+        $started = microtime(true);
+
         try {
             if ($this->option('live')) {
                 $code = $this->verifyLive();
             } else {
                 $code = $this->verifyCandidate((string) $this->argument('path'));
+                if ($code === self::SUCCESS && $this->option('rehearse-migrations')) {
+                    $code = $this->rehearse((string) $this->argument('path'), $started);
+                }
             }
         } catch (BackupFailed|\JsonException|\PDOException $e) {
             $this->problem($e->getMessage());
@@ -124,6 +136,73 @@ class BackupVerify extends Command
         }
 
         return $this->report['ok'] ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * تجربة الهجرات على النسخة نفسها ثم تدقيق الدفاتر وفك الأسرار (تمرين معزول بلا شبكة).
+     * لا يعمل إلا إن كان اتصال التطبيق على ملف النسخة، فلا يهاجر قاعدة الإنتاج أبداً.
+     */
+    private function rehearse(string $dir, float $started): int
+    {
+        $candidate = realpath(rtrim($dir, '/').'/database.sqlite');
+        $connected = realpath((string) config('database.connections.sqlite.database'));
+        if (config('database.default') !== 'sqlite' || !$candidate || $candidate !== $connected) {
+            throw new BackupFailed('--rehearse-migrations يتطلب أن يشير DB_DATABASE إلى نسخة التمرين نفسها');
+        }
+
+        $before = DB::table('migrations')->count();
+        $migrated = Artisan::call('migrate', ['--force' => true]) === 0;
+        $after = DB::table('migrations')->count();
+        if (!$migrated) {
+            $this->problem('فشلت تجربة الهجرات على النسخة: '.mb_substr(trim(Artisan::output()), -500));
+        }
+
+        $drill = [
+            'migrations_before' => $before,
+            'migrations_applied' => $after - $before,
+            'migrate_ok' => $migrated,
+            'app_key_fingerprint' => substr(hash('sha256', (string) config('app.key')), 0, 12),
+            'secrets_decrypt' => $this->secretsDecrypt(),
+        ];
+
+        if ($drill['secrets_decrypt'] === false) {
+            $this->problem('APP_KEY الحالي لا يفك أسرار النسخة (رموز واتساب ومفتاح النموذج)');
+        }
+
+        if ($migrated && Schema::hasTable('journal_entries') && Schema::hasTable('accounts')) {
+            $audit = TrialBalanceAuditor::audit();
+            $drill['trial_balance_issues'] = count($audit['issues']) + count($audit['unbalanced_entries']);
+            $drill['ledger_divergences'] = LedgerReconciliationService::reconcile()['count'];
+        }
+
+        $drill['seconds'] = (int) round(microtime(true) - $started);
+        $this->report['drill'] = $drill;
+
+        return $this->report['ok'] ? self::SUCCESS : self::FAILURE;
+    }
+
+    /** true/false إن وُجدت أسرار مشفّرة في النسخة، وnull إن لم توجد. لا تُطبع القيم أبداً. */
+    private function secretsDecrypt(): ?bool
+    {
+        if (!Schema::hasTable('wa_bot_settings')) {
+            return null;
+        }
+
+        $row = DB::table('wa_bot_settings')->first();
+        $values = array_filter([$row->wa_token ?? null, $row->api_key ?? null, $row->wa_app_secret ?? null]);
+        if (!$values) {
+            return null;
+        }
+
+        try {
+            foreach ($values as $value) {
+                Crypt::decryptString($value);
+            }
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function verifyLive(): int

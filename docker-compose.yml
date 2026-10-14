@@ -40,6 +40,31 @@ services:
       retries: 3
       start_period: 30s
 
+  # تمرين الاستعادة المعزول (scripts/backup/drill.sh): لا شبكة، ولا أي حجم إنتاجي، ونظام ملفات للقراءة فقط.
+  # لا يعمل مع «docker compose up»؛ فقط: docker compose --profile drill run --rm -T nuskjo-drill
+  nuskjo-drill:
+    image: ${DRILL_IMAGE:-nuskjo-nuskjo-app:latest}
+    profiles: [drill]
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+      - /var/www/html/storage:size=256m
+      - /var/www/html/bootstrap/cache:size=16m
+    env_file:
+      - .env.production
+    environment:
+      - APP_ENV=production
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/tmp/drill/database.sqlite
+      - CACHE_STORE=array
+      - QUEUE_CONNECTION=sync
+      - SESSION_DRIVER=array
+      - BROADCAST_CONNECTION=null
+      - BACKUP_PRE_MIGRATE=false
+      - LOG_CHANNEL=stderr
+    entrypoint: ["/bin/sh", "/var/www/html/docker/drill-inside.sh"]
+
 volumes:
   nuskjo-storage:
     driver: local

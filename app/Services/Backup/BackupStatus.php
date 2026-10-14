@@ -38,7 +38,10 @@ class BackupStatus
             'snapshot' => $this->item('snapshot', $snapshotAt),
             'collected' => $this->item('collected', $hasRuns ? $this->carbon(BackupRun::max('collected_at')) : null),
             'pulled' => $this->item('pulled', $hasRuns ? $this->carbon(BackupRun::max('pulled_at')) : null),
-            'drill' => $this->item('drill', $lastDrill?->updated_at) + ['result' => $lastDrill?->drill_summary['result'] ?? null],
+            'drill' => $this->item('drill', $lastDrill?->updated_at) + [
+                'result' => $lastDrill?->drill_summary['result'] ?? null,
+                'seconds' => $lastDrill?->drill_summary['drill']['seconds'] ?? null,
+            ],
         ];
 
         $items['snapshot'] += [

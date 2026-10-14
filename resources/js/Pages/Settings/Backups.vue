@@ -150,7 +150,9 @@ const cards = computed(() => {
         { key: 'pulled', label: 'آخر نقل إلى جهاز المالك', state: it.pulled.state, value: ageLabel(it.pulled.age_hours) },
         {
             key: 'drill', label: 'آخر تمرين استعادة', state: it.drill.state, value: ageLabel(it.drill.age_hours),
-            detail: it.drill.result ? (it.drill.result === 'ok' ? 'نجح' : 'فشل') : null,
+            detail: it.drill.result
+                ? (it.drill.result === 'ok' ? 'نجح' : 'فشل') + (it.drill.seconds != null ? ` · ${it.drill.seconds} ثانية` : '')
+                : null,
         },
         {
             key: 'disk', label: 'القرص', state: it.disk.state,

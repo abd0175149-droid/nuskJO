@@ -3,3 +3,6 @@
 # افحص توقيت المضيف أولاً (timedatectl): إن كان UTC وعمّان UTC+3 فالسطر يصبح 50 23 * * *.
 CRON_TZ=Asia/Amman
 50 2 * * * bash /opt/nuskJO/scripts/backup/collect.sh >> $HOME/backups/nuskjo/collect.log 2>&1
+
+# تمرين الاستعادة الشهري: أول سبت 03:30. (حقلا اليوم والشهر في cron يُجمعان بـ «أو»، فالشرط في الأمر)
+30 3 * * 6 [ "$(date +\%d)" -le 07 ] && bash /opt/nuskJO/scripts/backup/drill.sh >> $HOME/backups/nuskjo/drill.log 2>&1
