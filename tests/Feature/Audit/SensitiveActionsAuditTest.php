@@ -67,6 +67,18 @@ class SensitiveActionsAuditTest extends TestCase
         $this->assertSame('pending', $receipt->fresh()->status, 'لا رفض بلا صف تدقيق');
     }
 
+    public function test_deleting_a_pending_receipt_leaves_a_row_with_its_amount(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $receipt = $this->receipt(User::factory()->create());
+
+        $this->actingAs($admin)->delete("/receipts/{$receipt->id}")->assertRedirect();
+
+        $this->assertNull(Receipt::find($receipt->id));
+        $row = $this->row(AuditAction::Delete);
+        $this->assertSame([$receipt->id, $receipt->receipt_number, 25.0], [$row->entity_id, $row->entity_label, (float) $row->changes['amount_jod']]);
+    }
+
     public function test_a_role_change_records_both_roles_and_a_password_reset_records_no_hash(): void
     {
         $admin = User::factory()->admin()->create();

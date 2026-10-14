@@ -34,6 +34,13 @@ class AppServiceProvider extends ServiceProvider
         $this->definePermissionGate();
         $this->defineLoginRateLimit();
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
+        // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
+            if ($event->model === \App\Models\AuditLog::class && $event->count > 0) {
+                \App\Support\AuditActor::as('system', 'artisan:model:prune', fn () => \App\Models\AuditLog::safe(
+                    \App\Enums\AuditAction::AuditPruned, 'audit_log', null, null, ['count' => $event->count]));
+            }
+        });
         $this->bindVisibleConversations();
         $this->watchOperations();
 

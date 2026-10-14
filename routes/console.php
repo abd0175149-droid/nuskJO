@@ -190,6 +190,13 @@ Schedule::command('whatsapp:health-status')
 // الوظائف الفاشلة تحمل بيانات عملاء في payload والاستثناء: أسبوع ثم تُحذف
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
+// سجل التدقيق (E09): أحداث الضجيج وحدها بعد audit.noise_retention_days (AuditLog::prunable). المال والصلاحيات
+// والإعدادات وميتا لا تُحذف. جدولة model:prune الموحّدة لبقية النماذج تأتي مع E13 وتضم هذا السطر
+Schedule::command('model:prune', ['--model' => [\App\Models\AuditLog::class]])
+    ->dailyAt('02:30')
+    ->timezone('Asia/Amman')
+    ->withoutOverlapping();
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

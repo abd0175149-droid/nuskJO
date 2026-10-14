@@ -230,6 +230,11 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
         ->middlewareFor('store', 'perm:users.create')
         ->middlewareFor('update', 'perm:users.update')
         ->middlewareFor('destroy', 'perm:users.delete');
+    // سجل التدقيق (E09): قراءة فقط، والصفحة خلف العلم audit.page
+    Route::get('audit-logs', [\App\Http\Controllers\AuditLogController::class, 'index'])->name('audit-logs.index')->middleware('perm:audit.view');
+    Route::get('audit-logs/export', [\App\Http\Controllers\AuditLogController::class, 'export'])->name('audit-logs.export')->middleware('perm:audit.export');
+    Route::get('api/audit-logs/entity', [\App\Http\Controllers\AuditLogController::class, 'entity'])->name('audit-logs.entity')->middleware('perm:audit.view');
+    Route::get('api/audit-logs/{auditLog}', [\App\Http\Controllers\AuditLogController::class, 'show'])->whereNumber('auditLog')->name('audit-logs.show')->middleware('perm:audit.view');
     Route::put('users/{user}/reset-password', [\App\Http\Controllers\UserController::class, 'resetPassword'])->name('users.reset-password')->middleware('perm:admin');
     Route::resource('roles', \App\Http\Controllers\RoleController::class)->except(['create', 'show'])
         ->middlewareFor(['index', 'store', 'edit', 'update', 'destroy'], 'perm:roles.manage');

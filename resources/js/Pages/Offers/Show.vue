@@ -55,6 +55,7 @@
             <OfferBotTab v-if="!isNew && tab === 'bot'" :offer-id="offer.id" :bot="bot" :can="can" :dirty="form.isDirty"/>
             <OfferSalesTab v-if="!isNew && tab === 'sales'" :sales="sales" :can="can"/>
             <OfferCloseTab v-if="!isNew && tab === 'close'" :offer-id="offer.id" :closing="closing" :agents="agents" :can="can"/>
+            <AuditTrail v-if="!isNew" type="offer" :id="offer.id"/>
         </div>
     </AppLayout>
 </template>
@@ -63,6 +64,7 @@
 import { computed, ref } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
+import AuditTrail from '@/Components/AuditTrail.vue';
 import OfferDataTab from '@/Components/Offers/OfferDataTab.vue';
 import OfferOptionsTab from '@/Components/Offers/OfferOptionsTab.vue';
 import OfferBotTab from '@/Components/Offers/OfferBotTab.vue';

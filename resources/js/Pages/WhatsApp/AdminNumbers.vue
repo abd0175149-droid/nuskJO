@@ -56,7 +56,10 @@
             <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
                 <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
                     <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100">سجلّ الإجراءات من واتساب</h3>
-                    <span class="text-xs text-gray-400">آخر 40</span>
+                    <span class="text-xs text-gray-400">آخر 40
+                        <Link v-if="$page.props.features?.audit_page && ($page.props.auth.isAdmin || $page.props.auth.permissions?.includes('audit.view'))"
+                              href="/audit-logs?tab=admin" class="ms-2 font-bold text-gold-700 dark:text-gold-400 hover:underline">السجل الكامل ←</Link>
+                    </span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
@@ -158,7 +161,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { router, useForm } from '@inertiajs/vue3';
+import { router, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 
 const props = defineProps({

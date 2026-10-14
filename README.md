@@ -20,12 +20,16 @@
 composer install
 cp .env.example .env && php artisan key:generate
 composer test          # أو: php artisan test
+node --test "tests/js/*.test.mjs"   # اختبارات الواجهة (بلا حزم إضافية)
 ```
+
+كلاهما شرط قبل `git push`.
 
 - **لا طلبات حقيقية:** `tests/TestCase.php` يفعّل `Http::preventStrayRequests()`، فكل نداء لميتا أو للنموذج يجب أن يُزيَّف بـ `Http::fake()` (الأدوات في `tests/Concerns/ConfiguresWhatsApp.php`). و`phpunit.xml` يفرض مفاتيح فارغة لواتساب والنماذج وFirebase.
 - **تحقق إيجابي:** كل اختبار يثبت ما حدث (`Http::assertSent` أو حالة الرسالة أو الوظيفة المجدولة)، لأن الكود يبتلع الاستثناءات في مواضع عدة، فطلب نُسي تزييفه قد يُمنع بصمت ويبدو الاختبار ناجحاً.
 - **حمولات ميتا:** في `tests/Fixtures/whatsapp/` بأرقام ميتا النموذجية فقط (مصادرها في `PROVENANCE.txt`). المستودع عام، فلا تُنسخ أي حمولة من الإنتاج؛ واختبار `FixturePiiGuardTest` يرفض أي رقم أردني أو جواز.
 - **الثوابت:** قواعد سلوك البوت والقناة في `tests/Invariants.php` بمعرّفات `INV-xx`. ثابت جديد يُضاف هناك مع شرح «لماذا الإصلاح الظاهر خاطئ»، ويُوسم اختباره بـ `#[Group('INV-xx')]`؛ و`InvariantCatalogTest` يفشل إن بقي معرّف بلا اختبار.
+- **سجل التدقيق:** كل مسار كتابة جديد يُصنَّف في `config/audit_routes.php` (فعل تدقيق أو `none: السبب`)، وكل حالة جديدة في `AuditAction` تُكتب في الكود أو تُذكر في `INTENTIONALLY_UNEMITTED`؛ `AuditRouteCoverageTest` و`AuditCoverageTest` يفشلان غير ذلك.
 - **النشر:** `scripts/deploy.sh` يبني `Dockerfile.test` ويشغّل الاختبارات بلا شبكة قبل أي بناء للإنتاج.
 
 ## About Laravel

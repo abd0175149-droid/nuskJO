@@ -194,7 +194,11 @@ class AdvanceController extends Controller
             return redirect()->back()->withErrors(['error' => 'لا يمكن حذف سلفة معتمدة أو مرفوضة']);
         }
 
-        $advance->delete();
+        // طلب معلّق بلا أثر مالي، لكن حذفه لا يترك أثراً في الجدول نفسه
+        \Illuminate\Support\Facades\DB::transaction(function () use ($advance) {
+            $advance->delete();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'advance', $advance->id, $advance->advance_number, ['amount' => (float) $advance->amount]);
+        });
 
         return redirect()->back()->with('success', 'تم حذف طلب السلفة');
     }

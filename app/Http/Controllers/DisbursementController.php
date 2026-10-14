@@ -189,7 +189,11 @@ class DisbursementController extends Controller
         if (!$disbursement->isPending()) {
             return back()->with('error', 'لا يمكن حذف سند صرف معتمد');
         }
-        $disbursement->delete();
+        // سند معلّق بلا أثر مالي، لكن حذفه لا يترك أثراً في الجدول نفسه
+        \Illuminate\Support\Facades\DB::transaction(function () use ($disbursement) {
+            $disbursement->delete();
+            AuditLog::log(\App\Enums\AuditAction::Delete, 'disbursement', $disbursement->id, $disbursement->disbursement_number, ['amount' => (float) $disbursement->amount]);
+        });
         return redirect()->route('disbursements.index')->with('success', 'تم حذف سند الصرف');
     }
 

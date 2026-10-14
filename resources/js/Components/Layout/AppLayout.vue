@@ -51,7 +51,7 @@
                     </button>
                     <div v-show="openGroups[group.label]" class="space-y-0.5">
                         <template v-for="item in group.items" :key="item.route">
-                            <Link v-if="!item.permission || can(item.permission)"
+                            <Link v-if="(!item.permission || can(item.permission)) && (!item.feature || $page.props.features?.[item.feature])"
                                :href="item.route"
                                @click="isMobile && (sidebarOpen = false)"
                                class="flex items-center gap-3 px-4 py-2 mx-2 rounded-lg text-sm transition-all duration-200"
@@ -401,6 +401,7 @@ const menuGroups = [
         { icon: '📍', label: 'مواقع الحضور', route: '/attendance-locations', permission: 'settings.view' },
         { icon: '⚙️', label: 'إعدادات النظام', route: '/settings', permission: 'settings.view' },
         { icon: '🛟', label: 'النسخ الاحتياطي', route: '/settings/backups', permission: 'backups.view' },
+        { icon: '🧾', label: 'سجل التدقيق', route: '/audit-logs', permission: 'audit.view', feature: 'audit_page' },
     ]},
 ];
 

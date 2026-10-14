@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Payroll;
+use App\Support\Csv;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BankExportService
@@ -19,18 +20,18 @@ class BankExportService
         return response()->streamDownload(function () use ($payroll) {
             $output = fopen('php://output', 'w');
 
-            // BOM for UTF-8
-            fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            // BOM for UTF-8؛ وكل خلية عبر Csv (لا صيغ في Excel من اسم موظف أو وصف)
+            Csv::bom($output);
 
             // Header
-            fputcsv($output, [
+            Csv::put($output, [
                 'Employee Number', 'Employee Name', 'Bank Name', 'IBAN',
                 'SWIFT', 'Net Salary', 'Currency', 'Description'
             ]);
 
             foreach ($payroll->items as $item) {
                 $emp = $item->employee;
-                fputcsv($output, [
+                Csv::put($output, [
                     $emp->employee_number,
                     $emp->user->name ?? '',
                     $emp->bank_name ?? '',

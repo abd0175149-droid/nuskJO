@@ -203,6 +203,7 @@
                     </table>
                 </div>
                 <div v-if="viewTarget.notes" class="text-sm mt-4"><span class="text-gray-400">ملاحظات:</span><p>{{ viewTarget.notes }}</p></div>
+                <AuditTrail type="invoice" :id="viewTarget.id"/>
             </div>
         </div>
 
@@ -225,6 +226,7 @@
 import { ref, computed, reactive } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
+import AuditTrail from '@/Components/AuditTrail.vue';
 import { usePermissions } from '@/composables/usePermissions';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();

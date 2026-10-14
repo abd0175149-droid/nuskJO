@@ -191,7 +191,11 @@ class ReceiptController extends Controller
         if (!$receipt->isPending()) {
             return back()->with('error', 'لا يمكن حذف سند معتمد');
         }
-        $receipt->delete();
+        // سند معلّق بلا أثر مالي، لكن حذفه لا يترك أثراً في الجدول نفسه
+        DB::transaction(function () use ($receipt) {
+            $receipt->delete();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'receipt', $receipt->id, $receipt->receipt_number, ['amount_jod' => (float) $receipt->amount_jod]);
+        });
         return redirect()->route('receipts.index')->with('success', 'تم حذف سند القبض');
     }
 

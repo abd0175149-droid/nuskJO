@@ -35,6 +35,10 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            // مزايا خلف أعلام: القائمة تُخفي ما لم يُفعَّل بعد
+            'features' => [
+                'audit_page' => (bool) config('audit.page'),
+            ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);
     }
