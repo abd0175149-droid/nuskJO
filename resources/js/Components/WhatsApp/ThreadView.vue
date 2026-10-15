@@ -22,7 +22,7 @@
           <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>
         </div>
         <button v-if="newBelow" type="button" @click="$emit('jumpToNew')"
-                class="absolute bottom-3 left-1/2 -translate-x-1/2 min-h-11 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
+                class="absolute bottom-3 inset-x-0 mx-auto w-fit min-h-11 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
           رسائل جديدة ({{ newBelow }}) ↓
         </button>
       </div>

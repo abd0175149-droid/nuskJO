@@ -24,8 +24,8 @@
                     <td data-label="الحالة" class="px-5 py-3 text-right"><span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="{pending:'bg-yellow-100 text-yellow-700',approved:'bg-green-100 text-green-700',rejected:'bg-red-100 text-red-700',editing:'bg-blue-100 text-blue-700'}[d.status]">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة',editing:'تحت التعديل'}[d.status] }}</span></td>
                     <td data-label="بواسطة" class="px-5 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ d.creator?.name || '—' }}</div><div v-if="d.status !== 'pending'" class="mt-0.5">{{ d.status === 'approved' ? '✅' : '❌' }} {{ d.approver?.name || '—' }}</div></td>
                     <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
-                        <a :href="'/disbursements/'+d.id+'/print'" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
-                        <template v-if="d.status==='pending'"><button v-if="can('disbursements.approve') && mayApprove(d)" @click="post('/disbursements/'+d.id+'/approve', {}, d.id)" :disabled="busy.has(d.id)" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="$page.props.auth?.isAdmin" @click="router.delete('/disbursements/'+d.id)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
+                        <a :href="'/disbursements/'+d.id+'/print'" target="_blank" aria-label="طباعة" title="طباعة" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
+                        <template v-if="d.status==='pending'"><button v-if="can('disbursements.approve') && mayApprove(d)" @click="approve(d)" :disabled="busy.has(d.id)" aria-label="اعتماد" title="اعتماد" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="$page.props.auth?.isAdmin" @click="destroy(d)" aria-label="حذف" title="حذف" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
                         <template v-if="d.status==='approved'"><button v-if="$page.props.auth?.isAdmin" @click="startEdit(d)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button></template>
                         <template v-if="d.status==='editing'"><button @click="openEditForm(d)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل البيانات</button></template>
                     </td>
@@ -88,9 +88,11 @@ import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { usePermissions } from '@/composables/usePermissions';
 import { useRowActions } from '@/composables/useRowActions';
+import { useConfirm } from '@/composables/useConfirm';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
 const { busy, post, mayApprove } = useRowActions();
+const { confirm } = useConfirm();
 const { isHighlighted } = useHighlight();
 const props = defineProps({ disbursements: Object, filters: Object, accounts: Array, offers: { type: Array, default: () => [] } });
 
@@ -105,8 +107,15 @@ const editForm = useForm({ _editId: null, disbursement_number:'', account_id:'',
 
 const openForm=()=>{form.reset();showForm.value=true;};
 
-const startEdit = (d) => {
-    if(confirm('تعديل السند المعتمد؟ سيتم عكس الأثر المالي.')) {
+// تأكيد موحّد (E16.9): كان الاعتماد والحذف بنقرة واحدة
+const approve = async (d) => {
+    if (await confirm({ title: 'اعتماد سند الصرف', message: `اعتماد سند الصرف ${d.disbursement_number}؟ يُسجَّل أثره المالي.`, confirmLabel: '✅ اعتماد', danger: true })) post('/disbursements/'+d.id+'/approve', {}, d.id);
+};
+const destroy = async (d) => {
+    if (await confirm({ title: 'حذف سند الصرف', message: `حذف سند الصرف ${d.disbursement_number}؟`, confirmLabel: '🗑️ حذف', danger: true })) router.delete('/disbursements/'+d.id, { preserveScroll: true });
+};
+const startEdit = async (d) => {
+    if (await confirm({ title: 'تعديل سند الصرف المعتمد', message: `تعديل سند الصرف ${d.disbursement_number}؟ سيُعكس أثره المالي حتى يُعتمد من جديد.`, confirmLabel: 'متابعة', danger: true })) {
         post('/disbursements/'+d.id+'/start-edit', {}, d.id);
     }
 };

@@ -152,6 +152,7 @@
 import { ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({ periods: Array, availableYears: Array, fiscalYears: Array });
 const currentYear = new Date().getFullYear();
@@ -185,13 +186,15 @@ const submitFiscalYear = () => {
     });
 };
 
-const deleteFiscalYear = (fy) => {
-    if (!confirm(`حذف السنة المالية ${fy.year}؟`)) return;
+// تأكيد موحّد (E16.9)
+const { confirm } = useConfirm();
+const deleteFiscalYear = async (fy) => {
+    if (!(await confirm({ title: 'حذف السنة المالية', message: `حذف السنة المالية ${fy.year}؟`, confirmLabel: '🗑️ حذف', danger: true }))) return;
     router.delete(`/accounting/fiscal-years/${fy.id}`, { preserveScroll: true });
 };
 
-const doCloseYear = () => {
-    if (!confirm(`هل أنت متأكد من إقفال السنة المالية ${closeYearValue.value}؟\nسيتم إنشاء قيد إقفال وترحيل الأرصدة.`)) return;
+const doCloseYear = async () => {
+    if (!(await confirm({ title: 'إقفال السنة المالية', message: `إقفال السنة المالية ${closeYearValue.value}؟\nسيُنشأ قيد إقفال وتُرحَّل الأرصدة.`, confirmLabel: '🔒 إقفال السنة', danger: true }))) return;
     closingYear.value = true;
     router.post('/accounting/close-year', { year: closeYearValue.value }, {
         onFinish: () => closingYear.value = false,
@@ -202,8 +205,8 @@ const doClosePeriod = () => {
     router.post('/accounting/periods/close', { year: periodYear.value, month: periodMonth.value });
 };
 
-const doOpenPeriod = () => {
-    if (!confirm('هل تريد فتح هذه الفترة؟ سيُسمح بالتسجيل فيها.')) return;
+const doOpenPeriod = async () => {
+    if (!(await confirm({ title: 'فتح الفترة', message: 'فتح هذه الفترة؟ سيُسمح بالتسجيل فيها.', confirmLabel: '🔓 فتح', danger: true }))) return;
     router.post('/accounting/periods/open', { year: periodYear.value, month: periodMonth.value });
 };
 </script>

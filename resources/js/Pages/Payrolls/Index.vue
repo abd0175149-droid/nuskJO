@@ -58,10 +58,10 @@
                         <td class="px-4 py-3 text-right"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="statusClass(p.status)">{{ statusLabel(p.status) }}</span></td>
                         <td class="px-4 py-3 text-center whitespace-nowrap">
                             <a :href="'/payrolls/' + p.id" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg">👁️</a>
-                            <button v-if="p.status==='draft' && can('payroll.generate')" @click="submitPayroll(p)" class="px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg" title="تقديم للاعتماد">📤</button>
-                            <button v-if="p.status==='pending' && can('payroll.approve')" @click="approvePayroll(p)" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg">✅</button>
-                            <button v-if="p.status==='pending' && can('payroll.reject')" @click="rejectPayroll(p)" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg">❌</button>
-                            <a v-if="p.status==='approved'" :href="'/payrolls/' + p.id + '/print'" target="_blank" class="px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 rounded-lg">🖨️</a>
+                            <button v-if="p.status==='draft' && can('payroll.generate')" @click="submitPayroll(p)" class="px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg" aria-label="تقديم للاعتماد" title="تقديم للاعتماد">📤</button>
+                            <button v-if="p.status==='pending' && can('payroll.approve')" @click="approvePayroll(p)" aria-label="اعتماد" title="اعتماد" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg">✅</button>
+                            <button v-if="p.status==='pending' && can('payroll.reject')" @click="rejectPayroll(p)" aria-label="رفض" title="رفض" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg">❌</button>
+                            <a v-if="p.status==='approved'" :href="'/payrolls/' + p.id + '/print'" target="_blank" aria-label="طباعة" title="طباعة" class="px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 rounded-lg">🖨️</a>
                             <a v-if="p.status==='approved'" :href="'/payrolls/' + p.id + '/export-bank'" class="px-2 py-1 text-xs text-teal-600 hover:bg-teal-50 rounded-lg" title="تصدير بنكي">🏦</a>
                         </td>
                     </tr>
@@ -116,7 +116,9 @@ import { ref } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { usePermissions } from '@/composables/usePermissions';
+import { useConfirm } from '@/composables/useConfirm';
 const { can } = usePermissions();
+const { confirm, prompt } = useConfirm();
 
 const props = defineProps({ payrolls: Object, filters: Object });
 const filters = ref({ month: props.filters?.month || '', year: props.filters?.year || '', currency: props.filters?.currency || '', status: props.filters?.status || '' });
@@ -129,9 +131,11 @@ const monthNames = { 1:'يناير', 2:'فبراير', 3:'مارس', 4:'أبري
 const fmt = (v) => Number(v).toLocaleString('en', { minimumFractionDigits: 2 });
 
 const generatePayroll = () => { genForm.post('/payrolls/generate', { onSuccess: () => { showGenerate.value = false; }, preserveState: false }); };
-const submitPayroll = (p) => { if (confirm('تقديم المسير للاعتماد؟')) router.post('/payrolls/' + p.id + '/submit', {}, { preserveScroll: true }); };
-const approvePayroll = (p) => { if (confirm('اعتماد المسير وتحويل الرواتب؟')) router.post('/payrolls/' + p.id + '/approve', {}, { preserveScroll: true }); };
-const rejectPayroll = (p) => { const r = prompt('سبب الرفض:'); if (r !== null) router.post('/payrolls/' + p.id + '/reject', { rejection_reason: r }, { preserveScroll: true }); };
+// تأكيد موحّد (E16.9)
+const period = (p) => `${monthNames[p.month] || p.month} ${p.year}`;
+const submitPayroll = async (p) => { if (await confirm({ title: 'تقديم المسير للاعتماد', message: `تقديم مسير ${period(p)} للاعتماد؟`, confirmLabel: '📤 تقديم' })) router.post('/payrolls/' + p.id + '/submit', {}, { preserveScroll: true }); };
+const approvePayroll = async (p) => { if (await confirm({ title: 'اعتماد المسير', message: `اعتماد مسير ${period(p)} وتحويل الرواتب؟`, confirmLabel: '✅ اعتماد', danger: true })) router.post('/payrolls/' + p.id + '/approve', {}, { preserveScroll: true }); };
+const rejectPayroll = async (p) => { const r = await prompt({ title: `رفض مسير ${period(p)}`, label: 'سبب الرفض', maxLength: 500, confirmLabel: 'رفض', danger: true }); if (r !== null) router.post('/payrolls/' + p.id + '/reject', { rejection_reason: r }, { preserveScroll: true }); };
 const applyFilter = () => { router.get('/payrolls', { ...filters.value }, { preserveState: true, replace: true }); };
 
 const statusClass = (s) => ({ draft: 'bg-gray-100 text-gray-600', pending: 'bg-yellow-100 text-yellow-700', approved: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700' }[s] || '');

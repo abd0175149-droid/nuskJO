@@ -148,6 +148,7 @@ import { ref, computed } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import SearchableSelect from '@/Components/SearchableSelect.vue';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({ entries: Object, filters: Object, leafAccounts: Array });
 const accountOptions = computed(() => props.leafAccounts.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` })));
@@ -218,14 +219,16 @@ const openEdit = (entry) => {
     showModal.value = true;
 };
 
-const reverseEntry = (entry) => {
-    if (confirm(`عكس القيد ${entry.entry_number}؟ سيُنشأ قيد عكسي مقابل.`)) {
+// تأكيد موحّد (E16.9)
+const { confirm } = useConfirm();
+const reverseEntry = async (entry) => {
+    if (await confirm({ title: 'عكس القيد', message: `عكس القيد ${entry.entry_number}؟ سيُنشأ قيد عكسي مقابل.`, confirmLabel: '↺ عكس', danger: true })) {
         router.post(`/accounting/journal-entries/${entry.id}/reverse`, {}, { preserveScroll: true });
     }
 };
 
-const deleteEntry = (entry) => {
-    if (confirm(`حذف القيد ${entry.entry_number} نهائياً؟\nسيتم عكس أثره على أرصدة الحسابات المرتبطة به وإزالته من السجل والميزان.\nهذا الإجراء لا يمكن التراجع عنه.`)) {
+const deleteEntry = async (entry) => {
+    if (await confirm({ title: 'حذف القيد نهائياً', message: `حذف القيد ${entry.entry_number} نهائياً؟\nسيُعكس أثره على أرصدة الحسابات المرتبطة به ويُزال من السجل والميزان.\nلا يمكن التراجع عن هذا.`, confirmLabel: '🗑️ حذف', danger: true })) {
         router.delete(`/accounting/journal-entries/${entry.id}`, { preserveScroll: true });
     }
 };

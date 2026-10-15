@@ -3,10 +3,13 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ارتفاع رأس التطبيق وحشوة المحتوى (h-14 وp-3، ومن sm: h-16 وp-6 في AppLayout وEmployeeLayout):
+/* ارتفاع رأس التطبيق وحشوة المحتوى (h-14 وp-3، ومن sm: h-16 وp-6 في AppLayout؛ وEmployeeLayout يضبط حشوته p-4 على main):
    صفحات ملء الشاشة مثل صندوق المحادثات تحسب ارتفاعها منهما (E16) */
 :root { --app-header: 3.5rem; --app-pad: 0.75rem; }
 @media (min-width: 640px) { :root { --app-header: 4rem; --app-pad: 1.5rem; } }
+
+/* نافذة <dialog> مفتوحة (AppModal، E16.9): الصفحة خلفها لا تتمرر */
+body:has(dialog[open]) { overflow: hidden; }
 
 @theme {
     --color-gold-50: #fdf9ed;

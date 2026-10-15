@@ -73,7 +73,7 @@
                 </div>
 
                 <!-- Theme Toggle -->
-                <button @click="toggleTheme"
+                <button @click="toggleTheme" type="button" aria-label="تبديل الوضع الليلي" title="تبديل الوضع الليلي" :aria-pressed="isDark ? 'true' : 'false'"
                         class="p-2 rounded-lg transition-colors"
                         :class="isDark ? 'text-gold-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'">
                     {{ isDark ? '☀️' : '🌙' }}
@@ -119,9 +119,11 @@
         </header>
 
         <!-- Page Content -->
-        <main class="flex-1 p-4 sm:p-6" :class="isDark ? 'bg-gray-950' : 'bg-gray-50'">
+        <main class="flex-1 p-4 sm:p-6 [--app-pad:1rem] sm:[--app-pad:1.5rem]" :class="isDark ? 'bg-gray-950' : 'bg-gray-50'">
             <slot />
         </main>
+        <!-- نافذة التأكيد الموحّدة (useConfirm، E16.9): مثيل واحد للصفحة -->
+        <ConfirmDialog />
     </div>
 </template>
 
@@ -131,6 +133,7 @@ import { usePage, Link, router } from '@inertiajs/vue3';
 import { syncPushToken, currentPushToken, forgetPushToken } from '../../firebase';
 import { clearStoredDrafts } from '@/composables/useDrafts';
 import PushToggle from './PushToggle.vue';
+import ConfirmDialog from '../ConfirmDialog.vue';
 import axios from 'axios';
 
 const page = usePage();

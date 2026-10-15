@@ -35,7 +35,7 @@
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
                             <button type="button" @click="openForm(n)" class="px-2 py-1 rounded-lg text-xs font-bold text-gold-700 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20">✏️ تعديل</button>
-                            <button type="button" @click="remove(n)" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
+                            <button type="button" @click="remove(n)" :aria-label="'حذف ' + n.name" title="حذف" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
                         </div>
                     </div>
                     <p v-if="n.client_match" class="text-xs p-2 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">⚠️ هذا الرقم مسجّل أيضاً للعميل «{{ n.client_match }}». سيُخدم كإدارة لا كعميل.</p>
@@ -92,13 +92,9 @@
         </div>
 
         <!-- ===== نموذج الرقم ===== -->
-        <div v-if="showForm" class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto" @click.self="showForm = false">
-            <form @submit.prevent="save" class="w-full max-w-3xl mt-[4vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 space-y-5">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ editing ? 'تعديل رقم إدارة' : 'رقم إدارة جديد' }}</h3>
-                    <button type="button" @click="showForm = false" class="text-gray-400 hover:text-red-500 text-xl" aria-label="إغلاق">&times;</button>
-                </div>
-
+        <!-- AppModal (E16.9): Escape والخلفية لا يضيّعان تعديلات غير محفوظة -->
+        <AppModal :open="showForm" :title="editing ? 'تعديل رقم إدارة' : 'رقم إدارة جديد'" size="xl" :dirty="formDirty" @close="showForm = false">
+            <form @submit.prevent="save" class="space-y-5">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="an-phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم واتساب *</label>
@@ -163,7 +159,7 @@
                     <button type="button" @click="showForm = false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">إلغاء</button>
                 </div>
             </form>
-        </div>
+        </AppModal>
     </AppLayout>
 </template>
 
@@ -171,6 +167,8 @@
 import { ref, computed } from 'vue';
 import { router, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import AppModal from '@/Components/AppModal.vue';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({
     numbers: { type: Array, default: () => [] },
@@ -186,6 +184,10 @@ const props = defineProps({
 const showForm = ref(false);
 const editing = ref(null);
 const form = useForm({ phone: '', name: '', user_id: null, permissions: [], is_active: true, notes: '' });
+const { confirm } = useConfirm();
+// لقطة الحقول عند الفتح: ما يختلف عنها تعديل غير محفوظ
+const baseline = ref('');
+const formDirty = computed(() => showForm.value && JSON.stringify(form.data()) !== baseline.value);
 
 // الصلاحيات مجمّعة كما في الكتالوج: التقارير، قاعدة المعرفة، إدارة الأدوات
 const groups = computed(() => {
@@ -208,6 +210,7 @@ const openForm = (n = null) => {
     form.permissions = n ? [...n.permissions] : [];
     form.is_active = n ? n.is_active : true;
     form.notes = n?.notes || '';
+    baseline.value = JSON.stringify(form.data());
     showForm.value = true;
 };
 
@@ -222,8 +225,8 @@ const save = () => {
     else form.post('/whatsapp/admin-numbers', opts);
 };
 
-const remove = (n) => {
-    if (!confirm(`حذف رقم «${n.name}» من أرقام الإدارة؟ سيُخدم بعدها كأي عميل.`)) return;
+const remove = async (n) => {
+    if (!(await confirm({ title: 'حذف رقم إدارة', message: `حذف رقم «${n.name}» من أرقام الإدارة؟ سيُخدم بعدها كأي عميل.`, confirmLabel: '🗑️ حذف', danger: true }))) return;
     router.delete('/whatsapp/admin-numbers/' + n.id, { preserveScroll: true });
 };
 

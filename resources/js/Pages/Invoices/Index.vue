@@ -47,12 +47,12 @@
                             <td data-label="الحالة" class="px-4 py-3 text-right"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="{'bg-yellow-100 text-yellow-700':inv.status==='pending','bg-green-100 text-green-700':inv.status==='approved','bg-red-100 text-red-700':inv.status==='rejected','bg-blue-100 text-blue-700':inv.status==='editing'}">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة',editing:'تحت التعديل'}[inv.status] }}</span></td>
                             <td data-label="بواسطة" class="px-4 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ inv.creator?.name || '—' }}</div><div v-if="inv.status !== 'pending'" class="mt-0.5">{{ inv.status === 'approved' ? '✅' : '❌' }} {{ inv.approver?.name || '—' }}</div></td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap actions-cell">
-                                <a :href="'/invoices/'+inv.id+'/print'" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
+                                <a :href="'/invoices/'+inv.id+'/print'" target="_blank" aria-label="طباعة" title="طباعة" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
                                 <button @click="viewInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">👁️</button>
                                 <button v-if="inv.status==='pending' && inv.offer_id && (can('invoices.update') || can('invoices.create'))" @click="openPOS(inv)" class="px-2 py-1 text-xs font-bold rounded-lg btn-mobile-sm" :class="costsMissing(inv) ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'">📝 {{ costsMissing(inv) ? 'إكمال التكاليف' : 'تعديل' }}</button>
-                                <button v-if="inv.status==='pending' && can('invoices.approve') && mayApprove(inv)" @click="approveInv(inv)" :disabled="!!costsMissing(inv) || busy.has(inv.id)" :title="costsMissing(inv) ? 'لا تُعتمد قبل اكتمال التكاليف: لكل بند وكيل وتكلفة' : 'اعتماد'" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm disabled:opacity-30 disabled:cursor-not-allowed">✅</button>
-                                <button v-if="inv.status==='pending' && can('invoices.reject')" @click="rejectInv(inv)" :disabled="busy.has(inv.id)" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg btn-mobile-sm">❌</button>
-                                <button v-if="inv.status!=='approved' && $page.props.auth?.isAdmin" @click="delInv(inv)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button>
+                                <button v-if="inv.status==='pending' && can('invoices.approve') && mayApprove(inv)" @click="approveInv(inv)" aria-label="اعتماد" :disabled="!!costsMissing(inv) || busy.has(inv.id)" :title="costsMissing(inv) ? 'لا تُعتمد قبل اكتمال التكاليف: لكل بند وكيل وتكلفة' : 'اعتماد'" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm disabled:opacity-30 disabled:cursor-not-allowed">✅</button>
+                                <button v-if="inv.status==='pending' && can('invoices.reject')" @click="rejectInv(inv)" :disabled="busy.has(inv.id)" aria-label="رفض" title="رفض" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg btn-mobile-sm">❌</button>
+                                <button v-if="inv.status!=='approved' && $page.props.auth?.isAdmin" @click="delInv(inv)" aria-label="حذف" title="حذف" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button>
                                 <button v-if="inv.status==='approved' && $page.props.auth?.isAdmin" @click="startEditInv(inv)" :disabled="busy.has(inv.id)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button>
                                 <button v-if="inv.status==='editing'" @click="openPOS(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل الفاتورة</button>
                             </td>
@@ -207,18 +207,6 @@
             </div>
         </div>
 
-        <!-- Delete Modal -->
-        <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="deleteTarget=null">
-            <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 text-center">
-                <div class="text-5xl mb-4">⚠️</div>
-                <h3 class="text-lg font-bold text-gray-800 mb-2">تأكيد الحذف</h3>
-                <p class="text-sm text-gray-500 mb-6">حذف الفاتورة <strong>{{ deleteTarget.invoice_number }}</strong>؟</p>
-                <div class="flex gap-3 justify-center">
-                    <button @click="router.delete('/invoices/'+deleteTarget.id,{preserveScroll:true,onSuccess:()=>{deleteTarget=null}})" class="px-6 py-2.5 rounded-xl font-bold text-sm text-white bg-red-500 hover:bg-red-600">🗑️ حذف</button>
-                    <button @click="deleteTarget=null" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button>
-                </div>
-            </div>
-        </div>
     </AppLayout>
 </template>
 
@@ -231,7 +219,9 @@ import { usePermissions } from '@/composables/usePermissions';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
 import { useRowActions } from '@/composables/useRowActions';
+import { useConfirm } from '@/composables/useConfirm';
 const { busy, post, mayApprove } = useRowActions();
+const { confirm, prompt } = useConfirm();
 const { isHighlighted } = useHighlight();
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import OfferInvoiceForm from '@/Components/Invoices/OfferInvoiceForm.vue';
@@ -245,7 +235,6 @@ const statusFilter = ref(props.filters?.status||'');
 const showPOS = ref(false);
 const viewTarget = ref(null);
 const viewDetails = ref(null);
-const deleteTarget = ref(null);
 const submitting = ref(false);
 let t = null;
 
@@ -421,10 +410,20 @@ const viewInv = async (inv) => {
 };
 // فاتورة عرض معلّقة ببنود بلا وكيل أو تكلفة: لا تُعتمد قبل إكمالها
 const costsMissing = (inv) => (inv.offer_id && ['pending', 'editing'].includes(inv.status) ? Number(inv.offer_lines?.missing || 0) : 0);
-const approveInv = (inv) => { if(confirm('اعتماد الفاتورة وتحديث الأرصدة؟')) post('/invoices/'+inv.id+'/approve',{},inv.id); };
-const rejectInv = (inv) => { const r=prompt('سبب الرفض:'); if(r!==null) post('/invoices/'+inv.id+'/reject',{reason:r},inv.id); };
-const startEditInv = (inv) => { if(confirm('تعديل الفاتورة المعتمدة؟ سيتم عكس الأثر المالي.')) post('/invoices/'+inv.id+'/start-edit',{},inv.id); };
-const delInv = (inv) => { deleteTarget.value = inv; };
+// تأكيد موحّد (E16.9): حماية من النقرة الخاطئة فقط، والصلاحية والاعتماد الذري في الخادم
+const approveInv = async (inv) => {
+    if (await confirm({ title: 'اعتماد الفاتورة', message: `اعتماد الفاتورة ${inv.invoice_number} وتحديث الأرصدة؟`, confirmLabel: '✅ اعتماد', danger: true })) post('/invoices/'+inv.id+'/approve',{},inv.id);
+};
+const rejectInv = async (inv) => {
+    const r = await prompt({ title: `رفض الفاتورة ${inv.invoice_number}`, label: 'سبب الرفض', maxLength: 500, confirmLabel: 'رفض', danger: true });
+    if (r !== null) post('/invoices/'+inv.id+'/reject',{reason:r},inv.id);
+};
+const startEditInv = async (inv) => {
+    if (await confirm({ title: 'تعديل فاتورة معتمدة', message: `تعديل الفاتورة ${inv.invoice_number}؟ سيُعكس أثرها المالي حتى تُعتمد من جديد.`, confirmLabel: 'متابعة', danger: true })) post('/invoices/'+inv.id+'/start-edit',{},inv.id);
+};
+const delInv = async (inv) => {
+    if (await confirm({ title: 'حذف الفاتورة', message: `حذف الفاتورة ${inv.invoice_number}؟`, confirmLabel: '🗑️ حذف', danger: true })) router.delete('/invoices/'+inv.id,{preserveScroll:true});
+};
 const debounceSearch = () => { clearTimeout(t); t=setTimeout(()=>applyFilter(),400); };
 const applyFilter = () => { router.get('/invoices',{search:search.value,status:statusFilter.value},{preserveState:true,replace:true}); };
 </script>

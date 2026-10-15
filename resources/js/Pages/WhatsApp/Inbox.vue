@@ -44,6 +44,7 @@ import ThreadView from '@/Components/WhatsApp/ThreadView.vue';
 import { useInbox } from '@/composables/whatsapp/useInbox.js';
 import { createPoller } from '@/composables/whatsapp/usePolling.js';
 import { onPopState } from '@/utils/historyGuard';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({
   title: String,
@@ -70,10 +71,11 @@ const inbox = useInbox(props, () => threadView.value);
 const { s } = inbox;
 const linkOpen = ref(false);
 
-// تأكيد تحذير السياسة وفك الربط (تنتقل إلى ConfirmDialog في E16.9)
-const ask = (message) => Promise.resolve(window.confirm(message));
+// تحذير السياسة (E15.9) وفك الربط بنافذة التأكيد الموحّدة (E16.9)
+const { confirm } = useConfirm();
+const ask = (message) => confirm({ title: 'تحذير قبل الإرسال', message, confirmLabel: 'إرسال رغم التحذير', danger: true });
 const unlink = async () => {
-  if (await ask('فك ربط هذه المحادثة بالعميل؟ لن يعيد النظام ربطها آلياً.')) inbox.unlinkClient();
+  if (await confirm({ title: 'فك ربط العميل', message: 'فك ربط هذه المحادثة بالعميل؟ لن يعيد النظام ربطها آلياً.', confirmLabel: 'فك الربط', danger: true })) inbox.unlinkClient();
 };
 
 // عارض المرفقات (E14): علامة مائية باسم الموظف ووقت الفتح
