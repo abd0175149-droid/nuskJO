@@ -54,9 +54,10 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Build frontend
+      - name: Frontend tests and build
         run: |
           npm ci
+          npm test
           npm run build
 
       - name: Dependency audit (non-blocking)
