@@ -316,7 +316,13 @@ const doPrint = () => window.print();
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+/* خطوط محلية (E16.8) بدل Google Fonts */
+@import '@fontsource/cairo/400.css';
+@import '@fontsource/cairo/600.css';
+@import '@fontsource/cairo/700.css';
+@import '@fontsource/cairo/900.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
 
 .a4-page {
     width: 210mm; height: 297mm;

@@ -3,8 +3,19 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ZiggyVue } from 'ziggy-js';
 import axios from 'axios';
+import '@fontsource/tajawal/300.css';
+import '@fontsource/tajawal/400.css';
+import '@fontsource/tajawal/500.css';
+import '@fontsource/tajawal/700.css';
+import '@fontsource/tajawal/800.css';
+import '@fontsource/inter/300.css';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
 import '../css/app.css';
 import './echo';
+import { installHistoryGuard } from './utils/historyGuard';
 
 // Axios global setup: CSRF token + credentials
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
@@ -13,6 +24,9 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]');
 if (csrfToken) {
     axios.defaults.headers.common['X-CSRF-TOKEN'] = csrfToken.content;
 }
+
+// قبل Inertia: صفحات تدير خطواتها في history تعترض الرجوع قبله (utils/historyGuard.js)
+installHistoryGuard();
 
 createInertiaApp({
     title: (title) => title ? `${title} - NUSUK` : 'NUSUK',

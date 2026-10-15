@@ -6,9 +6,7 @@
     @php($co = \App\Services\CompanyInfo::all())
 <title>@yield('title') — {{ $co['name'] }}</title>
     <meta name="description" content="@yield('desc')">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap">
+    @vite('resources/css/legal.css')
     <style>
         :root{
             --bg:#faf8f4; --surface:#fff; --ink:#1e1c17; --ink2:#443f35;

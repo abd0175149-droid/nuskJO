@@ -2,303 +2,53 @@
   <AppLayout>
     <template #header>محادثات الواتساب</template>
 
-    <div class="space-y-4">
-      <!-- شريط الحالة -->
-      <div class="rounded-xl border p-3.5 text-sm flex flex-wrap items-center gap-x-4 gap-y-2"
-           :class="status.suspended
-             ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-             : (status.bot_ready ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                                 : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800')">
-        <span class="font-bold">
-          <template v-if="status.suspended">⛔ الإرسال موقوف — {{ SUSPEND_SOURCES[status.suspended_source] || 'قفل طارئ' }}</template>
-          <template v-else-if="status.bot_ready">🟢 البوت يعمل</template>
-          <template v-else-if="status.channel_ready">🟡 القناة مهيّأة والبوت مطفأ</template>
-          <template v-else>🟡 القناة غير مهيّأة</template>
-        </span>
-        <span class="text-gray-600 dark:text-gray-400 text-xs">
-          <template v-if="!status.channel_ready">أضف بيانات Meta ومفتاح Claude من صفحة الإعدادات لتشغيل النظام.</template>
-          <template v-else-if="!status.bot_ready">المحادثات تعمل والموظفون يردّون؛ فعّل البوت من الإعدادات عند الجهوزية.</template>
-          <template v-else>الموظف يمكنه الردّ في أي وقت — وردّه يوقف البوت مؤقتاً تلقائياً.</template>
-        </span>
-        <a href="/whatsapp/settings" class="text-gold-700 dark:text-gold-400 font-bold text-xs hover:underline mr-auto">⚙️ الإعدادات</a>
-      </div>
+    <!-- ارتفاع الشاشة ناقص رأس التطبيق وحشوته: القائمة والمحادثة تمرّران داخلهما (E16) -->
+    <div class="flex flex-col gap-3 sm:gap-4 h-[calc(100dvh-var(--app-header)-2*var(--app-pad))] min-h-[28rem]">
+      <InboxStatusBar :class="s.view === 'thread' ? 'hidden lg:block' : ''" class="shrink-0"
+                      :status="status" :llm="s.llm" :stale-since="s.staleSince" :notice="s.notice" @dismiss="s.notice = ''"/>
 
-      <!-- ميتا أوقفت القناة (فحص صحة القناة أو الرمز): عام بلا تفاصيل، والتفاصيل في الإعدادات -->
-      <div v-if="status.meta_blocked" role="alert"
-           class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3.5 text-sm font-bold text-red-700 dark:text-red-300">
-        ⛔ القناة متوقفة من جهة ميتا — أبلغ المدير.
-      </div>
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <ConversationList :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-1"
+                          :visible="s.view === 'list'" :items="s.list" :active-id="s.activeId" :has-more="s.listHasMore" :loading-more="s.loadingMore"
+                          :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons"
+                          @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
+                          @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"/>
 
-      <!-- وضع التحويل (E12): مزوّد الذكاء متعطّل، والبوت يحوّل كل عميل لموظف -->
-      <div v-if="llm.state && llm.state !== 'closed'" role="alert"
-           class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm font-bold text-amber-800 dark:text-amber-300">
-        🔌 البوت في وضع التحويل<span v-if="llm.opened_at"> منذ {{ hhmm(llm.opened_at) }}</span>. مزوّد الذكاء متعطّل — ردّوا على العملاء يدوياً.
-      </div>
-      <!-- فشل الاستطلاع مرتين متتاليتين: القائمة قد تكون قديمة -->
-      <div v-if="staleSince" role="status"
-           class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-2.5 text-xs text-gray-600 dark:text-gray-300">
-        ⚠️ تعذّر التحديث منذ {{ staleSince }} — تحقّق من الاتصال، وستتحدّث القائمة تلقائياً عند عودته.
-      </div>
-
-      <!-- محادثة لم تعد ضمن نطاقك -->
-      <div v-if="notice" role="alert"
-           class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm text-amber-800 dark:text-amber-300 flex items-start gap-3">
-        <span class="flex-1">⚠️ {{ notice }}</span>
-        <button type="button" @click="notice = ''" aria-label="إغلاق التنبيه" class="font-bold leading-none hover:text-amber-950 dark:hover:text-amber-100">✕</button>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        <!-- قائمة المحادثات -->
-        <div class="lg:col-span-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden flex flex-col" style="max-height:72vh">
-          <div class="p-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
-            <input v-model="search" type="text" placeholder="بحث بالاسم أو الرقم..."
-                   class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm dark:text-white"
-                   @input="debounceLoad"/>
-            <div class="flex flex-wrap gap-1.5">
-              <button v-for="f in filterTabs" :key="f.key" type="button" @click="filter = f.key; load()"
-                      class="px-2.5 py-1 rounded-lg text-[11px] font-bold border"
-                      :class="filter === f.key ? 'bg-gold-50 dark:bg-gold-900/20 border-gold-400 text-gold-700 dark:text-gold-400'
-                                               : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gold-400'">
-                {{ f.label }}
-              </button>
-            </div>
-            <select v-model="topic" @change="load()" aria-label="تصفية بحسب الموضوع"
-                    class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs dark:text-white">
-              <option value="">كل المواضيع</option>
-              <option v-for="(label, key) in props.topics" :key="key" :value="key">{{ label }}</option>
-            </select>
-            <p v-if="!props.seesAll" class="text-[11px] text-gray-500 dark:text-gray-400">
-              تظهر لك المحادثات التي تخصّ مجالاتك فقط
-            </p>
-          </div>
-
-          <div class="overflow-y-auto flex-1">
-            <button v-for="c in list" :key="c.id" type="button" @click="open(c.id)"
-                    class="w-full text-right px-4 py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
-                    :class="activeId === c.id ? 'bg-gold-50/60 dark:bg-gold-900/10' : ''">
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-bold text-sm truncate">{{ c.name }}</span>
-                <span v-if="c.unread" class="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold grid place-items-center">{{ c.unread }}</span>
-              </div>
-              <!-- سطر الهوية (E11): الرقم، أو اسم المستخدم، أو «رقم غير ظاهر» -->
-              <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">
-                <bdi v-if="c.phone" dir="ltr" class="font-mono">+{{ c.phone }}</bdi>
-                <bdi v-else-if="c.username" dir="ltr" class="font-mono">@{{ c.username }}</bdi>
-                <span v-else>رقم غير ظاهر</span>
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ c.preview || '—' }}</p>
-              <div v-if="(c.topics && c.topics.length) || c.assignee" class="flex items-center gap-1 mt-1 flex-wrap">
-                <span v-for="tp in (c.topics || [])" :key="tp.key"
-                      :title="tp.source === 'manual' ? 'وسم يدوي' : 'وسم آلي من البوت'"
-                      class="px-1.5 py-0.5 rounded text-[10px] leading-4"
-                      :class="tp.source === 'manual'
-                        ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-300 ring-1 ring-gold-300 dark:ring-gold-700'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'">
-                  {{ tp.label }}
-                </span>
-                <span v-if="c.assignee" class="text-[10px] text-gray-400 dark:text-gray-500">‹{{ c.assignee }}›</span>
-              </div>
-              <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                <span v-if="c.needs_attention" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">⚠️ تدخّل</span>
-                <span v-if="c.phoneless" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="العميل يراسل باسم مستخدم ورقمه غير ظاهر">📵 بلا رقم</span>
-                <span v-if="c.from_ad" class="px-1.5 py-0.5 rounded text-[10px] bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" title="بدأت المحادثة من إعلان">📣 من إعلان</span>
-                <span v-if="c.needs_attention && c.attention_reason" class="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ reasonLabel(c.attention_reason) }}</span>
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="c.bot_enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
-                  {{ c.bot_enabled ? (c.paused ? '🤖 موقوف مؤقتاً' : '🤖 بوت') : '👤 بشري' }}
-                </span>
-                <span v-if="c.is_admin" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700" title="رقم إدارة — يخدمه المساعد الإداري">👔 إدارة</span>
-                <span v-if="c.client" class="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">عميل مسجّل</span>
-                <span v-if="!c.window_open" class="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700">نافذة مغلقة</span>
-                <span v-else-if="c.needs_attention && c.window_left !== null && c.window_left <= 360"
-                      class="px-1.5 py-0.5 rounded text-[10px] font-bold"
-                      :class="c.window_left <= 120 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'"
-                      :title="'تُغلق نافذة الرد خلال ' + windowLabel(c.window_left)">⏳ {{ windowLabel(c.window_left) }}</span>
-                <span class="text-[10px] text-gray-400 mr-auto">{{ c.last_at }}</span>
-              </div>
-            </button>
-            <p v-if="!list.length" class="py-14 text-center text-gray-400 text-sm">لا محادثات</p>
-          </div>
-        </div>
-
-        <!-- المحادثة -->
-        <div class="lg:col-span-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden flex flex-col" style="max-height:72vh">
-          <template v-if="thread">
-            <!-- رأس المحادثة -->
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p class="font-bold text-sm">{{ thread.name }}</p>
-                  <p v-if="thread.phone" class="text-xs text-gray-400 font-mono" dir="ltr">{{ thread.phone }}<span v-if="thread.client"> · {{ thread.client }}</span></p>
-                  <!-- عميل باسم مستخدم واتساب بلا رقم ظاهر (E11a) -->
-                  <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<template v-if="thread.username"> · <bdi dir="ltr" class="font-mono">@{{ thread.username }}</bdi></template><span v-if="thread.client" class="text-gray-500 dark:text-gray-400"> · {{ thread.client }}</span></p>
-                  <p v-if="thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
-                     title="اسم يضعه العميل بنفسه — غير موثّق">اسم واتساب: <bdi>{{ thread.profile_name }}</bdi></p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <!-- ربط بعميل (E11.8) -->
-                  <template v-if="props.canLinkClient && !thread.is_admin">
-                    <button type="button" @click="linkOpen = true" class="px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300">
-                      {{ thread.client_id ? '🔗 تغيير الربط' : '🔗 ربط بعميل' }}
-                    </button>
-                    <button v-if="thread.client_id" type="button" @click="unlinkClient" class="px-2.5 py-1 rounded-lg text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">فك الربط</button>
-                  </template>
-                  <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ reasonLabel(thread.attention_reason) }}</span>
-                  <button v-if="thread.needs_attention" @click="resolve" class="px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20">✅ تمّت المعالجة</button>
-                  <button v-if="props.canToggleBot" @click="toggleBot" class="px-2.5 py-1 rounded-lg text-xs font-bold border"
-                          :class="thread.bot_enabled ? 'border-gray-300 text-gray-600' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20'">
-                    {{ thread.bot_enabled ? '⏸️ إيقاف البوت' : '▶️ تشغيل البوت' }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- المواضيع -->
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span class="text-[11px] text-gray-400 dark:text-gray-500">المواضيع:</span>
-                <span v-for="tp in (thread.topics || [])" :key="tp.key"
-                      :title="tp.source === 'manual' ? 'وسم يدوي' : 'وسم آلي من البوت'"
-                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] leading-4"
-                      :class="tp.source === 'manual'
-                        ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-300 ring-1 ring-gold-300 dark:ring-gold-700'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'">
-                  {{ tp.label }}
-                  <button type="button" @click="setTopic(tp.key, false)"
-                          :aria-label="`إزالة وسم ${tp.label}`" :title="`إزالة وسم ${tp.label}`"
-                          class="leading-none hover:text-red-600 dark:hover:text-red-400">✕</button>
-                </span>
-                <span v-if="!(thread.topics && thread.topics.length)" class="text-[10px] text-gray-400 dark:text-gray-500">بلا وسوم</span>
-
-                <template v-if="addableTopics.length">
-                  <select v-model="newTopic" aria-label="اختيار موضوع للإضافة"
-                          class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[11px] dark:text-white">
-                    <option value="">— اختر موضوعاً</option>
-                    <option v-for="tp in addableTopics" :key="tp.key" :value="tp.key">{{ tp.label }}</option>
-                  </select>
-                  <button type="button" :disabled="!newTopic" @click="addTopic"
-                          class="px-2 py-1 rounded-lg text-[11px] font-bold border border-gold-400 text-gold-700 dark:text-gold-400 disabled:opacity-40">
-                    + وسم
-                  </button>
-                </template>
-              </div>
-
-              <!-- التوكيل -->
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span class="text-[11px] text-gray-400 dark:text-gray-500">الموكل إليه:</span>
-                <select v-if="props.canAssign" :value="thread.assigned_to ?? ''" @change="assignTo($event.target)"
-                        aria-label="توكيل المحادثة لموظف"
-                        class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[11px] dark:text-white">
-                  <option value="">— بلا توكيل</option>
-                  <option v-for="u in props.staff" :key="u.id" :value="u.id">{{ u.name }}</option>
-                </select>
-                <span v-else class="text-[11px] text-gray-500 dark:text-gray-400">{{ thread.assignee || '— بلا توكيل' }}</span>
-              </div>
-            </div>
-
-            <!-- الفقاعات -->
-            <div class="relative flex-1 min-h-0 flex flex-col">
-            <div ref="scroller" @scroll.passive="onScroll" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-950/40">
-              <div v-if="hasMore || loadingOlder" class="text-center">
-                <button type="button" :disabled="loadingOlder" @click="loadOlder"
-                        class="px-3 py-1 rounded-lg text-[11px] text-gray-500 dark:text-gray-400 hover:text-gold-700 dark:hover:text-gold-400 disabled:opacity-60">
-                  {{ loadingOlder ? 'جارٍ تحميل الأقدم...' : '↑ رسائل أقدم' }}
-                </button>
-              </div>
-              <div v-for="m in messages" :key="m.id" class="flex" :class="m.is_system ? 'justify-center' : (m.direction === 'in' ? 'justify-start' : 'justify-end')">
-                <!-- تحديث هوية من واتساب (E11): ليس رسالة من العميل -->
-                <div v-if="m.is_system" class="max-w-[85%] rounded-full px-3 py-1 text-[11px] text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-800">
-                  {{ m.body }} <span dir="ltr" class="opacity-60">· {{ m.at }}</span>
-                </div>
-                <div v-else class="max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm" :class="bubble(m)">
-                  <p v-if="m.sender" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
-                  <p v-if="m.reply_to" class="mb-1 px-2 py-1 rounded-lg border-r-2 border-gray-400/60 bg-black/5 dark:bg-white/5 text-[11px] opacity-80 break-words line-clamp-2">↩️ {{ m.reply_to }}</p>
-                  <p class="whitespace-pre-wrap break-words">{{ m.body }}</p>
-                  <MediaChip v-if="m.media" :message-id="m.id" :media="m.media" @view="openViewer(m)" @updated="(media) => (m.media = media)"/>
-                  <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70">
-                    <span dir="ltr">{{ m.at }}</span>
-                    <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
-                    <span v-if="m.status === 'failed'" class="text-red-200" :title="m.error || ''">· فشل</span>
-                    <span v-else-if="m.status === 'blocked'" class="px-1.5 rounded bg-red-600 text-white font-bold" :title="m.error || ''">🛡️ حُجبت</span>
-                    <span v-else-if="m.status === 'unconfirmed'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
-                  </div>
-                  <p v-if="(m.status === 'failed' || m.status === 'blocked') && m.error" class="mt-0.5 text-[10px] leading-4 opacity-80 break-words">{{ m.error }}</p>
-                </div>
-              </div>
-              <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>
-            </div>
-            <button v-if="newBelow" type="button" @click="jumpToNew"
-                    class="absolute bottom-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
-              رسائل جديدة ({{ newBelow }}) ↓
-            </button>
-            </div>
-
-            <!-- ملاحظات -->
-            <div v-if="notes.length" class="px-4 py-2 border-t border-gray-100 dark:border-gray-800 bg-amber-50/50 dark:bg-amber-900/10">
-              <p class="text-[11px] text-gray-500 dark:text-gray-400">📝 {{ notes.join(' · ') }}</p>
-            </div>
-
-            <!-- الإرسال -->
-            <div class="p-3 border-t border-gray-200 dark:border-gray-700">
-              <div v-if="!thread.window_open" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
-                ⚠️ انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.
-              </div>
-              <div v-else-if="thread.window_left !== null && thread.window_left <= 360" class="mb-2 text-xs font-bold"
-                   :class="thread.window_left <= 120 ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'">
-                ⏳ تبقّى {{ windowLabel(thread.window_left) }} للرد على هذا العميل، وبعدها لا يمكن مراسلته حتى يكتب لنا من جديد.
-              </div>
-              <div v-if="cannotReachPhoneless" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
-                📵 رقم العميل غير ظاهر، والرد بالمعرّف غير مفعّل (وضع «حفظ فقط»). يفعّله المدير من إعدادات الواتساب.
-              </div>
-              <div v-else-if="canRequestPhone" class="mb-2 flex flex-wrap items-center gap-2">
-                <button type="button" :disabled="requesting" @click="requestPhone"
-                        class="px-3 py-1.5 rounded-lg text-xs font-bold border border-gold-400 text-gold-700 dark:text-gold-400 disabled:opacity-50">
-                  {{ requesting ? '...' : '📱 طلب الرقم' }}
-                </button>
-                <span class="text-[11px] text-gray-400">يصل العميلَ زرٌّ يشارك به رقمه، فيظهر هنا ويُربط بحسابه.</span>
-              </div>
-              <form v-if="canReply" @submit.prevent="send" class="flex items-end gap-2">
-                <textarea v-model="draft" rows="2" :disabled="!thread.window_open || sending || cannotReachPhoneless"
-                          placeholder="اكتب ردّك..."
-                          class="flex-1 px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm resize-none dark:text-white disabled:opacity-50"
-                          @keydown.enter.exact.prevent="send"></textarea>
-                <button type="submit" :disabled="!draft.trim() || !thread.window_open || sending || cannotReachPhoneless"
-                        class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50">
-                  {{ sending ? '...' : '📤' }}
-                </button>
-              </form>
-              <p v-else class="text-xs text-gray-400">لا تملك صلاحية الردّ على المحادثات.</p>
-              <p v-if="sendError" class="mt-1.5 text-xs text-red-600">❌ {{ sendError }}</p>
-            </div>
-          </template>
-
-          <div v-else class="flex-1 grid place-items-center py-24 text-center">
-            <div>
-              <p class="text-5xl mb-3">💬</p>
-              <p class="text-gray-500 dark:text-gray-400 font-bold">اختر محادثة لعرضها</p>
-            </div>
-          </div>
-        </div>
+        <ThreadView ref="threadView" :class="s.view === 'list' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-2"
+                    :thread="s.thread" :messages="s.messages" :notes="s.notes" :has-more="s.hasMore" :loading-older="s.loadingOlder" :new-below="s.newBelow"
+                    v-model:draft="inbox.draft.value" :sending="s.sending" :error="s.sendError" :requesting="s.requesting"
+                    :cannot-reach-phoneless="inbox.cannotReachPhoneless.value" :can-request-phone="inbox.canRequestPhone.value"
+                    :can-reply="canReply" :can-assign="canAssign" :can-toggle-bot="canToggleBot" :can-link-client="canLinkClient"
+                    :staff="staff" :topics="topics" :attention-reasons="attentionReasons"
+                    @back="inbox.back" @link="linkOpen = true" @unlink="unlink" @resolve="inbox.resolve" @toggle-bot="inbox.toggleBot"
+                    @set-topic="inbox.setTopic" @assign="inbox.assignTo" @load-older="inbox.loadOlder" @jump-to-new="inbox.jumpToNew"
+                    @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"/>
       </div>
     </div>
-    <LinkClientDialog :open="linkOpen" :conversation="thread || {}" @close="linkOpen = false" @linked="onLinked" />
-    <MediaViewer :open="viewer.open" :message-id="viewer.id" :media="viewer.media" :watermark="viewer.watermark" @close="viewer.open = false" />
+
+    <LinkClientDialog :open="linkOpen" :conversation="s.thread || {}" @close="linkOpen = false" @linked="inbox.onLinked"/>
+    <MediaViewer :open="viewer.open" :message-id="viewer.id" :media="viewer.media" :watermark="viewer.watermark" @close="viewer.open = false"/>
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import axios from 'axios';
-import AppLayout from '@/Components/Layout/SmartLayout.vue';
-import { useDrafts } from '@/composables/useDrafts';
-import { SUSPEND_SOURCES } from '@/utils/waSettings.js';
-import LinkClientDialog from '@/Components/WhatsApp/LinkClientDialog.vue';
-import MediaChip from '@/Components/WhatsApp/MediaChip.vue';
-import MediaViewer from '@/Components/WhatsApp/MediaViewer.vue';
+// منسّق الصندوق (E16): الحالة والنداءات في useInbox، والعرض في مكوّنات Components/WhatsApp.
+import { onMounted, onUnmounted, ref } from 'vue';
 import { usePage } from '@inertiajs/vue3';
-
+import AppLayout from '@/Components/Layout/SmartLayout.vue';
+import ConversationList from '@/Components/WhatsApp/ConversationList.vue';
+import InboxStatusBar from '@/Components/WhatsApp/InboxStatusBar.vue';
+import LinkClientDialog from '@/Components/WhatsApp/LinkClientDialog.vue';
+import MediaViewer from '@/Components/WhatsApp/MediaViewer.vue';
+import ThreadView from '@/Components/WhatsApp/ThreadView.vue';
+import { useInbox } from '@/composables/whatsapp/useInbox.js';
+import { createPoller } from '@/composables/whatsapp/usePolling.js';
+import { onPopState } from '@/utils/historyGuard';
 
 const props = defineProps({
   title: String,
   conversations: { type: Array, default: () => [] },
+  listMeta: { type: Object, default: () => ({ has_more: false, next_cursor: null }) },
   filters: Object,
   status: { type: Object, default: () => ({}) },
   canReply: Boolean,
@@ -315,8 +65,16 @@ const props = defineProps({
   attentionReasons: { type: Object, default: () => ({}) },
 });
 
-// سبب «تدخّل» بنص الرقاقة (ReplyState::REASONS)
-const reasonLabel = (key) => props.attentionReasons[key] || key;
+const threadView = ref(null);
+const inbox = useInbox(props, () => threadView.value);
+const { s } = inbox;
+const linkOpen = ref(false);
+
+// تأكيد تحذير السياسة وفك الربط (تنتقل إلى ConfirmDialog في E16.9)
+const ask = (message) => Promise.resolve(window.confirm(message));
+const unlink = async () => {
+  if (await ask('فك ربط هذه المحادثة بالعميل؟ لن يعيد النظام ربطها آلياً.')) inbox.unlinkClient();
+};
 
 // عارض المرفقات (E14): علامة مائية باسم الموظف ووقت الفتح
 const viewer = ref({ open: false, id: null, media: null, watermark: '' });
@@ -325,392 +83,18 @@ const openViewer = (m) => {
   viewer.value = { open: true, id: m.id, media: m.media, watermark: `سرّي — ${name} — ${new Date().toLocaleString('ar-JO', { dateStyle: 'short', timeStyle: 'short' })}` };
 };
 
-const OUT_OF_SCOPE = 'هذه المحادثة غير متاحة لك: ربما نُقلت لموظف آخر أو أُزيل وسم اختصاصك. اطلب من المدير توكيلها لك إن كنت تحتاجها';
+// كل 15 ثانية، ويتوقف والصفحة مخفية ويستأنف بطلب فوري عند عودتها
+const poller = createPoller(inbox.tick, { interval: 15000 });
 
-const list = ref([...props.conversations]);
-const llm = ref({ ...props.llm });
-const staleSince = ref('');
-let pollFailures = 0;
-const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
-
-// الوقت الباقي في نافذة الـ24 ساعة بصيغة مقروءة: «5س 20د» أو «40د»
-const windowLabel = (mins) => {
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return h ? `${h}س${m ? ' ' + m + 'د' : ''}` : `${m}د`;
-};
-const filter = ref(props.filters?.filter || 'all');
-const search = ref(props.filters?.search || '');
-const topic = ref(props.filters?.topic || '');
-const newTopic = ref('');
-const activeId = ref(null);
-const thread = ref(null);
-const messages = ref([]);
-const notes = ref([]);
-const hasMore = ref(false);       // في الخادم رسائل أقدم من أول رسالة معروضة
-const loadingOlder = ref(false);
-const newBelow = ref(0);          // رسائل وصلت والموظف يقرأ أعلى الخيط
-const notice = ref('');
-let syncedAt = null;              // من آخر ردّ للخادم؛ يُعاد معه لجلب تغيّر حالات الرسائل المرسلة
-// مسودة لكل محادثة: النص يتبع المحادثة المفتوحة ولا ينتقل إلى غيرها
-const drafts = useDrafts();
-const draft = computed({
-  get: () => drafts.get(activeId.value),
-  set: (text) => drafts.set(activeId.value, text),
-});
-const sending = ref(false);
-const sendError = ref('');
-const scroller = ref(null);
-let timer = null, t = null;
-// يزيد مع كل فتح أو إغلاق للخيط؛ أي ردّ وصل بعد تغيّره يخصّ محادثة سابقة فيُهمل
-let seq = 0;
-let inflight = null;
-
-const filterTabs = [
-  { key: 'all', label: 'الكل' },
-  { key: 'unread', label: 'غير مقروء' },
-  { key: 'attention', label: '⚠️ تدخّل' },
-  { key: 'bot', label: '🤖 بوت' },
-  { key: 'human', label: '👤 بشري' },
-  { key: 'mine', label: '🙋 الموكلة لي' },
-];
-
-/** المواضيع غير المرتبطة بالمحادثة المفتوحة — للإضافة اليدوية */
-const addableTopics = computed(() => {
-  const attached = (thread.value?.topics || []).map((t) => t.key);
-  return Object.entries(props.topics)
-    .filter(([key]) => !attached.includes(key))
-    .map(([key, label]) => ({ key, label }));
-});
-
-const api = { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
-const threadUrl = (id, action) => `/api/whatsapp/conversations/${id}/${action}`;
-const gone = (e) => [403, 404].includes(e?.response?.status);
-const errorText = (e, fallback) => {
-  const d = e?.response?.data || {};
-  const text = d.error || Object.values(d.errors || {})[0]?.[0] || d.message;
-  // رسائل Laravel الافتراضية إنجليزية؛ رسائلنا عربية
-  if (e?.response?.status === 403 && !/[\u0600-\u06FF]/.test(text || '')) return 'ليست لديك صلاحية لهذا الإجراء';
-  return text || fallback;
-};
-
-const load = async () => {
-  try {
-    const { data } = await axios.get('/api/whatsapp/conversations', {
-      ...api,
-      params: {
-        filter: filter.value,
-        search: search.value || undefined,
-        topic: topic.value || undefined,
-      },
-    });
-    list.value = data.conversations || [];
-    if (data.llm) llm.value = data.llm;
-    pollFailures = 0;
-    staleSince.value = '';
-  } catch (e) {
-    // يُعاد في الدورة التالية؛ بعد فشلين متتاليين يظهر أن القائمة قد تكون قديمة
-    pollFailures++;
-    if (pollFailures === 2) staleSince.value = new Date().toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
-  }
-};
-
-const debounceLoad = () => { clearTimeout(t); t = setTimeout(load, 400); };
-
-// ==================== الخيط ====================
-
-const lastId = () => messages.value[messages.value.length - 1]?.id ?? 0;
-const nearBottom = () => {
-  const el = scroller.value;
-  return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-};
-const scrollToBottom = async () => {
-  await nextTick();
-  if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight;
-};
-// الموظف يرى الشاشة فعلاً، لا تبويباً منسياً في الخلفية
-const viewing = () => document.visibilityState === 'visible' && document.hasFocus();
-
-const resetThread = () => {
-  seq++;
-  activeId.value = null;
-  thread.value = null;
-  messages.value = [];
-  notes.value = [];
-  hasMore.value = false;
-  loadingOlder.value = false;
-  newBelow.value = 0;
-  syncedAt = null;
-};
-
-/** المحادثة خرجت من نطاق الموظف (نُقلت أو أُزيل وسمه): تُغلق ويُشرح السبب */
-const closeOutOfScope = () => {
-  resetThread();
-  notice.value = OUT_OF_SCOPE;
-  const url = new URL(window.location.href);
-  if (url.searchParams.has('conv')) {
-    url.searchParams.delete('conv');
-    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
-  }
-  load();
-};
-
-/** التصفير صريح: عند الفتح، أو زر «رسائل جديدة»، أو النزول لآخر الخيط */
-const markRead = async (id) => {
-  if (!props.canReply || !id || !(thread.value?.unread > 0)) return;
-  try {
-    await axios.post(threadUrl(id, 'read'), {}, api);
-    if (activeId.value === id && thread.value) thread.value.unread = 0;
-    const row = list.value.find((c) => c.id === id);
-    if (row) row.unread = 0;
-  } catch (e) {
-    if (e?.response?.status === 404 && activeId.value === id) closeOutOfScope();
-  }
-};
-
-/** التحميل الأول: أحدث الرسائل ثم النزول إلى الأسفل */
-const open = async (id, { read = true } = {}) => {
-  const mine = ++seq;
-  if (activeId.value !== id) newTopic.value = '';
-  activeId.value = id;
-  sendError.value = '';
-  notice.value = '';
-  try {
-    const { data } = await axios.get(threadUrl(id, 'messages'), api);
-    if (mine !== seq) return;
-    thread.value = data.conversation;
-    messages.value = data.messages || [];
-    notes.value = data.notes || [];
-    hasMore.value = !!data.has_more;
-    syncedAt = data.synced_at;
-    newBelow.value = 0;
-    await scrollToBottom();
-    if (read) markRead(id);
-    load();
-  } catch (e) {
-    if (mine !== seq) return;
-    if (gone(e)) return closeOutOfScope();
-    if (thread.value?.id === id) {
-      sendError.value = 'تعذّر تحميل المحادثة';
-    } else {
-      resetThread();
-      notice.value = 'تعذّر تحميل المحادثة، حاول مرة أخرى.';
-    }
-  }
-};
-
-/** الجديد فقط بعد آخر رسالة، مع تغيّر حالات المرسَل منذ آخر مزامنة؛ لا يصفّر غير المقروء */
-const pollOnce = async () => {
-  const id = activeId.value;
-  if (!id || !thread.value) return;
-  const mine = seq;
-  try {
-    const { data } = await axios.get(threadUrl(id, 'messages'), {
-      ...api,
-      params: { after: lastId(), since: syncedAt || undefined },
-    });
-    if (mine !== seq) return;
-    if (data.gap) return open(id, { read: false });   // فاتنا أكثر مما يعود في طلب واحد
-
-    const atBottom = nearBottom();
-    const known = new Set(messages.value.map((m) => m.id));
-    const fresh = (data.messages || []).filter((m) => !known.has(m.id));
-    for (const u of data.updates || []) {
-      const m = messages.value.find((x) => x.id === u.id);
-      if (m) { m.status = u.status; m.error = u.error; if (u.media) m.media = u.media; }
-    }
-    if (fresh.length) messages.value.push(...fresh);
-    thread.value = { ...thread.value, ...data.conversation };
-    syncedAt = data.synced_at;
-
-    if (fresh.length && !atBottom) {
-      newBelow.value += fresh.length;
-    } else {
-      if (fresh.length) await scrollToBottom();
-      if (viewing()) markRead(id);
-    }
-  } catch (e) {
-    if (mine === seq && gone(e)) closeOutOfScope();
-  }
-};
-
-// طلب واحد في كل مرة، حتى لا يُضاف ردّ قديم فوق ردّ أحدث
-const poll = async () => {
-  while (inflight) await inflight;
-  inflight = pollOnce().finally(() => { inflight = null; });
-  return inflight;
-};
-
-/** رسائل أقدم عند الوصول لأعلى الخيط، مع حفظ موضع القراءة */
-const loadOlder = async () => {
-  const id = activeId.value;
-  const before = messages.value[0]?.id;
-  if (!id || !before || !hasMore.value || loadingOlder.value) return;
-  const mine = seq;
-  loadingOlder.value = true;
-  try {
-    const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { before } });
-    if (mine !== seq) return;
-    const el = scroller.value;
-    const prev = el ? el.scrollHeight : 0;
-    const known = new Set(messages.value.map((m) => m.id));
-    messages.value = [...(data.messages || []).filter((m) => !known.has(m.id)), ...messages.value];
-    hasMore.value = !!data.has_more;
-    loadingOlder.value = false;
-    await nextTick();
-    if (el) el.scrollTop += el.scrollHeight - prev;
-  } catch (e) {
-    if (mine === seq && gone(e)) closeOutOfScope();
-  } finally {
-    if (mine === seq) loadingOlder.value = false;
-  }
-};
-
-const onScroll = () => {
-  const el = scroller.value;
-  if (!el) return;
-  if (el.scrollTop < 80 && hasMore.value && !loadingOlder.value) loadOlder();
-  if (newBelow.value && nearBottom()) {
-    newBelow.value = 0;
-    markRead(activeId.value);
-  }
-};
-
-const jumpToNew = async () => {
-  newBelow.value = 0;
-  await scrollToBottom();
-  markRead(activeId.value);
-};
-
-const send = async () => {
-  // رقم المحادثة يُثبَّت لحظة الضغط، فلو انتقل الموظف لمحادثة أخرى أثناء الطلب لا يُنسب النص لها
-  const id = activeId.value;
-  const body = drafts.get(id).trim();
-  if (!id || !body || sending.value) return;
-  sending.value = true; sendError.value = '';
-  try {
-    try {
-      await axios.post(threadUrl(id, 'send'), { body }, api);
-    } catch (e) {
-      // ما يشبه رقم بطاقة أو هوية (E15.9): تأكيد صريح ثم الإرسال مع ack_warnings، والتجاوز يُسجَّل في التدقيق
-      if (e?.response?.status !== 409 || e.response.data?.code !== 'POLICY_WARN') throw e;
-      if (!window.confirm(e.response.data.error)) { sendError.value = 'لم تُرسل الرسالة.'; return; }
-      await axios.post(threadUrl(id, 'send'), { body, ack_warnings: true }, api);
-    }
-    drafts.clear(id);
-    if (activeId.value === id) {
-      await poll();
-      newBelow.value = 0;
-      await scrollToBottom();
-    }
-  } catch (e) {
-    if (e?.response?.status === 404 && activeId.value === id) return closeOutOfScope();
-    sendError.value = errorText(e, 'تعذّر الإرسال');
-  } finally { sending.value = false; }
-};
-
-/** إجراء على المحادثة المفتوحة؛ 404 تعني أنها خرجت من النطاق */
-const act = async (action, payload, onDone, fallback) => {
-  const id = activeId.value;
-  if (!id) return;
-  sendError.value = '';
-  try {
-    const { data } = await axios.post(threadUrl(id, action), payload, api);
-    if (activeId.value === id && thread.value) await onDone?.(data, id);
-    load();
-    return true;
-  } catch (e) {
-    if (activeId.value !== id) return false;
-    if (e?.response?.status === 404) closeOutOfScope();
-    else sendError.value = errorText(e, fallback);
-    return false;
-  }
-};
-
-const toggleBot = () => act('toggle-bot', {}, (data) => { thread.value.bot_enabled = data.bot_enabled; }, 'تعذّر تغيير حالة البوت');
-
-const resolve = () => act('resolve', {}, () => { thread.value.needs_attention = false; thread.value.attention_reason = null; }, 'تعذّر حفظ المعالجة');
-
-/** إضافة/إزالة وسم موضوع للمحادثة المفتوحة */
-const setTopic = (key, attach) => {
-  if (!key) return;
-  return act('topic', { topic: key, attach }, (data) => {
-    thread.value.topics = data.topics;
-    if (!attach) poll();   // إزالة وسم اختصاصك قد تخرج المحادثة من نطاقك
-  }, 'تعذّر تعديل الوسم');
-};
-
-const addTopic = () => {
-  const key = newTopic.value;
-  if (!key) return;
-  newTopic.value = '';
-  setTopic(key, true);
-};
-
-/** تحويل المحادثة لموظف آخر؛ عند الرفض تعود القائمة لقيمتها المحفوظة */
-const assignTo = async (el) => {
-  const value = el.value;
-  const ok = await act('assign', { user_id: value === '' ? null : Number(value) }, () => poll(), 'تعذّر التوكيل');
-  if (!ok) el.value = String(thread.value?.assigned_to ?? '');
-};
-
-// ===== هوية العميل (E11) =====
-const linkOpen = ref(false);
-const requesting = ref(false);
-const mode = computed(() => thread.value?.identity_mode || props.identityMode);
-// بلا رقم ووضع store: لا إرسال بالمعرّف
-const cannotReachPhoneless = computed(() => !!thread.value?.phoneless && mode.value === 'store');
-const canRequestPhone = computed(() => props.canReply && !!thread.value?.phoneless && !!thread.value?.window_open && mode.value !== 'store');
-
-const requestPhone = async () => {
-  if (requesting.value) return;
-  requesting.value = true;
-  try {
-    await act('request-contact', {}, () => poll(), 'تعذّر إرسال طلب الرقم');
-  } finally { requesting.value = false; }
-};
-
-const onLinked = (data) => {
-  if (!thread.value) return;
-  Object.assign(thread.value, { name: data.client.name, client_id: data.client.id, client: data.client.name, client_code: data.client.code, client_link: data.client_link });
-  load();
-};
-
-const unlinkClient = async () => {
-  const id = activeId.value;
-  if (!id || !window.confirm('فك ربط هذه المحادثة بالعميل؟ لن يعيد النظام ربطها آلياً.')) return;
-  sendError.value = '';
-  try {
-    await axios.delete(threadUrl(id, 'link-client'), api);
-    if (activeId.value === id && thread.value) Object.assign(thread.value, { client_id: null, client: null, client_code: null, client_link: 'blocked' });
-    load();
-  } catch (e) {
-    if (e?.response?.status === 404) closeOutOfScope();
-    else sendError.value = errorText(e, 'تعذّر فك الربط');
-  }
-};
-
-const bubble = (m) => {
-  if (m.direction === 'in') return 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm';
-  if (m.status === 'blocked') return 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-br-sm';
-  if (m.source === 'bot') return 'bg-emerald-600 text-white rounded-br-sm';
-  if (m.source === 'system') return 'bg-gray-400 text-white rounded-br-sm';
-  return 'bg-gold-500 text-black rounded-br-sm';   // staff
-};
-const srcLabel = (s) => ({ bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' }[s] || s);
-
-const onVisible = () => { if (document.visibilityState === 'visible') poll(); };
-
+let releaseHistory = () => {};
 onMounted(() => {
-  // فتح محادثة مباشرة من رابط طلب التسعير: ?conv=123
-  const q = new URLSearchParams(window.location.search).get('conv');
-  if (q) open(Number(q));
-  timer = setInterval(() => { load(); poll(); }, 15000);
-  document.addEventListener('visibilitychange', onVisible);
+  inbox.openFromUrl();
+  releaseHistory = onPopState(inbox.onPopState);
+  poller.start();
 });
 onUnmounted(() => {
-  if (timer) clearInterval(timer);
-  clearTimeout(t);
-  seq++;
-  document.removeEventListener('visibilitychange', onVisible);
+  poller.stop();
+  inbox.dispose();
+  releaseHistory();
 });
 </script>

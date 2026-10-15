@@ -4,6 +4,7 @@
 //   OUT=../inbox-shots CONV_IDS=1,2,3 node scripts/ui/inbox-snapshots.mjs
 //
 // CHROME_ARGS اختيارية. CONV_IDS: محادثات الحالات بالترتيب (عادية، نافذة مغلقة، إدارة، إنجليزية، تنسيق ورابط). الصور تُحفظ في OUT خارج المستودع.
+// QUERY اختيارية تُلحق بالرابط، مثل QUERY=v2=1 لمعاينة الصندوق الجديد بحساب مدير قبل تفعيل العلم inbox_v2.
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -11,6 +12,7 @@ import puppeteer from 'puppeteer-core';
 const { BASE, EMAIL, PASSWORD, CHROME_PATH } = process.env;
 const OUT = process.env.OUT || '../inbox-shots';
 const CONVS = (process.env.CONV_IDS || '').split(',').filter(Boolean);
+const QUERY = process.env.QUERY ? `&${process.env.QUERY}` : '';
 if (!BASE || !EMAIL || !PASSWORD || !CHROME_PATH) {
     console.error('BASE وEMAIL وPASSWORD وCHROME_PATH مطلوبة');
     process.exit(1);
@@ -37,10 +39,10 @@ for (const theme of THEMES) {
     await page.evaluate((t) => localStorage.setItem('nusuk-theme', t), theme);
     for (const [name, width, height] of SIZES) {
         await page.setViewport({ width, height });
-        await page.goto(`${BASE}/whatsapp/inbox`, { waitUntil: 'networkidle2' });
+        await page.goto(`${BASE}/whatsapp/inbox?${QUERY.slice(1)}`, { waitUntil: 'networkidle2' });
         await page.screenshot({ path: join(OUT, `${theme}-${name}-list.png`) });
         for (const id of CONVS) {
-            await page.goto(`${BASE}/whatsapp/inbox?conv=${id}`, { waitUntil: 'networkidle2' });
+            await page.goto(`${BASE}/whatsapp/inbox?conv=${id}${QUERY}`, { waitUntil: 'networkidle2' });
             await new Promise((r) => setTimeout(r, 600));
             await page.screenshot({ path: join(OUT, `${theme}-${name}-conv${id}.png`) });
         }

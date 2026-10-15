@@ -19,6 +19,7 @@ final class FeatureFlags
         'media_archive' => ['label' => 'أرشفة مرفقات العملاء (صور ووثائق)', 'capability' => 'C283', 'available' => true],
         'media_consent_prompt' => ['label' => 'إشعار العميل بحفظ ملفاته مع زر «احذف ملفاتي»', 'capability' => 'C283', 'available' => true],
         'tool_validation_enforce' => ['label' => 'رفض مدخلات الأدوات غير الصالحة (بدل التسجيل والقصّ)', 'capability' => 'C272', 'available' => true],
+        'inbox_v2' => ['label' => 'صندوق المحادثات الجديد (الجوال والتنسيق وتحميل المزيد)', 'capability' => 'C130', 'available' => true],
         'admin_readonly' => ['label' => 'المساعد الإداري للقراءة فقط (يوقف كل تعديل من أرقام الإدارة)', 'capability' => 'C105', 'available' => true],
         'outbound_policy_enforce' => ['label' => 'حجب الرسائل الآلية التي تحوي بيانات حساسة أو داخلية (بدل التسجيل)', 'capability' => 'C175', 'available' => true],
         'admin_rbac_enforce' => ['label' => 'فرض صلاحيات المستخدم المرتبط على أرقام الإدارة (بدل التسجيل)', 'capability' => 'C172', 'available' => true],

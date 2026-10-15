@@ -301,7 +301,13 @@ const doPrint = () => window.print();
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+/* خطوط محلية (E16.8) بدل Google Fonts */
+@import '@fontsource/cairo/400.css';
+@import '@fontsource/cairo/600.css';
+@import '@fontsource/cairo/700.css';
+@import '@fontsource/cairo/900.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
 .a4-landscape { width: 297mm; height: 210mm; position: relative; margin: 0 auto; overflow: hidden; background: white; font-family: 'Cairo', sans-serif; page-break-after: always; }
 .a4-landscape:last-child { page-break-after: auto; }
 .pdf-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }

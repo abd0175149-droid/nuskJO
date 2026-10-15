@@ -21,10 +21,15 @@ class WhatsAppController extends Controller
         abort_unless(auth()->user()->can('whatsapp.view'), 403);
 
         $s = WaBotSetting::current();
+        $page = $this->conversationPage($request);
 
-        return Inertia::render('WhatsApp/Inbox', [
+        // الصندوق الجديد (E16) خلف العلم inbox_v2، ويجرّبه المدير قبل التفعيل بـ ?v2=1. القديم للتراجع أسبوعين
+        $v2 = \App\Support\FeatureFlags::on('inbox_v2') || ($request->boolean('v2') && auth()->user()->isAdmin());
+
+        return Inertia::render($v2 ? 'WhatsApp/Inbox' : 'WhatsApp/InboxLegacy', [
             'title' => 'محادثات الواتساب',
-            'conversations' => $this->conversationList($request),
+            'conversations' => $page['items'],
+            'listMeta' => ['has_more' => $page['has_more'], 'next_cursor' => $page['next_cursor']],
             'filters' => $request->only(['filter', 'search', 'topic']),
             'status' => [
                 'channel_ready' => $s->channelReady(),
@@ -65,22 +70,69 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.view'), 403);
 
+        $page = $this->conversationPage($request);
+
         return response()->json([
-            'conversations' => $this->conversationList($request),
+            'conversations' => $page['items'],
+            // «تحميل المزيد» (E16): cursor بصيغة unix_ts:id من آخر صف، وبلا cursor الصفحة الأولى كما كانت
+            'has_more' => $page['has_more'],
+            'next_cursor' => $page['next_cursor'],
             'unread_total' => (int) WaConversation::query()->visibleTo(auth()->user())->sum('unread_count'),
             'llm' => \App\Services\WhatsApp\LlmCircuitBreaker::publicStatus(),
         ]);
     }
 
-    private function conversationList(Request $request): array
+    /** حجم صفحة القائمة؛ يُطلب صف زائد لمعرفة has_more */
+    private const LIST_PAGE = 50;
+
+    /**
+     * صفحة من القائمة بمؤشر keyset على (last_message_at, id) تنازلياً (E16.6). السياج (visibleTo) يُطبَّق قبل الترقيم،
+     * فلا يرى الموظف في أي صفحة ما خارج نطاقه. cursor غير صالح = 422.
+     *
+     * @return array{items: array, has_more: bool, next_cursor: ?string}
+     */
+    private function conversationPage(Request $request): array
+    {
+        $cursor = $request->validate(['cursor' => ['nullable', 'string', 'regex:/^\d{1,10}:\d{1,12}$/']])['cursor'] ?? null;
+        $rows = $this->conversationQuery($request)
+            ->when($cursor, function ($q, $c) {
+                [$ts, $id] = array_map('intval', explode(':', $c));
+                if ($ts === 0) {
+                    // آخر صف بلا last_message_at: ما بعده بلا وقت وبمعرّف أصغر
+                    return $q->whereNull('last_message_at')->where('id', '<', $id);
+                }
+                $at = \Illuminate\Support\Carbon::createFromTimestamp($ts)->setTimezone(config('app.timezone'))->format('Y-m-d H:i:s');
+
+                return $q->where(fn ($w) => $w->where('last_message_at', '<', $at)
+                    ->orWhere(fn ($e) => $e->where('last_message_at', $at)->where('id', '<', $id))
+                    ->orWhereNull('last_message_at'));
+            })
+            ->orderByDesc('last_message_at')->orderByDesc('id')
+            ->limit(self::LIST_PAGE + 1)
+            ->get();
+
+        $more = $rows->count() > self::LIST_PAGE;
+        $rows = $rows->take(self::LIST_PAGE);
+        $last = $rows->last();
+
+        return [
+            'items' => $this->presentConversations($rows),
+            'has_more' => $more,
+            'next_cursor' => $more && $last ? ((int) $last->last_message_at?->timestamp).':'.$last->id : null,
+        ];
+    }
+
+    private function conversationQuery(Request $request)
     {
         $filter = $request->get('filter', 'all');
 
         $me = auth()->user();
-        // محادثات أرقام الإدارة تُعلَّم في الصندوق — يخدمها المساعد الإداري لا بوت العملاء
-        $adminPhones = rescue(fn () => \App\Models\WaAdminNumber::where('is_active', true)->pluck('phone')->flip()->all(), [], false);
 
         return WaConversation::query()
+            ->select('wa_conversations.*')
+            // نوع آخر رسالة لأيقونة القائمة (E16): استعلام فرعي على الفهرس [conversation_id, id]
+            ->selectSub(fn ($q) => $q->from('wa_messages')->select('msg_type')
+                ->whereColumn('wa_messages.conversation_id', 'wa_conversations.id')->orderByDesc('id')->limit(1), 'last_type')
             ->with(['client:id,name,code', 'assignee:id,name'])
             // السياج: محادثات الإدارة، ثم الاختصاص والتوكيل (الشروط أدناه تضيّق ولا توسّع)
             ->visibleTo($me)
@@ -103,37 +155,44 @@ class WhatsAppController extends Controller
             ->when($filter === 'unread', fn ($q) => $q->where('unread_count', '>', 0))
             ->when($filter === 'attention', fn ($q) => $q->where('needs_attention', true))
             ->when($filter === 'bot', fn ($q) => $q->where('bot_enabled', true))
-            ->when($filter === 'human', fn ($q) => $q->where('bot_enabled', false))
-            ->orderByDesc('last_message_at')
-            ->limit(80)
-            ->get()
-            ->map(fn ($c) => [
-                'id' => $c->id,
-                'phone' => $c->phone,
-                'name' => $c->label(),
-                // عميل باسم مستخدم بلا رقم (E11a): المعرّف نفسه لا يُعرض
-                'phoneless' => !$c->hasPhone(),
-                'username' => $c->wa_username,
-                // لقب يضعه العميل بنفسه: غير موثّق
-                'profile_name' => $c->wa_profile_name,
-                'from_ad' => !empty($c->referral),
-                'client' => $c->client?->name,
-                'client_code' => $c->client?->code,
-                'client_id' => $c->client_id,
-                'bot_enabled' => (bool) $c->bot_enabled,
-                'paused' => $c->bot_paused_until && $c->bot_paused_until->isFuture(),
-                'needs_attention' => (bool) $c->needs_attention,
-                'attention_reason' => $c->attention_reason,
-                'unread' => (int) $c->unread_count,
-                'preview' => $c->last_message_preview,
-                'last_at' => $c->last_message_at?->diffForHumans(),
-                'window_open' => $c->isWindowOpen(),
-                'window_left' => $c->windowMinutesLeft(),
-                'is_admin' => (bool) $c->is_admin_chat || ($c->phone !== null && isset($adminPhones[$c->phone])),
-                'assignee' => $c->assignee?->name,
-                'assigned_to' => $c->assigned_to,
-                'topics' => TopicRouter::topicsOf($c),
-            ])->all();
+            ->when($filter === 'human', fn ($q) => $q->where('bot_enabled', false));
+    }
+
+    private function presentConversations($rows): array
+    {
+        // محادثات أرقام الإدارة تُعلَّم في الصندوق — يخدمها المساعد الإداري لا بوت العملاء
+        $adminPhones = rescue(fn () => \App\Models\WaAdminNumber::where('is_active', true)->pluck('phone')->flip()->all(), [], false);
+
+        return $rows->map(fn ($c) => [
+            'id' => $c->id,
+            'phone' => $c->phone,
+            'name' => $c->label(),
+            // عميل باسم مستخدم بلا رقم (E11a): المعرّف نفسه لا يُعرض
+            'phoneless' => !$c->hasPhone(),
+            'username' => $c->wa_username,
+            // لقب يضعه العميل بنفسه: غير موثّق
+            'profile_name' => $c->wa_profile_name,
+            'from_ad' => !empty($c->referral),
+            'client' => $c->client?->name,
+            'client_code' => $c->client?->code,
+            'client_id' => $c->client_id,
+            'bot_enabled' => (bool) $c->bot_enabled,
+            'paused' => $c->bot_paused_until && $c->bot_paused_until->isFuture(),
+            'needs_attention' => (bool) $c->needs_attention,
+            'attention_reason' => $c->attention_reason,
+            'unread' => (int) $c->unread_count,
+            'preview' => $c->last_message_preview,
+            'last_at' => $c->last_message_at?->diffForHumans(),
+            // للترتيب والدمج في الواجهة (E16): الاستطلاع يعيد الصفحة الأولى فقط
+            'sort_ts' => (int) $c->last_message_at?->timestamp,
+            'last_type' => $c->last_type,
+            'window_open' => $c->isWindowOpen(),
+            'window_left' => $c->windowMinutesLeft(),
+            'is_admin' => (bool) $c->is_admin_chat || ($c->phone !== null && isset($adminPhones[$c->phone])),
+            'assignee' => $c->assignee?->name,
+            'assigned_to' => $c->assigned_to,
+            'topics' => TopicRouter::topicsOf($c),
+        ])->all();
     }
 
     /**
