@@ -75,6 +75,22 @@ chown -R www-data:www-data storage/framework storage/logs bootstrap/cache
 # ملفا -wal و-shm إن أنشأهما root تصير القاعدة للقراءة فقط عند www-data
 find "$DB_DIR" -maxdepth 1 -name "$(basename "$DB_FILE")*" -exec chown www-data:www-data {} + 2>/dev/null || true
 
+# صلاحيات storage المتناسبة (E26.7)، بعد كل ما أنشأه root أثناء الإقلاع. مجلدا الجوازات والنسخ خارج كل find
+# هنا وفي التراجع (-prune): يبقيان 700/600 كما ضبطهما ما سبق (A17، E14).
+#   strict: مجلدات 750 وملفات 640؛ nginx يقرأ /storage عبر مجموعة www-data (addgroup في Dockerfile).
+#   غير ذلك (الافتراضي حتى يُتحقق من ضم nginx): الملفات العامة 755/644 كما كانت، فإعادة legacy ثم up -d تراجعٌ كامل
+if [ "${NUSKJO_STORAGE_PERMS:-legacy}" = "strict" ]; then
+    find storage \( -path storage/app/wa-media -o -path storage/app/backups \) -prune -o -type d -exec chmod 750 {} +
+    find storage \( -path storage/app/wa-media -o -path storage/app/backups \) -prune -o -type f -exec chmod 640 {} +
+    chmod 750 bootstrap/cache && find bootstrap/cache -type f -exec chmod 640 {} +
+    echo "🔒 storage: 750/640 (strict)"
+else
+    # المجلدان الأعليان أيضاً: بعد strict يبقيان 750 فلا يعبرهما nginx إن لم يكن في المجموعة (صورة أقدم)
+    chmod 755 storage storage/app
+    find storage/app/public -type d -exec chmod 755 {} +
+    find storage/app/public -type f -exec chmod 644 {} +
+fi
+
 echo "✅ NUSKJO is ready! Listening on port 4020"
 
 # Execute the main process (supervisord)

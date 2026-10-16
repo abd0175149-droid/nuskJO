@@ -1,0 +1,76 @@
+name: security-scan
+
+# فحص أسبوعي بـ Trivy (E26.11): صورة الإنتاج مبنية من main، وملفات القفل (composer.lock وpackage-lock.json)، مع SBOM.
+# يكمّل فحص المضيف (scripts/security/trivy-scan.sh) ولا يغني عنه: هذا على الكود، وذاك على الصورة المنشورة فعلاً.
+# - Trivy من صورته المثبّتة بالبصمة، والصورة المفحوصة ملف tar: لا docker.sock داخل حاوية الفحص.
+# - الملخص أعداد فقط. التقرير وSBOM مرفقان فقط حين يضبط المالك متغير المستودع NUSKJO_SCAN_ARTIFACTS=true
+#   (بعد أن يصير المستودع خاصاً)، فلا تُنشر قائمة ثغرات الصورة للعموم.
+# - يفشل عند ثغرة حرجة لها إصلاح وغير مستثناة في .trivyignore، فيصل المالك بريد GitHub بالفشل.
+on:
+  schedule:
+    - cron: '17 1 * * 0' # الأحد 04:17 بتوقيت عمّان
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scan
+  cancel-in-progress: false
+
+env:
+  # aquasec/trivy:0.75.0، البصمة في 2026-10-16 (تُحدَّث يدوياً بعد مراجعة الإصدار)
+  TRIVY_IMAGE: aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+
+jobs:
+  trivy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Build the production image
+        run: |
+          # VITE_* فارغة: الفحص لا يحتاج إعداد Firebase أو Reverb في حزمة الواجهة
+          : > "$RUNNER_TEMP/vite.env"
+          docker build --secret id=vite_env,src="$RUNNER_TEMP/vite.env" -t nuskjo-scan:ci .
+          mkdir -p "$RUNNER_TEMP/scan"
+          docker save nuskjo-scan:ci -o "$RUNNER_TEMP/scan/img.tar"
+
+      - name: Scan the image and the lockfiles, and write the SBOM
+        run: |
+          scan() { docker run --rm -v trivy-cache:/root/.cache/ -v "$RUNNER_TEMP/scan":/scan -v "$PWD":/src:ro "$TRIVY_IMAGE" "$@"; }
+          filter=(--scanners vuln --severity "HIGH,CRITICAL" --ignore-unfixed --ignorefile /src/.trivyignore)
+          scan image --input /scan/img.tar "${filter[@]}" --format json --output /scan/image.json
+          scan image --input /scan/img.tar --format cyclonedx --output /scan/sbom.cdx.json
+          scan fs /src "${filter[@]}" --format json --output /scan/lockfiles.json
+          rm -f "$RUNNER_TEMP/scan/img.tar"
+
+      - name: Summary (counts only)
+        id: counts
+        run: |
+          count() { jq --arg s "$2" '[.Results[]?.Vulnerabilities[]? | select(.Severity == $s)] | length' "$RUNNER_TEMP/scan/$1.json"; }
+          {
+            echo "### Trivy"
+            echo "| | CRITICAL | HIGH |"
+            echo "|---|---|---|"
+            echo "| image | $(count image CRITICAL) | $(count image HIGH) |"
+            echo "| lockfiles | $(count lockfiles CRITICAL) | $(count lockfiles HIGH) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "critical=$(( $(count image CRITICAL) + $(count lockfiles CRITICAL) ))" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the report and SBOM (private repository only)
+        if: vars.NUSKJO_SCAN_ARTIFACTS == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trivy-${{ github.run_id }}
+          path: ${{ runner.temp }}/scan/
+          retention-days: 90
+
+      - name: Fail on fixable critical vulnerabilities
+        if: steps.counts.outputs.critical != '0'
+        run: |
+          echo "ثغرات حرجة لها إصلاح: ${{ steps.counts.outputs.critical }} — حدّث الحزمة أو بصمة الصورة، أو استثنِ بسبب في .trivyignore"
+          exit 1

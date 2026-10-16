@@ -1,0 +1,72 @@
+# تحديثات التبعيات (E26.10). لا يُدمج طلب من Dependabot إلا بعد CI أخضر ثم تجربة على نسك:
+# الدخول والصندوق والإرسال وإشعار FCM وReverb والجرس وتوليد بطاقة وصفحة طباعة.
+# أي تحديث لـ kreait أو laravel/reverb أو pusher يتبعه فحص يدوي لـ FCM وReverb.
+# الترقيات الكبرى لـ laravel/framework وvue وvite مخططة يدوياً لا آلية.
+version: 2
+
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "06:00"
+      timezone: Asia/Amman
+    open-pull-requests-limit: 5
+    labels: [dependencies, security]
+    groups:
+      composer-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: laravel/framework
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "06:00"
+      timezone: Asia/Amman
+    open-pull-requests-limit: 5
+    labels: [dependencies, security]
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: vue
+        update-types: [version-update:semver-major]
+      - dependency-name: vite
+        update-types: [version-update:semver-major]
+
+  # بصمات صور الأساس في Dockerfile وDockerfile.test (FROM وCOPY --from)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Amman
+    open-pull-requests-limit: 5
+    labels: [dependencies, security]
+    groups:
+      base-images:
+        patterns: ["*"]
+    # البصمة تتحدّث داخل الوسم نفسه؛ ترقية Node أو PHP قرار مخطط
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+      - dependency-name: php
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: composer
+        update-types: [version-update:semver-major]
+
+  # الإجراءات مثبّتة بالـ SHA في .github/workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Amman
+    open-pull-requests-limit: 5
+    labels: [dependencies, security]
+    groups:
+      actions:
+        patterns: ["*"]

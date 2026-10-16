@@ -574,8 +574,12 @@ class OfferController extends Controller
     {
         abort_unless(auth()->user()->can('offers.update'), 403);
 
-        return response(OfferCardService::html($offer))
-            ->header('Content-Type', 'text/html; charset=utf-8');
+        // السياسة نفسها ترويسةً أيضاً (E26): تسري من أول بايت ولا تُؤطَّر الصفحة من أصل آخر
+        $nonce = bin2hex(random_bytes(16));
+
+        return response(OfferCardService::html($offer, $nonce))
+            ->header('Content-Type', 'text/html; charset=utf-8')
+            ->header('Content-Security-Policy', OfferCardService::cardPolicy($nonce)."; frame-ancestors 'self'");
     }
 
     public function uploadCard(Request $request, Offer $offer)

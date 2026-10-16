@@ -21,9 +21,9 @@ use Symfony\Component\Process\Process;
  */
 class OfferCardService
 {
-    /** أبعاد البطاقة: A4 بدقّة 150 نقطة/البوصة */
-    private const WIDTH = 1240;
-    private const HEIGHT = 1754;
+    /** أبعاد البطاقة: A4 بدقّة 150 نقطة/البوصة (عامة لاختبار الدخان ops:smoke-card) */
+    public const WIDTH = 1240;
+    public const HEIGHT = 1754;
 
     private const DISK = 'public';
     private const DIR = 'offer-cards';
@@ -110,10 +110,14 @@ class OfferCardService
         }
     }
 
-    /** HTML البطاقة — يُستخدم أيضاً للمعاينة في المتصفّح قبل التوليد */
-    public static function html(Offer $offer): string
+    /**
+     * HTML البطاقة — يُستخدم أيضاً للمعاينة في المتصفّح قبل التوليد. nonce جديد لكل تصيير ما لم يُمرَّر
+     * (المعاينة تمرّره لتضع السياسة نفسها ترويسةً): سكربت ضبط المقاس وحده ينفَّذ، ولا سكربت آخر ولو حُقن نص.
+     */
+    public static function html(Offer $offer, ?string $nonce = null): string
     {
         $offer->loadMissing('options.stays');
+        $nonce ??= bin2hex(random_bytes(16));
 
         // الخيارات من Offer::sellOptions() — الإسقاط نفسه الذي يقرؤه البوت، فلا تختلف أسعار الصورة عن النص
         return View::make('offers.card', [
@@ -133,7 +137,18 @@ class OfferCardService
             'letterheadUri' => self::dataUri(Setting::get('card_letterhead_path')),
             'lhTop' => self::percent(Setting::get('card_letterhead_top'), self::LH_TOP),
             'lhBottom' => self::percent(Setting::get('card_letterhead_bottom'), self::LH_BOTTOM),
+            'cspNonce' => $nonce,
+            'csp' => self::cardPolicy($nonce),
         ])->render();
+    }
+
+    /**
+     * سياسة قالب البطاقة (E05، وشُدّدت في E26): بلا شبكة ولا ملفات، الصور data: والخطوط خطوط النظام،
+     * والسكربت الوحيد بـ nonce بدل 'unsafe-inline'. style-src مضمّن لأن الخلفيات data: في خصائص style.
+     */
+    public static function cardPolicy(string $nonce): string
+    {
+        return "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{$nonce}'; font-src data:; base-uri 'none'; form-action 'none'";
     }
 
     /**
@@ -213,6 +228,21 @@ class OfferCardService
         $args[] = 'file://' . str_replace('\\', '/', $htmlPath);
 
         return $args;
+    }
+
+    /**
+     * يصيّر HTML جاهزاً إلى PNG في المسار المعطى بالطريق نفسه (كروميوم والعزل)، بلا قرص ولا عرض.
+     * لاختبار الدخان ops:smoke-card (E26.8)؛ ملف HTML المؤقت في sys_get_temp_dir() ويُحذف دائماً.
+     */
+    public static function renderHtml(string $html, string $pngPath): void
+    {
+        $htmlPath = sys_get_temp_dir().'/card-smoke-'.bin2hex(random_bytes(6)).'.html';
+        file_put_contents($htmlPath, $html);
+        try {
+            self::shoot($htmlPath, $pngPath);
+        } finally {
+            @unlink($htmlPath);
+        }
     }
 
     /** يشغّل كروميوم بلا واجهة لالتقاط البطاقة */

@@ -1,4 +1,4 @@
-/* الخطوط محلية من @fontsource (E16.8، app.js): لا نداء لـ fonts.googleapis.com ولا gstatic */
+/* الخطوط محلية من @fontsource (E16.8، app.js): لا طلب لخطوط Google ولا لأي مضيف خارجي (CSP، E26) */
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));

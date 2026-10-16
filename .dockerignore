@@ -14,6 +14,9 @@ Dockerfile.test
 Dockerfile.test.dockerignore
 scripts/
 .github/
+# خط أساس التدقيق واستثناءات Trivy (E26): للبوابات على المضيف وفي CI، لا للصورة
+security/
+.trivyignore
 
 # Development — لا ملف بيئة في الصورة أبداً: البيئة من env_file، ومتغيرات VITE_* سرّ بناء (docker-compose.yml)
 .env

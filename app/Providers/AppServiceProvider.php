@@ -56,6 +56,7 @@ class AppServiceProvider extends ServiceProvider
         $this->guardDestructiveDatabaseCommands();
         $this->definePermissionGate();
         $this->defineLoginRateLimit();
+        $this->defineCspReportRateLimit();
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
@@ -157,6 +158,16 @@ class AppServiceProvider extends ServiceProvider
                 \Illuminate\Cache\RateLimiting\Limit::perMinute(30)->by('ip:'.$request->ip())->response($locked),
             ];
         });
+    }
+
+    /**
+     * تقارير CSP (E26.4): 30 في الدقيقة لكل عنوان على مخزن الحدود (file، لا SQLite)، والزائد 429 بلا جسم.
+     */
+    private function defineCspReportRateLimit(): void
+    {
+        \Illuminate\Support\Facades\RateLimiter::for('csp-report', fn (\Illuminate\Http\Request $request) => \Illuminate\Cache\RateLimiting\Limit::perMinute(30)
+            ->by('csp:'.$request->ip())
+            ->response(fn () => response('', 429)));
     }
 
     /**

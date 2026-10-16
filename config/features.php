@@ -35,5 +35,6 @@ return [
         'message_search' => env('WA_FEATURE_MESSAGE_SEARCH'),
         'message_search_all' => env('WA_FEATURE_MESSAGE_SEARCH_ALL'),
         'conversation_export' => env('WA_FEATURE_CONVERSATION_EXPORT'),
+        'csp_enforce' => env('WA_FEATURE_CSP_ENFORCE'),
     ],
 ];

@@ -43,6 +43,8 @@ final class FeatureFlags
         'message_search' => ['label' => 'البحث في نص الرسائل (للمدراء: من يرى كل المحادثات)', 'capability' => 'C141', 'available' => true],
         'message_search_all' => ['label' => 'البحث في الرسائل لكل موظفي الصندوق، كلٌّ ضمن محادثاته (بعد أسبوع من الأول)', 'capability' => 'C141', 'available' => true],
         'conversation_export' => ['label' => 'تصدير محادثة واحدة (نص أو CSV) بسبب مكتوب، لمن يملك صلاحية التصدير', 'capability' => 'C140', 'available' => true],
+        // E26: فوق CSP_MODE=report وحده؛ CSP_MODE=off يطفئ السياسة كلها وenforce يفرضها من البيئة
+        'csp_enforce' => ['label' => 'فرض سياسة أمن المحتوى في المتصفح (مطفأ = تقارير فقط بلا حجب)', 'capability' => 'C184', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

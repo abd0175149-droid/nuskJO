@@ -17,12 +17,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      # TODO(E26): تثبيت الإجراءات بالـ SHA بدل الوسم
-      - uses: actions/checkout@v4
+      # الإجراءات مثبّتة بالـ SHA (E26.10): الوسم قد يُنقل إلى كود آخر. Dependabot (github-actions) يرفعها شهرياً
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0 (v2)
         with:
           php-version: '8.3'
           extensions: pdo_sqlite, sqlite3, mbstring, intl, bcmath, gd, zip
@@ -49,7 +50,7 @@ jobs:
         continue-on-error: true
         run: vendor/bin/pint --test --diff=origin/${{ github.base_ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -60,8 +61,12 @@ jobs:
           npm test
           npm run build
 
-      - name: Dependency audit (non-blocking)
-        continue-on-error: true
-        run: |
-          composer audit --locked
-          npm audit --omit=dev
+      # بوابتا التدقيق (E26.9): high وcritical الجديدة غير المستثناة بسبب (composer.json audit.ignore
+      # وsecurity/npm-audit-baseline.json). تقرير فقط حتى يضبط المالك متغير المستودع NUSKJO_AUDIT_GATE=enforce
+      - name: Dependency audit gate (composer)
+        continue-on-error: ${{ vars.NUSKJO_AUDIT_GATE != 'enforce' }}
+        run: composer run audit:php
+
+      - name: Dependency audit gate (npm, runtime)
+        continue-on-error: ${{ vars.NUSKJO_AUDIT_GATE != 'enforce' }}
+        run: node scripts/audit/npm-audit-gate.mjs

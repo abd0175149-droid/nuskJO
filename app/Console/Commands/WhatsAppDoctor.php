@@ -26,6 +26,8 @@ class WhatsAppDoctor extends Command
             $rows[] = [$key, $src['source'], $src['env_var'] ?? '—', $src['db_shadowed'] ? 'نعم' : '—', $yesNo($src['decrypt_ok'])];
         }
         $this->table(['المفتاح', 'المصدر', 'المتغير', 'محفوظ مظلَّل', 'يُفك'], $rows);
+        // E26: إصدار كروميوم (توليد البطاقات) كما سُجّل عند البناء
+        $this->line('chromium: '.(ChannelDoctor::chromiumVersion() ?? 'غير مسجّل (خارج الحاوية أو صورة أقدم)'));
 
         // E18: إثبات سر التطبيق آخر 7 أيام (شرط دخول E26: نداءات = بإثبات، وصفر رفض)، وفئات أخطاء ميتا اليوم
         $proof = GraphClient::proofSummary();

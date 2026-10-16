@@ -9,3 +9,7 @@ use Illuminate\Support\Facades\Route;
  */
 Route::get('api/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify']);
 Route::post('api/whatsapp/webhook', [WhatsAppWebhookController::class, 'receive']);
+
+// تقارير CSP من المتصفحات (E26.4): خارج web للسبب نفسه (لا جلسة ولا CSRF ولا Inertia)، بحد معدّل وحجم.
+// المتصفح يرسلها بلا كوكي أحياناً، فلا مصادقة؛ ولا يُحفظ منها إلا التوجيه والمصدر وقالب المسار
+Route::post('csp-report', \App\Http\Controllers\CspReportController::class)->middleware('throttle:csp-report')->name('csp.report');

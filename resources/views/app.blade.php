@@ -6,8 +6,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="description" content="شركة نسك للسياحة والسفر - نظام إدارة العمليات المالية والتشغيلية">
 
-    {{-- منع وميض الثيم: يُطبّق قبل أي رسم --}}
-    <script>
+    {{-- منع وميض الثيم: يُطبّق قبل أي رسم. nonce الطلب من سياسة أمن المحتوى (E26، SecurityHeaders) --}}
+    @php($cspNonce = \Illuminate\Support\Facades\Vite::cspNonce())
+    <script @if ($cspNonce) nonce="{{ $cspNonce }}" @endif>
         (function(){
             var t = localStorage.getItem('nusuk-theme');
             if (t === 'dark') document.documentElement.classList.add('dark');
@@ -27,7 +28,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-    @routes
+    @routes(nonce: $cspNonce)
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @inertiaHead
 </head>

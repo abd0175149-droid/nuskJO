@@ -24,6 +24,37 @@ docker run --rm -v "$REPO_DIR":/repo -w /repo alpine/git:latest pull origin main
 SHA="$(docker run --rm -v "$REPO_DIR":/repo -w /repo alpine/git:latest rev-parse --short HEAD)"
 log "deploy start sha=$SHA gate=$GATE"
 
+# 1ب) بوابة تدقيق التبعيات (E26.9): ثغرة high أو critical جديدة غير مستثناة بسبب (composer.json audit.ignore
+#     وsecurity/npm-audit-baseline.json). حاويتان للقراءة فقط على المضيف، لأن حاوية الاختبار بلا شبكة،
+#     وبالصورتين نفسيهما في Dockerfile فلا تُسحب صورة إضافية. تعذّر الشبكة تحذير لا منع.
+#     NUSKJO_AUDIT_GATE=warn (الافتراضي) أسبوع الخط الأساسي: يُسجَّل ولا يمنع؛ ثم enforce بقرار المالك.
+AUDIT_GATE="${NUSKJO_AUDIT_GATE:-warn}"
+COMPOSER_IMAGE="composer:2@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac"
+NODE_IMAGE="node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402"
+audit_findings=""
+rc=0
+docker run --rm -e COMPOSER_ALLOW_SUPERUSER=1 -v "$REPO_DIR":/app:ro -w /app "$COMPOSER_IMAGE" \
+    audit --locked --no-dev --abandoned=report --ignore-severity=low --ignore-severity=medium || rc=$?
+case "$rc" in
+    0) ;;
+    1|2|3) audit_findings+="composer " ;;
+    *) log "sha=$SHA composer audit could not run (rc=$rc, network?): not blocking" ;;
+esac
+rc=0
+docker run --rm -v "$REPO_DIR":/app:ro -w /app "$NODE_IMAGE" node scripts/audit/npm-audit-gate.mjs || rc=$?
+case "$rc" in
+    0) ;;
+    1) audit_findings+="npm " ;;
+    *) log "sha=$SHA npm audit could not run (rc=$rc, network?): not blocking" ;;
+esac
+if [[ -n "$audit_findings" ]]; then
+    if [[ "$AUDIT_GATE" == "enforce" ]]; then
+        log "sha=$SHA dependency audit FAILED (${audit_findings% }); deploy stopped before build"
+        exit 1
+    fi
+    log "sha=$SHA dependency audit findings (${audit_findings% }) with NUSKJO_AUDIT_GATE=warn"
+fi
+
 # 2) بوابة الاختبار
 if ! nice -n 10 docker build -f Dockerfile.test -t nuskjo-test:latest . \
    || ! docker run --rm --network none --cpus=1 --memory=1g nuskjo-test:latest; then
@@ -84,4 +115,10 @@ log "sha=$SHA container health=${status:-unknown}"
 docker image prune -f --filter dangling=true >/dev/null
 
 [[ "${status:-}" == "healthy" ]] || { log "sha=$SHA NOT healthy after deploy"; exit 1; }
+
+# 7) اختبار الدخان (E26.8): /up والبرامج وتوليد بطاقة وصلاحيات المرفقات والترويسات. الفشل لا يوقف الحاوية
+if ! bash scripts/smoke.sh; then
+    log "sha=$SHA smoke FAILED; container left running (rollback: docs/RELEASE.md)"
+    exit 1
+fi
 log "sha=$SHA deployed"

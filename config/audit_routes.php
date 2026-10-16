@@ -199,4 +199,5 @@ return [
     'Auth\LoginController@logout' => 'auth.logout',
     'Illuminate\Broadcasting\BroadcastController@authenticate' => 'none: تفويض قناة بث للقراءة',
     'PUT storage/{path}' => 'none: رفع مؤقت موقَّع من الإطار للقرص المحلي',
+    'CspReportController' => 'none: تقارير المتصفح عن CSP، عدّادات مجمّعة بلا بيانات شخصية (E26)',
 ];

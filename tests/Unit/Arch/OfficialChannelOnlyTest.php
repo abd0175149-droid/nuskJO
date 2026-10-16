@@ -54,6 +54,58 @@ class OfficialChannelOnlyTest extends TestCase
         $this->assertSame(['app/Services/WhatsApp/GraphVersions.php'], $offenders);
     }
 
+    /** الكود بلا تعليقات (ذكر النمط في تعليق لا يُحسب) */
+    private function withoutComments(string $code): string
+    {
+        $out = '';
+        foreach (token_get_all($code) as $token) {
+            if (!is_array($token) || !in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                $out .= is_array($token) ? $token[1] : $token;
+            }
+        }
+
+        return $out;
+    }
+
+    /** يرسل الكود رمز وصول بنفسه: withToken، أو ترويسة Authorization/Bearer، أو access_token، أو رابط Graph مع Http مباشرة */
+    private function sendsTokenItself(string $code): bool
+    {
+        $code = $this->withoutComments($code);
+
+        return preg_match('/(->|::)withToken\s*\(|[\'"]Authorization[\'"]\s*=>|[\'"]Bearer\s|[\'"]access_token[\'"]\s*=>/i', $code) === 1
+            || (str_contains($code, 'GraphClient::url(') && str_contains($code, 'Http::'));
+    }
+
+    /**
+     * E26.12: شرط «Require App Secret». كل نداء برمز يمر بـ Graph\GraphClient الذي يضيف appsecret_proof محسوباً على الرمز
+     * المرسل نفسه، ومنه debug_token برمز التطبيق (E18)، فلا استثناء. نداء واحد يفوته يُرفض بعد التفعيل ويوقف الإرسال.
+     */
+    public function test_no_class_sends_an_access_token_outside_the_graph_client(): void
+    {
+        $offenders = array_keys(array_filter(
+            $this->appFiles(),
+            fn (string $code, string $path) => !str_starts_with($path, 'app/Services/WhatsApp/Graph/') && $this->sendsTokenItself($code),
+            ARRAY_FILTER_USE_BOTH,
+        ));
+
+        $this->assertSame([], $offenders);
+    }
+
+    public function test_the_guard_catches_a_raw_graph_call_built_by_hand(): void
+    {
+        foreach ([
+            '<?php $r = Http::withToken($t)->get(WhatsAppChannel::graphBase()."/x");',
+            '<?php $r = Http::timeout(5)->withToken($t)->post($u);',
+            '<?php $r = Http::withHeaders(["Authorization" => "Bearer ".$t])->get($u);',
+            '<?php $r = Http::get(GraphClient::url(["me"]));',
+            '<?php $r = Http::get($u, ["access_token" => $t]);',
+        ] as $snippet) {
+            $this->assertTrue($this->sendsTokenItself($snippet), $snippet);
+        }
+        $this->assertFalse($this->sendsTokenItself('<?php // Http::withToken($t) في تعليق لا يُحسب'."\n"));
+        $this->assertFalse($this->sendsTokenItself('<?php $r = Http::withHeaders(["x-goog-api-key" => $k])->post($u);'));
+    }
+
     public function test_no_unofficial_whatsapp_library_is_installed(): void
     {
         $manifests = file_get_contents(base_path('composer.json')).file_get_contents(base_path('package.json'));
