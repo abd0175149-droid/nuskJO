@@ -37,6 +37,8 @@ class VoiceOpsTest extends TestCase
             $packages = preg_replace('/^[ \t]*#.*$/m', '', $m[0] ?? '');
             $this->assertMatchesRegularExpression('/\sffmpeg(\s|$)/', $packages, $file);
         }
+        // فحص ما بعد النشر يتأكد منه في الحاوية
+        $this->assertStringContainsString('ffmpeg -hide_banner -version', (string) file_get_contents(base_path('scripts/smoke.sh')));
     }
 
     public function test_the_microphone_is_allowed_for_this_origin_only_and_blob_media_is_allowed(): void
