@@ -172,7 +172,9 @@ class CallingSettingsTest extends TestCase
         $this->assertNull(WaBotSetting::current()->fresh()->coexistence_holder_user_id);
 
         $this->actingAs($this->owner)->putJson('/api/whatsapp/coexistence/settings', ['holder_user_id' => $wide->id, 'echo_pause_minutes' => 120])
-            ->assertOk()->assertJsonPath('coexistence.holder_id', $wide->id)->assertJsonPath('coexistence.holder_valid', true);
+            ->assertOk()->assertJsonPath('coexistence.holder_id', $wide->id)->assertJsonPath('coexistence.holder_valid', true)
+            // المرشّحون: من يرى كل المحادثات وحده
+            ->assertJsonPath('coexistence.candidates', [['id' => $wide->id, 'name' => $wide->name]]);
 
         $s = WaBotSetting::current()->fresh();
         $this->assertSame([$wide->id, 120], [(int) $s->coexistence_holder_user_id, (int) $s->echo_pause_minutes]);

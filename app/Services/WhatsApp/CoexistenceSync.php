@@ -85,7 +85,7 @@ final class CoexistenceSync
     {
         $s = WaBotSetting::current();
         $holder = (int) $s->coexistence_holder_user_id;
-        $candidates = User::with('role.permissions')->where('is_active', true)->orderBy('name')->get(['id', 'name', 'role_id'])
+        $candidates = User::with('role.permissions')->where('is_active', true)->orderBy('name')->get(['id', 'name', 'role_id', 'is_active'])
             ->filter(fn ($u) => $u->can('whatsapp.view_all'))->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()->all();
         $today = Carbon::now('Asia/Amman')->startOfDay()->setTimezone(config('app.timezone'));
         $last = fn (string $field) => self::hasTable() ? WaAccountEvent::where('field', $field)->orderByDesc('id')->first(['event', 'payload', 'created_at']) : null;
