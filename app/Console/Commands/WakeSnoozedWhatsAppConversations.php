@@ -36,6 +36,8 @@ class WakeSnoozedWhatsAppConversations extends Command
                     return;
                 }
                 $woken++;
+                // تحديث جماعي بلا حدث نموذج: البث اللحظي صراحةً (E28)
+                $c->touchRealtime('meta');
 
                 $title = '⏰ حان موعد متابعة';
                 $body = '⏰ حان موعد متابعة '.$c->noticeLabel();

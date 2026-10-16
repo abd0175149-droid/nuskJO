@@ -63,6 +63,8 @@ class WhatsAppController extends Controller
             // الردود الجاهزة في المنشئ (E17.7)
             'quickReplies' => auth()->user()->can('whatsapp.reply') && \App\Support\FeatureFlags::on('quick_replies'),
             'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
+            // الصندوق اللحظي (E28): الاشتراك في أحداث wa.changed على قناة المستخدم، والاستطلاع احتياطي
+            'realtime' => ['inbox' => \App\Support\FeatureFlags::on('inbox_realtime')],
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
             // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
@@ -444,7 +446,11 @@ class WhatsAppController extends Controller
             // إزالة وسم خارج اختصاصك تخفي المحادثة عن مختصه: للمسؤول عن التوزيع وحده
             $mine = in_array($data['topic'], TopicRouter::topicsForUser($me->id), true);
             abort_unless($mine || $me->can('whatsapp.assign') || $me->can('whatsapp.view_all'), 403, 'لا يمكنك إزالة وسم خارج اختصاصك');
+            // البث اللحظي (E28): من كان يراها قبل الإزالة يُبلَّغ أيضاً، فتختفي من قائمة مختص الوسم المُزال
+            $before = app(\App\Services\WhatsApp\Realtime\InboxBroadcaster::class)->enabled()
+                ? \App\Services\WhatsApp\Realtime\InboxAudience::for($conversation) : [];
             TopicRouter::untag($conversation, $data['topic']);
+            $conversation->touchRealtime('meta', $before);
         }
 
         \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaTopic, 'wa_conversation', $conversation->id, null, ['topic' => $data['topic'], 'attach' => (bool) $data['attach']]);

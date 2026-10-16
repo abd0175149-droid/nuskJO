@@ -74,6 +74,9 @@ class TopicRouter
             $conv->forceFill(['assigned_to' => $owner])->saveQuietly();
         }
 
+        // البث اللحظي (E28): يرى المختص المحادثة فور توسيمها، من البوت أو من موظف
+        $conv->touchRealtime('meta');
+
         return true;
     }
 
@@ -175,6 +178,15 @@ class TopicRouter
             return;
         }
 
+        self::outsideAdminChats($query);
+    }
+
+    /**
+     * قيد «ليست محادثة إدارة» بعينه: السياج يطبّقه على من لا يملك whatsapp.admin_chats، وجمهور البث اللحظي (E28)
+     * يسأل به عن محادثة واحدة (isAdminChat)، فلا تختلف القاعدتان أبداً.
+     */
+    public static function outsideAdminChats($query)
+    {
         self::$hasAdminFlag ??= Schema::hasColumn('wa_conversations', 'is_admin_chat');
         self::$hasAdminNumbers ??= Schema::hasTable('wa_admin_numbers');
 
@@ -182,9 +194,19 @@ class TopicRouter
             $query->where('wa_conversations.is_admin_chat', false);
         }
         if (self::$hasAdminNumbers) {
-            // كل أرقام الإدارة فعّالة أو لا: سجل رقم عُطّل يبقى محجوباً
-            $query->whereNotIn('wa_conversations.phone', fn ($s) => $s->select('phone')->from('wa_admin_numbers'));
+            // كل أرقام الإدارة فعّالة أو لا: سجل رقم عُطّل يبقى محجوباً. محادثة بلا رقم (اسم مستخدم، E11) ليست رقم إدارة:
+            // NOT IN وحده يُسقطها (NULL) فتختفي عن مختصها، والعلَم اللاصق أعلاه يبقى سورها إن كانت لرقم إدارة سابقاً
+            $query->where(fn ($q) => $q->whereNull('wa_conversations.phone')
+                ->orWhereNotIn('wa_conversations.phone', fn ($s) => $s->select('phone')->from('wa_admin_numbers')->whereNotNull('phone')));
         }
+
+        return $query;
+    }
+
+    /** محادثة لا يراها إلا من يملك whatsapp.admin_chats (القيد نفسه في SQL؛ المحذوفة تُعدّ كذلك فلا يُبلَّغ بها أحد) */
+    public static function isAdminChat(WaConversation $conversation): bool
+    {
+        return !self::outsideAdminChats(WaConversation::whereKey($conversation->id))->exists();
     }
 
     private static function fenceNumbers($query, User $user): void

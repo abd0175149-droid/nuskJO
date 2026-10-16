@@ -47,6 +47,34 @@ class WaConversation extends Model
     ];
 
     /**
+     * حقول تعرضها القائمة أو رأس المحادثة (E28): تغيّر أحدها بحفظ النموذج يُبلغ من يراها الآن (meta)، ومن فقدها بنقل
+     * التوكيل. الرسائل والحالات من أحداث E21، والتوسيم من TopicRouter، والتحديث الجماعي من موضعه صراحةً.
+     */
+    public const REALTIME_FIELDS = [
+        'bot_enabled', 'bot_paused_until', 'needs_attention', 'attention_reason', 'assigned_to', 'unread_count', 'status',
+        'display_name', 'client_id', 'client_link', 'wa_username', 'wa_profile_name', 'phone', 'merged_into_id',
+        'closed_at', 'snoozed_until', 'marked_unread_at', 'marked_unread_by',
+    ];
+
+    protected static function booted(): void
+    {
+        static::updated(function (self $conversation) {
+            if (!$conversation->wasChanged(self::REALTIME_FIELDS)) {
+                return;
+            }
+            $lost = $conversation->wasChanged('assigned_to') && $conversation->getOriginal('assigned_to') !== null
+                ? [(int) $conversation->getOriginal('assigned_to')] : [];
+            $conversation->touchRealtime('meta', $lost);
+        });
+    }
+
+    /** البث اللحظي (E28): يُجمَّع في الطلب أو الوظيفة ويُبث بعد الرد أو الاعتماد. لا يرمي، وبلا أثر والعلم مطفأ */
+    public function touchRealtime(string $kind, array $also = []): void
+    {
+        app(\App\Services\WhatsApp\Realtime\InboxBroadcaster::class)->touch((int) $this->id, $kind, $also);
+    }
+
+    /**
      * المحادثات التي يراها المستخدم (السياج في TopicRouter::scopeVisible).
      * scope محلي عن قصد، لا global scope: الويبهوك والطابور والبوت يعملون بلا مستخدم.
      */
