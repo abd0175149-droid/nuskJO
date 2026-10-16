@@ -15,7 +15,7 @@
               {{ loadingOlder ? 'جارٍ تحميل الأقدم...' : '↑ رسائل أقدم' }}
             </button>
           </div>
-          <MessageBubble v-for="m in messages" :key="m.id" :m="m">
+          <MessageBubble v-for="m in messages" :key="m.id" :m="m" @resend="(msg) => $emit('resend', msg)">
             <template v-if="m.media" #media>
               <MediaChip :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
             </template>
@@ -82,7 +82,7 @@ const props = defineProps({
   quickReplies: Boolean,
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
-  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action']);
+  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend']);
 
 const scroller = ref(null);
 

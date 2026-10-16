@@ -285,6 +285,21 @@ class WhatsAppController extends Controller
             array_push($columns, ...$errorCols);
         }
         $canSupport = $user->can('whatsapp.settings');
+        // دفتر الإرسال (E19): عدد المحاولات وزر «انسخ إلى خانة الكتابة» لما فشل (مفتاحه محرَّر) أو بقي غير مؤكد بعد المنظّف
+        $ledger = \App\Support\FeatureFlags::on('send_ledger') && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'attempts');
+        if ($ledger) {
+            array_push($columns, 'attempts', 'payload');
+        }
+        $canResend = $ledger && $user->can('whatsapp.reply') && $conversation->isWindowOpen();
+        $ledgerFields = function ($m) use ($ledger, $canResend): array {
+            if (!$ledger || $m->direction !== 'out') {
+                return [];
+            }
+            $resend = $canResend && (($m->status === 'failed' && data_get($m->payload, '_released_key'))
+                || ($m->status === 'unknown' && data_get($m->payload, '_reaped')));
+
+            return ['attempts' => (int) $m->attempts, 'can_resend' => (bool) $resend];
+        };
         $failure = function ($m) use ($errorCols, $canSupport): array {
             if ($errorCols === [] || $m->direction !== 'out' || !in_array($m->status, ['failed', 'unknown', 'blocked'], true)) {
                 return [];
@@ -315,8 +330,8 @@ class WhatsAppController extends Controller
                     ->where('id', '<=', $v['after'])
                     ->where('updated_at', '>=', $v['since'])
                     ->orderByDesc('id')->limit(100)
-                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $errorCols))
-                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
+                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $errorCols, $ledger ? ['attempts', 'payload'] : []))
+                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + $ledgerFields($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
                     ->all();
             }
         } else {
@@ -347,7 +362,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m))->values();
+        ] + $failure($m) + $ledgerFields($m))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 

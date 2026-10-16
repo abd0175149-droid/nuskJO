@@ -18,9 +18,12 @@
         <span v-if="m.source !== 'customer' && !m.sender">· {{ SOURCES[m.source] || m.source }}</span>
         <!-- حالة التسليم (يكملها E21) -->
         <slot name="status">
-          <span v-if="m.status === 'failed'" class="font-bold" :title="m.error || ''">· فشل</span>
+          <span v-if="m.status === 'failed'" class="font-bold" :title="m.error || ''">· ❌ فشل</span>
           <span v-else-if="m.status === 'blocked'" class="px-1.5 rounded bg-red-600 text-white font-bold" :title="m.error || ''">🛡️ حُجبت</span>
-          <span v-else-if="m.status === 'unknown'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
+          <!-- دفتر الإرسال (E19): حُجز الصف قبل نداء ميتا، ولم يُحسم بعد -->
+          <span v-else-if="m.status === 'queued'" data-test="status-queued">· ⏳ قيد الإرسال</span>
+          <span v-else-if="m.status === 'unknown'" data-test="status-unknown" class="px-1.5 rounded bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 font-bold"
+                title="لا دليل على وصولها: تحقق مع العميل قبل الإعادة">⚠️ غير مؤكد — قد تكون وصلت</span>
         </slot>
       </div>
       <!-- سبب الفشل (E18): نص عربي من جدول الرموز، وفئة ملوّنة، وإجراء يُفتح بـ ⓘ. نص فقط بلا v-html -->
@@ -34,6 +37,11 @@
           <p v-if="m.fbtrace_id" class="mt-0.5 opacity-70">للدعم: <bdi dir="ltr" class="font-mono">{{ m.fbtrace_id }}</bdi></p>
         </details>
       </div>
+      <!-- إعادة صريحة (E19): النص إلى المنشئ بمفتاح جديد، لا إرسال آلي. «غير مؤكد» يطلب تأكيداً قبل النسخ -->
+      <button v-if="m.can_resend" type="button" data-test="copy-to-composer" @click="$emit('resend', m)"
+              class="mt-1 min-h-8 px-2 rounded-lg text-[11px] font-bold bg-white/85 text-gray-800 dark:bg-gray-900 dark:text-gray-100 border border-black/10 dark:border-white/10">
+        ✍️ انسخ إلى خانة الكتابة
+      </button>
     </div>
   </div>
 </template>
@@ -43,6 +51,7 @@ import { computed } from 'vue';
 import WaText from './WaText.vue';
 
 const props = defineProps({ m: { type: Object, required: true } });
+defineEmits(['resend']);
 
 const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' };
 

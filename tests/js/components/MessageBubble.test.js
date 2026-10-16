@@ -64,4 +64,22 @@ describe('MessageBubble', () => {
         expect(w.find('b').exists()).toBe(false);
         expect(w.text()).toContain('<img');
     });
+
+    it('shows queued and unknown ledger states (E19)', () => {
+        const queued = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'staff', status: 'queued' }) } });
+        expect(queued.find('[data-test="status-queued"]').text()).toContain('قيد الإرسال');
+        const unknown = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'unknown', error: 'انتهت مهلة ميتا' }) } });
+        expect(unknown.find('[data-test="status-unknown"]').text()).toContain('غير مؤكد — قد تكون وصلت');
+        expect(unknown.find('[data-test="status-unknown"]').classes()).toContain('bg-amber-100');
+    });
+
+    it('offers copy-to-composer only when the server allows a resend, and emits the message', async () => {
+        const m = msg({ direction: 'out', source: 'staff', status: 'failed', error: 'تعذّر التسليم', can_resend: true, body: 'موعدك غداً' });
+        const w = mount(MessageBubble, { props: { m } });
+        await w.find('[data-test="copy-to-composer"]').trigger('click');
+        expect(w.emitted('resend')[0][0]).toEqual(m);
+
+        const no = mount(MessageBubble, { props: { m: { ...m, can_resend: false } } });
+        expect(no.find('[data-test="copy-to-composer"]').exists()).toBe(false);
+    });
 });

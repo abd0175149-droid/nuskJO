@@ -37,6 +37,10 @@ class WhatsAppDoctor extends Command
         foreach (MetaErrorReactor::unknownCodes() as $code => $count) {
             $this->line("رمز مجهول اليوم: {$code} × {$count}");
         }
+        // دفتر الإرسال (E19): رسائل موظف بلا Idempotency-Key (ملف JS قديم في متصفح) اليوم
+        if ($missing = (int) \Illuminate\Support\Facades\Cache::get('wa:idem:missing:'.now()->format('Ymd'), 0)) {
+            $this->line("رسائل موظف بلا مفتاح منع تكرار اليوم: {$missing} — حدّث الصفحة في المتصفحات المفتوحة");
+        }
 
         $checks = [...ChannelDoctor::checks(), ...ChannelDoctor::sourceWarnings($settings)];
         if ($checks === []) {

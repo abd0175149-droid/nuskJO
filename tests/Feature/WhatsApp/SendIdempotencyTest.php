@@ -118,4 +118,23 @@ class SendIdempotencyTest extends TestCase
         Http::assertSentCount(1);
         $this->assertSame($key, WaMessage::sole()->send_key);
     }
+
+    public function test_the_thread_offers_an_explicit_resend_only_for_released_or_reaped_rows(): void
+    {
+        $conv = WaConversation::factory()->windowOpen()->create();
+        $released = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'failed', 'attempts' => 2, 'payload' => ['_released_key' => 'reply:1:1:text']]);
+        $reaped = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'unknown', 'attempts' => 1, 'payload' => ['_reaped' => now()->toIso8601String()]]);
+        $fresh = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'unknown', 'attempts' => 1]);
+
+        $rows = collect($this->actingAs($this->staff)->getJson("/api/whatsapp/conversations/{$conv->id}/messages")->json('messages'))->keyBy('id');
+
+        $this->assertSame([true, 2], [$rows[$released->id]['can_resend'], $rows[$released->id]['attempts']]);
+        $this->assertTrue($rows[$reaped->id]['can_resend']);
+        $this->assertFalse($rows[$fresh->id]['can_resend'], 'غير مؤكد حديث: ينتظر ويبهوك ميتا أو المنظّف');
+        $this->assertArrayNotHasKey('payload', $rows[$released->id]);
+
+        config(['features.env.send_ledger' => false]);
+        $plain = collect($this->actingAs($this->staff)->getJson("/api/whatsapp/conversations/{$conv->id}/messages")->json('messages'))->keyBy('id');
+        $this->assertArrayNotHasKey('can_resend', $plain[$released->id]);
+    }
 }

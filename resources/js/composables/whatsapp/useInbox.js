@@ -4,6 +4,7 @@
 import { computed, reactive, ref } from 'vue';
 import axios from 'axios';
 import { useDrafts } from '@/composables/useDrafts';
+import { createSendKeys } from '@/composables/whatsapp/useSendKey.js';
 import { appendPage, cursorOf, mergeFirstPage } from './useConversationList.js';
 import { applyUpdates, lastId, mergeNewer, mergeOlder, needsReload } from './useThread.js';
 
@@ -55,6 +56,8 @@ export function useInbox(props, thread) {
     let inflight = null;
 
     const drafts = useDrafts();
+    // مفتاح منع التكرار لكل مسودة (E19): ثابت لإعادة المحاولة بالنص نفسه
+    const sendKeys = createSendKeys();
     const draft = computed({ get: () => drafts.get(s.activeId), set: (t) => drafts.set(s.activeId, t) });
     const mode = computed(() => s.thread?.identity_mode || props.identityMode);
     const cannotReachPhoneless = computed(() => !!s.thread?.phoneless && mode.value === 'store');
@@ -243,17 +246,26 @@ export function useInbox(props, thread) {
         if (!id || !body || s.sending) return;
         s.sending = true;
         s.sendError = '';
+        const headers = { ...api.headers, 'Idempotency-Key': sendKeys.keyFor(id, body) };
         try {
+            let res;
             try {
-                await axios.post(threadUrl(id, 'send'), { body }, api);
+                res = await axios.post(threadUrl(id, 'send'), { body }, { headers });
             } catch (e) {
                 if (e?.response?.status !== 409 || e.response.data?.code !== 'POLICY_WARN') throw e;
                 if (!(await confirmFn(e.response.data.error))) {
                     s.sendError = 'لم تُرسل الرسالة.';
                     return;
                 }
-                await axios.post(threadUrl(id, 'send'), { body, ack_warnings: true }, api);
+                res = await axios.post(threadUrl(id, 'send'), { body, ack_warnings: true }, { headers });
             }
+            // 202 «غير مؤكد» (دفتر الإرسال E19): المسودة والمفتاح باقيان، ولا إعادة تلقائية. الخيط يُظهر الصف ⚠️
+            if (res?.data?.unknown) {
+                s.sendError = `${res.data.error || 'قد تكون الرسالة وصلت.'} لم تُمسح المسودة: تحقق من الخيط قبل إعادة الإرسال.`;
+                if (s.activeId === id) poll();
+                return;
+            }
+            sendKeys.done(id);
             drafts.clear(id);
             if (s.activeId === id) {
                 await poll();
@@ -263,6 +275,18 @@ export function useInbox(props, thread) {
         } catch (e) {
             if (e?.response?.status === 404 && s.activeId === id) return closeOutOfScope();
             s.sendError = errorText(e, 'تعذّر الإرسال');
+            const code = e?.response?.data?.code;
+            // المفتاح مستعمل لنص آخر: مفتاح جديد، والضغطة التالية ترسل
+            if (code === 'IDEMPOTENCY_MISMATCH') {
+                sendKeys.rotate(id);
+                s.sendError = 'تغيّر النص منذ المحاولة السابقة — اضغط «إرسال» مرة أخرى.';
+            }
+            // الرسالة نفسها قيد الإرسال: الخيط يُحدَّث بعد 3 ثوانٍ
+            if (code === 'SEND_IN_PROGRESS' && s.activeId === id) setTimeout(() => s.activeId === id && poll(), 3000);
+            if (code === 'OUTCOME_UNKNOWN') {
+                s.sendError = 'قد تكون هذه الرسالة وصلت من قبل (غير مؤكد). تحقق من الخيط قبل إعادة الإرسال.';
+                if (s.activeId === id) poll();
+            }
             // ميتا أغلقت النافذة (131047): المنشئ يُعطَّل بشرح النافذة نفسه، والمسودة باقية
             if (e?.response?.data?.category === 'window' && s.activeId === id && s.thread) s.thread.window_open = false;
             // مهلة ميتا (503): قد تكون وصلت، فالخيط يُحدَّث ليظهر صفها «غير مؤكد»
@@ -398,8 +422,20 @@ export function useInbox(props, thread) {
         if (id) open(id);
     }
 
+    /**
+     * «انسخ إلى خانة الكتابة» لرسالة فشلت أو لم يُتأكد وصولها (E19): النص في المنشئ بمفتاح جديد، فيراجعه الموظف ويرسله بنفسه.
+     * لا إعادة إرسال آلية أبداً. confirmFn للحالة «غير مؤكد» (قد تكون وصلت).
+     */
+    async function copyToDraft(m, confirmFn) {
+        const id = s.activeId;
+        if (!id || !m?.can_resend) return;
+        if (m.status === 'unknown' && !(await confirmFn('قد تكون الرسالة الأولى وصلت. هل تريد الإرسال مرة ثانية؟'))) return;
+        sendKeys.rotate(id);
+        drafts.set(id, String(m.body || ''));
+    }
+
     return {
-        s, draft, cannotReachPhoneless, canRequestPhone,
+        s, draft, cannotReachPhoneless, canRequestPhone, copyToDraft,
         load, loadMore, open, poll, loadOlder, jumpToNew, reachedBottom, send,
         toggleBot, resolve, setTopic, assignTo, requestPhone, onLinked, unlinkClient,
         openFromList, back, onPopState, openFromUrl,

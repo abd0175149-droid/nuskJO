@@ -50,6 +50,8 @@
 - [x] فشل الإرسال (E18، `meta_error_v2`): السبب العربي ثم « — » ثم الإجراء؛ `category=window` يعطّل المنشئ بشرح النافذة؛ 503 (مهلة ميتا) يحدّث الخيط ليظهر الصف «غير مؤكد». — ✅ useInbox.errorText/send (errorText.test.js)
 - [x] تحت «فشل» في الفقاعة: فئة ملوّنة (اعتماد/تقييد أحمر، النافذة كهرماني، الطلب رمادي) والسبب، و«ⓘ ماذا أفعل؟» يفتح الإجراء، وfbtrace_id لصاحب whatsapp.settings. نص فقط بلا v-html. — ✅ MessageBubble (MessageBubble.test.js)
 - [x] شريط أحمر للمدير عند خطأ اعتماد أو تقييد على القناة خلال 24 ساعة، وسطر عام لغيره. — ✅ InboxStatusBar (InboxStatusBar.test.js)
+- [x] دفتر الإرسال (E19، `send_ledger`): مفتاح Idempotency-Key لكل مسودة، ثابت لإعادة النص نفسه ويتجدد بعد النجاح أو تغيّر النص؛ 202 «غير مؤكد» يبقي المسودة؛ 409 قيد الإرسال يحدّث الخيط بعد 3 ثوانٍ؛ 422 لنص آخر يجدد المفتاح. — ✅ useSendKey وuseInbox.send (sendKey.test.js)
+- [x] الفقاعة: «⏳ قيد الإرسال» و«⚠️ غير مؤكد — قد تكون وصلت»، وزر «✍️ انسخ إلى خانة الكتابة» حين يسمح الخادم (can_resend)، و«غير مؤكد» يطلب تأكيداً قبل النسخ. لا إعادة آلية. — ✅ MessageBubble + useInbox.copyToDraft (MessageBubble.test.js)
 
 ## الطوارئ والتوقيت
 - [x] `visibilitychange` إلى ظاهر: استطلاع فوري. — ✅ usePolling (createPoller)

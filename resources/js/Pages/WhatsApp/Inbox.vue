@@ -25,7 +25,8 @@
                     :followup="followup" :can-reprocess="canReprocess" :quick-replies="quickReplies" @action="(n, p) => inbox.followAction(n, p, confirm)"
                     @back="inbox.back" @link="linkOpen = true" @unlink="unlink" @resolve="inbox.resolve" @toggle-bot="inbox.toggleBot"
                     @set-topic="inbox.setTopic" @assign="inbox.assignTo" @load-older="inbox.loadOlder" @jump-to-new="inbox.jumpToNew"
-                    @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"/>
+                    @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"
+                    @resend="(m) => inbox.copyToDraft(m, askResend)"/>
       </div>
     </div>
 
@@ -83,6 +84,8 @@ const linkOpen = ref(false);
 // تحذير السياسة (E15.9) وفك الربط بنافذة التأكيد الموحّدة (E16.9)
 const { confirm } = useConfirm();
 const ask = (message) => confirm({ title: 'تحذير قبل الإرسال', message, confirmLabel: 'إرسال رغم التحذير', danger: true });
+// رسالة «غير مؤكدة» قد تكون وصلت: النسخ إلى المنشئ بعد تأكيد صريح (E19)
+const askResend = (message) => confirm({ title: 'الإرسال مرة ثانية؟', message, confirmLabel: 'انسخ إلى خانة الكتابة', danger: true });
 const unlink = async () => {
   if (await confirm({ title: 'فك ربط العميل', message: 'فك ربط هذه المحادثة بالعميل؟ لن يعيد النظام ربطها آلياً.', confirmLabel: 'فك الربط', danger: true })) inbox.unlinkClient();
 };
