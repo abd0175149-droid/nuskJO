@@ -432,6 +432,21 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::delete('profile/two-factor', [\App\Http\Controllers\ProfileSecurityController::class, 'disable'])->name('profile.two-factor.disable')->middleware('stepup:always');
     // إعادة تعيين عامل موظف فقد هاتفه: المدير وحده بسبب (والطوارئ الكاملة: security:mfa-reset من الخادم)
     Route::post('users/{user}/two-factor/reset', [\App\Http\Controllers\UserController::class, 'resetTwoFactor'])->name('users.two-factor.reset')->middleware(['perm:admin', 'stepup:always']);
+
+    // ===== التكاملات الصادرة ورموز MCP (E40) =====
+    // الوجهات خلف العلم integration_outbox والرموز خلف mcp_server (404 في المتحكم). الإنشاء والتعديل والحذف والتدوير
+    // وإصدار الرمز في security.stepup.routes. ping بحد 6 في الدقيقة، والإعادة 20
+    Route::get('settings/integrations', [\App\Http\Controllers\IntegrationController::class, 'index'])->name('integrations.index')->middleware('perm:integrations.manage,mcp.use');
+    Route::post('settings/integrations/endpoints', [\App\Http\Controllers\IntegrationController::class, 'store'])->name('integrations.endpoints.store')->middleware('perm:integrations.manage');
+    Route::put('settings/integrations/endpoints/{endpoint}', [\App\Http\Controllers\IntegrationController::class, 'update'])->name('integrations.endpoints.update')->middleware('perm:integrations.manage');
+    Route::delete('settings/integrations/endpoints/{endpoint}', [\App\Http\Controllers\IntegrationController::class, 'destroy'])->name('integrations.endpoints.destroy')->middleware('perm:integrations.manage');
+    Route::post('settings/integrations/endpoints/{endpoint}/rotate', [\App\Http\Controllers\IntegrationController::class, 'rotate'])->name('integrations.endpoints.rotate')->middleware('perm:integrations.manage');
+    Route::post('settings/integrations/endpoints/{endpoint}/ping', [\App\Http\Controllers\IntegrationController::class, 'ping'])->name('integrations.endpoints.ping')->middleware(['perm:integrations.manage', 'throttle:6,1']);
+    Route::post('settings/integrations/endpoints/{endpoint}/toggle', [\App\Http\Controllers\IntegrationController::class, 'toggle'])->name('integrations.endpoints.toggle')->middleware('perm:integrations.manage');
+    Route::get('api/integrations/deliveries', [\App\Http\Controllers\IntegrationController::class, 'deliveries'])->name('integrations.deliveries')->middleware('perm:integrations.manage');
+    Route::post('api/integrations/deliveries/{row}/redrive', [\App\Http\Controllers\IntegrationController::class, 'redrive'])->name('integrations.deliveries.redrive')->middleware(['perm:integrations.manage', 'throttle:20,1']);
+    Route::post('settings/integrations/mcp-tokens', [\App\Http\Controllers\IntegrationController::class, 'createToken'])->name('integrations.mcp-tokens.store')->middleware('perm:mcp.use');
+    Route::delete('settings/integrations/mcp-tokens/{mcpToken}', [\App\Http\Controllers\IntegrationController::class, 'revokeToken'])->name('integrations.mcp-tokens.destroy')->middleware('perm:mcp.use');
 });
 
 // التحقق المعزّز (E27): الأفعال الحساسة في config('security.stepup.routes') بأسمائها (أو «الطريقة المسار» لمسار بلا اسم)،

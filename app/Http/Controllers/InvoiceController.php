@@ -506,6 +506,8 @@ class InvoiceController extends Controller
                         'quote_request_id' => 'الطلب مرتبط بفاتورة أخرى',
                     ]);
                 }
+                // E40: الصندوق الصادر في المعاملة نفسها (العلم integration_outbox؛ الحفظ الثاني لا يكرره)
+                \App\Services\Integrations\IntegrationOutbox::quoteConverted((int) $v['quote_request_id'], $invoice);
             }
 
             return $invoice;
@@ -670,6 +672,8 @@ class InvoiceController extends Controller
                 AccountingService::recordInvoice($invoice);
                 // ولا اعتماد بلا صف تدقيق في المعاملة نفسها
                 AuditLog::log(\App\Enums\AuditAction::Approve, 'invoice', $invoice->id, $invoice->invoice_number, ['total_sell_jod' => (float) $invoice->total_sell_jod, 'items' => $invoice->items->count()]);
+                // E40: الصندوق الصادر في المعاملة نفسها، فاعتماد تراجع لا يُرسل شيئاً (العلم integration_outbox)
+                \App\Services\Integrations\IntegrationOutbox::invoiceApproved($invoice);
 
                 // إشعار
                 if ($invoice->created_by && $invoice->created_by !== auth()->id()) {

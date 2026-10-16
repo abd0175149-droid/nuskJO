@@ -194,6 +194,19 @@ return [
     'WhatsAppChannelHealthController@unblock' => 'wa.health_unblock',
     'WhatsAppChannelHealthController@acknowledge' => 'wa.health_ack',
 
+    // ===== التكاملات الصادرة وخادم MCP (E40) =====
+    'McpController@handle' => 'mcp.tool_call',
+    'McpController@unsupported' => 'none: 405 بلا أثر (لا جلسات ولا قناة SSE)',
+    'IntegrationController@store' => 'integ.endpoint_create',
+    'IntegrationController@update' => 'integ.endpoint_update',
+    'IntegrationController@destroy' => 'integ.endpoint_delete',
+    'IntegrationController@rotate' => 'integ.endpoint_rotate',
+    'IntegrationController@toggle' => 'integ.endpoint_toggle',
+    'IntegrationController@ping' => 'none: حدث اختبار بلا بيانات؛ نتيجته صف ping في سجل التسليمات وlast_ping_ok_at',
+    'IntegrationController@redrive' => 'integ.delivery_redrive',
+    'IntegrationController@createToken' => 'mcp.token_create',
+    'IntegrationController@revokeToken' => 'mcp.token_revoke',
+
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',
     'AgentController@update' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

@@ -40,7 +40,11 @@ class AppServiceProvider extends ServiceProvider
                 return array_values(array_unique($names));
             }, ['Google Gemini'], false))
                 // الترجمة عند طلب الموظف (E29): السطر يظهر ما دام العلم مفعّلاً
-                ->with('staffTranslation', rescue(fn () => \App\Support\FeatureFlags::on('staff_translation'), false, false));
+                ->with('staffTranslation', rescue(fn () => \App\Support\FeatureFlags::on('staff_translation'), false, false))
+                // التكاملات (E40): أداة الأتمتة تُذكر ما دامت وجهة نشطة والعلم مفعّل، ومساعد المدير ما دام خادم MCP مفعّلاً
+                ->with('integrationsOutbound', rescue(fn () => \App\Support\FeatureFlags::on('integration_outbox')
+                    && \App\Models\IntegrationEndpoint::query()->where('is_active', true)->exists(), false, false))
+                ->with('mcpReports', rescue(fn () => \App\Support\FeatureFlags::on('mcp_server'), false, false));
         });
 
         \App\Models\Agent::observe(\App\Observers\AgentObserver::class);
@@ -61,6 +65,7 @@ class AppServiceProvider extends ServiceProvider
         $this->defineFileSendRateLimit();
         $this->defineMfaRateLimit();
         $this->defineRealtimeAndSendLimits();
+        $this->defineMcpRateLimit();
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
@@ -235,6 +240,16 @@ class AppServiceProvider extends ServiceProvider
                     ? back()->with('error', $text)
                     : response()->json(['ok' => false, 'code' => 'LOCAL_RATE_LIMIT', 'error' => $text], 429, $headers));
         });
+    }
+
+    /**
+     * خادم MCP للقراءة (E40.9، throttle:mcp): 30 طلباً في الدقيقة لكل مستخدم بعد المصادقة، على مخزن الحدود (لا SQLite).
+     */
+    private function defineMcpRateLimit(): void
+    {
+        \Illuminate\Support\Facades\RateLimiter::for('mcp', fn (\Illuminate\Http\Request $request) => \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('integrations.mcp.per_minute', 30))
+            ->by('mcp:'.($request->user()?->id ?? $request->ip()))
+            ->response(fn () => response()->json(['jsonrpc' => '2.0', 'id' => null, 'error' => ['code' => -32000, 'message' => 'Too many requests']], 429)));
     }
 
     /**

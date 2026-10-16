@@ -81,6 +81,9 @@ final class FeatureFlags
         // E34: رسائل الموظف الصوتية، والتفريغ للزملاء علم مستقل يُطفأ وحده بقرار المالك
         'staff_voice_notes' => ['label' => 'رسائل الموظف الصوتية من الصندوق (تسجيل حتى دقيقتين، وتصل العميل رسالة صوتية بزر تشغيل)', 'capability' => 'C018,C021', 'available' => true],
         'staff_voice_transcript' => ['label' => 'تفريغ رسائل الموظف الصوتية نصاً للزملاء عبر Gemini (لا يصل العميل)', 'capability' => 'C018', 'available' => true],
+        // E40: الصندوق الصادر للتكاملات وخادم MCP للقراءة. admin_only: يفتحان باباً للخارج، فلا يبدّلهما إلا المدير
+        'integration_outbox' => ['label' => 'إرسال أحداث مختارة (طلب تسعير، فاتورة) لأداة أتمتة بتوقيع، بلا نصوص ولا هواتف ولا تكاليف', 'capability' => 'C098', 'available' => true, 'admin_only' => true],
+        'mcp_server' => ['label' => 'خادم MCP للقراءة: تقارير المالك لمساعد ذكاء اصطناعي برمز قصير العمر خلف Cloudflare Access', 'capability' => 'C102', 'available' => true, 'admin_only' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

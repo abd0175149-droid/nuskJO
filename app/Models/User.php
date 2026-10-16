@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasApiTokens;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,8 @@ use Laragear\WebAuthn\Contracts\WebAuthnAuthenticatable;
 class User extends Authenticatable implements WebAuthnAuthenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, WebAuthnAuthentication;
+    // HasApiTokens (E40): رموز خادم MCP للقراءة، بلا مساس بـ can() وGate::before
+    use HasApiTokens, HasFactory, Notifiable, WebAuthnAuthentication;
 
     // role_id و is_active ليسا هنا عمداً: يُضبطان بـ forceFill بعد فحص الصلاحية
     // (RoleAssignmentGuard و AdminInvariant)، فلا يغيّرهما أي ملء جماعي من طلب.

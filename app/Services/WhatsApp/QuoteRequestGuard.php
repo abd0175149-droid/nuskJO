@@ -4,6 +4,7 @@ namespace App\Services\WhatsApp;
 
 use App\Models\QuoteRequest;
 use App\Models\WaConversation;
+use App\Services\Integrations\IntegrationOutbox;
 use App\Support\FeatureFlags;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -107,7 +108,13 @@ final class QuoteRequestGuard
     {
         for ($attempt = 1; ; $attempt++) {
             try {
-                return DB::transaction(fn () => QuoteRequest::create(['request_number' => QuoteRequest::nextNumber()] + $attrs));
+                return DB::transaction(function () use ($attrs) {
+                    $qr = QuoteRequest::create(['request_number' => QuoteRequest::nextNumber()] + $attrs);
+                    // E40: الصندوق الصادر في المعاملة نفسها؛ فشله لا يُفشل طلب العميل (نقطة حفظ داخلية)
+                    IntegrationOutbox::quoteCreated($qr);
+
+                    return $qr;
+                });
             } catch (UniqueConstraintViolationException $e) {
                 $onNumber = str_contains($e->getMessage(), 'request_number');
                 if (!$onNumber || $attempt >= self::NUMBER_RETRIES) {

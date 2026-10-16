@@ -185,6 +185,19 @@ enum AuditAction: string
     case ClientDataExport = 'client.data_export';
     case ConfigExport = 'config.export';
 
+    // ===== التكاملات الصادرة وخادم MCP (E40): لا سر ولا رمز ولا نتيجة أداة في changes أبداً =====
+    case IntegrationEndpointCreate = 'integ.endpoint_create';
+    case IntegrationEndpointUpdate = 'integ.endpoint_update';
+    case IntegrationEndpointDelete = 'integ.endpoint_delete';
+    case IntegrationEndpointRotate = 'integ.endpoint_rotate';
+    case IntegrationEndpointToggle = 'integ.endpoint_toggle';
+    case IntegrationEndpointAutoPaused = 'integ.endpoint_auto_paused';
+    case IntegrationDeliveryRedrive = 'integ.delivery_redrive';
+    case McpTokenCreate = 'mcp.token_create';
+    case McpTokenRevoke = 'mcp.token_revoke';
+    case McpToolCall = 'mcp.tool_call';
+    case McpAuthFailed = 'mcp.auth_failed';
+
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
     public const INTENTIONALLY_UNEMITTED = [];
 
@@ -212,6 +225,8 @@ enum AuditAction: string
             self::WaAdminMfaBlocked => AuditSeverity::Warn,
             self::WaBlock, self::WaUnblock, self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
             self::WaQrDelete => AuditSeverity::Warn,
+            self::IntegrationEndpointCreate, self::IntegrationEndpointDelete, self::IntegrationEndpointRotate, self::IntegrationEndpointToggle,
+            self::IntegrationEndpointAutoPaused, self::McpTokenCreate, self::McpTokenRevoke => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -245,6 +260,11 @@ enum AuditAction: string
             self::WaOptoutMeta, self::WaOptinMeta, self::WaHealthChange, self::WaAccountEventCritical => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
             self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay, self::WaSearchIndexRepair, self::WaMediaRemoteDelete => 'system',
+            self::IntegrationEndpointCreate, self::IntegrationEndpointUpdate, self::IntegrationEndpointDelete, self::IntegrationEndpointRotate,
+            self::IntegrationEndpointToggle, self::IntegrationDeliveryRedrive => 'config',
+            self::IntegrationEndpointAutoPaused => 'system',
+            self::McpTokenCreate, self::McpTokenRevoke, self::McpToolCall => 'access',
+            self::McpAuthFailed => 'noise',
             default => 'whatsapp',
         };
     }
@@ -404,6 +424,17 @@ enum AuditAction: string
             self::SystemReset => 'مسح بيانات النظام',
             self::AuditPruned => 'تقليم سجل التدقيق',
             self::AppKeyReencrypt => 'إعادة تشفير الأسرار',
+            self::IntegrationEndpointCreate => 'إضافة وجهة تكامل',
+            self::IntegrationEndpointUpdate => 'تعديل وجهة تكامل',
+            self::IntegrationEndpointDelete => 'حذف وجهة تكامل',
+            self::IntegrationEndpointRotate => 'تدوير سر وجهة تكامل',
+            self::IntegrationEndpointToggle => 'تشغيل وجهة تكامل أو إيقافها',
+            self::IntegrationEndpointAutoPaused => 'إيقاف آلي لوجهة تكامل',
+            self::IntegrationDeliveryRedrive => 'إعادة تسليم تكامل',
+            self::McpTokenCreate => 'إنشاء رمز MCP',
+            self::McpTokenRevoke => 'إبطال رمز MCP',
+            self::McpToolCall => 'قراءة تقرير عبر MCP',
+            self::McpAuthFailed => 'رفض مصادقة MCP',
         };
     }
 
@@ -420,7 +451,9 @@ enum AuditAction: string
             // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
             self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked,
             // E22: انتقال صحة القناة (بديل صف الإيقاف التلقائي) وحدث الحساب الحرج: «من حجب الإرسال؟» له جواب دائماً
-            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock], true);
+            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock,
+            // E40: كل قراءة عبر MCP (بيانات تخرج لعميل ذكاء)، وإصدار رموزه وإبطالها، والإيقاف الآلي لوجهة
+            self::McpToolCall, self::McpTokenCreate, self::McpTokenRevoke, self::IntegrationEndpointAutoPaused], true);
     }
 
     public function isNoise(): bool

@@ -28,6 +28,7 @@ class SessionRevoker
         }
         if ($devices) {
             $user->fcmTokens()->delete();
+            self::revokeApiTokens($user->id);
         }
     }
 
@@ -38,5 +39,14 @@ class SessionRevoker
             DB::table('sessions')->where('user_id', $userId)->delete();
         }
         FcmToken::where('user_id', $userId)->delete();
+        self::revokeApiTokens($userId);
+    }
+
+    /** رموز خادم MCP (E40): التعطيل وإعادة التعيين والحذف تبطلها بحذفها */
+    private static function revokeApiTokens(int $userId): void
+    {
+        if (Schema::hasTable('personal_access_tokens')) {
+            DB::table('personal_access_tokens')->where('tokenable_type', User::class)->where('tokenable_id', $userId)->delete();
+        }
     }
 }

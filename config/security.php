@@ -23,6 +23,8 @@ return [
             'accounting.manage', 'accounting.close',
             'invoices.approve', 'receipts.approve', 'disbursements.approve', 'payroll.approve', 'advances.approve',
             'offers.view_cost', 'audit.export',
+            // E40: وجهات التكامل الصادر ورموز خادم MCP
+            'integrations.manage', 'mcp.use',
         ],
 
         // الاسم الظاهر في تطبيق المصادقة
@@ -64,6 +66,9 @@ return [
             'accounting.trial-balance.relocate-line', 'accounting.journal-entries.destroy',
             // التصدير: سجل التدقيق، ومحادثة كاملة ببيانات العميل (E30، يُنزَّل بـ axios فيأتي 423 داخل Blob)
             'audit-logs.export', 'GET api/whatsapp/conversations/{conversation}/export',
+            // التكاملات الصادرة ورموز MCP (E40): وجهة البيانات وسرها، والرمز الذي يقرأ التقارير من خارج النظام
+            'integrations.endpoints.store', 'integrations.endpoints.update', 'integrations.endpoints.destroy', 'integrations.endpoints.rotate',
+            'integrations.mcp-tokens.store',
         ],
     ],
 

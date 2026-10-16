@@ -57,6 +57,10 @@ class RolePermissionSeeder extends Seeder
             // المحاسبة وإدارة الأدوار
             'accounting' => ['view', 'manage', 'close'],
             'roles' => ['manage'],
+
+            // التكاملات الصادرة ورموز MCP (E40): للمدير وحده (على الإنتاج بالهجرة 2026_10_14_000040)
+            'integrations' => ['manage'],
+            'mcp' => ['use'],
         ];
 
         $moduleNames = [
@@ -68,6 +72,7 @@ class RolePermissionSeeder extends Seeder
             'leaves' => 'الإجازات', 'advances' => 'السلف', 'payroll' => 'الرواتب',
             'hr_reports' => 'تقارير HR', 'backups' => 'النسخ الاحتياطي', 'audit' => 'سجل التدقيق',
             'accounting' => 'المحاسبة', 'roles' => 'الأدوار والصلاحيات',
+            'integrations' => 'التكاملات الصادرة', 'mcp' => 'خادم MCP للقراءة',
         ];
 
         $actionNames = [
@@ -81,6 +86,7 @@ class RolePermissionSeeder extends Seeder
             'manage' => 'إدارة', 'close' => 'إقفال الفترات والسنة',
             'admin_chats' => 'محادثات أرقام الإدارة', 'export' => 'تصدير', 'kill_switch' => 'إيقاف الإرسال الطارئ', 'link_client' => 'ربط المحادثة بعميل', 'erase' => 'طلبات حذف البيانات', 'media' => 'عرض وتنزيل مرفقات العملاء', 'quick_replies' => 'إدارة الردود الجاهزة', 'auto_rules' => 'إدارة الردود الحتمية',
             'block' => 'حظر',
+            'use' => 'رموز',
         ];
 
         $allPermissions = [];
