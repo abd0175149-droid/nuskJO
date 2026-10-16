@@ -28,13 +28,14 @@
 
 ## المستمعون
 
-كلها في `app/Listeners/WhatsApp`، متزامنة (لا `ShouldQueue`، فالعامل الواحد يخدم ردود البوت)، وتعمل والعلم `wa_event_bus` مفعّل وحده.
+كلها في `app/Listeners/WhatsApp`، متزامنة (لا `ShouldQueue`، فالعامل الواحد يخدم ردود البوت)، وتعمل والعلم `wa_event_bus` مفعّل وحده، إلا `TouchInboxRealtime` فعلمه `inbox_realtime` (E28).
 
 | المستمع | يستمع لـ | يفعل |
 |---|---|---|
 | `NotifyHandoffRecipients` | `ConversationHandedOff` | إشعار المدراء والموكَّل كما كان في escalate (`HandoffNotice`). تحويلان للمحادثة والطلب نفسيهما خلال دقيقتين إشعار واحد. نص دفع الجهاز عام |
 | `AuditWhatsAppEvents` | `ConversationHandedOff` و`ChannelHealthChanged` | `WaHandoff` بالسبب (بفاعل البوت)، و`WaHealthChange` (بفاعل المستخدم لليدوي، وإلا ميتا) |
 | `NotifyDeliveryFailure` | `WaMessageFailed` | «لم تصل رسالتك» للنطاق recipient أو message وحده: رسالة الموظف عبر الويبهوك، ورسالة النظام المرفوضة فوراً. المستلم المرسل، ثم الموكَّل، ثم المدراء. مرة لكل رسالة، ومرة في 10 دقائق للمحادثة والرمز |
+| `TouchInboxRealtime` (E28) | `WaMessageStored` و`WaMessageSent` و`WaMessageFailed` و`WaMessageStatusChanged` و`ConversationHandedOff` | البث اللحظي للصندوق عبر `InboxBroadcaster`: الثلاثة الأولى «message»، والحالة «status»، والتحويل «meta». حدث `WaConversationChanged` بحمولة `{c, k}` على قنوات `user.{id}` لمن يرى المحادثة لحظتها، بعد الرد أو بعد الاعتماد. `ChannelHealthChanged` لا يُبث |
 
 **موضع قرار واحد لكل إشعار:** والعلم مطفأ يبقى الإشعار المباشر (`escalate` و`StatusApplier::notifySenderDirect`)، ومفعّلاً يتوقف المباشر ويعمل المستمع. فلا يصل إشعاران أبداً.
 
