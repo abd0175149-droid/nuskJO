@@ -57,6 +57,13 @@
       </ul>
       <p v-if="meta.possible_solution" class="text-xs text-gray-600 dark:text-gray-400 break-words">الحل المقترح من ميتا: <bdi dir="ltr">{{ meta.possible_solution }}</bdi></p>
       <p v-if="meta.waba_match === false" class="text-xs font-bold text-amber-700 dark:text-amber-400">⚠️ معرّف حساب الأعمال لا يطابق فحص ميتا — راجع WA_WABA_ID.</p>
+      <!-- انفصال التعايش (E39، PARTNER_REMOVED): تنبيه بلا قفل حتى يُعاد الربط من تطبيق الأعمال على الهاتف -->
+      <p v-if="meta.coexistence?.state === 'removed'" data-test="coexistence-removed"
+         class="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs font-bold text-amber-800 dark:text-amber-300 break-words">
+        📱 انفصل ربط التعايش<template v-if="COEX_REASONS[meta.coexistence.reason]"> ({{ COEX_REASONS[meta.coexistence.reason] }})</template>
+        <template v-if="meta.coexistence.at"> · <bdi dir="ltr">{{ amman(meta.coexistence.at) }}</bdi></template>
+        — افتح تطبيق واتساب أعمال على الهاتف وأعد الربط. الإرسال من النظام لم يُقفل.
+      </p>
       <p v-if="health.breaker_lock" class="text-xs text-gray-500 dark:text-gray-400">قاطع النزاهة يحجب الإرسال (integrity_breaker_lock).</p>
 
       <AccountEventsTable :events="health.events || []"/>
@@ -103,6 +110,8 @@ const emit = defineEmits(['changed']);
 
 const state = computed(() => healthState(props.health.state));
 const meta = computed(() => props.health.meta || {});
+// سبب انفصال التعايش من ميتا (E39)
+const COEX_REASONS = { PRIMARY_INACTIVITY: 'خمول الهاتف الأساسي نحو 14 يوماً', COMPANION_INACTIVITY: 'خمول الجهاز المرافق نحو 30 يوماً' };
 // السبب «رمز — ملاحظة» (ChannelHealth::transition): الملاحظة العربية أولاً، والرمز الداخلي صغيراً باتجاه LTR
 const reasonParts = computed(() => {
   const [code, ...rest] = String(props.health.reason || '').split(' — ');

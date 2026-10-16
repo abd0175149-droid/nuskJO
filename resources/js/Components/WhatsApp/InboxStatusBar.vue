@@ -16,6 +16,9 @@
         <template v-else-if="!status.bot_ready">المحادثات تعمل والموظفون يردّون؛ فعّل البوت من الإعدادات عند الجهوزية.</template>
         <template v-else>الموظف يمكنه الردّ في أي وقت — وردّه يوقف البوت مؤقتاً تلقائياً.</template>
       </span>
+      <!-- التعايش (E39): ما يكتبه الموظف من تطبيق الأعمال على الهاتف يظهر هنا ويوقف البوت -->
+      <span v-if="status.coexistence" data-test="coexistence-badge" title="ما يُكتب من تطبيق الأعمال على هاتف الوكالة يظهر هنا ويوقف البوت"
+            class="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">📱 التعايش مفعّل</span>
       <a href="/whatsapp/settings" class="text-gold-700 dark:text-gold-400 font-bold text-xs hover:underline ms-auto">⚙️ الإعدادات</a>
     </div>
 

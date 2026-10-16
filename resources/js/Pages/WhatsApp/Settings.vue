@@ -484,6 +484,10 @@
 
             <!-- روابط ورموز QR عامة (E38): خلف العلم wa_qr_links -->
             <QrGeneralPanel v-if="qrLinksOn"/>
+
+            <!-- المكالمات والتعايش (E39): خلف أعلامهما، خارج النموذج بمساراتهما -->
+            <CallingCard v-if="props.calling" :calling="props.calling" @changed="refreshVersion"/>
+            <CoexistenceCard v-if="props.coexistence" :coexistence="props.coexistence" @changed="refreshVersion"/>
         </div>
 
         <OneTimeSecretModal :token="oneTimeToken" @close="oneTimeToken = null"/>
@@ -504,6 +508,8 @@ import SecurityScanLine from '@/Components/WhatsApp/SecurityScanLine.vue';
 import ChannelHealthCard from '@/Components/WhatsApp/ChannelHealthCard.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import BusinessProfileCard from '@/Components/WhatsApp/BusinessProfileCard.vue';
+import CallingCard from '@/Components/WhatsApp/CallingCard.vue';
+import CoexistenceCard from '@/Components/WhatsApp/CoexistenceCard.vue';
 import QrGeneralPanel from '@/Components/WhatsApp/QrGeneralPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
@@ -548,6 +554,9 @@ const props = defineProps({
     toolMeta: { type: Array, default: () => [] },
     // E29: تأكيد الطبقة المدفوعة لمزوّد الذكاء
     llmTerms: { type: Object, default: () => ({}) },
+    // E39: بطاقتا المكالمات والتعايش (null والأعلام مطفأة)
+    calling: { type: Object, default: null },
+    coexistence: { type: Object, default: null },
 });
 
 // ===== الحالة المحلية (تتحدّث من ردود الخادم دون إعادة تحميل الصفحة) =====

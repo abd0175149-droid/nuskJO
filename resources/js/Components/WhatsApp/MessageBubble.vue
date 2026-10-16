@@ -1,11 +1,16 @@
 <template>
   <div class="flex" :data-msg-id="m.id" :class="m.is_system ? 'justify-center' : (m.direction === 'in' ? 'justify-start' : 'justify-end')">
-    <!-- تحديث هوية من واتساب (E11): ليس رسالة من العميل -->
-    <div v-if="m.is_system" dir="auto" class="max-w-[85%] rounded-full px-3 py-1 text-[11px] text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-800 [unicode-bidi:plaintext]" :class="flash ? FLASH : ''">
+    <!-- تحديث هوية من واتساب (E11)، وحدث مكالمة (E39: الفائتة بالأحمر الفاتح): ليس رسالة من العميل -->
+    <div v-if="m.is_system" dir="auto" :data-test="m.type === 'call' ? 'call-pill' : null"
+         class="max-w-[85%] rounded-full px-3 py-1 text-[11px] [unicode-bidi:plaintext]"
+         :class="[m.type === 'call' && m.call?.missed ? 'text-red-700 dark:text-red-200 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 font-bold'
+           : 'text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-800', flash ? FLASH : '']">
       {{ m.body }} <span dir="ltr" class="opacity-60">· {{ m.at }}</span>
     </div>
     <div v-else class="max-w-[85%] sm:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-shadow" :class="[tone, flash ? FLASH : '']">
-      <p v-if="m.sender" dir="auto" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
+      <!-- staff_phone (E39): «📱 من هاتف الوكالة · الحامل» يأتي كاملاً من الخادم -->
+      <p v-if="m.sender" dir="auto" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">{{ m.source === 'staff_phone' ? '' : '👤 ' }}{{ m.sender }}</p>
+      <p v-if="m.type === 'edit'" data-test="phone-edit" class="text-[10px] font-bold opacity-80 mb-0.5">✏️ عُدّلت من الهاتف — النص الجديد:</p>
       <!-- الاقتباس (E11، ويكمله E33) -->
       <slot name="quote">
         <p v-if="m.reply_to" dir="auto" class="mb-1 px-2 py-1 rounded-lg border-s-2 border-gray-400/60 bg-black/5 dark:bg-white/5 text-[11px] opacity-80 break-words line-clamp-2 [unicode-bidi:plaintext]">↩️ {{ m.reply_to }}</p>
@@ -20,6 +25,9 @@
         <!-- إشعار القراءة (E35): ما يراه العميل، العلامتان الزرقاوان على هذه الرسالة -->
         <span v-if="seen" data-test="read-receipt" title="أُبلغ العميل بالقراءة" aria-label="أُبلغ العميل بالقراءة">· 👁</span>
         <span v-if="m.source !== 'customer' && !m.sender">· {{ SOURCES[m.source] || m.source }}</span>
+        <!-- التعديل والحذف من الهاتف (E39): الأصل لا يُمحى ولا يتغير نصه -->
+        <span v-if="m.phone?.edited" data-test="phone-edited">· ✏️ عُدّلت من الهاتف</span>
+        <span v-if="m.phone?.revoked" data-test="phone-revoked" class="px-1.5 rounded bg-white/80 text-red-700 dark:bg-gray-900 dark:text-red-300 font-bold">🗑️ حُذفت من الهاتف</span>
         <!-- حالة التسليم: ⏳ و⚠️ و❌ من E19، وعلامات ✓ و✓✓ من E21 -->
         <slot name="status">
           <span v-if="m.status === 'failed'" class="font-bold" :title="m.error || ''">· ❌ فشل</span>
@@ -68,7 +76,8 @@ defineEmits(['resend']);
 const FLASH = 'ring-2 ring-gold-400 ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-950';
 
 // rule (E37): رد قاعدة حتمية بنص ثابت معتمد
-const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة', rule: '⚡ قاعدة' };
+// staff_phone (E39): ما كتبه الموظف من تطبيق الأعمال على هاتف الوكالة (صدى التعايش)
+const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة', rule: '⚡ قاعدة', staff_phone: '📱 هاتف الوكالة' };
 
 // فئات MetaErrorCatalog (E18)
 const CATEGORY_LABELS = {

@@ -29,6 +29,8 @@
           </button>
           <button v-if="thread.client_id" type="button" @click="$emit('unlink')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">فك الربط</button>
         </template>
+        <!-- المعاودة من هاتف الوكالة العادي (E39): الرقم للنسخ فقط، لا مكالمة من النظام -->
+        <CallFromAgencyPhone v-if="calls && canReply && thread.phone" :phone="thread.phone"/>
         <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ attentionReasons[thread.attention_reason] || thread.attention_reason }}</span>
         <!-- الحظر الرسمي (E31): بجانب «تجاوز الحد» لحظة المشكلة، ومعطّل خارج نافذة الـ24 ساعة (شرط ميتا) -->
         <button v-if="blockable" type="button" data-test="block-btn" @click="$emit('block')" :disabled="!thread.window_open"
@@ -97,6 +99,7 @@
 import { computed, ref, watch } from 'vue';
 import { colorFor, initials } from '@/composables/whatsapp/useInitials.js';
 import { formatPhone } from '@/composables/whatsapp/usePhoneFormat.js';
+import CallFromAgencyPhone from './CallFromAgencyPhone.vue';
 import ThreadActionsMenu from './ThreadActionsMenu.vue';
 
 // مصدر الوسم: يدوي، أو آلي من البوت، أو من قاعدة حتمية (E37)
@@ -120,6 +123,8 @@ const props = defineProps({
   canExport: Boolean,
   // E31: الحظر لمن يملك whatsapp.block والعلم مفعّل، ولا يُحظر رقم إدارة ولا موظف
   canBlock: Boolean,
+  // E39: زر «اتصل من هاتف الوكالة» مع العلم calls_webhook
+  calls: Boolean,
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'toggleFilters', 'export', 'block']);
 const blockable = computed(() => props.canBlock && !props.thread.blocked && !props.thread.is_admin && !props.thread.is_staff);

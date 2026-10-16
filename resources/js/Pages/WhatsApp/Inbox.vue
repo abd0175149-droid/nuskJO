@@ -14,7 +14,7 @@
         <ConversationList :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-1"
                           :visible="s.view === 'list'" :items="s.list" :active-id="s.activeId" :has-more="s.listHasMore" :loading-more="s.loadingMore"
                           :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
-                          :can-block="canBlock" @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
+                          :can-block="canBlock" :missed-calls="!!flags.calls" @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
                           @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"
                           :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"
                           :message-search="messageSearch" @jump="(h) => inbox.openFromSearch(h.conversation_id, h.message_id)"/>

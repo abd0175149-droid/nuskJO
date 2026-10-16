@@ -134,7 +134,10 @@ final class InboundMessage
             'order' => ['🛒 طلب من الكتالوج: '.count((array) data_get($msg, 'order.product_items', [])).' أصناف'
                 .(filled(data_get($msg, 'order.text')) ? ' — '.data_get($msg, 'order.text') : ''), null],
             'reaction' => [filled(data_get($msg, 'reaction.emoji')) ? (string) data_get($msg, 'reaction.emoji') : '↩️ أزال التفاعل', null],
-            'unsupported' => ['⚠️ رسالة غير مدعومة'.(is_string(data_get($msg, 'unsupported.type')) ? ' ('.mb_substr(data_get($msg, 'unsupported.type'), 0, 30).')' : ''), null],
+            // 131060 في التعايش (E39، مع أعلامه): أول رسالة من عميل جديد لا يصل نصها إلا في تطبيق الأعمال
+            'unsupported' => (int) data_get($msg, 'errors.0.code') === 131060 && CoexistenceSync::active()
+                ? ['⚠️ رسالة لم يصل نصها — افتح المحادثة في تطبيق الأعمال على هاتف الوكالة', null]
+                : ['⚠️ رسالة غير مدعومة'.(is_string(data_get($msg, 'unsupported.type')) ? ' ('.mb_substr(data_get($msg, 'unsupported.type'), 0, 30).')' : ''), null],
             'system' => [self::system($msg), null],
             default => self::unknown($msg, $type),
         };

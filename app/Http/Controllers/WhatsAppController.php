@@ -43,6 +43,8 @@ class WhatsAppController extends Controller
                     || data_get($s->wa_credentials_status, 'state') === 'critical',
                 // ميتا ترفض الإرسال على مستوى القناة (E18): الوصف والإجراء للمدير، وسطر عام لغيره
                 'meta_error' => $this->channelMetaError($s),
+                // التعايش مفعّل (E39، coexistence_echoes): رسائل هاتف الوكالة تظهر في الصندوق
+                'coexistence' => \App\Services\WhatsApp\EchoHandler::fullOn(),
             // صحة القناة (E22): الحالة والتسمية والانتهاء وهل تمنع، بلا سبب ولا رمز (التفاصيل في البطاقة لصاحب whatsapp.settings)
             ] + \App\Services\WhatsApp\ChannelHealth::publicStatus($s),
             // وضع التحويل (E12): الحالة والأوقات فقط، بلا سبب تقني
@@ -73,6 +75,8 @@ class WhatsAppController extends Controller
                 'wa_labels' => \App\Services\WhatsApp\LabelService::enabled(),
                 'thread_pins' => \App\Services\WhatsApp\ThreadPins::enabled(),
                 'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
+                // E39: فقاعة المكالمة وفلتر «مكالمات فائتة» وزر «اتصل من هاتف الوكالة»
+                'calls' => \App\Services\WhatsApp\CallEventHandler::enabled(),
             ],
             'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
             // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص
@@ -223,6 +227,8 @@ class WhatsAppController extends Controller
             ->when($filter === 'unread', fn ($q) => $q->where('unread_count', '>', 0))
             // المحظورة (E31) لا تنتظر أحداً، ولها تبويبها لمن يملك whatsapp.block
             ->when($filter === 'attention', fn ($q) => \App\Services\WhatsApp\InboxSummary::notBlocked($q->where('needs_attention', true)))
+            // مكالمات فائتة تنتظر (E39): بعد السياج، فلا يرى الموظف إلا ما في نطاقه
+            ->when($filter === 'missed_call', fn ($q) => $q->where('needs_attention', true)->where('attention_reason', 'missed_call'))
             ->when($filter === 'blocked', fn ($q) => self::canBlock() ? $q->whereNotNull('wa_conversations.blocked_at') : $q->whereRaw('1 = 0'))
             ->when($filter === 'bot', fn ($q) => $q->where('bot_enabled', true))
             ->when($filter === 'human', fn ($q) => $q->where('bot_enabled', false))
@@ -440,6 +446,19 @@ class WhatsAppController extends Controller
             ? $conversation->messages()->whereIn('wamid', $ids)->pluck('body', 'wamid')->map(fn ($b) => mb_substr(trim((string) $b), 0, 80))->all()
             : [];
 
+        // المكالمات والتعايش (E39): حالة المكالمة من wa_calls بمعرّف رسالة الخيط، وعلامتا التعديل والحذف من الهاتف من الحمولة
+        $calls = \App\Services\WhatsApp\CallEventHandler::available() && ($callIds = $rows->where('msg_type', 'call')->pluck('id')->all())
+            ? \App\Models\WaCall::whereIn('thread_message_id', $callIds)->pluck('missed', 'thread_message_id')->all() : [];
+        $phoneFlags = $rows->contains('source', 'staff_phone')
+            ? $conversation->messages()->whereIn('id', $rows->where('source', 'staff_phone')->pluck('id'))->get(['id', 'payload'])
+                ->mapWithKeys(fn ($m) => [$m->id => array_filter(['edited' => (bool) data_get($m->payload, '_edited_at'), 'revoked' => (bool) data_get($m->payload, '_revoked_at')])])->all()
+            : [];
+        $sender = fn ($m) => match ($m->source) {
+            'staff' => $m->staff?->name ?: 'موظف',
+            'staff_phone' => '📱 من هاتف الوكالة'.($m->staff?->name ? ' · '.$m->staff->name : ''),
+            default => null,
+        };
+
         // staff_id كان يُحفظ ولا يُرسل للواجهة، فلم يكن يظهر من أرسل الرسالة
         $msgs = $rows->map(fn ($m) => [
             'id' => $m->id,
@@ -449,13 +468,15 @@ class WhatsAppController extends Controller
             'body' => $m->body,
             'status' => $m->status,
             'error' => $m->error_message,
-            'sender' => $m->source === 'staff' ? ($m->staff?->name ?: 'موظف') : null,
+            'sender' => $sender($m),
             'at' => $m->created_at?->format('Y-m-d H:i'),
             'is_system' => $m->source === 'system' && $m->direction === 'in',
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []))->values();
+        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : [])
+          + ($m->msg_type === 'call' && array_key_exists($m->id, $calls) ? ['call' => ['missed' => (bool) $calls[$m->id]]] : [])
+          + (!empty($phoneFlags[$m->id]) ? ['phone' => $phoneFlags[$m->id]] : []))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 

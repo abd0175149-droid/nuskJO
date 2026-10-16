@@ -179,6 +179,16 @@ class CoexistenceAccountEventsTest extends TestCase
         $this->assertSame('16505553333', $chunk->payload['history'][0]['threads'][0]['id']);
     }
 
+    public function test_a_first_message_hidden_by_coexistence_tells_the_staff_where_to_read_it(): void
+    {
+        $payload = json_decode((string) file_get_contents($this->fixturePath('unsupported.json')), true);
+        $payload['entry'][0]['changes'][0]['value']['messages'][0]['errors'][0]['code'] = 131060;
+
+        $this->postRawWebhook((string) json_encode($payload))->assertOk();
+
+        $this->assertStringContainsString('افتح المحادثة في تطبيق الأعمال', WaMessage::sole()->body);
+    }
+
     public function test_without_any_coexistence_flag_history_keeps_the_e20_alert(): void
     {
         config(['features.env.coexistence_guard' => false]);

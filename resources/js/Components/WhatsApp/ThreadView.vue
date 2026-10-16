@@ -8,7 +8,7 @@
                     @toggle-bot="$emit('toggleBot')" @set-topic="(k, a) => $emit('setTopic', k, a)" @assign="(el) => $emit('assign', el)"
                     :can-filter="canFilter" :filters-open="filtersOpen || filtered" :can-export="canExport"
                     @toggle-filters="filtersOpen = !filtersOpen" @export="$emit('export')"
-                    :can-block="canBlock" @block="$emit('block')"/>
+                    :can-block="canBlock" @block="$emit('block')" :calls="!!flags.calls"/>
       <!-- المحادثة المحظورة (E31): من حظر ومتى ولماذا، وفك الحظر بسبب لمن يملك الصلاحية -->
       <div v-if="thread.blocked" role="status" data-test="blocked-banner"
            class="px-3 sm:px-4 py-2 border-b border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 text-xs text-red-800 dark:text-red-200 flex flex-wrap items-center gap-2 shrink-0">
