@@ -52,6 +52,14 @@ final class ReplyRun
     /** آخر مؤشر «يكتب…» أُرسل في هذا التشغيل (microtime)؛ null = لا مؤشر ظاهر يُجدَّد (E35) */
     public ?float $lastTypingAt = null;
 
+    /**
+     * رسالة تفاعلية جهّزتها أداة في هذا التشغيل (E36: قائمة أو أزرار أو نموذج) تُرسل مع النص النهائي رسالةً واحدة
+     * (InteractiveReply::deliver). استدعاء ثانٍ يحل محل الأول، فلا يبقى إلا آخرها.
+     *
+     * @var array{type: string, kind: string, set: \App\Models\WaChoiceSet}|null
+     */
+    public ?array $pendingInteractive = null;
+
     private static ?self $current = null;
 
     public function __construct(public string $token, public int $startMaxMsgId, ?float $startedAt = null)

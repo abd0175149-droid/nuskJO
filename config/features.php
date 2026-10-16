@@ -95,5 +95,9 @@ return [
         'quote_export' => env('WA_FEATURE_QUOTE_EXPORT'),
         'meta_analytics_reconcile' => env('WA_FEATURE_META_ANALYTICS_RECONCILE'),
         'ops_tick' => env('WA_FEATURE_OPS_TICK'),
+        // E36: القوائم والأزرار، وزرّا المساعد الإداري، ونموذج طلب التسعير
+        'interactive_choices' => env('WA_FEATURE_INTERACTIVE_CHOICES'),
+        'admin_confirm_buttons' => env('WA_FEATURE_ADMIN_CONFIRM_BUTTONS'),
+        'quote_flow' => env('WA_FEATURE_QUOTE_FLOW'),
     ],
 ];

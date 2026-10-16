@@ -468,6 +468,8 @@ class WhatsAppController extends Controller
         // E33: الاقتباس بمعرّفنا، والتفاعلات على أهدافها (صف التفاعل الذي هدفه في الصفحة لا يُعاد فقاعة)، والتصحيح والموقع والبطاقات
         $rich = \App\Services\WhatsApp\RichThread::prepare($conversation, $rows, $user);
         $rows = $rows->filter(fn ($m) => $rich->keep($m))->values();
+        // E36: ما عُرض من خيارات وما اختاره العميل ورد نموذج التسعير، بلا معرّفات
+        $interactive = \App\Services\WhatsApp\InteractiveThread::prepare($conversation, $rows, $user);
 
         // المكالمات والتعايش (E39): حالة المكالمة من wa_calls بمعرّف رسالة الخيط، وعلامتا التعديل والحذف من الهاتف من الحمولة
         $calls = \App\Services\WhatsApp\CallEventHandler::available() && ($callIds = $rows->where('msg_type', 'call')->pluck('id')->all())
@@ -488,7 +490,7 @@ class WhatsAppController extends Controller
             'direction' => $m->direction,
             'source' => $m->source,
             'type' => $m->msg_type,
-            'body' => $rich->body($m),
+            'body' => $interactive->body($m, $rich->body($m)),
             'status' => $m->status,
             'error' => $m->error_message,
             'sender' => $sender($m),
@@ -497,7 +499,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []) + $voice($m) + $rich->fields($m)
+        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []) + $voice($m) + $rich->fields($m) + $interactive->fields($m)
           + ($m->msg_type === 'call' && array_key_exists($m->id, $calls) ? ['call' => ['missed' => (bool) $calls[$m->id]]] : [])
           + (!empty($phoneFlags[$m->id]) ? ['phone' => $phoneFlags[$m->id]] : []))->values();
 

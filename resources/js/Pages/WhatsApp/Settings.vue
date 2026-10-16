@@ -277,6 +277,9 @@
                     <!-- أدوات التشخيص (E23): اختبار الاتصال والإرسال التجريبي، كلٌّ خلف علمه -->
                     <ChannelTestPanel v-if="props.diagnostics?.channel_test"/>
                     <TestSendPanel v-if="props.diagnostics?.test_send" :recipients="props.diagnostics.recipients || []" :per-hour="props.diagnostics.per_hour || 10"/>
+                    <!-- نموذج طلب التسعير (E36): معرّف الـ Flow المنشور ووضعه -->
+                    <QuoteFlowField class="mt-4" v-model:flow-id="form.wa_quote_flow_id" v-model:mode="form.wa_quote_flow_mode" :flag-on="quoteFlowFlagOn"
+                                    :dirty="isDirty('wa_quote_flow_id') || isDirty('wa_quote_flow_mode')" :errors="errors"/>
                 </div>
 
                 <!-- ================= 3. الذكاء ================= -->
@@ -547,6 +550,7 @@ import LlmTermsCard from '@/Components/WhatsApp/LlmTermsCard.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
 import IntegrationsHealthLine from '@/Components/WhatsApp/IntegrationsHealthLine.vue';
 import ReadReceiptsField from '@/Components/WhatsApp/ReadReceiptsField.vue';
+import QuoteFlowField from '@/Components/WhatsApp/QuoteFlowField.vue';
 import SecretCard from '@/Components/WhatsApp/SecretCard.vue';
 import SettingField from '@/Components/WhatsApp/SettingField.vue';
 import SourceBadge from '@/Components/WhatsApp/SourceBadge.vue';
@@ -624,10 +628,12 @@ const LABELS = {
     breaker_mode: 'وضع القاطع', breaker_threshold: 'إخفاقات متتالية تفتحه', breaker_window_minutes: 'نافذة العدّ (دقائق)',
     breaker_open_minutes: 'مدة وضع التحويل (دقائق)', fallback_provider: 'المزوّد الاحتياطي', fallback_model: 'نموذج الاحتياطي',
     send_read_receipts: 'إشعار القراءة ومؤشر الكتابة',
+    wa_quote_flow_id: 'معرّف نموذج طلب التسعير', wa_quote_flow_mode: 'وضع نموذج طلب التسعير',
 };
 props.fields.forEach((f) => { LABELS[f.key] = f.label; });
 const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_waba_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff',
-    'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes', 'fallback_provider', 'fallback_model', 'send_read_receipts'];
+    'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes', 'fallback_provider', 'fallback_model', 'send_read_receipts',
+    'wa_quote_flow_id', 'wa_quote_flow_mode'];
 const SENSITIVE = ['wa_phone_number_id', 'wa_waba_id', 'provider', 'fallback_provider', 'send_read_receipts'];
 // من سجل الأدوات في الخادم (E15): ما يحوّل لموظف، وما لا يُطفأ
 const handoffTools = (props.toolMeta || []).filter((t) => t.escalates).map((t) => t.key);
@@ -662,6 +668,8 @@ const wabaMismatch = computed(() => {
 const toolDirty = (k) => form.tools[k] !== baseline.value.tools[k];
 // E35: العلم فوق الإعداد؛ مطفأ = لا يصل ميتا شيء مهما كان الوضع
 const readReceiptsFlagOn = computed(() => !!flags.value.find((f) => f.key === 'read_receipts')?.on);
+// E36: العلم فوق المعرّف؛ مطفأ = لا يُعرض النموذج للبوت
+const quoteFlowFlagOn = computed(() => !!flags.value.find((f) => f.key === 'quote_flow')?.on);
 const changes = computed(() => {
     const c = {};
     SCALARS.forEach((k) => { if (isDirty(k)) c[k] = norm(form[k]); });

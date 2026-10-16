@@ -75,7 +75,9 @@ class ToolRegistryTest extends TestCase
         $names = BotTools::names();
         // ما شُحن مطفأً (E33: الدبوس والبطاقة) لا يُعلن حتى يُفعَّل
         $this->assertSame(array_values(array_filter($names, [BotTools::class, 'defaultEnabled'])), array_column(BotTools::declarations(new WaBotSetting(['tools_config' => []]), new WaConversation), 'name'));
-        $this->assertSame(['send_office_location', 'send_contact_card'], array_values(array_filter($names, fn ($n) => !BotTools::defaultEnabled($n))));
+        // E36: القوائم والأزرار ونموذج طلب التسعير مطفأة كذلك
+        $this->assertSame(['send_office_location', 'send_contact_card', 'show_offers_menu', 'present_choices', 'send_quote_form'],
+            array_values(array_filter($names, fn ($n) => !BotTools::defaultEnabled($n))));
         $this->assertSame($names, array_keys(BotTools::labels()));
         $this->assertSame([], array_diff(HandoffGuard::escalatingTools(), $names));
         $this->assertEqualsCanonicalizing(['handoff_to_human', 'request_quote', 'confirm_booking'], HandoffGuard::escalatingTools());

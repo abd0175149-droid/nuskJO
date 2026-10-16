@@ -164,3 +164,7 @@ status_failed_368.json        [messages] § statuses (failed) بشكل status_fa
 status_read_no_delivered.json [messages] § statuses (read) يصل بلا delivered قبله (ميتا لا تضمن الترتيب ولا كل الحالات)،
                               مع pricing مجاني (free_customer_service).
                               [pricing] https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages
+nfm_reply_quote.json          [messages] § interactive (nfm_reply) لنموذج Flow: response_json نص JSON فيه flow_token (قيمة
+                              مكانية تستبدلها الاختبارات) وحقول نموذج طلب التسعير الثابت (resources/whatsapp/flows/quote_request_v1.json)
+                              بقيم مصنوعة، وbody=Sent وname=flow، مع context لرسالة النموذج. مكتوبة من المرجع لا من تجربة: تُستبدل
+                              بحمولة حقيقية من تجربة النموذج بوضع draft قبل تفعيل quote_flow (OWNER_ACTIONS E36). E36.

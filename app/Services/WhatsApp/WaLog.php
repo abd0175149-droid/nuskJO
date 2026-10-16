@@ -34,6 +34,8 @@ final class WaLog
         'seconds', 'exit', 'stderr',
         // E39: بصمة مقتطعة لمعرّف المكالمة (لا رقم المتصل ولا SDP)، ووضع التعايش، ورقم دفعة السجل السابق
         'call', 'mode', 'chunk',
+        // E36: نوع مجموعة الاختيارات ورقمها (لا عناوين ولا معرّفات الخيارات ولا flow_token)
+        'kind', 'set_id',
     ];
 
     public static function info(string $event, array $context = []): void

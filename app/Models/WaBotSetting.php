@@ -38,6 +38,8 @@ class WaBotSetting extends Model
         'echo_pause_minutes', 'coexistence_holder_user_id',
         // E24: حد تنبيه الصادر اليومي، وسقف الإرسال المبادر، وسعر رسالة الخدمة (للتقدير)
         'wa_daily_alert_threshold', 'wa_system_daily_cap', 'wa_service_rate_usd',
+        // E36: نموذج طلب التسعير (معرّف الـ Flow المنشور ووضعه draft | published)
+        'wa_quote_flow_id', 'wa_quote_flow_mode',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */

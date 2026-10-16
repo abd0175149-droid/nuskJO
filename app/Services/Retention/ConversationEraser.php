@@ -47,6 +47,8 @@ final class ConversationEraser
             'thread_pins' => Schema::hasTable('wa_thread_pins') ? DB::table('wa_thread_pins')->whereIn('conversation_id', $ids)->count() : 0,
             // E39: سجل المكالمات (أوقات ومدد بلا صوت ولا رقم)
             'calls' => Schema::hasTable('wa_calls') ? DB::table('wa_calls')->whereIn('conversation_id', $ids)->count() : 0,
+            // E36: الخيارات التفاعلية ورموز النموذج المرسلة للمحادثة (عناوين عروض بلا بيانات شخصية، لكنها مربوطة بالمحادثة)
+            'choice_sets' => Schema::hasTable('wa_choice_sets') ? DB::table('wa_choice_sets')->whereIn('conversation_id', $ids)->count() : 0,
         ];
         $media = $mode === 'forget' ? $this->recentMediaIds($ids) : [];
         $counts['media_meta'] = count($media);
@@ -88,6 +90,7 @@ final class ConversationEraser
         $done['labels'] = $this->deleteInBatches('wa_conversation_labels', fn ($q) => $q->whereIn('conversation_id', $ids));
         $done['thread_pins'] = $this->deleteInBatches('wa_thread_pins', fn ($q) => $q->whereIn('conversation_id', $ids));
         $done['calls'] = Schema::hasTable('wa_calls') ? $this->deleteInBatches('wa_calls', fn ($q) => $q->whereIn('conversation_id', $ids)) : 0;
+        $done['choice_sets'] = $this->deleteInBatches('wa_choice_sets', fn ($q) => $q->whereIn('conversation_id', $ids));
         $quoteNumbers = DB::table('quote_requests')->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote())->pluck('request_number')->filter()->all();
         $done['quotes'] = $this->deleteInBatches('quote_requests', fn ($q) => $q->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote()));
         $done['quotes_kept_invoiced'] = DB::table('quote_requests')->whereIn('conversation_id', $ids)->count();

@@ -480,6 +480,9 @@ class WhatsAppSettingsController extends Controller
             'wa_app_id' => $s->wa_app_id,
             // E35: المضبوط (الفعلي off ما دام العلم read_receipts مطفأ)
             'send_read_receipts' => \App\Services\WhatsApp\ReadReceipts::configured($s),
+            // E36: نموذج طلب التسعير (فوقه العلم quote_flow)
+            'wa_quote_flow_id' => $s->wa_quote_flow_id,
+            'wa_quote_flow_mode' => $s->wa_quote_flow_mode ?: SettingsSchema::default('wa_quote_flow_mode'),
             'provider' => $s->provider ?: SettingsSchema::default('provider'),
             'model' => $s->model,
             // null = النص الافتراضي الحي (defaultPrompt)؛ لا يُحقن في الحقل فلا يتجمّد في القاعدة عند أول حفظ

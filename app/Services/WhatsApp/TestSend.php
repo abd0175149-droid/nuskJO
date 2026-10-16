@@ -65,9 +65,9 @@ final class TestSend
             'image' => WhatsAppChannel::sendImage($conv, rtrim((string) config('app.url'), '/').'/images/wa-test-card.png',
                 "🧪 صورة تجريبية من نُسك — {$stamp}", self::SOURCE, sendKey: $sendKey),
             'buttons' => WhatsAppChannel::sendButtons($conv, "🧪 أزرار تجريبية من نُسك — {$stamp}",
-                [['id' => 'test:1', 'title' => 'زر تجريبي 1'], ['id' => 'test:2', 'title' => 'زر تجريبي 2']], self::SOURCE, $sendKey),
+                [['id' => 'test:1', 'title' => 'زر تجريبي 1'], ['id' => 'test:2', 'title' => 'زر تجريبي 2']], self::SOURCE, null, ['send_key' => $sendKey]),
             'list' => WhatsAppChannel::sendList($conv, "🧪 قائمة تجريبية من نُسك — {$stamp}", 'الخيارات',
-                [['id' => 'test:a', 'title' => 'خيار تجريبي أ'], ['id' => 'test:b', 'title' => 'خيار تجريبي ب']], self::SOURCE, $sendKey),
+                [['id' => 'test:a', 'title' => 'خيار تجريبي أ'], ['id' => 'test:b', 'title' => 'خيار تجريبي ب']], self::SOURCE, null, ['send_key' => $sendKey]),
             default => WhatsAppChannel::sendText($conv, "🧪 رسالة تجريبية من نُسك — {$stamp}", self::SOURCE, sendKey: $sendKey),
         };
         $row = WaMessage::where('conversation_id', $conv->id)->where('source', self::SOURCE)->where('id', '>', $before)->latest('id')->first();

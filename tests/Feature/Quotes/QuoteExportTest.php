@@ -44,9 +44,10 @@ class QuoteExportTest extends TestCase
         return $q;
     }
 
+    /** التواريخ بتوقيت عمّان كما يختارها المستخدم (الخادم يفسّرها بعمّان؛ تاريخ UTC يسبقها بيوم بين 21:00 و24:00) */
     private function export(array $query = [], ?User $as = null)
     {
-        return $this->actingAs($as ?? $this->exporter)->get('/quote-requests/export?'.http_build_query($query + ['from' => now()->subDays(30)->toDateString(), 'to' => now()->toDateString()]));
+        return $this->actingAs($as ?? $this->exporter)->get('/quote-requests/export?'.http_build_query($query + ['from' => now('Asia/Amman')->subDays(30)->toDateString(), 'to' => now('Asia/Amman')->toDateString()]));
     }
 
     public function test_without_the_permission_it_is_forbidden_and_without_the_flag_missing(): void

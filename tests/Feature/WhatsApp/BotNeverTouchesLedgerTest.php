@@ -140,6 +140,10 @@ class BotNeverTouchesLedgerTest extends TestCase
             'save_note' => ['note' => 'يفضّل غرفة ثنائية'],
             'send_office_location' => [],
             'send_contact_card' => ['card_key' => 'card_'.$card->id],
+            // E36: تجهيز بلا إرسال (لا تشغيل رد هنا)، ولا تمس الدفاتر
+            'show_offers_menu' => [],
+            'present_choices' => ['kind' => 'booking_actions', 'offer_id' => $this->offer->id],
+            'send_quote_form' => [],
             'handoff_to_human' => ['reason' => 'طلب موظفاً'],
         ];
         $this->assertEqualsCanonicalizing(BotTools::names(), array_keys($args), 'أداة جديدة في BotTools بلا حالة هنا');

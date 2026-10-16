@@ -13,7 +13,8 @@ use Tests\TestCase;
 class NoGenericSendToolsTest extends TestCase
 {
     // E33: دبوس المكتب وبطاقة الاتصال من الجدولين المعتمدين وحدهما (مطفأتان افتراضياً، وبلا وسائط حرة)
-    private const ALLOWED = ['send_offer_card', 'send_office_location', 'send_contact_card'];
+    // E36: نموذج طلب التسعير الثابت (مطفأ، بلا وسائط، ويُرسل مع نص الرد رسالةً واحدة)
+    private const ALLOWED = ['send_offer_card', 'send_office_location', 'send_contact_card', 'send_quote_form'];
 
     public function test_the_models_have_no_generic_send_tools(): void
     {

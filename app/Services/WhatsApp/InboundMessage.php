@@ -39,6 +39,15 @@ final class InboundMessage
         public readonly int $timestamp,
         /** E33: إيموجي التفاعل ('' عند الإزالة، فميتا تحذف الحقل) */
         public readonly ?string $reactionEmoji = null,
+        /**
+         * E36: ردّ نموذج (nfm_reply): الاسم، وresponse_json مفكوكاً إن لم يتجاوز الحد، وflow_token، وحجمه بالبايت.
+         * يحوّله FlowResponseHandler إلى طلب تسعير؛ لا يُكتب الرمز في body ولا في السجل.
+         *
+         * @var array{name: ?string, response: ?array, token: ?string, bytes: int}|null
+         */
+        public readonly ?array $flowReply = null,
+        /** E36 (C043): رسالة تسأل عن منتج من كتالوج ميتا (context.referred_product). لا كتالوج عندنا: تصل موظفاً */
+        public readonly bool $referredProduct = false,
     ) {}
 
     /** E33: تعديل وحذف أرقام Coexistence، إن وصلا صريحين، يُعاملان كغير مدعوم ولا يمسّان الرسالة الأصلية */
@@ -60,6 +69,11 @@ final class InboundMessage
         [$body, $buttonId] = $type === 'unsupported' ? [self::unsupportedBody($msg, $unsupportedType), null] : self::body($msg, $type);
         $mediaNode = in_array($type, self::MEDIA, true) ? (array) data_get($msg, $type, []) : [];
         $shared = $type === 'contacts' ? self::sharedContact($msg) : [null, null];
+        // E36 (C043): سؤال عن منتج من كتالوج ميتا، يُوسم في النص فيعرف الموظف السياق
+        $referred = is_array(data_get($msg, 'context.referred_product'));
+        if ($referred) {
+            $body = '🛍️ [سؤال عن منتج من كتالوج واتساب] '.$body;
+        }
 
         return new self(
             wamid: is_string(data_get($msg, 'id')) ? data_get($msg, 'id') : null,
@@ -91,6 +105,8 @@ final class InboundMessage
             phoneNumberId: $phoneNumberId,
             timestamp: (int) data_get($msg, 'timestamp', 0),
             reactionEmoji: $type === 'reaction' ? (filled(data_get($msg, 'reaction.emoji')) ? mb_substr((string) data_get($msg, 'reaction.emoji'), 0, 16) : '') : null,
+            flowReply: $type === 'interactive' ? self::flowReply($msg) : null,
+            referredProduct: $referred,
         );
     }
 
@@ -156,7 +172,11 @@ final class InboundMessage
         }
         if ($form = data_get($msg, 'interactive.nfm_reply')) {
             $response = json_decode((string) ($form['response_json'] ?? ''), true);
-            $summary = is_array($response) ? mb_substr(json_encode($response, JSON_UNESCAPED_UNICODE), 0, 300) : '';
+            // flow_token رمز الربط بالمحادثة (E36): لا يُعرض في النص
+            if (is_array($response)) {
+                unset($response['flow_token']);
+            }
+            $summary = is_array($response) && $response !== [] ? mb_substr(json_encode($response, JSON_UNESCAPED_UNICODE), 0, 300) : '';
 
             return ['📝 نموذج: '.($form['name'] ?? '').($summary !== '' ? ' — '.$summary : ''), null];
         }
@@ -177,6 +197,21 @@ final class InboundMessage
             : '';
 
         return '📞 وافق العميل على أن نتصل به'.$until;
+    }
+
+    /** E36: ردّ النموذج مفكوكاً بحد (config whatsapp.interactive.flow_response_max_bytes)، أو null لغير nfm_reply */
+    private static function flowReply(array $msg): ?array
+    {
+        $form = data_get($msg, 'interactive.nfm_reply');
+        if (!is_array($form)) {
+            return null;
+        }
+        $raw = is_string($form['response_json'] ?? null) ? $form['response_json'] : '';
+        $bytes = strlen($raw);
+        $response = $bytes > 0 && $bytes <= (int) config('whatsapp.interactive.flow_response_max_bytes', 4096) ? json_decode($raw, true, 8) : null;
+        $token = is_array($response) && is_string($response['flow_token'] ?? null) ? mb_substr($response['flow_token'], 0, 64) : null;
+
+        return ['name' => self::str($form['name'] ?? null, 64), 'response' => is_array($response) ? $response : null, 'token' => $token, 'bytes' => $bytes];
     }
 
     private static function location(array $msg): string

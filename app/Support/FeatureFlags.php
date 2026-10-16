@@ -108,6 +108,10 @@ final class FeatureFlags
         'quote_export' => ['label' => 'تصدير طلبات التسعير CSV بحقول بلا هاتف ولا اسم عميل (لمن يملك quotes.export)', 'capability' => 'C097', 'available' => true],
         'meta_analytics_reconcile' => ['label' => 'مطابقة يومية مع تحليلات ميتا للحساب (أُرسل وسُلّم) للمقارنة فقط', 'capability' => 'C209', 'available' => true],
         'ops_tick' => ['label' => 'دمج مهام الدقيقة (إعادة الويبهوك والمُصالِح) في أمر واحد ops:tick لتخفيف الحمل', 'capability' => 'C226', 'available' => true],
+        // E36: القوائم والأزرار للبوت، وزرّا المساعد الإداري، ونموذج طلب التسعير (Flow ثابت بلا نقطة نهاية، بعد توثيق النشاط)
+        'interactive_choices' => ['label' => 'قائمة العروض وأزرار الاختيار التفاعلية للبوت (معرّفات يولّدها الخادم، ونص البوت والقائمة رسالة واحدة)', 'capability' => 'C027', 'available' => true],
+        'admin_confirm_buttons' => ['label' => 'زرّا «تأكيد» و«إلغاء» تحت معاينة المساعد الإداري (زر قديم لا يؤكد إجراءً أحدث)', 'capability' => 'C027', 'available' => true],
+        'quote_flow' => ['label' => 'نموذج طلب التسعير داخل واتساب (Flow ثابت بلا نقطة نهاية؛ يحتاج معرّف الـ Flow المنشور)', 'capability' => 'C120', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

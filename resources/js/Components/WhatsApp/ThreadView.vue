@@ -64,6 +64,8 @@
                             :pinned="pinnedIds.has(m.id)" @translated="(t) => (m.translation = t)" @pinned="(p) => factCard?.setPinned(p)"/>
               <!-- الموقع والبطاقات وشارات التفاعل والتصحيح (E33) -->
               <MessageRich :m="m" :reactions="reactionsById[m.id] || null" :corrected-by-id="correctionsById[m.id] || null" @jump="jumpTo"/>
+              <!-- ما عُرض من خيارات وما اختاره العميل ورد نموذج التسعير (E36) -->
+              <ChoiceChips :m="m"/>
             </template>
           </MessageBubble>
           <p v-if="!messages.length && !outbox.length" class="text-center text-gray-400 text-sm py-10">{{ filtered ? 'لا رسائل تطابق الفلتر' : 'لا رسائل' }}</p>
@@ -125,6 +127,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import BubbleExtras from './BubbleExtras.vue';
+import ChoiceChips from './ChoiceChips.vue';
 import Composer from './Composer.vue';
 import VoiceNote from './VoiceNote.vue';
 import FactCard from './FactCard.vue';
