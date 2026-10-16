@@ -27,6 +27,8 @@
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'">{{ tp.label }}</span>
         <span v-if="c.assignee" class="text-[10px] text-gray-400 dark:text-gray-500">‹{{ c.assignee }}›</span>
       </span>
+      <!-- التصنيفات وشارات النظام (E29) -->
+      <ConversationChips :labels="c.labels || []" :badges="c.badges || []"/>
       <span class="flex items-center gap-1.5 mt-1.5 flex-wrap">
         <span v-if="c.pinned" class="text-[11px]" title="مثبّتة لك" aria-label="مثبّتة">📍</span>
         <span v-if="c.marked_unread" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
@@ -62,6 +64,7 @@ import { toPlain } from '@/composables/whatsapp/useWaFormat.js';
 import { urgency, windowLabel } from '@/composables/whatsapp/useWindowCountdown.js';
 import { lastTypeIcon } from '@/composables/whatsapp/useConversationList.js';
 import { relativeTime } from '@/composables/whatsapp/useRelativeTime.js';
+import ConversationChips from './ConversationChips.vue';
 
 const props = defineProps({
   c: { type: Object, required: true },

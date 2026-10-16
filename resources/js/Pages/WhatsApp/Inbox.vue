@@ -14,7 +14,8 @@
                           :visible="s.view === 'list'" :items="s.list" :active-id="s.activeId" :has-more="s.listHasMore" :loading-more="s.loadingMore"
                           :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
                           @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
-                          @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"/>
+                          @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"
+                          :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"/>
 
         <ThreadView ref="threadView" :class="s.view === 'list' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-2"
                     :thread="s.thread" :messages="s.messages" :notes="s.notes" :has-more="s.hasMore" :loading-older="s.loadingOlder" :new-below="s.newBelow"
@@ -26,7 +27,9 @@
                     @back="inbox.back" @link="linkOpen = true" @unlink="unlink" @resolve="inbox.resolve" @toggle-bot="inbox.toggleBot"
                     @set-topic="inbox.setTopic" @assign="inbox.assignTo" @load-older="inbox.loadOlder" @jump-to-new="inbox.jumpToNew"
                     @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"
-                    @resend="(m) => inbox.copyToDraft(m, askResend)"/>
+                    @resend="(m) => inbox.copyToDraft(m, askResend)"
+                    :flags="flags" :labels="labels" :can-manage-labels="canManageLabels" :translate-targets="translateTargets"
+                    @labels-changed="onLabels" @translated-sent="onTranslatedSent"/>
       </div>
     </div>
 
@@ -74,6 +77,11 @@ const props = defineProps({
   summary: { type: Object, default: null },
   canReprocess: Boolean,
   quickReplies: Boolean,
+  // E29: التصنيفات الفعّالة، وإدارة القائمة، وأعلام الميزات، ولغات ترجمة الرد
+  labels: { type: Array, default: () => [] },
+  canManageLabels: Boolean,
+  flags: { type: Object, default: () => ({}) },
+  translateTargets: { type: Object, default: () => ({}) },
 });
 
 const threadView = ref(null);
@@ -96,6 +104,22 @@ const openViewer = (m) => {
   const name = usePage().props.auth?.user?.name || '';
   viewer.value = { open: true, id: m.id, media: m.media, watermark: `سرّي — ${name} — ${new Date().toLocaleString('ar-JO', { dateStyle: 'short', timeStyle: 'short' })}` };
 };
+
+// التصنيفات (E29): شرائح الخيط وسطر القائمة معاً
+function onLabels(id, labels) {
+  if (s.thread?.id === id) s.thread.labels = labels;
+  const row = s.list.find((c) => c.id === id);
+  if (row) row.labels = labels;
+}
+// رد مترجم (E29): أُرسل فتُمسح المسودة؛ «غير مؤكد» تبقى مع تنبيه كالإرسال العادي
+function onTranslatedSent(res) {
+  if (res?.unknown) {
+    s.sendError = `${res.message} لم تُمسح المسودة: تحقق من الخيط قبل إعادة الإرسال.`;
+  } else {
+    inbox.draft.value = '';
+  }
+  inbox.poll();
+}
 
 // كل 15 ثانية، ويتوقف والصفحة مخفية ويستأنف بطلب فوري عند عودتها
 const poller = createPoller(inbox.tick, { interval: 15000 });

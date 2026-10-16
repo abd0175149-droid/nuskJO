@@ -63,6 +63,13 @@ class NumberGuardTest extends TestCase
         $this->assertTrue(NumberGuard::hasSpelledNumbers('ثلاثة أيام'));
     }
 
+    public function test_the_browser_copy_has_the_same_word_lists(): void
+    {
+        $js = file_get_contents(dirname(__DIR__, 3).'/resources/js/utils/numberGuard.js');
+        $this->assertSame(1, preg_match('~/\* words:start \*/\s*export const NUMBER_WORDS = (\{.*?\});\s*/\* words:end \*/~s', $js, $m));
+        $this->assertSame(NumberGuard::WORDS, json_decode($m[1], true), 'عدّل القائمتين معاً: NumberGuard::WORDS وnumberGuard.js');
+    }
+
     public function test_compare_reports_what_is_missing_extra_and_spelled(): void
     {
         $this->assertSame(['ok' => false, 'missing' => ['150'], 'extra' => ['105'], 'spelled' => false, 'spelled_words' => [],

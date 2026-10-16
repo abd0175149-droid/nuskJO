@@ -333,6 +333,9 @@
                             </SecretCard>
                         </div>
                     </details>
+
+                    <!-- تأكيد الطبقة المدفوعة (E29): شرط ترجمة الرسائل للموظف -->
+                    <LlmTermsCard class="mt-5" :terms="llmTerms" @changed="refreshVersion"/>
                 </div>
 
                 <!-- ================= 4. الشخصية وقاعدة المعرفة ================= -->
@@ -478,6 +481,7 @@ import MetaLastErrorCard from '@/Components/WhatsApp/MetaLastErrorCard.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
+import LlmTermsCard from '@/Components/WhatsApp/LlmTermsCard.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
 import SecretCard from '@/Components/WhatsApp/SecretCard.vue';
 import SettingField from '@/Components/WhatsApp/SettingField.vue';
@@ -513,6 +517,8 @@ const props = defineProps({
     webhookIntake: { type: Object, default: null },
     metaErrors: { type: Object, default: () => ({ last: null, today: {}, proof: null }) },
     toolMeta: { type: Array, default: () => [] },
+    // E29: تأكيد الطبقة المدفوعة لمزوّد الذكاء
+    llmTerms: { type: Object, default: () => ({}) },
 });
 
 // ===== الحالة المحلية (تتحدّث من ردود الخادم دون إعادة تحميل الصفحة) =====
