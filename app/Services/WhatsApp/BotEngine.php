@@ -18,6 +18,7 @@ use Illuminate\Support\Sleep;
 /**
  * محرّك الوكيل: حلقة أدوات صغيرة محاطة بحواجز حتمية.
  * المزوّد معزول في callModel() — استبداله لا يمسّ شيئاً آخر.
+ * التفصيل: docs/whatsapp/bot-engine.md
  */
 class BotEngine
 {

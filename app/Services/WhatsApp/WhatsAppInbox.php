@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * طبقة الإنبوكس: خزّن أولاً ثمّ قرّر من يردّ.
  * البوت مستهلك لهذه الطبقة لا مالكها — إطفاؤه لا يوقف مركز المحادثات.
+ * التفصيل: docs/whatsapp/inbox.md
  */
 class WhatsAppInbox
 {

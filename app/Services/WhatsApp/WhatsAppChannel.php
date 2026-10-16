@@ -39,6 +39,7 @@ use Illuminate\Support\Facades\Cache;
  * المغلف الموحّد (E32): كل صادر يمر عبر send() ثم dispatch()، والدوال sendText وsendImage أغلفة رقيقة فوقه.
  * ممنوع نداء /messages خارج dispatch (NoDirectGraphMessagesTest)، والملف يُرفع بـ uploadMedia بعد preflight()
  * فلا يبقى ملف يتيم عند ميتا لمحادثة مغلقة أو موقوفة.
+ * التفصيل: docs/whatsapp/channel.md
  */
 class WhatsAppChannel
 {

@@ -776,6 +776,26 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 5. تحقق يدوياً: أرسل من التطبيق نصاً وصورة، ثم عدّل واحذف. يظهر كل ذلك بوسم «📱 من هاتف الوكالة»، ويتوقف البوت، ولا تنفتح النافذة، والأصل باقٍ.
 6. **التراجع البرمجي:** إطفاء `coexistence_echoes` مع إبقاء `coexistence_guard`. فك التعايش نفسه عبر المزوّد ودعم ميتا، لا عبر Deregister API.
 
+## كتيّبات التشغيل والتوثيق المحروس بالاختبارات (E25، على مراحل)
+
+وثائق واختبارات في معظمها، والفهرس في `docs/README.md`. ما يتغيّر على الإنتاج عند النشر بلا علم:
+- **`/.well-known/security.txt`** ملف نصي ثابت، بكتلة nginx تخدمه وحده قبل حجب الملفات النقطية. أي مسار آخر تحت `/.well-known/` يبقى محجوباً.
+- **قسم «الإبلاغ عن ثغرة أمنية»** في `/privacy` بالعربية والإنجليزية، بمرساة `#security`.
+- **لا هجرة.** والوثائق لا تدخل الصورة (`docs/` و`**/*.md` في `.dockerignore`)، وتدخل حاوية بوابة النشر. البوابة تستثني مجموعة `horizon` المرتبطة بالتاريخ، وتبقى في CI.
+
+الخطوات:
+1. نسخة `backup:run --reason=manual --label=pre-e25` ووسم الصورة الحالية `nuskjo-nuskjo-app:backup-pre-e25`.
+2. انشر كالمعتاد، فالصورة تُبنى من جديد لكتلة nginx.
+3. تحقق:
+   - `curl -sI https://nuskjo.grade.sbs/.well-known/security.txt` يعيد 200 ونوعه `text/plain`.
+   - `curl -sI https://nuskjo.grade.sbs/.env` و`https://nuskjo.grade.sbs/.well-known/x` ما زالا 403 أو 404.
+   - `/privacy#security` ظاهر.
+   - `docker run --rm --entrypoint sh nuskjo-nuskjo-app -c 'test -e /var/www/html/docs && echo LEAK || echo OK'` يطبع OK.
+4. **العلم `alert_runbook_refs`** في ساعة هادئة: تنتهي تنبيهات المدراء بـ « — الكتيب RB-NN». لا إشعار تجريبي في الإنتاج: يكفي أول تنبيه حقيقي، والاختبار في CI.
+5. للمالك: تفعيل GitHub Private vulnerability reporting وSecret scanning push protection من Settings › Code security، واعتماد البريد الأمني ومهل الاستجابة في `docs/RISKS.md`، وتجديد `Expires` في `security.txt` قبل 2027-09-30.
+
+- **التراجع:** العلم إلى off يعيد نص التنبيهات كما كان. وإن عطّلت كتلة `/.well-known/security.txt` شيئاً فتُحذف وحدها من `docker/nginx.conf` ثم يُعاد البناء. وإلا `git revert` ثم `scripts/deploy.sh`. لا شيء في القاعدة.
+
 ## مغادرة موظف
 
 بالترتيب، في اليوم نفسه:

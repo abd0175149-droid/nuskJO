@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\DB;
  *  ③ كل استدعاء يُسجَّل في wa_admin_actions: نُفّذ، رُفض، عُرضت معاينته، أو فشل.
  *
  * نتائج الأدوات ونصوص قاعدة المعرفة وطلبات العملاء بيانات لا تعليمات: لا نص فيها يمنح صلاحية أو ينفّذ تعديلاً.
+ * التفصيل: docs/whatsapp/admin-assistant.md
  */
 class AdminTools
 {

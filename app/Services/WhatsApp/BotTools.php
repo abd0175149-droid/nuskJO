@@ -40,6 +40,7 @@ use Illuminate\Support\Facades\Storage;
  *
  * TOOLS هو المصدر الوحيد (E15): منه الإعلانات والتسميات وقائمة التحويل وحارس التسريب وقواعد التحقق ومفاتيح
  * tools_config المقبولة. لقطة tests/Snapshots/bot_declarations.json تثبّت العقد.
+ * التفصيل: docs/whatsapp/bot-tools.md
  */
 class BotTools
 {

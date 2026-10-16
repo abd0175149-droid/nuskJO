@@ -1,3 +1,5 @@
+> **أرشيف (2026-05):** يصف بنية سابقة (Laravel 11 وPostgreSQL) قبل طبقة الواتساب، وليس مرجعاً. المرجع الحالي فهرس docs/README.md.
+
 # Database Schema - NUSUK System
 ## PostgreSQL 16 | All monetary fields use DECIMAL to prevent floating-point loss
 
