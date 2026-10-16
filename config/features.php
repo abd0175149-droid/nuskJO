@@ -36,5 +36,9 @@ return [
         'message_search_all' => env('WA_FEATURE_MESSAGE_SEARCH_ALL'),
         'conversation_export' => env('WA_FEATURE_CONVERSATION_EXPORT'),
         'csp_enforce' => env('WA_FEATURE_CSP_ENFORCE'),
+        'read_receipts' => env('WA_FEATURE_READ_RECEIPTS'),
+        'auto_rules' => env('WA_FEATURE_AUTO_RULES'),
+        'conversational_components' => env('WA_FEATURE_CONVERSATIONAL_COMPONENTS'),
+        'inbound_silence_alert' => env('WA_FEATURE_INBOUND_SILENCE_ALERT'),
     ],
 ];

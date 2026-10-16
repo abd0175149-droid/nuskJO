@@ -41,7 +41,8 @@ class AutomatedSendsHaveKeyTest extends TestCase
         $calls = $this->sendCalls();
         $this->assertGreaterThan(10, count($calls), 'الحارس لا يجد الاستدعاءات');
 
-        $missing = array_values(array_filter($calls, fn ($c) => preg_match("/'(bot|system)'/", $c['call']) && !str_contains($c['call'], 'SendKey::')));
+        // rule (E37): رد القاعدة الحتمية آلي كالبوت
+        $missing = array_values(array_filter($calls, fn ($c) => preg_match("/'(bot|system|rule)'/", $c['call']) && !str_contains($c['call'], 'SendKey::')));
 
         $this->assertSame([], array_map(fn ($c) => $c['file'].': '.preg_replace('/\s+/', ' ', mb_substr($c['call'], 0, 120)), $missing));
     }

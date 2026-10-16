@@ -25,6 +25,8 @@ use Illuminate\Support\Facades\Cache;
  *   2) قفل الإرسال الطارئ (wa_suspended)
  *   3) نافذة 24 ساعة من آخر رسالة واردة — لا استثناء لأحد
  *
+ * إشعار القراءة ومؤشر الكتابة (E35) ليسا رسالة: markRead خارج dispatch، بالقفلين 1 و2 وحدهما.
+ *
  * كل نداء Graph عبر Graph\GraphClient (الإصدار من الإعداد، ومقاطع مرمَّزة، ولا تحويلات، وappsecret_proof خلف
  * WA_APPSECRET_PROOF)، وكل خطأ ميتا يصير MetaError من الجدول الوحيد MetaErrorCatalog (E18).
  */
@@ -568,6 +570,162 @@ class WhatsAppChannel
         ], self::CONTACT_REQUEST_LABEL, 'interactive', $source, $staffId, sendKey: $sendKey);
     }
 
+    // ==================== إشعار القراءة ومؤشر الكتابة (E35) ====================
+
+    /**
+     * إشعار قراءة (العلامتان الزرقاوان) على أحدث وارد، ومعه «يكتب…» إن طُلب: طلب واحد عند ميتا
+     * POST /{pnid}/messages {status: read, message_id, typing_indicator?}، يعلّم معه كل ما قبله.
+     *
+     * ليس رسالة، فلا يمر بـ dispatch: لا صف في wa_messages، ولا send_key ولا دفتر، ولا OutboundPolicy، ولا قفل النافذة
+     * (حدّه 30 يوماً من الاستلام). يحترم القفلين الأولين وحدهما: القناة مهيّأة، والإيقاف الطارئ (يوقف كل ما يخرج).
+     * كل رفض قبل أي HTTP: الوضع off أو العلم مطفأ (DISABLED)، والقناة، والإيقاف، والمحادثة المدموجة (MERGED)، ولا هدف
+     * (NO_TARGET)، وإشعار بلا مؤشر لما أُبلغ سابقاً (ALREADY). المهلة 5 ثوانٍ والاتصال ثانيتان، ولا إعادة، ولا يرمي.
+     * الفشل سطر info وعدّاد يومي (ReadReceipts::failed): لا wa_last_error ولا تنبيه ولا إيقاف.
+     *
+     * @return array{ok: bool, code: ?string}
+     */
+    public static function markRead(WaConversation $conv, bool $typing = false, ?int $uptoMessageId = null): array
+    {
+        try {
+            if (ReadReceipts::mode() === 'off') {
+                return ['ok' => false, 'code' => 'DISABLED'];
+            }
+            $s = WaBotSetting::current();
+            if (!$s->channelReady()) {
+                return ['ok' => false, 'code' => self::ERR_NOT_CONFIGURED];
+            }
+            if ($s->sendingSuspended()) {
+                return ['ok' => false, 'code' => self::ERR_SUSPENDED];
+            }
+            if ($conv->status === 'merged') {
+                return ['ok' => false, 'code' => 'MERGED'];
+            }
+            $target = ReadReceipts::target($conv, $uptoMessageId);
+            if (!$target) {
+                return ['ok' => false, 'code' => 'NO_TARGET'];
+            }
+            if (!$typing && $target->id <= ReadReceipts::upto($conv)) {
+                return ['ok' => false, 'code' => 'ALREADY'];
+            }
+
+            $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], [
+                'messaging_product' => 'whatsapp',
+                'status' => 'read',
+                'message_id' => (string) $target->wamid,
+            ] + ($typing ? ['typing_indicator' => ['type' => 'text']] : []), (string) $s->token(), ReadReceipts::TIMEOUT, ReadReceipts::CONNECT_TIMEOUT);
+        } catch (\InvalidArgumentException) {
+            ReadReceipts::failed($conv, self::ERR_CONFIG);
+
+            return ['ok' => false, 'code' => self::ERR_CONFIG];
+        } catch (\Throwable $e) {
+            $code = $e instanceof \Illuminate\Http\Client\ConnectionException ? MetaError::networkKind($e) : 'ERROR';
+            ReadReceipts::failed($conv, $code);
+
+            return ['ok' => false, 'code' => $code];
+        }
+
+        if (!$res->successful()) {
+            $err = MetaError::fromGraphResponse($res);
+            ReadReceipts::failed($conv, $err->code, $err->metaCode, $err->fbtraceId, $res->status());
+
+            return ['ok' => false, 'code' => $err->code];
+        }
+        ReadReceipts::advance($conv, (int) $target->id);
+
+        return ['ok' => true, 'code' => null];
+    }
+
+    // ==================== المكوّنات الرسمية: الأوامر وأسئلة البداية (E37) ====================
+
+    /**
+     * أوامر «/» وأسئلة البداية (ice breakers) لرقمنا: POST /{pnid}/conversational_automation. إعداد للرقم لا رسالة،
+     * فلا يمر بـ dispatch. القفلان الأولان: القناة مهيّأة، والإيقاف الطارئ (لا نكتب شيئاً لميتا). enable_welcome_message
+     * دائماً false. لا يُسجَّل الرمز ولا الرد الخام: الرمز والفئة وfbtrace_id وحدها.
+     *
+     * @param  array{prompts: list<string>, commands: list<array{command_name: string, command_description: string}>}  $desired
+     * @return array{ok: bool, code: ?string, meta_code?: ?int, category?: ?string, fbtrace_id?: ?string, message?: string}
+     */
+    public static function setConversationalAutomation(array $desired): array
+    {
+        $s = WaBotSetting::current();
+        if ($locked = self::componentsLock($s)) {
+            return $locked;
+        }
+        try {
+            $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'conversational_automation'], [
+                'enable_welcome_message' => false,
+                'prompts' => array_values($desired['prompts'] ?? []),
+                'commands' => array_values($desired['commands'] ?? []),
+            ], (string) $s->token(), 20);
+        } catch (\Throwable $e) {
+            return self::componentsFailure($e);
+        }
+
+        return $res->successful() ? ['ok' => true, 'code' => null] : self::componentsRejected($res);
+    }
+
+    /**
+     * ما تعرضه ميتا الآن: GET /{pnid}?fields=conversational_automation (للمقارنة بالمحفوظ). قراءة بالقفلين نفسيهما.
+     *
+     * @return array{ok: bool, code: ?string, data?: array{enable_welcome_message: bool, prompts: list<string>, commands: list<array{command_name: string, command_description: string}>}}
+     */
+    public static function getConversationalAutomation(): array
+    {
+        $s = WaBotSetting::current();
+        if ($locked = self::componentsLock($s)) {
+            return $locked;
+        }
+        try {
+            $res = Graph\GraphClient::request('GET', [(string) $s->phoneNumberId()], ['fields' => 'conversational_automation'], (string) $s->token(), 20);
+        } catch (\Throwable $e) {
+            return self::componentsFailure($e);
+        }
+        if (!$res->successful()) {
+            return self::componentsRejected($res);
+        }
+        $data = (array) $res->json('conversational_automation', []);
+
+        return ['ok' => true, 'code' => null, 'data' => [
+            'enable_welcome_message' => (bool) ($data['enable_welcome_message'] ?? false),
+            'prompts' => array_values(array_filter((array) ($data['prompts'] ?? []), 'is_string')),
+            'commands' => array_values(array_map(fn ($c) => [
+                'command_name' => (string) data_get($c, 'command_name', ''),
+                'command_description' => (string) data_get($c, 'command_description', ''),
+            ], array_filter((array) ($data['commands'] ?? []), 'is_array'))),
+        ]];
+    }
+
+    private static function componentsLock(WaBotSetting $s): ?array
+    {
+        if (!$s->channelReady()) {
+            return ['ok' => false, 'code' => self::ERR_NOT_CONFIGURED, 'message' => 'قناة الواتساب غير مهيّأة.'];
+        }
+        if ($s->sendingSuspended()) {
+            return ['ok' => false, 'code' => self::ERR_SUSPENDED, 'message' => 'الإرسال موقوف حالياً (قفل طارئ): لا يُكتب شيء لميتا.'];
+        }
+
+        return null;
+    }
+
+    private static function componentsFailure(\Throwable $e): array
+    {
+        $code = $e instanceof \InvalidArgumentException ? self::ERR_CONFIG
+            : ($e instanceof \Illuminate\Http\Client\ConnectionException ? MetaError::networkKind($e) : 'ERROR');
+        WaLog::warning('wa.conv_automation_failed', ['error_code' => $code, 'type' => class_basename($e)]);
+
+        return ['ok' => false, 'code' => $code, 'message' => 'تعذّر الوصول إلى ميتا الآن — حاول بعد قليل.'];
+    }
+
+    private static function componentsRejected(Response $res): array
+    {
+        $err = MetaError::fromGraphResponse($res);
+        WaLog::warning('wa.conv_automation_failed', ['meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category,
+            'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+
+        return ['ok' => false, 'code' => $err->code, 'meta_code' => $err->metaCode, 'category' => $err->category,
+            'fbtrace_id' => $err->fbtraceId, 'message' => $err->staffMessage];
+    }
+
     // ==================== المحرّك ====================
 
     /** @return array{to: string}|array{recipient: string}|null */
@@ -619,6 +777,8 @@ class WhatsAppChannel
             return self::ledger($conv, $s, $payload, $stored, $displayBody, $msgType, $source, $staffId, $sendKey);
         }
 
+        // إشعار القراءة عند رد الموظف (E35): أعلى وارد لحظة الإرسال، فلا يُعلَّم مقروءاً ما يصل أثناء النداء
+        $receiptUpto = ReadReceipts::replyUpto($conv, $source, $msgType);
         try {
             $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25);
         } catch (\InvalidArgumentException $e) {
@@ -660,6 +820,9 @@ class WhatsAppChannel
         }
 
         self::afterSent($conv, $s, $source, $displayBody);
+        if ($status === 'sent') {
+            ReadReceipts::queueAfterReply($conv, $receiptUpto);
+        }
 
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $status === 'sent' ? $wamid : null] + ($status === WaMessage::STATUS_UNKNOWN ? ['unconfirmed' => true, 'unknown' => true] : []);
     }
@@ -867,6 +1030,8 @@ class WhatsAppChannel
         WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'message_id' => $row->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType, 'attempt' => $attempt]);
         self::afterWamid($row, $wamid, $source, $row->staff_id !== null ? (int) $row->staff_id : null);
         self::afterSent($conv, $s, $source, $displayBody);
+        // إشعار القراءة عند رد الموظف (E35): ما وصل قبل صف الرد وحده (الصف كُتب قبل النداء)
+        ReadReceipts::queueAfterReply($conv, ReadReceipts::replyUpto($conv, $source, $msgType, $row->id));
 
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $wamid, 'meta_code' => null,
             'status' => 'sent', 'row_id' => $row->id, 'replayed' => false];

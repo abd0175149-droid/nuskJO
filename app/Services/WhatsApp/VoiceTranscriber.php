@@ -29,8 +29,9 @@ class VoiceTranscriber
     public static function run(WaConversation $conv, ?ReplyRun $run = null): void
     {
         $s = WaBotSetting::current();
+        $admin = (bool) \App\Models\WaAdminNumber::forPhone($conv->phone);
         // أرقام الإدارة تُفرَّغ صوتياتها حتى لو كان بوت العملاء موقوفاً
-        if (!$s->llmKey() || (!$s->enabled && !\App\Models\WaAdminNumber::forPhone($conv->phone))) {
+        if (!$s->llmKey() || (!$s->enabled && !$admin)) {
             return;
         }
 
@@ -56,6 +57,8 @@ class VoiceTranscriber
 
                 continue;
             }
+            // «يكتب…» بين ملفين إن مرت 20 ثانية على آخره (E35)
+            ReadReceipts::renewTyping($conv, $run, !$admin);
             self::one($m, $s, $run, $route);
         }
     }

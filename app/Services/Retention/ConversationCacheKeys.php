@@ -14,6 +14,8 @@ final class ConversationCacheKeys
     public const EXACT = [
         'wa:debounce:{id}', 'wa:running:{id}', 'wa:rerun:{id}', 'wa:admin:pending:{id}', 'wa:unserved:{id}',
         'wa:llm:isolated:{id}', 'wa:outage-notice:notify:{id}', 'wa:media:notice:{id}', 'wa:reprocess:{id}',
+        // E35: تهدئة إيصال الفتح
+        'wa:rr:open:{id}',
     ];
 
     public const PATTERNS = [
@@ -22,6 +24,8 @@ final class ConversationCacheKeys
         'audit:view:%:{id}',
         // E29: بطاقة الحقائق (60 ثانية لكل مستخدم)
         'wa:facts:{id}:%',
+        // E37: تهدئة القاعدة لكل محادثة
+        'wa:rule:cd:%:{id}',
     ];
 
     /** @return int عدد المفاتيح المحذوفة من كاش القاعدة (المفاتيح الدقيقة تُنسى في أي مخزن) */

@@ -26,6 +26,8 @@ class WaConversation extends Model
         'media_consent', 'media_consent_at', 'media_notice_at',
         // E17: الإغلاق والتأجيل و«غير مقروء» الداخلي (حالة عندنا وحدنا، بلا أي نداء لميتا)
         'closed_at', 'closed_by', 'snoozed_until', 'snoozed_by', 'marked_unread_at', 'marked_unread_by',
+        // E35: أعلى وارد أُبلغت ميتا بقراءته (يتقدّم ولا يتراجع، ReadReceipts::advance)
+        'read_receipt_upto_id',
     ];
 
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
@@ -45,6 +47,7 @@ class WaConversation extends Model
         'closed_at' => 'datetime',
         'snoozed_until' => 'datetime',
         'marked_unread_at' => 'datetime',
+        'read_receipt_upto_id' => 'integer',
     ];
 
     /**

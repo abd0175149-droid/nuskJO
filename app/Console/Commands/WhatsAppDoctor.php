@@ -45,6 +45,12 @@ class WhatsAppDoctor extends Command
             $this->line("رسائل موظف بلا مفتاح منع تكرار اليوم: {$missing} — حدّث الصفحة في المتصفحات المفتوحة");
         }
 
+        // إشعار القراءة ومؤشر الكتابة (E35): الوضع الفعلي والمضبوط، وإخفاقات اليوم، وآخر رمز
+        $rr = \App\Services\WhatsApp\ReadReceipts::class;
+        $this->line('إشعار القراءة: '.$rr::mode().' (المضبوط '.$rr::configured($settings).'، العلم read_receipts '
+            .(\App\Support\FeatureFlags::on('read_receipts') ? 'مفعّل' : 'مطفأ').') · مؤشر الكتابة '.($rr::typingEnabled() ? 'يعمل' : 'لا')
+            .' · إخفاقات اليوم '.$rr::failuresToday().($rr::lastFailureCode() ? ' · آخر رمز '.$rr::lastFailureCode() : ''));
+
         // استقبال الويبهوك (E20): أعداد 24 ساعة، والسياج، والتوقيعات، والحقول المجهولة، وحد nginx المنشور
         $hook = WebhookStats::summary(true);
         $nginx = WebhookStats::nginx();

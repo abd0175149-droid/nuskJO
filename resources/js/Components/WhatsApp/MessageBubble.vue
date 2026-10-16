@@ -17,6 +17,8 @@
       <slot name="extras"/>
       <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70 flex-wrap">
         <span dir="ltr">{{ m.at }}</span>
+        <!-- إشعار القراءة (E35): ما يراه العميل، العلامتان الزرقاوان على هذه الرسالة -->
+        <span v-if="seen" data-test="read-receipt" title="أُبلغ العميل بالقراءة" aria-label="أُبلغ العميل بالقراءة">· 👁</span>
         <span v-if="m.source !== 'customer' && !m.sender">· {{ SOURCES[m.source] || m.source }}</span>
         <!-- حالة التسليم: ⏳ و⚠️ و❌ من E19، وعلامات ✓ و✓✓ من E21 -->
         <slot name="status">
@@ -55,15 +57,18 @@ import { computed } from 'vue';
 import DeliveryTicks from './DeliveryTicks.vue';
 import WaText from './WaText.vue';
 
+// flash (E30): الرسالة التي قفز إليها الموظف من البحث، حلقة ذهبية ثوانيَ
+// readUpto (E35): أعلى وارد أُبلغت ميتا بقراءته في هذه المحادثة
 const props = defineProps({
   m: { type: Object, required: true },
-  // الرسالة التي قفز إليها الموظف من البحث (E30): حلقة ذهبية ثوانيَ
   flash: Boolean,
+  readUpto: { type: Number, default: null },
 });
 defineEmits(['resend']);
 const FLASH = 'ring-2 ring-gold-400 ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-950';
 
-const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' };
+// rule (E37): رد قاعدة حتمية بنص ثابت معتمد
+const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة', rule: '⚡ قاعدة' };
 
 // فئات MetaErrorCatalog (E18)
 const CATEGORY_LABELS = {
@@ -73,6 +78,7 @@ const CATEGORY_LABELS = {
 
 // علامات التسليم (E21): للصادر وحده، وحين يرسل الخادم حقولها
 const ticks = computed(() => props.m.direction === 'out' && typeof props.m.multi_fail === 'boolean');
+const seen = computed(() => props.m.direction === 'in' && !props.m.is_system && !!props.readUpto && props.m.id <= props.readUpto);
 
 const hasReason = computed(() => ['failed', 'blocked', 'unknown'].includes(props.m.status) && !!props.m.error);
 
@@ -90,6 +96,7 @@ const tone = computed(() => {
   if (m.direction === 'in') return 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-ss-sm';
   if (m.status === 'blocked') return 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-se-sm';
   if (m.source === 'bot') return 'bg-emerald-600 text-white rounded-se-sm';
+  if (m.source === 'rule') return 'bg-teal-600 text-white rounded-se-sm';
   if (m.source === 'system') return 'bg-gray-500 text-white rounded-se-sm';
   return 'bg-gold-500 text-black rounded-se-sm';
 });

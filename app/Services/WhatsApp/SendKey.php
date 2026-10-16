@@ -41,6 +41,12 @@ final class SendKey
         return self::make('admin', $conv->id, $upto ?? self::upto($conv), $kind);
     }
 
+    /** رد قاعدة حتمية (E37): رد واحد لكل وارد يغطيه، أياً كانت القاعدة */
+    public static function rule(WaConversation $conv, ?int $upto): string
+    {
+        return self::make('rule', $conv->id, $upto ?? self::upto($conv));
+    }
+
     /** تأكيد إيقاف الرسائل التسويقية لكلمة الإيقاف الواردة */
     public static function optout(string $wamid): string
     {

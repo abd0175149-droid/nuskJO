@@ -22,6 +22,8 @@ final class WaLog
         'listener',
         // E30: البحث والتصدير (صف التدقيق ومحرّك البحث، بلا نص الاستعلام)
         'audit_id', 'engine',
+        // E37: رقم قاعدة الرد الحتمية (بلا نص العميل)
+        'rule',
     ];
 
     public static function info(string $event, array $context = []): void

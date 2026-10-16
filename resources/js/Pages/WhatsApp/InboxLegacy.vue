@@ -693,11 +693,11 @@ const unlinkClient = async () => {
 const bubble = (m) => {
   if (m.direction === 'in') return 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm';
   if (m.status === 'blocked') return 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-br-sm';
-  if (m.source === 'bot') return 'bg-emerald-600 text-white rounded-br-sm';
+  if (m.source === 'bot' || m.source === 'rule') return 'bg-emerald-600 text-white rounded-br-sm';
   if (m.source === 'system') return 'bg-gray-400 text-white rounded-br-sm';
   return 'bg-gold-500 text-black rounded-br-sm';   // staff
 };
-const srcLabel = (s) => ({ bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' }[s] || s);
+const srcLabel = (s) => ({ bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة', rule: '⚡ قاعدة' }[s] || s);
 
 const onVisible = () => { if (document.visibilityState === 'visible') poll(); };
 

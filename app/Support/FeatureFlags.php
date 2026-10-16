@@ -45,6 +45,12 @@ final class FeatureFlags
         'conversation_export' => ['label' => 'تصدير محادثة واحدة (نص أو CSV) بسبب مكتوب، لمن يملك صلاحية التصدير', 'capability' => 'C140', 'available' => true],
         // E26: فوق CSP_MODE=report وحده؛ CSP_MODE=off يطفئ السياسة كلها وenforce يفرضها من البيئة
         'csp_enforce' => ['label' => 'فرض سياسة أمن المحتوى في المتصفح (مطفأ = تقارير فقط بلا حجب)', 'capability' => 'C184', 'available' => true],
+        // E35: الوضع من الإعداد send_read_receipts؛ مطفأ = لا إشعار قراءة ولا «يكتب…» مهما كان الوضع
+        'read_receipts' => ['label' => 'إشعار القراءة ومؤشر «يكتب…» (الوضع من «ربط قناة ميتا»؛ مطفأ = لا شيء يصل ميتا)', 'capability' => 'C049', 'available' => true],
+        // E37: الوضع shadow أو live من صفحة الردود الحتمية؛ مطفأ = النموذج يرد على كل شيء كما كان
+        'auto_rules' => ['label' => 'الردود الحتمية: نص ثابت معتمد لأسئلة متكررة قبل النموذج (الظل أولاً)', 'capability' => 'C117', 'available' => true],
+        'conversational_components' => ['label' => 'مزامنة الأوامر والأسئلة المقترحة (ice breakers) مع واتساب', 'capability' => 'C117', 'available' => true],
+        'inbound_silence_alert' => ['label' => 'تنبيه المدراء عند صمت الوارد من واتساب في وقت الدوام', 'capability' => 'C121', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

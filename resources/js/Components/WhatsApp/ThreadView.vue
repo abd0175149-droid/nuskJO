@@ -20,6 +20,12 @@
         <button type="button" @click="$emit('clearFilters')" class="min-h-8 px-2 rounded-lg font-bold hover:bg-gold-100 dark:hover:bg-gold-900/40">إلغاء</button>
       </div>
 
+      <!-- الوضع on_open (E35): الموكَّل يعرف أن فتحه يُظهر القراءة للعميل -->
+      <p v-if="thread.receipts_open_notice" data-test="open-receipt-notice"
+         class="px-4 py-1 text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 shrink-0">
+        👁 فتحك لهذه المحادثة يُظهر للعميل أنك قرأت رسائله
+      </p>
+
       <div class="relative flex-1 min-h-0 flex flex-col">
         <div ref="scroller" @scroll.passive="onScroll" class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 bg-gray-50 dark:bg-gray-950/40" aria-live="polite">
           <div v-if="hasMore || loadingOlder" class="text-center">
@@ -29,7 +35,7 @@
             </button>
           </div>
           <p v-if="jumpMiss" class="text-center text-[11px] text-amber-700 dark:text-amber-400" role="status">الرسالة المثبتة أقدم من المعروض — حمّل الرسائل الأقدم ثم أعد المحاولة.</p>
-          <MessageBubble v-for="m in messages" :key="m.id" :m="m" :data-msg-id="m.id" :flash="flashId === m.id" @resend="(msg) => $emit('resend', msg)">
+          <MessageBubble v-for="m in messages" :key="m.id" :m="m" :data-msg-id="m.id" :flash="flashId === m.id" :read-upto="thread.read_receipt_upto_id || null" @resend="(msg) => $emit('resend', msg)">
             <template v-if="m.media" #media>
               <MediaChip :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
             </template>

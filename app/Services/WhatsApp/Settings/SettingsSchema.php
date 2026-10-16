@@ -29,6 +29,11 @@ final class SettingsSchema
             'env' => 'services.whatsapp.waba_id', 'env_var' => 'WA_WABA_ID', 'group' => 'meta', 'ui' => 'custom', 'label' => 'معرّف حساب الأعمال (WABA)'],
         'wa_app_id' => ['type' => 'string', 'regex' => '/^\d{5,20}$/', 'nullable' => true, 'default' => null, 'patchable' => true,
             'env' => 'services.whatsapp.app_id', 'env_var' => 'WA_APP_ID', 'group' => 'meta', 'ui' => 'custom', 'label' => 'App ID'],
+        // إشعار القراءة ومؤشر الكتابة (E35): طلب واحد عند ميتا، فـ«يكتب…» يُظهر العلامتين الزرقاوين حتماً. يغيّر ما يراه
+        // كل العملاء، فهو حساس. وفوقه العلم read_receipts (مطفأ = لا شيء يُرسل مهما كان الوضع)
+        'send_read_receipts' => ['type' => 'enum', 'values' => 'read_receipt_modes', 'default' => 'off', 'patchable' => true, 'sensitive' => true,
+            'group' => 'channel', 'ui' => 'custom', 'label' => 'إشعار القراءة ومؤشر الكتابة',
+            'help' => 'off: لا علامة زرقاء ولا «يكتب…» · on_reply: «يكتب…» حين يبدأ البوت، والعلامتان عند رد الموظف · on_open: كالسابق، ويُضاف فتح الموكَّل للمحادثة'],
         'provider' => ['type' => 'enum', 'values' => 'providers', 'default' => 'google', 'patchable' => true, 'sensitive' => true, 'group' => 'ai', 'ui' => 'custom', 'label' => 'مزوّد الذكاء'],
         // مقطع مسار عند المزوّد: حروف وأرقام و . _ - فقط (E05)
         'model' => ['type' => 'string', 'regex' => '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', 'default' => 'gemini-2.5-flash', 'patchable' => true, 'group' => 'ai', 'ui' => 'custom', 'label' => 'النموذج'],
@@ -62,6 +67,9 @@ final class SettingsSchema
             'group' => 'ai', 'ui' => 'custom', 'label' => 'المزوّد الاحتياطي'],
         'fallback_model' => ['type' => 'string', 'regex' => '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', 'nullable' => true, 'default' => null, 'patchable' => true,
             'group' => 'ai', 'ui' => 'custom', 'label' => 'نموذج الاحتياطي'],
+        // الردود الحتمية (E37): shadow يقيّم ويعدّ ولا يرسل، وlive يرسل. فوقه العلم auto_rules. يغيّر ما يصل العملاء فهو حساس
+        'auto_rules_mode' => ['type' => 'enum', 'values' => 'auto_rule_modes', 'default' => 'shadow', 'patchable' => true, 'sensitive' => true,
+            'group' => 'rules', 'ui' => 'custom', 'label' => 'وضع الردود الحتمية'],
         'model_prices' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'أسعار النموذج (صفحة التحليلات)'],
         'cache_discount' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'خصم الكاش (صفحة التحليلات)'],
 
@@ -82,6 +90,8 @@ final class SettingsSchema
         'wa_channel_health' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'آخر فحص للقناة'],
         // يكتبه MetaErrorReactor مباشرة (عمود واحد خارج SettingsWriter) فلا يدخل حساب تعارض النسخة
         'wa_last_error' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'آخر خطأ من ميتا'],
+        // المكوّنات الرسمية (E37): المحفوظ وآخر مزامنة وآخر قراءة من ميتا وآخر خطأ. تكتبه مزامنة صفحة الردود الحتمية وحدها
+        'conversational_automation' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'الأوامر والأسئلة المقترحة في واتساب'],
     ];
 
     /** أعمدة يكتبها الكاتب نفسه مع فعلها (تدوير سر، إيقاف، علم)، لا حقول إعدادات تُعرض أو تُحفظ من الصفحة */
@@ -170,6 +180,8 @@ final class SettingsSchema
         return match (self::FIELDS[$key]['values'] ?? null) {
             'providers' => array_keys(LlmFactory::PROVIDERS),
             'breaker_modes' => ['off', 'shadow', 'on'],
+            'read_receipt_modes' => \App\Services\WhatsApp\ReadReceipts::MODES,
+            'auto_rule_modes' => \App\Services\WhatsApp\AutoRuleEngine::MODES,
             default => [],
         };
     }

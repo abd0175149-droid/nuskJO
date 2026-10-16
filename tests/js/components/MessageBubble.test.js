@@ -104,4 +104,20 @@ describe('MessageBubble', () => {
         const no = mount(MessageBubble, { props: { m: { ...m, can_resend: false } } });
         expect(no.find('[data-test="copy-to-composer"]').exists()).toBe(false);
     });
+
+    it('labels deterministic rule replies and colours them apart (E37)', () => {
+        const w = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'rule', body: 'مكتبنا في عمّان' }) } });
+        expect(w.text()).toContain('⚡ قاعدة');
+        expect(w.html()).toContain('bg-teal-600');
+    });
+
+    it('shows 👁 on inbound messages the customer was told were read (E35)', () => {
+        const seen = mount(MessageBubble, { props: { m: msg({ id: 5 }), readUpto: 7 } });
+        expect(seen.find('[data-test="read-receipt"]').attributes('title')).toBe('أُبلغ العميل بالقراءة');
+        expect(mount(MessageBubble, { props: { m: msg({ id: 7 }), readUpto: 7 } }).find('[data-test="read-receipt"]').exists()).toBe(true);
+        expect(mount(MessageBubble, { props: { m: msg({ id: 8 }), readUpto: 7 } }).find('[data-test="read-receipt"]').exists()).toBe(false);
+        expect(mount(MessageBubble, { props: { m: msg({ id: 5 }) } }).find('[data-test="read-receipt"]').exists()).toBe(false);
+        expect(mount(MessageBubble, { props: { m: msg({ id: 5, direction: 'out', source: 'bot' }), readUpto: 7 } }).find('[data-test="read-receipt"]').exists()).toBe(false);
+        expect(mount(MessageBubble, { props: { m: msg({ id: 5, is_system: true }), readUpto: 7 } }).find('[data-test="read-receipt"]').exists()).toBe(false);
+    });
 });

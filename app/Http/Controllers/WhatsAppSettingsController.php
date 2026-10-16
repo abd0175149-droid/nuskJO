@@ -454,6 +454,8 @@ class WhatsAppSettingsController extends Controller
             'wa_waba_detected' => \App\Services\Ops\OpsHealth::store()->get('wa:waba:detected') ?: ($s->wa_waba_id_source !== 'manual' ? $s->wa_waba_id : null),
             'wa_display_phone' => $s->wa_display_phone,
             'wa_app_id' => $s->wa_app_id,
+            // E35: المضبوط (الفعلي off ما دام العلم read_receipts مطفأ)
+            'send_read_receipts' => \App\Services\WhatsApp\ReadReceipts::configured($s),
             'provider' => $s->provider ?: SettingsSchema::default('provider'),
             'model' => $s->model,
             // null = النص الافتراضي الحي (defaultPrompt)؛ لا يُحقن في الحقل فلا يتجمّد في القاعدة عند أول حفظ

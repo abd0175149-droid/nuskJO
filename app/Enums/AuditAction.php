@@ -118,6 +118,13 @@ enum AuditAction: string
     case WaMessageSearch = 'wa.message_search';
     case WaConversationExport = 'wa.conv_export';
     case WaSearchIndexRepair = 'wa.search_index_repair';
+    // E37: قواعد الرد الحتمية والمكوّنات الرسمية في واتساب
+    case WaAutoRuleCreate = 'wa.auto_rule_create';
+    case WaAutoRuleUpdate = 'wa.auto_rule_update';
+    case WaAutoRuleDelete = 'wa.auto_rule_delete';
+    case WaAutoRuleToggle = 'wa.auto_rule_toggle';
+    case WaAutoRuleReorder = 'wa.auto_rule_reorder';
+    case WaConvAutomationSync = 'wa.conv_automation_sync';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -187,6 +194,8 @@ enum AuditAction: string
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
             self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove,
             self::WaLabelCreate, self::WaLabelUpdate, self::WaLabelDelete, self::WaLlmTermsConfirm => 'config',
+            self::WaAutoRuleCreate, self::WaAutoRuleUpdate, self::WaAutoRuleDelete, self::WaAutoRuleToggle, self::WaAutoRuleReorder,
+            self::WaConvAutomationSync => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
@@ -298,6 +307,12 @@ enum AuditAction: string
             self::WaMessageSearch => 'بحث في نص الرسائل',
             self::WaConversationExport => 'تصدير محادثة واتساب',
             self::WaSearchIndexRepair => 'إصلاح فهرس البحث في الرسائل',
+            self::WaAutoRuleCreate => 'إضافة قاعدة رد حتمية',
+            self::WaAutoRuleUpdate => 'تعديل قاعدة رد حتمية',
+            self::WaAutoRuleDelete => 'حذف قاعدة رد حتمية',
+            self::WaAutoRuleToggle => 'تفعيل قاعدة رد حتمية أو إيقافها',
+            self::WaAutoRuleReorder => 'ترتيب قواعد الرد الحتمية',
+            self::WaConvAutomationSync => 'مزامنة الأوامر والأسئلة المقترحة مع واتساب',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
