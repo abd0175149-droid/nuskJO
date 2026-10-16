@@ -57,6 +57,12 @@ services:
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database
       - SAR_TO_JOD=0.19
+      # E28: الخادم ينشر إلى Reverb داخل الحاوية مباشرة (لا عبر النفق و/apps)، بمهلة ثانيتين. المتصفح على VITE_REVERB_*.
+      # أصل المقبس بالمضيف وحده؛ '*' مؤقتاً في /opt/nuskJO/.env للتراجع (docs/RELEASE.md «البث اللحظي الآمن»)
+      - REVERB_PUBLISH_HOST=${REVERB_PUBLISH_HOST:-127.0.0.1}
+      - REVERB_PUBLISH_PORT=${REVERB_PUBLISH_PORT:-8080}
+      - REVERB_PUBLISH_SCHEME=${REVERB_PUBLISH_SCHEME:-http}
+      - REVERB_ALLOWED_ORIGINS=${REVERB_ALLOWED_ORIGINS:-nuskjo.grade.sbs}
     env_file:
       - .env.production
     # سجلات الحاوية مدوّرة: 5 ملفات × 10MB (nginx وphp-fpm يكتبان إلى stdout/stderr)

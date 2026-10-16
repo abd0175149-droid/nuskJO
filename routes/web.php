@@ -131,8 +131,9 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::get('api/whatsapp/conversations', [\App\Http\Controllers\WhatsAppController::class, 'conversations'])->middleware('perm:whatsapp.view');
     Route::get('api/whatsapp/inbox-summary', [\App\Http\Controllers\WhatsAppController::class, 'inboxSummary'])->middleware('perm:whatsapp.view');
     Route::get('api/whatsapp/conversations/{conversation}/messages', [\App\Http\Controllers\WhatsAppController::class, 'messages'])->middleware('perm:whatsapp.view');
-    Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send'])->middleware('perm:whatsapp.reply');
-    Route::post('api/whatsapp/conversations/{conversation}/request-contact', [\App\Http\Controllers\WhatsAppController::class, 'requestContact'])->middleware('perm:whatsapp.reply');
+    // حد wa-send لكل موظف (E28): الرد والسعر وطلب الرقم، وكل مسار إرسال لاحق
+    Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send'])->middleware(['perm:whatsapp.reply', 'throttle:wa-send']);
+    Route::post('api/whatsapp/conversations/{conversation}/request-contact', [\App\Http\Controllers\WhatsAppController::class, 'requestContact'])->middleware(['perm:whatsapp.reply', 'throttle:wa-send']);
     // مرفقات العملاء (E14): ربط {message} محصور بنطاق المحادثة. الرابط بلا امتداد فلا تلتقطه كتلة nginx للملفات الثابتة
     Route::get('api/whatsapp/messages/{message}/media', [\App\Http\Controllers\WhatsAppMediaController::class, 'show'])->name('whatsapp.media.show')->middleware(['perm:whatsapp.media', 'throttle:60,1']);
     Route::post('api/whatsapp/messages/{message}/media/refetch', [\App\Http\Controllers\WhatsAppMediaController::class, 'refetch'])->name('whatsapp.media.refetch')->middleware(['perm:whatsapp.media', 'throttle:60,1']);
@@ -225,7 +226,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
 
     // طلبات التسعير والحجز
     Route::get('quote-requests', [\App\Http\Controllers\QuoteRequestController::class, 'index'])->name('quote-requests.index')->middleware('perm:quotes.view');
-    Route::post('quote-requests/{quoteRequest}/price', [\App\Http\Controllers\QuoteRequestController::class, 'price'])->name('quote-requests.price')->middleware('perm:quotes.price');
+    Route::post('quote-requests/{quoteRequest}/price', [\App\Http\Controllers\QuoteRequestController::class, 'price'])->name('quote-requests.price')->middleware(['perm:quotes.price', 'throttle:wa-send']);
     Route::post('quote-requests/{quoteRequest}/status', [\App\Http\Controllers\QuoteRequestController::class, 'updateStatus'])->name('quote-requests.status')->middleware('perm:quotes.price');
 
     // تجربة مزوّد أسعار الرحلات (أداة مقارنة — المدير فقط)

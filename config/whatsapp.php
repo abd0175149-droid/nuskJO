@@ -36,6 +36,8 @@ return [
         'retry_system_max' => 2,
         // المنظّف: queued أقدم من هذا صار «غير مؤكد»
         'reap_minutes' => 15,
+        // E28: حد wa-send لكل موظف في الدقيقة (الرد والسعر وطلب الرقم): 429 «تمهّل قليلاً»
+        'per_minute' => max(1, (int) env('WA_SEND_PER_MINUTE', 30)),
     ],
 
     // حالات التسليم (E21، العلم delivery_status_v2): مهلة الإيصال اليتيم في الكاش (ثوانٍ)، وسقف عناصر statusHistory

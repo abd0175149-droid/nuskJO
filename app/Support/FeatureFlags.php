@@ -35,6 +35,9 @@ final class FeatureFlags
         'delivery_status_v2' => ['label' => 'حالات التسليم الذرية: لا تتراجع، بوقت ميتا وتاريخ بلا تكرار، والإيصال المبكر لا يضيع، وعلامات ✓ و✓✓ في الصندوق', 'capability' => 'C050', 'available' => true],
         'wa_event_bus' => ['label' => 'ناقل الأحداث الداخلي: إشعار التحويل و«لم تصل رسالتك» وتدقيقهما من المستمعين بدل الإشعار المباشر', 'capability' => 'C087', 'available' => true],
         'user_preferences_optout' => ['label' => 'تسجيل إيقاف العميل للتسويق من إعدادات واتساب (user_preferences) في قائمة الرافضين', 'capability' => 'C087', 'available' => true],
+        // E28: البث اللحظي الآمن للصندوق، وشريط الانقطاع والتعافي بعد النشر
+        'inbox_realtime' => ['label' => 'الصندوق اللحظي: الرسالة والحالة تظهران خلال ثانيتين لمن يرى المحادثة (والاستطلاع احتياطي كل 60 ثانية)', 'capability' => 'C138', 'available' => true],
+        'connection_resilience' => ['label' => 'شريط انقطاع واحد، وبطاقة «خطأ في الصفحة»، وإعادة تحميل واحدة بعد النشر، و«قد تكون أُرسلت» للإرسال مجهول النتيجة', 'capability' => 'C277', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

@@ -8,13 +8,17 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
-        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function () {
             // ويبهوك ميتا بلا وسيط مجموعة: لا جلسة ولا CSRF ولا Inertia (routes/webhooks.php)
             \Illuminate\Support\Facades\Route::group([], base_path('routes/webhooks.php'));
         },
     )
+    // تفويض القنوات الخاصة (E28): جلسة نشطة وحارس المسارات وحد معدّل، كبقية المسارات المحمية. قرار كل قناة في
+    // routes/channels.php، والقدرة realtime.subscribe لأي مستخدم نشط. وسيط العامل الثاني يضيفه E27
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', [
+        'middleware' => ['web', 'auth', 'auth.session', 'active', 'authz.fence', 'can:realtime.subscribe', 'throttle:broadcast-auth'],
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
