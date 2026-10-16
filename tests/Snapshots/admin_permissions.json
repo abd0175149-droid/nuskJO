@@ -92,5 +92,9 @@
     "set_customer_bot:off": {
         "perm": "bot.toggle",
         "write": true
+    },
+    "get_channel_status:_": {
+        "perm": "channel.view",
+        "write": false
     }
 }

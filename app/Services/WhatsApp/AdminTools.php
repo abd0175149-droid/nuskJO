@@ -59,6 +59,8 @@ class AdminTools
         'bot.toggle' => ['group' => 'إدارة الأدوات', 'label' => 'تشغيل أو إيقاف بوت العملاء', 'desc' => 'يوقف ردود البوت على كل العملاء أو يعيدها.', 'write' => true],
         // E31: خلف العلم wa_block_admin_tool، وبشرط أن يملك المستخدم المرتبط whatsapp.block. فك الحظر من لوحة التحكم وحدها
         'contacts.block' => ['group' => 'جهات الاتصال', 'label' => 'حظر رقم مزعج', 'desc' => 'يحظر رقماً راسلنا خلال 24 ساعة، بعد معاينة وتأكيد. فك الحظر من لوحة التحكم فقط.', 'write' => true],
+        // E23: قراءة فقط. لا تعمل حين تتعطل القناة نفسها (رمز باطل أو ويبهوك لمكان آخر): الأساس صفحة الحالة وwhatsapp:doctor
+        'channel.view' => ['group' => 'التشخيص', 'label' => 'حالة قناة الواتساب', 'desc' => 'هل الإرسال يعمل، وصحة الرقم عند ميتا، وآخر خطأ، وسلامة الويبهوك. لا تعمل إن تعطلت القناة نفسها.', 'write' => false],
     ];
 
     /**
@@ -81,6 +83,7 @@ class AdminTools
         'tools.toggle' => 'whatsapp.settings',
         'bot.toggle' => 'whatsapp.settings',
         'contacts.block' => 'whatsapp.block',
+        'channel.view' => 'whatsapp.settings',
     ];
 
     /**
@@ -210,6 +213,13 @@ class AdminTools
             'rules' => ['action' => 'required|string', 'phone' => 'required|string|max:20', 'reason_code' => 'required|string|in:spam,abuse,fraud,other',
                 'reason' => 'required|string|max:300', 'confirm' => 'nullable|boolean'],
             'actions' => ['block' => ['perm' => 'contacts.block', 'write' => true, 'label' => 'حظر']],
+        ],
+        // E23: حالة القناة للقراءة، بلا مدخلات ولا أسرار ولا أرقام عملاء
+        'get_channel_status' => [
+            'label' => 'حالة القناة', 'handler' => 'channelStatus',
+            'description' => 'حالة قناة الواتساب الآن: هل الإرسال يعمل أو موقوف، وصحة الرقم وجودته عند ميتا، وآخر خطأ إرسال، وسلامة الويبهوك، وإصدار Graph. قراءة فقط.',
+            'properties' => [], 'required' => [], 'rules' => [],
+            'actions' => ['_' => ['perm' => 'channel.view', 'write' => false]],
         ],
     ];
 
@@ -634,6 +644,69 @@ class AdminTools
             ])->all(),
             'note' => 'اعرض القائمة بإيجاز، ولا تتواصل مع العملاء — الرد من الصندوق. window_minutes_left=null: النافذة مغلقة.',
         ];
+    }
+
+    /**
+     * حالة القناة (E23): مصفوفة صغيرة بلا أسرار ولا نصوص استثناء ولا أرقام عملاء. المصدر الإيقاف (رمزه لا نص المدير)،
+     * وآلة الحالات (E22)، وآخر فحص لميتا، وآخر خطأ قناة (E18)، والإصدار (E05).
+     */
+    private static function channelStatus(array $in, WaConversation $conv, WaAdminNumber $a): array
+    {
+        $s = WaBotSetting::current();
+        $health = ChannelHealth::available() ? ChannelHealth::current($s) : null;
+        $graph = GraphVersions::status(config('services.whatsapp.graph_version'));
+        $channel = (array) ($s->wa_channel_health ?? []);
+        $webhook = is_array($channel['webhook'] ?? null) ? $channel['webhook'] : null;
+        $last = (array) ($s->wa_last_error ?? []);
+        if ($last === []) {
+            $row = \App\Models\WaMessage::where('direction', 'out')->where('status', 'failed')->whereNotNull('error_code')
+                ->latest('id')->first(['error_code', 'created_at']);
+            $last = $row ? ['error_code' => $row->error_code, 'message' => MetaErrorCatalog::byCode($row->error_code)['message'] ?? null, 'at' => $row->created_at?->toIso8601String()] : [];
+        }
+        $source = $s->suspendSource();
+
+        return [
+            'bot' => ['enabled' => (bool) $s->enabled, 'provider' => $s->provider, 'model' => $s->model],
+            'sending' => [
+                'manual_suspended' => $s->sendingSuspended(),
+                'suspended_by' => $source === null ? null : (self::SUSPEND_SOURCES[$source] ?? $source),
+                'health' => $health?->value,
+                'health_label' => $health?->label(),
+                'blocks_sending' => $health?->blocksSending(),
+                'until' => $s->wa_health_until?->toIso8601String(),
+            ],
+            'graph' => ['version' => $graph['version'], 'sunset' => $graph['sunset'], 'days_left' => $graph['days_left']],
+            'last' => [
+                'last_inbound_at' => self::iso(WaConversation::max('last_inbound_at')),
+                'last_outbound_at' => self::iso(WaConversation::max('last_outbound_at')),
+                'last_failure' => $last === [] ? null : [
+                    'code' => $last['error_code'] ?? null,
+                    'label' => isset($last['message']) ? mb_substr((string) $last['message'], 0, 160) : null,
+                    'at' => $last['at'] ?? null,
+                ],
+            ],
+            'meta' => [
+                'checked_at' => $channel['checked_at'] ?? null,
+                'can_send_message' => $channel['can_send_message'] ?? null,
+                'quality_rating' => $channel['quality_rating'] ?? null,
+                'webhook_ok' => $webhook['ok'] ?? null,
+                'webhook_issue' => $webhook['issues'][0] ?? null,
+            ],
+            'bot_tools_enabled' => count(array_filter(array_keys(BotTools::labels()), fn ($k) => $s->toolEnabled($k))),
+            'kb_active_entries' => WaKnowledgeEntry::where('is_active', true)->count(),
+            'note' => 'انقل الحالة بإيجاز كما هي. webhook_ok=false يعني أن ويبهوك ميتا منحرف؛ التفاصيل في صفحة «حالة النظام» أو whatsapp:doctor.',
+        ];
+    }
+
+    /** من يوقف الإرسال (WaBotSetting::suspendSource) بلا نص المدير */
+    private const SUSPEND_SOURCES = [
+        'env' => 'بيئة الخادم', 'manual' => 'إيقاف طارئ يدوي', 'meta_event' => 'حدث من ميتا',
+        'graph_error' => 'خطأ من ميتا عند الإرسال', 'restore' => 'وضع آمن بعد استعادة نسخة',
+    ];
+
+    private static function iso(mixed $at): ?string
+    {
+        return $at ? Carbon::parse($at)->toIso8601String() : null;
     }
 
     // ==================== قاعدة المعرفة ====================

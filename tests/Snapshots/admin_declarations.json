@@ -109,5 +109,11 @@
                 "off"
             ]
         }
+    },
+    {
+        "name": "get_channel_status",
+        "required": [],
+        "properties": [],
+        "enums": []
     }
 ]
