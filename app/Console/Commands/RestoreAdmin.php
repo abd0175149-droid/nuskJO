@@ -51,6 +51,10 @@ class RestoreAdmin extends Command
         if ($password) {
             $this->warn("كلمة المرور الجديدة (لن تظهر مرة أخرى): {$password}");
         }
+        // E27: الدخول بعدها يطلب العامل الثاني إن كان مفعّلاً؛ فاقد الهاتف ورموز الاسترداد يحتاج إعادة تعيينه أيضاً
+        if ($user->hasTwoFactor()) {
+            $this->line("للحساب تحقق بخطوتين مفعّل. إن فُقد هاتفه ورموز الاسترداد: php artisan security:mfa-reset {$user->email}");
+        }
 
         return self::SUCCESS;
     }
