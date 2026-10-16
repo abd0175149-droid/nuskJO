@@ -140,6 +140,8 @@ return [
     'WhatsAppAdminNumberController@update' => 'update',
     'WhatsAppAdminNumberController@destroy' => 'delete',
     'WhatsAppWebhookController@receive' => 'wa.webhook_bad_sig',
+    // E32: يكتبه SendWhatsAppMediaJob بعد قبول ميتا (والتحذير المؤكَّد wa.policy_override)
+    'WhatsAppFileController@store' => 'wa.file_sent',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

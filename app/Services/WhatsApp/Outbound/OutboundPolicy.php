@@ -73,7 +73,7 @@ final class OutboundPolicy
     }
 
     /**
-     * كل حقول النص: النص، وتعليق الصورة أو المستند، ونص الرسالة التفاعلية وزر القائمة وعناوين الأزرار والصفوف ووصفها.
+     * كل حقول النص: النص، وتعليق الصورة أو المستند واسمه، ونص الرسالة التفاعلية وزر القائمة وعناوين الأزرار والصفوف ووصفها.
      *
      * @return list<string>
      */
@@ -83,6 +83,8 @@ final class OutboundPolicy
             data_get($payload, 'text.body'),
             data_get($payload, 'image.caption'),
             data_get($payload, 'document.caption'),
+            // اسم المستند يراه العميل (E32): «جواز-A1234567.pdf» يحمل الرقم كالنص
+            data_get($payload, 'document.filename'),
             data_get($payload, 'video.caption'),
             data_get($payload, 'interactive.body.text'),
             data_get($payload, 'interactive.header.text'),

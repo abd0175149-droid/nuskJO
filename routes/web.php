@@ -204,6 +204,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::post('whatsapp/knowledge/reorder', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'reorder'])->name('whatsapp.knowledge.reorder')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'update'])->name('whatsapp.knowledge.update')->middleware('perm:whatsapp.settings');
     Route::delete('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'destroy'])->name('whatsapp.knowledge.destroy')->middleware('perm:whatsapp.settings');
+    // ملف من الصندوق (E32): الربط المقيّد وحد wa-files، والرفع إلى ميتا مؤجل في الطابور. لكتلة nginx الخاصة بالمسار حدها (20m)
+    Route::post('api/whatsapp/conversations/{conversation}/send-file', [\App\Http\Controllers\WhatsAppFileController::class, 'store'])->middleware(['perm:whatsapp.reply', 'throttle:wa-files']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');

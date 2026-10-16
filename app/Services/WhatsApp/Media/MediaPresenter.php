@@ -31,7 +31,7 @@ final class MediaPresenter
             'viewable' => $status === 'stored' && $canMedia,
             'previewable' => (bool) (MediaArchiver::allowedTypes()[(string) $m->media_mime][1] ?? false),
             'refetchable' => self::refetchable($m, $user),
-        ];
+        ] + ($m->media_remote_deleted_at !== null ? ['remote_deleted' => true] : []);
     }
 
     /** تنزيل يدوي ممكن: كبير أو فشل، ومعرّفه عند ميتا لم ينتهِ، ولمن يملك العرض والرد */

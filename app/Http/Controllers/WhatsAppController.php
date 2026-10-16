@@ -55,6 +55,8 @@ class WhatsAppController extends Controller
             'canLinkClient' => auth()->user()->can('whatsapp.link_client') && auth()->user()->can('clients.view'),
             // مرفقات العملاء (E14): أزرار العرض والتنزيل، والخادم يفرضها بنفسه
             'canMedia' => auth()->user()->can('whatsapp.media'),
+            // إرسال الملفات من المنشئ (E32): الأنواع والحدود والعلم؛ الخادم يفحص كل شيء من جديد
+            'mediaPolicy' => auth()->user()->can('whatsapp.reply') ? \App\Services\WhatsApp\Outbound\OutboundMediaPolicy::forClient() : null,
             // متابعة الصندوق (E17): الإغلاق والتأجيل والتثبيت و«غير مقروء»
             'followup' => \App\Services\WhatsApp\InboxFollowup::enabled(),
             // بطاقات أعلى الصندوق (E17.6): أعداد فقط، وتتحدّث من /api/whatsapp/inbox-summary
@@ -273,6 +275,11 @@ class WhatsAppController extends Controller
         if ($e14) {
             array_push($columns, 'media_status', 'media_size', 'media_id', 'media_error');
         }
+        // حُذف من خوادم ميتا بعد القراءة (E32.12): بعد الهجرة 000032 وحدها
+        $remoteDeleted = $e14 && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'media_remote_deleted_at');
+        if ($remoteDeleted) {
+            $columns[] = 'media_remote_deleted_at';
+        }
         $user = auth()->user();
         $media = fn ($m) => \App\Services\WhatsApp\Media\MediaPresenter::forThread($m, $user);
         // سبب الفشل وإجراؤه (E18، مع meta_error_v2): الرمز والفئة والإجراء للجميع، وfbtrace_id لصاحب whatsapp.settings
@@ -295,7 +302,9 @@ class WhatsAppController extends Controller
             if (!$ledger || $m->direction !== 'out') {
                 return [];
             }
-            $resend = $canResend && (($m->status === 'failed' && data_get($m->payload, '_released_key'))
+            // الملف لا يُنسخ إلى خانة الكتابة (E32): يُرفق من جديد
+            $resend = $canResend && !in_array($m->msg_type, \App\Services\WhatsApp\Outbound\OutboundMessage::MEDIA_TYPES, true)
+                && (($m->status === 'failed' && data_get($m->payload, '_released_key'))
                 || ($m->status === 'unknown' && data_get($m->payload, '_reaped')));
 
             return ['attempts' => (int) $m->attempts, 'can_resend' => (bool) $resend];
@@ -330,7 +339,8 @@ class WhatsAppController extends Controller
                     ->where('id', '<=', $v['after'])
                     ->where('updated_at', '>=', $v['since'])
                     ->orderByDesc('id')->limit(100)
-                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $errorCols, $ledger ? ['attempts', 'payload'] : []))
+                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [],
+                        $remoteDeleted ? ['media_remote_deleted_at'] : [], $errorCols, $ledger ? ['attempts', 'payload'] : []))
                     ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + $ledgerFields($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
                     ->all();
             }

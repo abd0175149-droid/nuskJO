@@ -54,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
         $this->guardDestructiveDatabaseCommands();
         $this->definePermissionGate();
         $this->defineLoginRateLimit();
+        $this->defineFileSendRateLimit();
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
@@ -153,6 +154,24 @@ class AppServiceProvider extends ServiceProvider
             return [
                 \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by($email.'|'.$request->ip())->response($locked),
                 \Illuminate\Cache\RateLimiting\Limit::perMinute(30)->by('ip:'.$request->ip())->response($locked),
+            ];
+        });
+    }
+
+    /**
+     * حد إرسال الملفات (E32.7، throttle:wa-files): 10 في الدقيقة و60 في الساعة لكل موظف، برد عربي. يحمي الرقم الوحيد
+     * والخادم المشترك من نقرات متكررة أو حلقة في الواجهة، ويشمل إرسال الفاتورة على واتساب.
+     */
+    private function defineFileSendRateLimit(): void
+    {
+        \Illuminate\Support\Facades\RateLimiter::for('wa-files', function (\Illuminate\Http\Request $request) {
+            $by = (string) ($request->user()?->id ?? $request->ip());
+            $tooMany = fn () => response()->json(['ok' => false, 'code' => 'RATE_LIMITED',
+                'error' => 'ملفات كثيرة في وقت قصير — انتظر قليلاً ثم أعد المحاولة.'], 429);
+
+            return [
+                \Illuminate\Cache\RateLimiting\Limit::perMinute(10)->by('wa-files:m:'.$by)->response($tooMany),
+                \Illuminate\Cache\RateLimiting\Limit::perHour(60)->by('wa-files:h:'.$by)->response($tooMany),
             ];
         });
     }
