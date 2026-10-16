@@ -22,6 +22,8 @@ class Permission extends Model
         'backups.run', 'backups.restore_ack',
         // E30: تصدير محادثة كاملة ببيانات العميل الشخصية دفعة واحدة؛ يمنحها المدير وحده
         'whatsapp.export',
+        // E31: الحظر الرسمي للمدير وحده
+        'whatsapp.block',
     ];
 
     public function roles(): BelongsToMany

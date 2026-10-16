@@ -24,6 +24,12 @@ use Illuminate\Support\Facades\Cache;
  *   1) القناة مهيّأة (رمز + معرّف رقم)
  *   2) قفل الإرسال الطارئ (wa_suspended)
  *   3) نافذة 24 ساعة من آخر رسالة واردة — لا استثناء لأحد
+ *   3ب) المحظور رسمياً (E31): لا شيء يُرسل له
+ *
+ * نداءات إدارة جهات الاتصال (block_users) خارج dispatch، لأنها ليست رسائل، لكنها تحترم القناة والإيقاف الطارئ
+ * ونافذة ميتا. وملف الأعمال (whatsapp_business_profile) قراءة بالقفل 1، وكتابة بالقفلين 1 و2. ولا كود هنا يغيّر
+ * اسم العرض أو يعيد تسجيل الرقم أو يحجز اسم مستخدم: ذلك من WhatsApp Manager وحده (NoDisplayNameApiTest).
+ * ورموز QR (message_qrdls، E38) خارج dispatch كذلك: العلم wa_qr_links والقفلان 1 و2، بلا نشر حالة آلياً أبداً.
  *
  * إشعار القراءة ومؤشر الكتابة (E35) ليسا رسالة: markRead خارج dispatch، بالقفلين 1 و2 وحدهما.
  *
@@ -50,6 +56,7 @@ class WhatsAppChannel
     public const ERR_MEDIA_HOST = 'MEDIA_HOST_BLOCKED';
     public const ERR_MEDIA_INTEGRITY = 'MEDIA_INTEGRITY';
     public const ERR_NO_RECIPIENT = 'NO_RECIPIENT';
+    public const ERR_BLOCKED = 'BLOCKED';
 
     /** نص الزر المعروض في الصندوق (الجسم المرسل للعميل غيره) */
     public const CONTACT_REQUEST_LABEL = '📱 طلب مشاركة رقم الهاتف';
@@ -699,6 +706,28 @@ class WhatsAppChannel
         return null;
     }
 
+    // ==================== إدارة جهات الاتصال: الحظر (E31) ====================
+
+    /**
+     * هدف الحظر: الرقم إن عُرف، وإلا المعرّف (BSUID) خلف العلم wa_block_bsuid، فالوثائق لم تؤكد قبوله بعد.
+     * حقل واحد لا الاثنان (أولوية الرقم موثّقة للإرسال لا للحظر)، والمعرّف الأب (.ENT.) لا يُحظر أبداً.
+     *
+     * @return array{user: string}|array{user_id: string}|null
+     */
+    public static function blockTarget(WaConversation $c): ?array
+    {
+        $digits = PhoneNormalizer::digits((string) $c->wa_phone);
+        if ($digits !== '') {
+            return ['user' => '+'.$digits];
+        }
+        $uid = (string) $c->wa_user_id;
+        if ($uid !== '' && !str_contains($uid, '.ENT.') && preg_match(InboundMessage::BSUID, $uid) && \App\Support\FeatureFlags::on('wa_block_bsuid')) {
+            return ['user_id' => $uid];
+        }
+
+        return null;
+    }
+
     private static function componentsFailure(\Throwable $e): array
     {
         $code = $e instanceof \InvalidArgumentException ? self::ERR_CONFIG
@@ -947,6 +976,514 @@ class WhatsAppChannel
         return hash('sha256', $conv->id.'|'.$msgType.'|'.$displayBody.(isset($columns['media_sha256']) ? '|'.$columns['media_sha256'] : ''));
     }
 
+    /**
+     * POST {pnid}/block_users. القفلان 1 و2، ونافذة الـ24 ساعة شرط ميتا (131047) فتُفحص محلياً بلا نداء.
+     * لا إعادة تلقائية لأي رفض (E18). يُستدعى من BlockService وحده.
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, meta_code: ?int}
+     */
+    public static function blockUsers(WaConversation $c): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ): لا حظر ولا فك حتى يُرفع.');
+        }
+        if (!$c->isWindowOpen()) {
+            return self::fail('BLOCK_WINDOW', 'لا يمكن الحظر إلا خلال 24 ساعة من آخر رسالة للعميل.');
+        }
+        $target = self::blockTarget($c);
+        if ($target === null) {
+            return self::fail(self::ERR_NO_RECIPIENT, 'رقم العميل غير ظاهر، والحظر بالمعرّف غير مفعّل بعد.');
+        }
+
+        return self::blockCall('POST', $target, $c->id);
+    }
+
+    /**
+     * DELETE {pnid}/block_users بالجسم نفسه. القفلان 1 و2 وحدهما: الوثيقة تقيّد الحظر بالنافذة، والفك يُجرَّب بلا
+     * هذا الشرط (رفض ميتا يُعرض كما هو). الهدف من صف الحظر (الرقم أو المعرّف كما حُظر به)، أو صريحاً من المزامنة.
+     *
+     * @param  WaConversation|\App\Models\WaBlock|array{user?: string, user_id?: string}  $x
+     */
+    public static function unblockUsers(WaConversation|\App\Models\WaBlock|array $x): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ): لا حظر ولا فك حتى يُرفع.');
+        }
+        $target = match (true) {
+            is_array($x) => self::validBlockTarget($x),
+            $x instanceof WaConversation => self::blockTarget($x),
+            default => self::validBlockTarget(array_filter([
+                'user' => $x->phone ? '+'.PhoneNormalizer::digits($x->phone) : null,
+                'user_id' => $x->phone ? null : $x->wa_user_id,
+            ])),
+        };
+        if ($target === null) {
+            return self::fail(self::ERR_NO_RECIPIENT, 'لا رقم ولا معرّف لهذا الحظر — فكّه من نتيجة المزامنة مع ميتا.');
+        }
+
+        return self::blockCall('DELETE', $target, $x instanceof WaConversation ? $x->id : ($x instanceof \App\Models\WaBlock ? $x->conversation_id : null));
+    }
+
+    /**
+     * GET {pnid}/block_users?limit=100&after=… للمزامنة القرائية وحدها. القفل 1 وحده (قراءة).
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data: list<array{phone?: string, user_id?: string}>, next_after: ?string}
+     */
+    public static function listBlocked(?string $after = null): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).') + ['data' => [], 'next_after' => null];
+        }
+        try {
+            $res = Graph\GraphClient::request('GET', [(string) $s->phoneNumberId(), 'block_users'], array_filter(['limit' => 100, 'after' => $after]), (string) $s->token(), 20);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.') + ['data' => [], 'next_after' => null];
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.block.list_failed', ['type' => class_basename($e)]);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).') + ['data' => [], 'next_after' => null];
+        }
+        if (!$res->successful()) {
+            $err = MetaError::fromGraphResponse($res);
+            WaLog::warning('wa.block.list_failed', ['meta_code' => $err->metaCode, 'error_code' => $err->code, 'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+
+            return self::fail($err->code, $err->staffMessage, $err->metaCode) + ['data' => [], 'next_after' => null];
+        }
+
+        $rows = [];
+        foreach ((array) $res->json('data', []) as $row) {
+            // عنصر لكل مستخدم، أو block_users داخل العنصر: يُقرأ الشكلان
+            foreach (is_array($row) && isset($row['block_users']) ? (array) $row['block_users'] : [$row] as $u) {
+                if (is_array($u) && ($entry = self::blockedEntry($u))) {
+                    $rows[] = $entry;
+                }
+            }
+        }
+        $after = $res->json('paging.next') ? $res->json('paging.cursors.after') : null;
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'data' => $rows, 'next_after' => is_string($after) && $after !== '' ? $after : null];
+    }
+
+    /** @return array{phone?: string, user_id?: string}|null */
+    private static function blockedEntry(array $u): ?array
+    {
+        $uid = data_get($u, 'user_id');
+        $input = (string) data_get($u, 'input', '');
+        if (!is_string($uid) && preg_match(InboundMessage::BSUID, $input)) {
+            $uid = $input;
+        }
+        $phone = PhoneNormalizer::digits((string) (data_get($u, 'wa_id') ?: (preg_match(InboundMessage::BSUID, $input) ? '' : $input)));
+
+        $out = array_filter(['phone' => $phone !== '' ? $phone : null, 'user_id' => is_string($uid) && $uid !== '' ? $uid : null]);
+
+        return $out ?: null;
+    }
+
+    /** هدف صريح من صف أو من المزامنة: رقم (+أرقام) أو معرّف بصيغة BSUID، لا الاثنان ولا المعرّف الأب */
+    private static function validBlockTarget(array $t): ?array
+    {
+        if (isset($t['user']) && preg_match('/^\+\d{6,15}$/', (string) $t['user'])) {
+            return ['user' => (string) $t['user']];
+        }
+        $uid = (string) ($t['user_id'] ?? '');
+
+        return $uid !== '' && !str_contains($uid, '.ENT.') && preg_match(InboundMessage::BSUID, $uid) ? ['user_id' => $uid] : null;
+    }
+
+    /**
+     * النداء نفسه وتحليل الرد: الهدف ضمن added_users (أو removed_users للفك) = نجاح. فشل جزئي من failed_users
+     * (الرمز الأدق لكل مستخدم)، وإلا error العام. السجل بالمعرّفات وحدها: لا رقم ولا BSUID.
+     */
+    private static function blockCall(string $method, array $target, ?int $convId): array
+    {
+        $s = WaBotSetting::current();
+        $op = $method === 'POST' ? 'block' : 'unblock';
+        try {
+            $res = Graph\GraphClient::request($method, [(string) $s->phoneNumberId(), 'block_users'],
+                ['messaging_product' => 'whatsapp', 'block_users' => [$target]], (string) $s->token(), 20, 10, jsonDelete: true);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        } catch (\Throwable $e) {
+            $err = MetaError::network(MetaError::networkKind($e));
+            WaLog::warning('wa.block_failed', ['conv_id' => $convId, 'type' => $op, 'error_code' => $err->code, 'category' => $err->category]);
+
+            return self::fail($err->code, 'تعذّر الاتصال بميتا (مهلة أو شبكة). راجع صفحة المحظورين قبل الإعادة.');
+        }
+
+        $json = (array) ($res->json() ?? []);
+        $listed = (array) data_get($json, 'block_users.'.($method === 'POST' ? 'added_users' : 'removed_users'), []);
+        if ($res->successful() && self::targetListed($listed, $target)) {
+            WaLog::info('wa.block.ok', ['conv_id' => $convId, 'type' => $op]);
+
+            return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => null, 'meta_code' => null];
+        }
+
+        $failed = data_get($json, 'block_users.failed_users.0.errors.0');
+        $topLevel = is_array(data_get($json, 'error'));
+        $err = match (true) {
+            is_array($failed) => MetaError::fromStatusError($failed),
+            $topLevel || !$res->successful() => MetaError::fromGraphResponse($res),
+            default => null,
+        };
+        if ($err === null) {
+            // 2xx بلا الهدف في القائمة ولا خطأ: لا نعدّه حظراً حتى تؤكده المزامنة
+            WaLog::warning('wa.block_failed', ['conv_id' => $convId, 'type' => $op, 'error_code' => 'BLOCK_UNCONFIRMED', 'http' => $res->status()]);
+
+            return self::fail('BLOCK_UNCONFIRMED', 'لم تؤكد ميتا العملية. راجع المزامنة في صفحة المحظورين قبل الإعادة.');
+        }
+
+        WaLog::warning('wa.block_failed', ['conv_id' => $convId, 'type' => $op, 'meta_code' => $err->metaCode, 'error_code' => $err->code,
+            'category' => $err->category, 'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+        if ($topLevel) {
+            self::legacyReact($err);
+            MetaErrorReactor::react($err, ['conv_id' => $convId, 'source' => 'block']);
+        }
+
+        return self::fail($err->code, MetaErrorCatalog::forBlock($err), $err->metaCode) + ['category' => $err->category, 'fbtrace_id' => $err->fbtraceId];
+    }
+
+    private static function targetListed(array $listed, array $target): bool
+    {
+        foreach ($listed as $u) {
+            if (!is_array($u)) {
+                continue;
+            }
+            if (isset($target['user'])) {
+                $want = PhoneNormalizer::digits($target['user']);
+                foreach (['wa_id', 'input'] as $k) {
+                    if (PhoneNormalizer::digits((string) ($u[$k] ?? '')) === $want) {
+                        return true;
+                    }
+                }
+            } elseif (in_array($target['user_id'], [(string) ($u['user_id'] ?? ''), (string) ($u['input'] ?? '')], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // ==================== ملف الأعمال (E31) ====================
+
+    private const PROFILE_FIELDS = 'about,address,description,email,profile_picture_url,websites,vertical';
+
+    /**
+     * GET {pnid}/whatsapp_business_profile. القفل 1 وحده: القراءة مسموحة أثناء الإيقاف الطارئ، فليست إرسالاً.
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data?: array<string, mixed>}
+     */
+    public static function getBusinessProfile(): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        $res = self::profileCall('GET', [(string) $s->phoneNumberId(), 'whatsapp_business_profile'], ['fields' => self::PROFILE_FIELDS]);
+        if (!$res['ok']) {
+            return $res;
+        }
+
+        return $res + ['data' => (array) data_get($res['json'], 'data.0', [])];
+    }
+
+    /**
+     * اسم العرض وحالته والرقم المعروض: للعرض فقط. لا يُغيَّر من هنا أبداً (WhatsApp Manager وحده).
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data?: array<string, mixed>}
+     */
+    public static function getPhoneIdentity(): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        $res = self::profileCall('GET', [(string) $s->phoneNumberId()], ['fields' => 'verified_name,name_status,display_phone_number']);
+        if (!$res['ok']) {
+            return $res;
+        }
+
+        return $res + ['data' => array_intersect_key((array) $res['json'], array_flip(['verified_name', 'name_status', 'display_phone_number']))];
+    }
+
+    /**
+     * POST {pnid}/whatsapp_business_profile بالحقول المحددة وحدها مع messaging_product. القفلان 1 و2:
+     * لا تعديل للملف أثناء إيقاف طارئ احتياطاً.
+     */
+    public static function updateBusinessProfile(array $fields): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ): لا تعديل للملف حتى يُرفع.');
+        }
+        $res = self::profileCall('POST', [(string) $s->phoneNumberId(), 'whatsapp_business_profile'], ['messaging_product' => 'whatsapp'] + $fields);
+        if ($res['ok'] && data_get($res['json'], 'success') !== true) {
+            return self::fail('PROFILE_UNCONFIRMED', 'لم تؤكد ميتا حفظ الملف. اقرأ الملف من جديد قبل الإعادة.');
+        }
+
+        return $res;
+    }
+
+    /**
+     * صورة الملف بالرفع القابل للاستئناف: جلسة على التطبيق ({app-id}/uploads) ثم الملف الخام، فيعود handle
+     * يُمرَّر في profile_picture_handle. يحتاج App ID (E08). القفلان 1 و2.
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, handle?: string}
+     */
+    public static function uploadProfilePicture(string $bytes, string $mime, string $fileName): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ): لا تعديل للملف حتى يُرفع.');
+        }
+        $appId = (string) $s->appId();
+        if ($appId === '') {
+            return self::fail('APP_ID_MISSING', 'أدخل App ID في إعدادات الواتساب أولاً.');
+        }
+        try {
+            $session = Graph\GraphClient::startUpload($appId, $fileName, strlen($bytes), $mime, (string) $s->token());
+            $id = (string) $session->json('id', '');
+            if (!$session->successful() || $id === '') {
+                return self::profileError($session, 'upload_session');
+            }
+            $file = Graph\GraphClient::uploadFile($id, $bytes, $mime, (string) $s->token());
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إعداد الرفع غير صالح (App ID أو إصدار Graph أو معرّف الجلسة).');
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.profile.failed', ['type' => class_basename($e), 'field' => 'upload']);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        $handle = (string) $file->json('h', '');
+        if (!$file->successful() || $handle === '') {
+            return self::profileError($file, 'upload_file');
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'handle' => $handle];
+    }
+
+    /** @return array{ok: bool, code: ?string, error: ?string, json?: array} */
+    private static function profileCall(string $method, array $segments, array $data): array
+    {
+        try {
+            $res = Graph\GraphClient::request($method, $segments, $data, (string) WaBotSetting::current()->token(), 20);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.profile.failed', ['type' => class_basename($e), 'field' => $segments[1] ?? 'phone']);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        if (!$res->successful()) {
+            return self::profileError($res, $segments[1] ?? 'phone');
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'json' => (array) ($res->json() ?? [])];
+    }
+
+    private static function profileError(Response $res, string $field): array
+    {
+        $err = MetaError::fromGraphResponse($res);
+        WaLog::warning('wa.profile.failed', ['field' => $field, 'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category,
+            'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+        self::legacyReact($err);
+        MetaErrorReactor::react($err, ['source' => 'profile']);
+
+        return self::fail($err->code, $err->staffMessage, $err->metaCode) + ['action' => $err->action];
+    }
+
+    // ==================== رموز QR والروابط القصيرة (E38) ====================
+
+    /**
+     * message_qrdls ليست رسائل فلا تمر بـ dispatch، لكنها تحترم العلم wa_qr_links والقفلين 1 و2: القناة مهيّأة،
+     * ولا إيقاف طارئ (لا كتابة إلى ميتا أثناءه). لا يُسجَّل الرمز ولا الرابط ولا الرسالة المعبأة: رقم الصف ورمز الخطأ وحدهما.
+     */
+    private static function qrdlGate(): ?array
+    {
+        if (!\App\Support\FeatureFlags::on('wa_qr_links')) {
+            return self::fail('QR_DISABLED', 'رموز QR مطفأة حالياً.');
+        }
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ): لا تعديل للرموز حتى يُرفع.');
+        }
+
+        return null;
+    }
+
+    /**
+     * POST {pnid}/message_qrdls: رمز ورابط قصير برسالة معبأة. data: code وprefilled_message (كما أعادتها ميتا،
+     * وقد تختلف عن المرسلة) وdeep_link_url وqr_image_url (مؤقت غير مضمون البقاء: يُنزَّل فوراً).
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data?: array{code: string, prefilled_message: string, deep_link_url: string, qr_image_url: ?string}}
+     */
+    public static function createQrdl(string $prefilled, string $format = 'PNG', ?int $linkId = null): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+
+        return self::qrdlResult(self::qrdlCall('POST', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls'],
+            ['prefilled_message' => $prefilled, 'generate_qr_image' => self::qrFormat($format)], $linkId));
+    }
+
+    /** POST على المسار نفسه مع code: يعيد qr_image_url جديداً (بصيغة أخرى مثلاً) للرمز نفسه */
+    public static function updateQrdl(string $code, string $prefilled, string $format = 'PNG', ?int $linkId = null): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+        if (!self::validQrCode($code)) {
+            return self::fail('QR_CODE_INVALID', 'معرّف الرمز غير صالح.');
+        }
+
+        return self::qrdlResult(self::qrdlCall('POST', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls'],
+            ['code' => $code, 'prefilled_message' => $prefilled, 'generate_qr_image' => self::qrFormat($format)], $linkId));
+    }
+
+    /**
+     * DELETE {pnid}/message_qrdls/{code}. gone=true إن لم تجده ميتا أصلاً (حُذف من WhatsApp Manager مثلاً).
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, gone?: bool}
+     */
+    public static function deleteQrdl(string $code, ?int $linkId = null): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+        if (!self::validQrCode($code)) {
+            return self::fail('QR_CODE_INVALID', 'معرّف الرمز غير صالح.');
+        }
+        try {
+            $res = Graph\GraphClient::request('DELETE', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls', $code], [],
+                (string) WaBotSetting::current()->token(), 20);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.qrdl.failed', ['type' => class_basename($e), 'qr_link_id' => $linkId]);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        if ($res->status() === 404 || ((int) $res->json('error.code') === 100 && (int) $res->json('error.error_subcode') === 33)) {
+            return ['ok' => true, 'code' => null, 'error' => null, 'gone' => true];
+        }
+        if (!$res->successful()) {
+            return self::qrdlError($res, $linkId);
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'gone' => false];
+    }
+
+    /**
+     * GET {pnid}/message_qrdls بالصفحات (للمطابقة الأسبوعية وحدها). القائمة 2000 حداً أقصى.
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data?: list<array{code: string, prefilled_message: string, deep_link_url: string}>}
+     */
+    public static function listQrdls(int $maxPages = 25): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+        $out = [];
+        $after = null;
+        for ($page = 0; $page < $maxPages; $page++) {
+            $res = self::qrdlCall('GET', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls'],
+                array_filter(['limit' => 100, 'after' => $after]), null);
+            if (!$res['ok']) {
+                return $res;
+            }
+            foreach ((array) data_get($res['json'], 'data', []) as $row) {
+                if (is_array($row) && is_string($row['code'] ?? null)) {
+                    $out[] = ['code' => (string) $row['code'], 'prefilled_message' => (string) ($row['prefilled_message'] ?? ''),
+                        'deep_link_url' => (string) ($row['deep_link_url'] ?? '')];
+                }
+            }
+            $after = data_get($res['json'], 'paging.next') ? data_get($res['json'], 'paging.cursors.after') : null;
+            if (!is_string($after) || $after === '') {
+                break;
+            }
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'data' => $out, 'truncated' => isset($after) && is_string($after) && $after !== ''];
+    }
+
+    private static function qrFormat(string $format): string
+    {
+        return strtoupper($format) === 'SVG' ? 'SVG' : 'PNG';
+    }
+
+    private static function validQrCode(string $code): bool
+    {
+        return preg_match('/^[A-Za-z0-9_-]{1,64}$/', $code) === 1;
+    }
+
+    /** @return array{ok: bool, code: ?string, error: ?string, json?: array} */
+    private static function qrdlCall(string $method, array $segments, array $data, ?int $linkId): array
+    {
+        try {
+            $res = Graph\GraphClient::request($method, $segments, $data, (string) WaBotSetting::current()->token(), 20);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.qrdl.failed', ['type' => class_basename($e), 'qr_link_id' => $linkId]);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        if (!$res->successful()) {
+            return self::qrdlError($res, $linkId);
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'json' => (array) ($res->json() ?? [])];
+    }
+
+    private static function qrdlResult(array $res): array
+    {
+        if (!$res['ok']) {
+            return $res;
+        }
+        $j = $res['json'];
+        $code = (string) ($j['code'] ?? '');
+        $link = (string) ($j['deep_link_url'] ?? '');
+        if (!self::validQrCode($code) || !str_starts_with($link, 'https://')) {
+            return self::fail('QR_UNCONFIRMED', 'لم تُعد ميتا رمزاً صالحاً. اقرأ القائمة قبل الإعادة.');
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'data' => [
+            'code' => $code,
+            'prefilled_message' => (string) ($j['prefilled_message'] ?? ''),
+            'deep_link_url' => mb_substr($link, 0, 191),
+            'qr_image_url' => is_string($j['qr_image_url'] ?? null) ? $j['qr_image_url'] : null,
+        ]];
+    }
+
+    private static function qrdlError(Response $res, ?int $linkId): array
+    {
+        $err = MetaError::fromGraphResponse($res);
+        WaLog::warning('wa.qrdl.failed', ['qr_link_id' => $linkId, 'meta_code' => $err->metaCode, 'error_code' => $err->code,
+            'category' => $err->category, 'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+        self::legacyReact($err);
+        MetaErrorReactor::react($err, ['source' => 'qrdl']);
+
+        return self::fail($err->code, $err->staffMessage, $err->metaCode) + ['action' => $err->action];
+    }
+
     // ==================== المحرّك ====================
 
     /** @return array{to: string}|array{recipient: string}|null */
@@ -1084,6 +1621,10 @@ class WhatsAppChannel
         }
         if (!$conv->isWindowOpen()) {
             return [self::failLocal(self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.'), null];
+        }
+        // المحظور رسمياً (E31): بلا نداء ولا صف. القفل بعد النافذة وقبل اختيار الوجهة، فلا يتغيّر ترتيب ما قبله
+        if ($conv->isBlocked()) {
+            return [self::failLocal(self::ERR_BLOCKED, 'هذا العميل محظور — فكّ الحظر أولاً من صفحة المحظورين.'), null];
         }
         $target = self::target($conv, $source);
         if ($target === null) {

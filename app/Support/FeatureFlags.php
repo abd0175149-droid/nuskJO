@@ -61,6 +61,16 @@ final class FeatureFlags
         'step_up' => ['label' => 'تأكيد الهوية قبل الأفعال الحساسة (اعتماد، إعدادات، أسرار، مستخدمون…) مرة كل ربع ساعة', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'admin_number_mfa' => ['label' => 'أرقام الإدارة التي تعدّل: حساب مرتبط إلزامي، والمساعد موقوف حتى يفعّل صاحبه التحقق بخطوتين', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'idle_report' => ['label' => 'تقرير أسبوعي للمدراء بالحسابات وأرقام الإدارة الخاملة (تنبيه بلا تعطيل)', 'capability' => 'C162', 'available' => true],
+        // E31: الحظر الرسمي وملف الأعمال
+        'wa_block' => ['label' => 'الحظر الرسمي من الصندوق وصفحة «المحظورون» (للمدير بصلاحية whatsapp.block)', 'capability' => 'C038', 'available' => true],
+        'wa_block_bsuid' => ['label' => 'حظر عميل بلا رقم بمعرّفه (BSUID) — بعد التحقق من قبول ميتا له', 'capability' => 'C038', 'available' => true],
+        'wa_block_admin_tool' => ['label' => 'أداة «حظر رقم مزعج» في المساعد الإداري (معاينة ثم «تأكيد»)', 'capability' => 'C111', 'available' => true],
+        'business_profile_sync' => ['label' => 'مزامنة ملف واتساب للأعمال مع بيانات الشركة (بتأكيد)', 'capability' => 'C039', 'available' => true],
+        'business_profile_photo' => ['label' => 'رفع صورة ملف واتساب للأعمال (يحتاج App ID)', 'capability' => 'C039', 'available' => true],
+        // E38: رموز QR الرسمية وبطاقة الحالة ومصدر المحادثة
+        'wa_qr_links' => ['label' => 'رموز QR وروابط قصيرة رسمية للعروض (message_qrdls) وتبويب «المشاركة»', 'capability' => 'C056', 'available' => true],
+        'entry_tracking' => ['label' => 'تسجيل مصدر المحادثة (رمز أو رابط أو إعلان) ووسم موضوع العرض وتلميح البوت', 'capability' => 'C056', 'available' => true],
+        'offer_story_card' => ['label' => 'بطاقة حالة 9:16 للعرض تُنزَّل للنشر اليدوي (لا نشر آلي)', 'capability' => 'C041', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

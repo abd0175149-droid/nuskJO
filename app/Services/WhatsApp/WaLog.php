@@ -26,6 +26,8 @@ final class WaLog
         'rule',
         // E32: الملفات الصادرة (النوع المكتشف، وأول 12 حرفاً من البصمة؛ لا اسم ملف أبداً)
         'mime', 'sha12',
+        // E38: رقم صف الرمز وقناة الدخول (لا الرمز ولا الرابط ولا الرسالة المعبأة)
+        'qr_link_id', 'channel',
     ];
 
     public static function info(string $event, array $context = []): void

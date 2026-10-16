@@ -39,7 +39,8 @@ final class InboxSummary
             ->selectRaw('status, COUNT(*) as n')->groupBy('status')->pluck('n', 'status');
 
         $out = [
-            'waiting_staff' => $visible()->where('needs_attention', true)->count(),
+            // المحظورة (E31) لا تنتظر أحداً
+            'waiting_staff' => self::notBlocked($visible()->where('needs_attention', true))->count(),
             'window_closing' => self::windowClosing($visible())->count(),
             'failed_today' => (int) $failed->sum(),
             'failed_breakdown' => array_map('intval', $failed->all()),
@@ -58,13 +59,19 @@ final class InboxSummary
     /** عميل ينتظر (تدخّل أو وارد بلا رد) ونافذته تُغلق خلال 3 ساعات: شرط whatsapp:window-reminders نفسه */
     public static function windowClosing(Builder $q): Builder
     {
-        return $q->where('last_inbound_at', '>', now()->subDay())
+        return self::notBlocked($q)->where('last_inbound_at', '>', now()->subDay())
             ->where('last_inbound_at', '<=', now()->subHours(21))
             ->where(fn ($w) => $w->where('needs_attention', true)->orWhereExists(fn (QueryBuilder $m) => $m->selectRaw('1')->from('wa_messages')
                 ->whereColumn('wa_messages.conversation_id', 'wa_conversations.id')
                 ->where('wa_messages.direction', 'in')
                 ->where('wa_messages.msg_type', '!=', 'reaction')
                 ->whereRaw('wa_messages.id > COALESCE(wa_conversations.bot_answered_in_id, 0)')));
+    }
+
+    /** المحظورة رسمياً (E31) خارج بطاقات الانتظار وفلاترها (بعد الهجرة 2026_10_14_000031 وحدها) */
+    public static function notBlocked(Builder $q): Builder
+    {
+        return BlockService::available() ? $q->whereNull('wa_conversations.blocked_at') : $q;
     }
 
     public static function failedToday(Builder $q): Builder

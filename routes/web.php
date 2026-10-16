@@ -245,6 +245,25 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     // ملف من الصندوق (E32): الربط المقيّد وحد wa-files، والرفع إلى ميتا مؤجل في الطابور. لكتلة nginx الخاصة بالمسار حدها (20m)
     Route::post('api/whatsapp/conversations/{conversation}/send-file', [\App\Http\Controllers\WhatsAppFileController::class, 'store'])->middleware(['perm:whatsapp.reply', 'throttle:wa-files']);
 
+    // الحظر الرسمي (E31): whatsapp.block (للمدير) والعلم wa_block. الحظر وفكه من الصندوق عبر الربط المقيّد بالنطاق
+    Route::post('api/whatsapp/conversations/{conversation}/block', [\App\Http\Controllers\WhatsAppBlockController::class, 'block'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::delete('api/whatsapp/conversations/{conversation}/block', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblockConversation'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::get('whatsapp/blocks', [\App\Http\Controllers\WhatsAppBlockController::class, 'index'])->name('whatsapp.blocks')->middleware('perm:whatsapp.block');
+    Route::post('api/whatsapp/blocks/sync', [\App\Http\Controllers\WhatsAppBlockController::class, 'sync'])->middleware(['perm:whatsapp.block', 'throttle:3,10']);
+    Route::post('api/whatsapp/blocks/untracked/register', [\App\Http\Controllers\WhatsAppBlockController::class, 'registerUntracked'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::post('api/whatsapp/blocks/untracked/unblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblockUntracked'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::post('api/whatsapp/blocks/{block}/unblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblock'])->whereNumber('block')->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::post('api/whatsapp/blocks/{block}/reblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'reblock'])->whereNumber('block')->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    // ملف واتساب للأعمال (E31): whatsapp.settings، والمزامنة والصورة خلف علميهما. لا مسار يغيّر اسم العرض
+    Route::get('api/whatsapp/business-profile', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'show'])->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
+    Route::post('api/whatsapp/business-profile/sync', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'sync'])->middleware(['perm:whatsapp.settings', 'throttle:5,10']);
+    Route::post('api/whatsapp/business-profile/photo', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'photo'])->middleware(['perm:whatsapp.settings', 'throttle:5,10']);
+    // الرموز العامة بلا عرض (E38): ملصق المكتب وصفحات التواصل
+    Route::get('api/whatsapp/qr-links', [\App\Http\Controllers\WhatsAppQrController::class, 'index'])->middleware('perm:whatsapp.settings');
+    Route::post('api/whatsapp/qr-links', [\App\Http\Controllers\WhatsAppQrController::class, 'store'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
+    Route::delete('api/whatsapp/qr-links/{link}', [\App\Http\Controllers\WhatsAppQrController::class, 'destroy'])->whereNumber('link')->middleware('perm:whatsapp.settings');
+    Route::get('whatsapp/qr-links/{link}/{format}', [\App\Http\Controllers\WhatsAppQrController::class, 'download'])->whereNumber('link')->where('format', 'png|svg')->middleware('perm:whatsapp.settings');
+
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');
     Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'create', 'store', 'show', 'update', 'destroy'])
@@ -262,6 +281,15 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('offers/{offer}/card/upload', [\App\Http\Controllers\OfferController::class, 'uploadCard'])->name('offers.card.upload')->middleware('perm:offers.update');
     Route::delete('offers/{offer}/card', [\App\Http\Controllers\OfferController::class, 'deleteCard'])->name('offers.card.delete')->middleware('perm:offers.update');
     Route::post('offers/{offer}/hero', [\App\Http\Controllers\OfferController::class, 'uploadHero'])->name('offers.hero.upload')->middleware('perm:offers.update');
+
+    // المشاركة (E38): رموز QR الرسمية للعرض وبطاقة الحالة 9:16 للنشر اليدوي. العلمان wa_qr_links وoffer_story_card
+    Route::get('api/offers/{offer}/share', [\App\Http\Controllers\OfferShareController::class, 'index'])->middleware('perm:offers.view');
+    Route::post('offers/{offer}/qr', [\App\Http\Controllers\OfferShareController::class, 'storeQr'])->middleware(['perm:offers.update', 'throttle:10,1']);
+    Route::delete('offers/{offer}/qr/{link}', [\App\Http\Controllers\OfferShareController::class, 'destroyQr'])->whereNumber('link')->middleware('perm:offers.update');
+    Route::get('offers/{offer}/qr/{link}/{format}', [\App\Http\Controllers\OfferShareController::class, 'downloadQr'])->whereNumber('link')->where('format', 'png|svg')->middleware('perm:offers.view');
+    Route::post('offers/{offer}/card-qr', [\App\Http\Controllers\OfferShareController::class, 'toggleCardQr'])->middleware('perm:offers.update');
+    Route::post('offers/{offer}/story', [\App\Http\Controllers\OfferShareController::class, 'generateStory'])->middleware(['perm:offers.update', 'throttle:6,1']);
+    Route::get('offers/{offer}/story/download', [\App\Http\Controllers\OfferShareController::class, 'downloadStory'])->middleware(['perm:offers.view', 'throttle:6,1']);
 
     // طلبات التسعير والحجز
     Route::get('quote-requests', [\App\Http\Controllers\QuoteRequestController::class, 'index'])->name('quote-requests.index')->middleware('perm:quotes.view');

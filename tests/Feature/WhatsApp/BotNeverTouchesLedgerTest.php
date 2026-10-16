@@ -44,7 +44,17 @@ class BotNeverTouchesLedgerTest extends TestCase
         parent::setUp();
 
         $this->configureChannel();
-        $this->fakeGraph();
+        // الحظر (E31) يرد بقائمة added_users للهدف نفسه، وما سواه رسالة مرسلة
+        $n = 0;
+        $this->fakeGraph(['graph.facebook.com/*' => function (Request $r) use (&$n) {
+            if (str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/block_users')) {
+                $user = (string) data_get($r->data(), 'block_users.0.user');
+
+                return Http::response(['messaging_product' => 'whatsapp', 'block_users' => ['added_users' => [['input' => $user, 'wa_id' => ltrim($user, '+')]]]]);
+            }
+
+            return Http::response(['messaging_product' => 'whatsapp', 'messages' => [['id' => 'wamid.OUT.'.(++$n)]]]);
+        }]);
         // ميتا تجلب صورة البطاقة من رابط HTTPS عام
         config(['filesystems.disks.public.url' => 'https://nusk.test/storage']);
 
@@ -195,6 +205,12 @@ class BotNeverTouchesLedgerTest extends TestCase
         $write('set_customer_bot', ['action' => 'off']);
         $this->assertFalse(WaBotSetting::current()->enabled);
         $write('set_customer_bot', ['action' => 'on']);
+
+        // E31: حظر رقم مزعج (خلف علمه، وبمستخدم مرتبط يملك whatsapp.block) لا يمس الدفاتر
+        config(['features.env.wa_block_admin_tool' => true]);
+        $admin->forceFill(['user_id' => User::factory()->admin()->create()->id])->save();
+        $write('block_contact', ['action' => 'block', 'phone' => '+'.$this->conv->phone, 'reason_code' => 'spam', 'reason' => 'رسائل مزعجة متكررة طوال اليوم']);
+        $this->assertNotNull($this->conv->fresh()->blocked_at);
 
         $this->assertEqualsCanonicalizing(AdminTools::names(), array_values(array_unique($used)), 'أداة إدارية بلا حالة هنا');
 

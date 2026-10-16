@@ -13,7 +13,7 @@
         <ConversationList :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-1"
                           :visible="s.view === 'list'" :items="s.list" :active-id="s.activeId" :has-more="s.listHasMore" :loading-more="s.loadingMore"
                           :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
-                          @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
+                          :can-block="canBlock" @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
                           @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"
                           :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"
                           :message-search="messageSearch" @jump="(h) => inbox.openFromSearch(h.conversation_id, h.message_id)"/>
@@ -36,11 +36,13 @@
                     @load-newer="inbox.loadNewer" @back-to-latest="inbox.backToLatest" @set-filters="inbox.setThreadFilters"
                     @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"
                     :media-policy="mediaPolicy" :recipient="inbox.recipient.value" :outbox="inbox.outboxItems.value"
-                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"/>
+                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"
+                    :can-block="canBlock" @block="blockOpen = true" @unblock="inbox.unblock(prompt)"/>
       </div>
     </div>
 
     <LinkClientDialog :open="linkOpen" :conversation="s.thread || {}" @close="linkOpen = false" @linked="inbox.onLinked"/>
+    <BlockDialog v-if="canBlock" :open="blockOpen" :conversation="s.thread || {}" @close="blockOpen = false" @blocked="onBlocked"/>
     <MediaViewer :open="viewer.open" :message-id="viewer.id" :media="viewer.media" :watermark="viewer.watermark" @close="viewer.open = false"/>
     <ExportDialog v-if="canExport" :open="exportOpen" :conversation="s.thread || {}" @close="exportOpen = false"/>
   </AppLayout>
@@ -55,6 +57,7 @@ import ConversationList from '@/Components/WhatsApp/ConversationList.vue';
 import ExportDialog from '@/Components/WhatsApp/ExportDialog.vue';
 import InboxStatusBar from '@/Components/WhatsApp/InboxStatusBar.vue';
 import InboxCards from '@/Components/WhatsApp/InboxCards.vue';
+import BlockDialog from '@/Components/WhatsApp/BlockDialog.vue';
 import LinkClientDialog from '@/Components/WhatsApp/LinkClientDialog.vue';
 import MediaViewer from '@/Components/WhatsApp/MediaViewer.vue';
 import ThreadView from '@/Components/WhatsApp/ThreadView.vue';
@@ -96,6 +99,8 @@ const props = defineProps({
   canExport: Boolean,
   // E32: إرسال الملفات (الأنواع والحدود والعلم)
   mediaPolicy: { type: Object, default: null },
+  // E31: الحظر الرسمي (whatsapp.block والعلم wa_block)
+  canBlock: Boolean,
 });
 
 const threadView = ref(null);
@@ -103,9 +108,14 @@ const inbox = useInbox(props, () => threadView.value);
 const { s } = inbox;
 const linkOpen = ref(false);
 const exportOpen = ref(false);
+const blockOpen = ref(false);
+const onBlocked = () => {
+  blockOpen.value = false;
+  inbox.onBlocked();
+};
 
 // تحذير السياسة (E15.9) وفك الربط بنافذة التأكيد الموحّدة (E16.9)
-const { confirm } = useConfirm();
+const { confirm, prompt } = useConfirm();
 const ask = (message) => confirm({ title: 'تحذير قبل الإرسال', message, confirmLabel: 'إرسال رغم التحذير', danger: true });
 // رسالة «غير مؤكدة» قد تكون وصلت: النسخ إلى المنشئ بعد تأكيد صريح (E19)
 const askResend = (message) => confirm({ title: 'الإرسال مرة ثانية؟', message, confirmLabel: 'انسخ إلى خانة الكتابة', danger: true });

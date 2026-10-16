@@ -155,6 +155,11 @@ TXT;
             return self::adminReply($conv, $s, $admin, $run);
         }
 
+        // محظورة رسمياً (E31): لا رد ولا «تدخّل» — الحظر قرار الشركة، ولا تكلفة نموذج لمحتال
+        if ($conv->isBlocked()) {
+            return self::skip('المحادثة محظورة');
+        }
+
         // ── بوّابات خروج مبكر: وارد ينتظر ولن يرد عليه البوت يصير «تدخّل» بسبب ظاهر، لا صمتاً ──
         if (!self::hasPendingInbound($conv, $s)) {
             return self::skip('لا وارد بعد آخر رد');
@@ -213,7 +218,8 @@ TXT;
 
         // بلغ حد المعدّل (يُحسب قبل القواعد، ويُزاد بعد الإرسال الناجح وحده): نحوّل بدل الصمت
         if ($limited) {
-            return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run, why: HandoffReason::RateLimit);
+            // رقاقة «🚦 تجاوز الحد» بدل «طلب موظفاً»: يظهر معها زر الحظر في الصندوق لحظة المشكلة (E31)
+            return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run, 'rate_limit', why: HandoffReason::RateLimit);
         }
 
         try {
@@ -504,6 +510,11 @@ TXT;
         $notes = CustomerNotes::block($conv);
         if ($notes !== '') {
             $lines[] = $notes;
+        }
+
+        // مصدر المحادثة (E38): رمز أو رابط أو إعلان، بنص يبنيه الكود (خلف entry_tracking)
+        if ($entry = EntryRecorder::botHint($conv)) {
+            $lines[] = $entry;
         }
 
         return implode("\n", $lines);

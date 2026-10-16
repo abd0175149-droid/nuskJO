@@ -48,6 +48,11 @@
                         <template v-else>
                             <input v-model="settingsData[item.key]" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
                         </template>
+                        <!-- ملف واتساب للأعمال (E31): عدّاد بحد ميتا الرسمي وشرح الحقل -->
+                        <p v-if="LIMITS[item.key]" class="mt-1 text-[11px] tabular-nums" :class="lengthOf(settingsData[item.key]) > LIMITS[item.key] ? 'font-bold text-red-600' : 'text-gray-400'">
+                            <bdi dir="ltr">{{ lengthOf(settingsData[item.key]) }}/{{ LIMITS[item.key] }}</bdi>
+                        </p>
+                        <p v-if="HINTS[item.key]" class="mt-1 text-[11px] text-gray-500">{{ HINTS[item.key] }}</p>
                         <p v-if="$page.props.errors?.['values.' + item.key]" class="mt-1 text-xs text-red-600">{{ $page.props.errors['values.' + item.key] }}</p>
                     </div>
                 </div>
@@ -172,6 +177,15 @@ const props = defineProps({
     settings: Object, templates: Object, brand: Object, lastBackup: Object,
     editableKeys: { type: Array, default: () => [] },
 });
+
+// حدود ملف واتساب للأعمال (E31) بالمحارف كما تعدّها ميتا، وشرح الحقول الجديدة
+const LIMITS = { wa_profile_about: 139, wa_profile_description: 512 };
+const lengthOf = (v) => [...String(v ?? '')].length;
+const HINTS = {
+    wa_profile_about: 'النبذة في ملف واتساب للأعمال. بلا تنسيق (* _ ` ~)، والروابط فيها لا تكون قابلة للنقر.',
+    wa_profile_description: 'الوصف في ملف واتساب للأعمال.',
+    company_website: 'يبدأ بـ https://. ملف واتساب يقبل رابطين: هذا وصفحة فيسبوك.',
+};
 
 // الحقول القابلة للتعديل من هنا فقط (الخادم يُسقط غيرها)؛ الصور تُدار من «هوية بطاقات العروض»
 const editable = (items) => items.filter(i => i.type !== 'image' && props.editableKeys.includes(i.key));

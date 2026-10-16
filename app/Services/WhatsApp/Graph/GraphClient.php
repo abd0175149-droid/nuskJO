@@ -39,13 +39,14 @@ final class GraphClient
 
     /**
      * نداء Graph واحد. GET وDELETE: $data معاملات في الرابط، وPOST: جسم JSON.
+     * $jsonDelete (E31): DELETE بجسم JSON لنقطة توثّقه هكذا (فك الحظر على block_users).
      *
      * @param  list<string>  $segments
      *
      * @throws \InvalidArgumentException إعداد غير صالح (قبل أي اتصال)
      * @throws ConnectionException فشل الاتصال أو المهلة
      */
-    public static function request(string $method, array $segments, array $data = [], #[\SensitiveParameter] ?string $token = null, int $timeout = 25, int $connectTimeout = 10): Response
+    public static function request(string $method, array $segments, array $data = [], #[\SensitiveParameter] ?string $token = null, int $timeout = 25, int $connectTimeout = 10, bool $jsonDelete = false): Response
     {
         $url = self::url(...$segments);
         $token ??= (string) WaBotSetting::current()->token();
@@ -68,7 +69,7 @@ final class GraphClient
 
         $response = match ($method) {
             'POST' => $request->post($url, $data),
-            'DELETE' => $request->withQueryParameters($data)->delete($url),
+            'DELETE' => $jsonDelete ? $request->delete($url, $data) : $request->withQueryParameters($data)->delete($url),
             default => $request->get($url, $data),
         };
 
@@ -121,6 +122,64 @@ final class GraphClient
         }
 
         return $response;
+    }
+
+    /**
+     * الرفع القابل للاستئناف (E31، صورة ملف الأعمال)، الخطوة الأولى: جلسة على التطبيق {app-id}/uploads،
+     * والمعاملات في الرابط كما في المرجع. تعيد {id} بصيغة upload:…?sig=…
+     *
+     * @throws \InvalidArgumentException إعداد غير صالح
+     * @throws ConnectionException
+     */
+    public static function startUpload(string $appId, string $fileName, int $length, string $mime, #[\SensitiveParameter] ?string $token = null): Response
+    {
+        $url = self::url($appId, 'uploads');
+        $token ??= (string) WaBotSetting::current()->token();
+
+        return self::uploadRequest($token, 'Bearer')
+            ->withQueryParameters(['file_name' => $fileName, 'file_length' => $length, 'file_type' => $mime])
+            ->post($url);
+    }
+
+    /**
+     * الخطوة الثانية: الملف الخام إلى الجلسة بترويسة «Authorization: OAuth» و«file_offset: 0»، فيعود {h}.
+     * المعرّف من ميتا يحمل sig في جزء الاستعلام: يُفصل ويُتحقق من شكله، فلا يغيّر المسار ولا المضيف.
+     *
+     * @throws \InvalidArgumentException UPLOAD_SESSION_INVALID
+     * @throws ConnectionException
+     */
+    public static function uploadFile(string $sessionId, string $bytes, string $mime, #[\SensitiveParameter] ?string $token = null): Response
+    {
+        if (!preg_match('/^(upload:[A-Za-z0-9+\/=_-]{4,600})(?:\?sig=([A-Za-z0-9_-]{4,300}))?$/', $sessionId, $m)) {
+            throw new \InvalidArgumentException('UPLOAD_SESSION_INVALID');
+        }
+        $version = config('services.whatsapp.graph_version');
+        if (!GraphVersions::isValid($version)) {
+            throw new \InvalidArgumentException('GRAPH_VERSION_INVALID');
+        }
+        // «:» و«=» كما في المرجع؛ «/» و«+» من base64 مرمَّزتان فلا يتغيّر المسار
+        $url = self::HOST.$version.'/'.str_replace(['+', '/'], ['%2B', '%2F'], $m[1]);
+        $token ??= (string) WaBotSetting::current()->token();
+
+        return self::uploadRequest($token, 'OAuth', 60)
+            ->withHeaders(['file_offset' => '0'])
+            ->when(isset($m[2]) && $m[2] !== '', fn (PendingRequest $r) => $r->withQueryParameters(['sig' => $m[2]]))
+            ->withBody($bytes, $mime)
+            ->post($url);
+    }
+
+    /** طلب رفع واحد بالإعدادات نفسها (بلا تحويلات، والإثبات إن فُعّل) ويُعدّ في العدّادات */
+    private static function uploadRequest(#[\SensitiveParameter] string $token, string $scheme, int $timeout = 30): PendingRequest
+    {
+        $request = Http::withToken($token, $scheme)->withoutRedirecting()->connectTimeout(10)->timeout($timeout)->acceptJson();
+        $proof = self::proof($token);
+        self::count('calls');
+        if ($proof !== null) {
+            self::count('proof');
+            $request = $request->withQueryParameters(['appsecret_proof' => $proof]);
+        }
+
+        return $request;
     }
 
     /** الإثبات على الرمز المرسل نفسه، أو null إن كان المفتاح مطفأ أو لا سر */

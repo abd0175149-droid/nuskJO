@@ -48,6 +48,8 @@ class WaConversation extends Model
         'snoozed_until' => 'datetime',
         'marked_unread_at' => 'datetime',
         'read_receipt_upto_id' => 'integer',
+        // E31: لا يُكتب إلا عبر BlockService (forceFill)، فليس في fillable
+        'blocked_at' => 'datetime',
     ];
 
     /**
@@ -124,6 +126,12 @@ class WaConversation extends Model
         }
 
         return (int) max(0, now()->diffInMinutes($this->last_inbound_at->copy()->addDay(), false));
+    }
+
+    /** محظورة رسمياً عند ميتا (E31). قبل الهجرة 2026_10_14_000031 لا عمود، فالقيمة null دائماً */
+    public function isBlocked(): bool
+    {
+        return $this->blocked_at !== null;
     }
 
     /** هل البوت فعّال لهذه المحادثة الآن؟ */

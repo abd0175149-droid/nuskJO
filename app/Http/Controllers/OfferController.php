@@ -196,6 +196,9 @@ class OfferController extends Controller
                 'bot' => $this->botData($offer),
                 'sales' => $this->salesData($offer, $canCost),
                 'closing' => $canCost ? $this->closingData($offer) : null,
+                // تبويب «📤 المشاركة» (E38): رموز QR وبطاقة الحالة، كلٌّ بعلمه
+                'shareEnabled' => \App\Services\WhatsApp\OfferQrService::available()
+                    && (\App\Support\FeatureFlags::on('wa_qr_links') || \App\Support\FeatureFlags::on('offer_story_card')),
             ];
         }
 

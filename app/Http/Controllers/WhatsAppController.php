@@ -77,6 +77,8 @@ class WhatsAppController extends Controller
             // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص
             'messageSearch' => \App\Services\WhatsApp\Search\MessageSearch::enabledFor(auth()->user()),
             'canExport' => auth()->user()->can('whatsapp.export') && \App\Support\FeatureFlags::on('conversation_export'),
+            // الحظر الرسمي (E31): الزر والفلتر لمن يملك whatsapp.block والعلم مفعّل، والخادم يفرضهما بنفسه
+            'canBlock' => self::canBlock(),
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
             // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
@@ -86,6 +88,11 @@ class WhatsAppController extends Controller
                     ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()->all()
                 : [],
         ]);
+    }
+
+    private static function canBlock(): bool
+    {
+        return auth()->user()->can('whatsapp.block') && \App\Support\FeatureFlags::on('wa_block') && \App\Services\WhatsApp\BlockService::available();
     }
 
     /** آخر خطأ قناة من فئة auth أو integrity خلال 24 ساعة، مع meta_error_v2 وحده */
@@ -211,7 +218,9 @@ class WhatsAppController extends Controller
                 });
             })
             ->when($filter === 'unread', fn ($q) => $q->where('unread_count', '>', 0))
-            ->when($filter === 'attention', fn ($q) => $q->where('needs_attention', true))
+            // المحظورة (E31) لا تنتظر أحداً، ولها تبويبها لمن يملك whatsapp.block
+            ->when($filter === 'attention', fn ($q) => \App\Services\WhatsApp\InboxSummary::notBlocked($q->where('needs_attention', true)))
+            ->when($filter === 'blocked', fn ($q) => self::canBlock() ? $q->whereNotNull('wa_conversations.blocked_at') : $q->whereRaw('1 = 0'))
             ->when($filter === 'bot', fn ($q) => $q->where('bot_enabled', true))
             ->when($filter === 'human', fn ($q) => $q->where('bot_enabled', false))
             // الإغلاق والتأجيل والتثبيت (E17): «الكل» لا يُظهر المغلقة والمؤجلة إلا ما يحتاج تدخّلاً
@@ -254,6 +263,7 @@ class WhatsAppController extends Controller
             'window_open' => $c->isWindowOpen(),
             'window_left' => $c->windowMinutesLeft(),
             'is_admin' => (bool) $c->is_admin_chat || ($c->phone !== null && isset($adminPhones[$c->phone])),
+            'blocked' => $c->isBlocked(),
             'assignee' => $c->assignee?->name,
             'assigned_to' => $c->assigned_to,
             'topics' => TopicRouter::topicsOf($c),
@@ -483,6 +493,12 @@ class WhatsAppController extends Controller
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
+                // الحظر الرسمي (E31): رقم موظف لا يُحظر، والشريط الأحمر بمن حظر ومتى ولماذا
+                'is_staff' => (bool) $conversation->user_id,
+                'blocked' => $conversation->isBlocked(),
+                'block' => $conversation->isBlocked() ? self::blockInfo($conversation) : null,
+                // مصدر المحادثة (E38): «📷 من رمز» أو «📣 من إعلان» لمن يرى المحادثة أصلاً
+                'entry' => \App\Services\WhatsApp\EntryRecorder::badge($conversation),
             ] + (\App\Services\WhatsApp\LabelService::enabled() ? ['labels' => \App\Services\WhatsApp\LabelService::chipsFor([$conversation->id])[$conversation->id] ?? []] : [])
               + (\App\Services\WhatsApp\ReadReceipts::available() ? [
                 // الشفافية (E35): ما أُبلغ العميل بقراءته (👁 على الوارد حتى هذا المعرّف)، والوضع، وتنبيه الموكَّل في on_open
@@ -498,6 +514,24 @@ class WhatsAppController extends Controller
                 ? ['stuck' => in_array($conversation->id, \App\Services\WhatsApp\StuckReplies::cachedIds(), true)] : []),
             'notes' => $first ? $conversation->notes()->orderByDesc('id')->limit(10)->pluck('note') : null,
         ], fn ($value) => $value !== null));
+    }
+
+    /** شريط المحادثة المحظورة: التاريخ ومن حظر والسبب (نص التفاصيل لمن يملك whatsapp.block وحده) */
+    private static function blockInfo(WaConversation $conversation): ?array
+    {
+        $b = \App\Models\WaBlock::active()->with(['blocker:id,name', 'adminNumber:id,name'])
+            ->where('conversation_id', $conversation->id)->orderByDesc('id')->first();
+        if (!$b) {
+            return ['since' => $conversation->blocked_at?->toIso8601String()];
+        }
+
+        return [
+            'since' => $b->blocked_at?->toIso8601String(),
+            'by' => $b->blocker?->name ?: ($b->adminNumber ? 'رقم الإدارة «'.$b->adminNumber->name.'»' : null),
+            'reason_label' => \App\Services\WhatsApp\BlockService::reasonLabel($b->reason_code),
+            'reason' => auth()->user()->can('whatsapp.block') ? $b->reason : null,
+            'meta_state' => $b->meta_state,
+        ];
     }
 
     // ==================== المواضيع والتوجيه ====================
@@ -851,16 +885,24 @@ class WhatsAppController extends Controller
             'title' => 'استهلاك البوت وجودته',
             'usage' => $usage,
             'quality' => $quality,
+            // مصادر المحادثات (E38): أعداد فقط، خلف entry_tracking
+            'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries() : null,
         ]);
     }
 
-    public function analyticsData()
+    public function analyticsData(Request $request)
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+        $days = (int) $request->integer('entries_days', 30);
+        // فلتر فترة «مصادر المحادثات» وحده: بلا حساب الاستهلاك والجودة
+        if ($request->query('only') === 'entries') {
+            return response()->json(['entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
+        }
 
         [$usage, $quality] = $this->maskAdminChats(\App\Services\WhatsApp\BotAnalytics::usage(), \App\Services\WhatsApp\BotAnalytics::quality());
 
-        return response()->json(['usage' => $usage, 'quality' => $quality]);
+        return response()->json(['usage' => $usage, 'quality' => $quality,
+            'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
     }
 
     /**

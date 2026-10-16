@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "about": "مكتب سفر وعمرة",
+      "address": "عمّان، الأردن",
+      "description": "نص قديم كتبه أحدهم في Business Suite",
+      "email": "info@example.com",
+      "profile_picture_url": "https://pps.whatsapp.net/v/t61.24694-24/profile.jpg",
+      "websites": [
+        "https://www.example.com/"
+      ],
+      "vertical": "OTHER",
+      "messaging_product": "whatsapp"
+    }
+  ]
+}

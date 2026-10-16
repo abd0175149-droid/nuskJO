@@ -50,5 +50,15 @@ return [
         'step_up' => env('WA_FEATURE_STEP_UP'),
         'admin_number_mfa' => env('WA_FEATURE_ADMIN_NUMBER_MFA'),
         'idle_report' => env('WA_FEATURE_IDLE_REPORT'),
+        // E31
+        'wa_block' => env('WA_FEATURE_WA_BLOCK'),
+        'wa_block_bsuid' => env('WA_FEATURE_WA_BLOCK_BSUID'),
+        'wa_block_admin_tool' => env('WA_FEATURE_WA_BLOCK_ADMIN_TOOL'),
+        'business_profile_sync' => env('WA_FEATURE_BUSINESS_PROFILE_SYNC'),
+        'business_profile_photo' => env('WA_FEATURE_BUSINESS_PROFILE_PHOTO'),
+        // E38
+        'wa_qr_links' => env('WA_FEATURE_WA_QR_LINKS'),
+        'entry_tracking' => env('WA_FEATURE_ENTRY_TRACKING'),
+        'offer_story_card' => env('WA_FEATURE_OFFER_STORY_CARD'),
     ],
 ];

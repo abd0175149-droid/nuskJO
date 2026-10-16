@@ -1,6 +1,9 @@
 <template>
   <div class="p-3 border-t border-gray-200 dark:border-gray-700 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-    <div v-if="!windowOpen" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
+    <div v-if="$props.blocked" class="mb-2 text-xs font-bold text-red-700 dark:text-red-300" data-test="blocked-note">
+      ⛔ هذا العميل محظور على واتساب: لا يمكن مراسلته. يفك الحظر من يملك صلاحية الحظر.
+    </div>
+    <div v-else-if="!windowOpen" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
       ⚠️ انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.
     </div>
     <div v-else-if="urgency(windowLeft) === 'warn' || urgency(windowLeft) === 'danger'" class="mb-2 text-xs font-bold"
@@ -84,12 +87,14 @@ const props = defineProps({
   recipient: { type: Object, default: () => ({}) },
   // للاختبار: بديل التحويل إلى JPEG
   convertImage: { type: Function, default: undefined },
+  // E31: محادثة محظورة رسمياً
+  blocked: Boolean,
 });
 const emit = defineEmits(['update:modelValue', 'submit', 'requestPhone', 'sendFile']);
 
 // على اللمس Enter سطر جديد والإرسال بالزر؛ على سطح المكتب Enter يرسل
 const fine = props.finePointer ?? isFinePointer();
-const blocked = computed(() => !props.windowOpen || props.sending || props.cannotReachPhoneless);
+const blocked = computed(() => props.blocked || !props.windowOpen || props.sending || props.cannotReachPhoneless);
 
 const unfilled = computed(() => unfilledVariables(props.modelValue));
 const unfilledLabel = computed(() => unfilled.value.map((v) => `{{${v}}}`).join(' '));

@@ -16,6 +16,8 @@ final class ConversationCacheKeys
         'wa:llm:isolated:{id}', 'wa:outage-notice:notify:{id}', 'wa:media:notice:{id}', 'wa:reprocess:{id}',
         // E35: تهدئة إيصال الفتح
         'wa:rr:open:{id}',
+        // E31: قفل الحظر (30 ثانية)
+        'wa:block:{id}',
     ];
 
     public const PATTERNS = [

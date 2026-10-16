@@ -424,6 +424,9 @@
                     </div>
                     <p v-if="weekly.length && weekMaxReal === 0" class="text-xs text-gray-400 mt-2">لا طلبات ولا حجوزات في الأسابيع الثمانية الماضية.</p>
                 </section>
+
+                <!-- ⑥ مصادر المحادثات (E38) -->
+                <EntrySourcesPanel v-if="props.entries" :initial="props.entries"/>
             </div>
         </div>
     </AppLayout>
@@ -434,8 +437,9 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import EntrySourcesPanel from '@/Components/WhatsApp/EntrySourcesPanel.vue';
 
-const props = defineProps({ title: String, usage: Object, quality: Object });
+const props = defineProps({ title: String, usage: Object, quality: Object, entries: { type: Object, default: null } });
 
 /* ===================== الألوان ===================== */
 const C_IN = '#3987e5';

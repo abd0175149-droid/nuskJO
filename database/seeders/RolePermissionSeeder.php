@@ -36,7 +36,7 @@ class RolePermissionSeeder extends Seeder
             'receipts' => ['view', 'create', 'approve', 'reject'],
             'invoices' => ['view', 'create', 'update', 'submit', 'approve', 'reject'],
             'reports' => ['view', 'employee_profit', 'trip_date'],
-            'whatsapp' => ['view', 'view_all', 'reply', 'assign', 'bot_toggle', 'settings', 'admin_chats', 'kill_switch', 'link_client', 'erase', 'media', 'quick_replies', 'export', 'auto_rules'],
+            'whatsapp' => ['view', 'view_all', 'reply', 'assign', 'bot_toggle', 'settings', 'admin_chats', 'kill_switch', 'link_client', 'erase', 'media', 'quick_replies', 'export', 'auto_rules', 'block'],
             'offers' => ['view', 'create', 'update', 'delete', 'view_cost'],
             'quotes' => ['view', 'price'],
             'settings' => ['view', 'update'],
@@ -80,6 +80,7 @@ class RolePermissionSeeder extends Seeder
             'run' => 'تشغيل نسخة الآن', 'restore_ack' => 'اعتماد مراجعة ما بعد الاستعادة',
             'manage' => 'إدارة', 'close' => 'إقفال الفترات والسنة',
             'admin_chats' => 'محادثات أرقام الإدارة', 'export' => 'تصدير', 'kill_switch' => 'إيقاف الإرسال الطارئ', 'link_client' => 'ربط المحادثة بعميل', 'erase' => 'طلبات حذف البيانات', 'media' => 'عرض وتنزيل مرفقات العملاء', 'quick_replies' => 'إدارة الردود الجاهزة', 'auto_rules' => 'إدارة الردود الحتمية',
+            'block' => 'حظر',
         ];
 
         $allPermissions = [];

@@ -70,6 +70,7 @@ const props = defineProps({
   label: { type: String, default: '' },
   // البحث في نص الرسائل (E30): العلم والصلاحية من الخادم
   messageSearch: Boolean,
+  canBlock: Boolean,
 });
 const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'update:label', 'open', 'loadMore', 'jump']);
 const searching = ref(false);
@@ -89,7 +90,8 @@ const FOLLOWUP_FILTERS = [
   { key: 'snoozed', label: '💤 مؤجلة' },
   { key: 'closed', label: '🗂️ مغلقة' },
 ];
-const filters = computed(() => (props.followup ? [...BASE_FILTERS, ...FOLLOWUP_FILTERS] : BASE_FILTERS));
+// E31: تبويب المحظورين لمن يملك whatsapp.block (الخادم يفرضه)
+const filters = computed(() => [...BASE_FILTERS, ...(props.followup ? FOLLOWUP_FILTERS : []), ...(props.canBlock ? [{ key: 'blocked', label: '⛔ المحظورون' }] : [])]);
 
 // البحث بتأخير 400ms
 const searchText = ref(props.search);

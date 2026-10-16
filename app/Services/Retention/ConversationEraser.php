@@ -49,6 +49,8 @@ final class ConversationEraser
         $media = $mode === 'forget' ? $this->recentMediaIds($ids) : [];
         $counts['media_meta'] = count($media);
         $counts['webhook_bodies'] = $mode === 'forget' ? count($this->webhookBodies($ids, $canonical)) : 0;
+        // الحظر الرسمي (E31) يبقى مجرّداً بلا رقم ولا سبب
+        $counts['blocks_stripped'] = $mode === 'forget' ? $this->blocksQuery($ids, $canonical)->count() : 0;
 
         return new ErasurePlan($conv->id, $ids, $mode, $canonical, $counts, $media);
     }
@@ -104,7 +106,11 @@ final class ConversationEraser
             }
         }
 
-        // 13. المحادثة (والمدموجة فيها) صفوف شاهدة بلا بيانات شخصية
+        // 13. الحظر الرسمي (E31، forget وحده): يبقى قائماً ضد الاحتيال، مجرّداً ببصمة بدل الرقم والمعرّف وبلا نص السبب
+        $done['blocks_stripped'] = $plan->mode === 'forget' && Schema::hasTable('wa_blocks')
+            ? \App\Services\WhatsApp\BlockService::stripForErasure($ids, $plan->canonicalPhone, $this->userIds($ids)) : 0;
+
+        // 14. المحادثة (والمدموجة فيها) صفوف شاهدة بلا بيانات شخصية
         $this->witness($ids, $plan->mode === 'retention' ? 'pruned' : 'erased');
 
         return $done;
@@ -145,6 +151,32 @@ final class ConversationEraser
         });
 
         return $out;
+    }
+
+    /** صفوف الحظر (E31) للمحادثات أو الرقم أو المعرّف، قبل تجريدها */
+    private function blocksQuery(array $ids, ?string $canonical)
+    {
+        if (!Schema::hasTable('wa_blocks')) {
+            return DB::table('wa_messages')->whereRaw('1 = 0');
+        }
+        $uids = $this->userIds($ids);
+
+        return DB::table('wa_blocks')->whereNull('erased_at')->where(function ($q) use ($ids, $canonical, $uids) {
+            $q->whereIn('conversation_id', $ids);
+            if ($canonical) {
+                $q->orWhere('phone', $canonical);
+            }
+            if ($uids) {
+                $q->orWhereIn('wa_user_id', $uids);
+            }
+        });
+    }
+
+    /** @return list<string> */
+    private function userIds(array $ids): array
+    {
+        return Schema::hasColumn('wa_conversations', 'wa_user_id')
+            ? DB::table('wa_conversations')->whereIn('id', $ids)->whereNotNull('wa_user_id')->pluck('wa_user_id')->filter()->values()->all() : [];
     }
 
     /** المحادثة شاهداً: لا رقم ولا اسم ولا معرّف ولا مقتطف. رسالة لاحقة من الرقم تنشئ محادثة جديدة نظيفة */

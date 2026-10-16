@@ -141,4 +141,9 @@ return [
     'export' => [
         'max_rows' => 20000,
     ],
+
+    // الحظر الرسمي (E31): إشعار المدراء بكل حظر، بلا رقم ولا اسم عميل (قرار المالك: يمكن إطفاؤه)
+    'block' => [
+        'notify_admins' => (bool) env('WA_BLOCK_NOTIFY', true),
+    ],
 ];

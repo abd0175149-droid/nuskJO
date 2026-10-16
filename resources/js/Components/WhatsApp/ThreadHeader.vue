@@ -13,6 +13,12 @@
           <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<template v-if="thread.username"> · <bdi dir="ltr" class="font-mono">@{{ thread.username }}</bdi></template><span v-if="thread.client" class="text-gray-500 dark:text-gray-400"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
           <p v-if="thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
              title="اسم يضعه العميل بنفسه — غير موثّق">اسم واتساب: <bdi dir="auto">{{ thread.profile_name }}</bdi></p>
+          <!-- مصدر المحادثة (E38): رمز أو رابط أو إعلان، قياس داخلي تقريبي -->
+          <p v-if="thread.entry" data-test="entry-badge" class="text-[11px] text-sky-700 dark:text-sky-300 truncate"
+             title="مصدر بدء المحادثة (قياس داخلي تقريبي)">
+            <template v-if="thread.entry.channel === 'ad'">📣 من إعلان<template v-if="thread.entry.headline">: <bdi dir="auto">{{ thread.entry.headline }}</bdi></template></template>
+            <template v-else>{{ thread.entry.channel === 'qr' ? '📷 من رمز' : '🔗 من رابط' }}<template v-if="thread.entry.title">: <bdi dir="auto">{{ thread.entry.title }}</bdi></template></template>
+          </p>
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -24,6 +30,14 @@
           <button v-if="thread.client_id" type="button" @click="$emit('unlink')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">فك الربط</button>
         </template>
         <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ attentionReasons[thread.attention_reason] || thread.attention_reason }}</span>
+        <!-- الحظر الرسمي (E31): بجانب «تجاوز الحد» لحظة المشكلة، ومعطّل خارج نافذة الـ24 ساعة (شرط ميتا) -->
+        <button v-if="blockable" type="button" data-test="block-btn" @click="$emit('block')" :disabled="!thread.window_open"
+                :title="thread.window_open ? 'حظر هذا الرقم عند واتساب' : 'ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
+                :aria-label="thread.window_open ? 'حظر هذا الرقم' : 'الحظر غير متاح: ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
+                class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="thread.attention_reason === 'rate_limit' && thread.needs_attention
+                  ? 'border-red-400 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                  : 'border-red-300 text-red-700 dark:border-red-800 dark:text-red-300'">⛔ {{ thread.attention_reason === 'rate_limit' && thread.needs_attention ? 'حظر الرقم' : 'حظر' }}</button>
         <button v-if="thread.needs_attention" type="button" @click="$emit('resolve')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-300">✅ تمّت المعالجة</button>
         <!-- حالة المتابعة (E17) -->
         <span v-if="thread.closed" class="px-2 py-0.5 rounded-lg text-[11px] bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">🗂️ مغلقة</span>
@@ -86,7 +100,7 @@ import { formatPhone } from '@/composables/whatsapp/usePhoneFormat.js';
 import ThreadActionsMenu from './ThreadActionsMenu.vue';
 
 // مصدر الوسم: يدوي، أو آلي من البوت، أو من قاعدة حتمية (E37)
-const TOPIC_SOURCES = { manual: 'وسم يدوي', bot: 'وسم آلي من البوت', rule: 'وسم آلي من قاعدة حتمية' };
+const TOPIC_SOURCES = { manual: 'وسم يدوي', bot: 'وسم آلي من البوت', rule: 'وسم آلي من قاعدة حتمية', qr: 'وسم من رمز أو رابط العرض', ad: 'وسم من إعلان العرض' };
 
 const props = defineProps({
   thread: { type: Object, required: true },
@@ -104,9 +118,13 @@ const props = defineProps({
   canFilter: Boolean,
   filtersOpen: Boolean,
   canExport: Boolean,
+  // E31: الحظر لمن يملك whatsapp.block والعلم مفعّل، ولا يُحظر رقم إدارة ولا موظف
+  canBlock: Boolean,
 });
-const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'toggleFilters', 'export']);
+const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'toggleFilters', 'export', 'block']);
+const blockable = computed(() => props.canBlock && !props.thread.blocked && !props.thread.is_admin && !props.thread.is_staff);
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
+// مصدر الوسم: يدوي، أو قاعدة، أو البوت، أو رمز QR ورابط، أو إعلان (E38)
 
 // المواضيع غير المرتبطة بالمحادثة للإضافة اليدوية
 const newTopic = ref('');

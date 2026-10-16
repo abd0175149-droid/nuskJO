@@ -214,7 +214,7 @@ class WhatsAppInbox
         }
 
         try {
-            [$conv, $after] = DB::transaction(fn () => self::storeInboundRows($in, $msg));
+            [$conv, $after, $stored] = DB::transaction(fn () => self::storeInboundRows($in, $msg));
         } catch (UniqueConstraintViolationException) {
             // نسختان من الإشعار نفسه في وقت واحد: الأخرى خزّنته
             $existing = WaMessage::where('wamid', $wamid)->first();
@@ -228,6 +228,18 @@ class WhatsAppInbox
         // «حذف بياناتي» (E13): طلب مسجّل حتمياً، مستقلاً عن البوت ومن يمسك المحادثة. رقم الإدارة لا يُعدّ طالباً
         if ($in->type === 'text' && HandoffGuard::wantsErasure($in->body) && !\App\Models\WaAdminNumber::forPhone($conv->phone)) {
             ErasureRequests::receive($conv);
+        }
+
+        // وارد من محظور (E31): لا يُفترض رسمياً. مخزَّن كي لا يضيع، ولا يصل البوت، والحظر يصير mismatch في صفحة المزامنة
+        if ($conv->isBlocked()) {
+            BlockService::inboundWhileBlocked($conv);
+
+            return null;
+        }
+
+        // مصدر المحادثة (E38): رمز QR أو رابط أو إعلان، بعد الاعتماد وقبل البوت. لا يكسر الاستقبال أبداً
+        if ($stored) {
+            EntryRecorder::record($conv, $stored, $in->referral);
         }
 
         // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
@@ -269,7 +281,7 @@ class WhatsAppInbox
 
     /**
      * صفوف الوارد كلها في معاملة واحدة: المحادثة والرسالة والنافذة، أو لا شيء.
-     * @return array{0: ?WaConversation, 1: false|string} المحادثة إن استحقت المتابعة، وما يُنفَّذ بعد الاعتماد (optout | consent:yes | consent:no)
+     * @return array{0: ?WaConversation, 1: false|string, 2: ?WaMessage} المحادثة إن استحقت المتابعة، وما يُنفَّذ بعد الاعتماد (optout | consent:yes | consent:no)، والرسالة المخزّنة
      */
     private static function storeInboundRows(InboundMessage $in, array $msg): array
     {
@@ -292,7 +304,7 @@ class WhatsAppInbox
             ] + $columns);
             EventBus::emit(new WaMessageStored($reaction->id, $conv->id, 'reaction'));
 
-            return [null, false];
+            return [null, false, null];
         }
 
         $body = $in->body;
@@ -329,16 +341,21 @@ class WhatsAppInbox
                 'last_message_at' => $metaAt,
                 'last_message_preview' => mb_substr(trim((string) $body), 0, 160),
             ]);
-        // أي وارد (لا التفاعل ولا رسالة النظام، فهما يعودان قبل هنا) يعيد فتح المغلقة ويمسح التأجيل (E17)
-        WaConversation::whereKey($conv->id)->update(['unread_count' => DB::raw('unread_count + 1'), 'status' => 'open'] + InboxFollowup::reopenColumns());
+        // أي وارد (لا التفاعل ولا رسالة النظام، فهما يعودان قبل هنا) يعيد فتح المغلقة ويمسح التأجيل (E17).
+        // ومن محظور (E31) لا يزيد غير المقروء، والعلامة تتقدّم فلا يجيب عنه البوت ولا المُصالِح لاحقاً
+        $blocked = $conv->isBlocked();
+        WaConversation::whereKey($conv->id)->update(($blocked ? [] : ['unread_count' => DB::raw('unread_count + 1')]) + ['status' => 'open'] + InboxFollowup::reopenColumns());
         $conv->refresh();
+        if ($blocked) {
+            ReplyState::advance($conv, $message->id);
+        }
 
         // زرّا إشعار حفظ الملفات (E14): اختيار مسجّل لا يصل للبوت، والحذف بعد الاعتماد
         if ($choice = Media\MediaConsent::choice($buttonId)) {
             Media\MediaConsent::record($conv, $choice);
             ReplyState::advance($conv, $message->id);
 
-            return [$conv, "consent:{$choice}"];
+            return [$conv, "consent:{$choice}", $message];
         }
 
         // إيقاف التسويق بنصّ مطابق
@@ -353,10 +370,10 @@ class WhatsAppInbox
             // إشعار النظام هو الرد: لا يجيب البوت عنها لاحقاً (المُصالِح أو مكرر من ميتا)
             ReplyState::advance($conv, $message->id);
 
-            return [$conv, 'optout'];
+            return [$conv, 'optout', $message];
         }
 
-        return [$conv, false];
+        return [$conv, false, $message];
     }
 
     /** إيجاد/إنشاء محادثة برقم وربطها بالعميل أو الموظف (الاختبارات؛ الويبهوك عبر ContactIdentity::resolve) */

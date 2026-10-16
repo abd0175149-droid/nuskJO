@@ -43,6 +43,8 @@
     <li>الصور والوثائق التي ترسلها تُحفظ على خوادمنا بوصول مقيّد للموظف المختص، ويُسجَّل كل اطّلاع عليها. ولا يطلب منك المساعد الآلي صورة جوازك أو هويتك. ويمكنك اختيار «احذف ملفاتي» فتُحذف فوراً.</li>
     @endif
     <li>لإيقاف رسائلنا أرسل كلمة <strong>«إيقاف»</strong> في المحادثة.</li>
+    <li>قد نحظر الأرقام التي ترسل محتوى مسيئاً أو احتيالياً، عبر أداة الحظر الرسمية في واتساب. وإن طلب صاحب رقم محظور حذف بياناته يبقى الحظر قائماً ببصمة لا تكشف الرقم، وبلا نص سببه.</li>
+    <li>نسجّل مصدر بدء المحادثة (رمز QR أو رابط أو إعلان) لقياس حملاتنا، دون مشاركته مع أي طرف.</li>
 </ul>
 
 <h2>٤ · مشاركة البيانات</h2>
@@ -98,7 +100,7 @@
     <h2>Privacy Policy (English Summary)</h2>
     <p><strong>NUSK Travel &amp; Tourism</strong> (Jordan) collects your name, phone number, message content, booking details and billing records in order to answer your enquiries, issue quotations, complete your bookings and keep lawful accounting records.</p>
     <h3>WhatsApp</h3>
-    <p>We use the WhatsApp Business Platform by Meta. An automated assistant may answer first; you may ask for a human agent at any time and the conversation is handed over. Messages transit Meta's servers and are also governed by WhatsApp's own privacy policy. Send <strong>"STOP"</strong> to opt out of our messages.</p>
+    <p>We use the WhatsApp Business Platform by Meta. An automated assistant may answer first; you may ask for a human agent at any time and the conversation is handed over. Messages transit Meta's servers and are also governed by WhatsApp's own privacy policy. Send <strong>"STOP"</strong> to opt out of our messages. We may block numbers that send abusive or fraudulent content, using WhatsApp's official blocking tool; if the owner of a blocked number asks us to delete their data, the block stays in place under a fingerprint that does not reveal the number, without the reason text. We record how a conversation started (a QR code, a link or an ad) to measure our campaigns, without sharing it with anyone.</p>
     <h3>Sharing</h3>
     <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider{{ count($aiProviders ?? []) > 1 ? 's' : '' }} ({{ implode(', ', $aiProviders ?? ['Google Gemini']) }}) solely to generate replies{{ ($staffTranslation ?? false) ? ' and to translate messages when a staff member asks' : '' }} (not used to train general models), and with authorities where legally required.</p>
     <h3>Retention</h3>

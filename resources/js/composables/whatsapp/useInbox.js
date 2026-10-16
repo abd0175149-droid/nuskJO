@@ -451,7 +451,9 @@ export function useInbox(props, thread) {
         if (!id) return false;
         s.sendError = '';
         try {
-            const { data } = await axios[method](threadUrl(id, action), ...(method === 'delete' ? [api] : [payload, api]));
+            // DELETE بجسم (سبب فك الحظر E31) في data؛ وبلا جسم كما كان
+            const body = payload && Object.keys(payload).length ? payload : null;
+            const { data } = await axios[method](threadUrl(id, action), ...(method === 'delete' ? [body ? { ...api, data: body } : api] : [payload, api]));
             if (s.activeId === id && s.thread) await onDone?.(data, id);
             load();
             return true;
@@ -537,6 +539,45 @@ export function useInbox(props, thread) {
         }
     }
 
+    // ===== الحظر الرسمي (E31): الخادم يعيد كل الفحوص؛ الواجهة تحدّث الخيط والقائمة ثم تستطلع =====
+    function markBlocked(id, blocked) {
+        if (s.thread?.id === id) {
+            s.thread.blocked = blocked;
+            if (blocked) Object.assign(s.thread, { bot_enabled: false, needs_attention: false, attention_reason: null });
+            else s.thread.block = null;
+        }
+        const row = s.list.find((c) => c.id === id);
+        if (row) {
+            row.blocked = blocked;
+            if (blocked) row.needs_attention = false;
+        }
+    }
+    /** بعد نجاح حوار الحظر: الشريط الأحمر ومن حظر يأتيان من الخادم بالاستطلاع */
+    function onBlocked() {
+        const id = s.activeId;
+        if (!id) return;
+        markBlocked(id, true);
+        poll();
+        load();
+        loadSummary();
+    }
+    /** promptFn(options): Promise<string|null> لسبب فك الحظر (إلزامي) */
+    async function unblock(promptFn) {
+        const id = s.activeId;
+        if (!id) return;
+        const reason = await promptFn({
+            title: 'فك الحظر',
+            label: 'سبب فك الحظر',
+            message: 'يعود العميل قادراً على مراسلتنا ونعود قادرين على مراسلته. البوت لا يعود تلقائياً: قرّر من الصندوق.',
+            required: true,
+            maxLength: 300,
+            confirmLabel: 'فك الحظر',
+        });
+        if (!reason || s.activeId !== id) return;
+        const ok = await act('block', { reason }, () => { markBlocked(id, false); poll(); }, 'تعذّر فك الحظر', 'delete');
+        if (ok) loadSummary();
+    }
+
     // ===== التنقل: على الجوال فتح المحادثة من القائمة خطوة في history، والرجوع (الزر أو الجهاز) يعيد القائمة =====
     const inboxPath = window.location.pathname;
     const urlConv = () => Number(new URLSearchParams(window.location.search).get('conv')) || null;
@@ -605,7 +646,7 @@ export function useInbox(props, thread) {
         openFromList, back, onPopState, openFromUrl,
         openAround, openFromSearch, loadNewer, backToLatest, setThreadFilters, clearThreadFilters,
         refilter: () => load({ reset: true }),
-        followAction, loadSummary,
+        followAction, loadSummary, onBlocked, unblock,
         tick: async () => { const ok = await load(); await poll(); loadSummary(); if (!ok) throw new Error('list refresh failed'); },
         dispose: () => { seq++; },
     };

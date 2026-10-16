@@ -28,6 +28,10 @@ class UpdateSettingsRequest extends FormRequest
         'expense_prefix' => 'sometimes|required|alpha_dash|max:10',
         'card_letterhead_top' => 'nullable|numeric|between:0,60',
         'card_letterhead_bottom' => 'nullable|numeric|between:0,60',
+        // ملف واتساب للأعمال (E31): الحدود الرسمية، والمزامنة تعيد فحصها قبل أي إرسال
+        'company_website' => ['nullable', 'string', 'max:520', 'regex:/^https?:\/\/\S+([\s,،]+https?:\/\/\S+)?$/u'],
+        'wa_profile_about' => ['nullable', 'string', 'max:139', 'not_regex:/[*_`~]/u'],
+        'wa_profile_description' => 'nullable|string|max:512',
     ];
 
     public function authorize(): bool
@@ -54,6 +58,16 @@ class UpdateSettingsRequest extends FormRequest
         }
 
         $this->merge(['values' => $values]);
+    }
+
+    public function messages(): array
+    {
+        return [
+            'values.company_website.*' => 'رابط أو رابطان يبدآن بـ https:// (الثاني بعد فيسبوك في ملف واتساب).',
+            'values.wa_profile_about.max' => 'النبذة حتى 139 حرفاً (حد واتساب).',
+            'values.wa_profile_about.not_regex' => 'النبذة بلا تنسيق: لا * ولا _ ولا ` ولا ~.',
+            'values.wa_profile_description.max' => 'الوصف حتى 512 حرفاً (حد واتساب).',
+        ];
     }
 
     public function rules(): array
