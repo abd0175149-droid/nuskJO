@@ -285,6 +285,10 @@ class BotAnalytics
                 ['key' => 'send_unknown', 'label' => 'إرسال غير مؤكد', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_UNKNOWN)->count(), 'unit' => '', 'good' => 'low'],
                 ['key' => 'send_failed', 'label' => 'فشل إرسال', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->count(), 'unit' => '', 'good' => 'low'],
             ] : []),
+            // الترجمة عند الطلب (E29): نداءات المزوّد للموظفين، خارج كلفة ردود البوت
+            ...(MessageTranslator::enabled() ? [
+                ['key' => 'translations', 'label' => 'ترجمات للموظفين (30 يوماً)', 'value' => WaBotUsage::where('source', 'translate')->where('created_at', '>=', now()->subDays(30))->count(), 'unit' => '', 'good' => 'neutral'],
+            ] : []),
         ];
 
         // ── ما يحتاج نظرك: آخر 40 موضعاً عجز فيه البوت أو حوّل أو تعطّل

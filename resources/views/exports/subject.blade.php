@@ -19,7 +19,7 @@
     <table>@foreach ($data['client'] as $k => $v)<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>@endforeach</table>
 @endif
 
-@foreach (['messages' => 'الرسائل', 'notes' => 'الملاحظات', 'quote_requests' => 'طلبات التسعير', 'invoices' => 'الفواتير', 'receipts' => 'سندات القبض', 'attachments' => 'المرفقات (الوصف؛ نسخة الملف عند الطلب)'] as $key => $title)
+@foreach (['messages' => 'الرسائل', 'notes' => 'الملاحظات', 'quote_requests' => 'طلبات التسعير', 'invoices' => 'الفواتير', 'receipts' => 'سندات القبض', 'attachments' => 'المرفقات (الوصف؛ نسخة الملف عند الطلب)', 'labels' => 'تصنيفات داخلية', 'pinned_notes' => 'ملاحظة مثبتة'] as $key => $title)
     <h2>{{ $title }} ({{ count(($data[$key] ?? [])) }})</h2>
     @if (count(($data[$key] ?? [])))
         <table>

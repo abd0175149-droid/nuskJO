@@ -20,6 +20,8 @@ final class ConversationCacheKeys
         'wa:rate:{id}:%', 'wa:rate:admin:{id}:%', 'wa:winrem:{id}:%', 'wa:recon:{id}:%', 'wa:outage-notice:{id}:%',
         'wa:llm:outage:%:{id}', 'wa:llm:admin-outage:%:{id}', 'wa:identity:conflict:{id}:%', 'wa:identity:conflict:%:{id}',
         'audit:view:%:{id}',
+        // E29: بطاقة الحقائق (60 ثانية لكل مستخدم)
+        'wa:facts:{id}:%',
     ];
 
     /** @return int عدد المفاتيح المحذوفة من كاش القاعدة (المفاتيح الدقيقة تُنسى في أي مخزن) */

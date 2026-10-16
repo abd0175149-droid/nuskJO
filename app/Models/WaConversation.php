@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WaConversation extends Model
@@ -61,6 +62,15 @@ class WaConversation extends Model
     public function assignee(): BelongsTo { return $this->belongsTo(User::class, 'assigned_to'); }
     public function pins(): HasMany { return $this->hasMany(WaConversationPin::class, 'conversation_id'); }
     public function markedUnreadBy(): BelongsTo { return $this->belongsTo(User::class, 'marked_unread_by'); }
+
+    // E29: تصنيفات سير العمل والتثبيت داخل الخيط. لا تُضافان إلى $with ولا إلى أي مخرج تلقائي، ولا يقرؤهما البوت.
+    // threadPins لا pins: pins هو تثبيت المحادثة أعلى قائمة الموظف (E17)
+    public function labels(): BelongsToMany
+    {
+        return $this->belongsToMany(WaLabel::class, 'wa_conversation_labels', 'conversation_id', 'label_id')->withPivot('created_by', 'created_at');
+    }
+
+    public function threadPins(): HasMany { return $this->hasMany(WaThreadPin::class, 'conversation_id'); }
 
     /** الرقم معروف (عميل باسم مستخدم قد يراسلنا بلا رقم) */
     public function hasPhone(): bool

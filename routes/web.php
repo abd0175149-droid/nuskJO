@@ -205,6 +205,26 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::put('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'update'])->name('whatsapp.knowledge.update')->middleware('perm:whatsapp.settings');
     Route::delete('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'destroy'])->name('whatsapp.knowledge.destroy')->middleware('perm:whatsapp.settings');
 
+    // التصنيفات والملاحظة المثبتة والترجمة عند الطلب (E29): الإدارة للمدير، وكل مسار محادثة عبر الربط المقيّد بالنطاق،
+    // والرسالة من المحادثة نفسها وحدها. الأعلام wa_labels وthread_pins وstaff_translation تُفحص في المتحكمات (مطفأ = 404)
+    Route::get('whatsapp/labels', [\App\Http\Controllers\WhatsAppLabelController::class, 'index'])->name('whatsapp.labels')->middleware('perm:whatsapp.settings');
+    Route::post('whatsapp/labels', [\App\Http\Controllers\WhatsAppLabelController::class, 'store'])->name('whatsapp.labels.store')->middleware('perm:whatsapp.settings');
+    Route::post('whatsapp/labels/reorder', [\App\Http\Controllers\WhatsAppLabelController::class, 'reorder'])->name('whatsapp.labels.reorder')->middleware('perm:whatsapp.settings');
+    Route::put('whatsapp/labels/{label}', [\App\Http\Controllers\WhatsAppLabelController::class, 'update'])->name('whatsapp.labels.update')->middleware('perm:whatsapp.settings');
+    Route::delete('whatsapp/labels/{label}', [\App\Http\Controllers\WhatsAppLabelController::class, 'destroy'])->name('whatsapp.labels.destroy')->middleware('perm:whatsapp.settings');
+    Route::post('api/whatsapp/conversations/{conversation}/labels/{label}', [\App\Http\Controllers\WhatsAppConversationLabelController::class, 'attach'])->middleware('perm:whatsapp.reply');
+    Route::delete('api/whatsapp/conversations/{conversation}/labels/{label}', [\App\Http\Controllers\WhatsAppConversationLabelController::class, 'detach'])->middleware('perm:whatsapp.reply');
+    Route::get('api/whatsapp/conversations/{conversation}/facts', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'facts'])->middleware('perm:whatsapp.view');
+    Route::put('api/whatsapp/conversations/{conversation}/pin-note', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'saveNote'])->middleware('perm:whatsapp.reply');
+    Route::delete('api/whatsapp/conversations/{conversation}/pin-note', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'clearNote'])->middleware('perm:whatsapp.reply');
+    Route::post('api/whatsapp/conversations/{conversation}/messages/{message}/pin', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'pinMessage'])->middleware('perm:whatsapp.reply')->scopeBindings();
+    Route::delete('api/whatsapp/conversations/{conversation}/messages/{message}/pin', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'unpinMessage'])->middleware('perm:whatsapp.reply')->scopeBindings();
+    // الترجمة: 20 في الدقيقة لكل مستخدم في دلو مستقل (البادئة wa-translate)
+    Route::post('api/whatsapp/conversations/{conversation}/messages/{message}/translate', [\App\Http\Controllers\WhatsAppTranslationController::class, 'translate'])->middleware(['perm:whatsapp.view', 'throttle:20,1,wa-translate'])->scopeBindings();
+    Route::post('api/whatsapp/conversations/{conversation}/translate-reply', [\App\Http\Controllers\WhatsAppTranslationController::class, 'translateReply'])->middleware(['perm:whatsapp.reply', 'throttle:20,1,wa-translate']);
+    Route::post('api/whatsapp/conversations/{conversation}/send-translated', [\App\Http\Controllers\WhatsAppTranslationController::class, 'sendTranslated'])->middleware('perm:whatsapp.reply');
+    Route::post('api/whatsapp/settings/llm-terms', [\App\Http\Controllers\WhatsAppSettingsController::class, 'llmTerms'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
+
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');
     Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'create', 'store', 'show', 'update', 'destroy'])

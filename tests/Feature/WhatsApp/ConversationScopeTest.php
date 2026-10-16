@@ -51,6 +51,15 @@ class ConversationScopeTest extends TestCase
         'reprocess' => ['POST', [], [], ['whatsapp.settings'], 422],
         // ملء رد جاهز: داخل النطاق بلا معرّف الرد يرد 422 (الربط قبل التحقق)، وخارجه 404
         'quick-replies/render' => ['GET', [], [], [], 422],
+        // E29: التصنيف والتثبيت والحقائق تنجح داخل النطاق؛ الترجمة يردها تأكيد الطبقة المدفوعة (409) بعد الربط،
+        // والإرسال المترجم بلا رمز معاينة صالح 422. {label} و{message} يملؤهما fill()
+        'labels/{label}' => ['POST', []],
+        'pin-note' => ['PUT', ['note' => 'يفضّل غرفة ثلاثية قريبة من الحرم']],
+        'messages/{message}/pin' => ['POST', []],
+        'facts' => ['GET', []],
+        'messages/{message}/translate' => ['POST', [], [], [], 409],
+        'translate-reply' => ['POST', ['text' => 'السعر 150 دينار للشخص', 'target' => 'en'], [], [], 409],
+        'send-translated' => ['POST', ['body' => 'Price 150 JOD', 'translation' => ['source_text' => 'السعر 150 دينار', 'target' => 'en', 'check_token' => 'x']], [], [], 422],
     ];
 
     protected function setUp(): void
@@ -59,7 +68,8 @@ class ConversationScopeTest extends TestCase
         $this->configureChannel();
         $this->fakeGraph();
         \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
-        config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true]);
+        config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true,
+            'features.env.wa_labels' => true, 'features.env.thread_pins' => true, 'features.env.staff_translation' => true]);
     }
 
     public static function routes(): array
@@ -74,7 +84,25 @@ class ConversationScopeTest extends TestCase
         [$method, $payload] = self::ROUTES[$route];
         $id = $conversation instanceof WaConversation ? $conversation->id : $conversation;
 
-        return $this->actingAs($user)->json($method, "/api/whatsapp/conversations/{$id}/{$route}", $payload);
+        return $this->actingAs($user)->json($method, "/api/whatsapp/conversations/{$id}/".$this->fill($route, $user, $conversation), $payload);
+    }
+
+    /**
+     * معاملات بعد {conversation} (E29): تصنيف فعّال، ورسالة واردة من المحادثة نفسها إن كانت في نطاق المستخدم.
+     * خارج النطاق يرد الربط 404 قبل أي معامل آخر، فلا تُنشأ رسالة تغيّر حالة المحادثة المقارنة.
+     */
+    private function fill(string $route, User $user, WaConversation|int|string $conversation): string
+    {
+        if (str_contains($route, '{label}')) {
+            $route = str_replace('{label}', (string) \App\Models\WaLabel::firstOrCreate(['name' => 'ينتظر جواز'], ['color' => 'amber'])->id, $route);
+        }
+        if (str_contains($route, '{message}')) {
+            $reachable = $conversation instanceof WaConversation && WaConversation::query()->visibleTo($user)->whereKey($conversation->id)->exists();
+            $id = $reachable ? \App\Models\WaMessage::factory()->inbound()->create(['conversation_id' => $conversation->id, 'body' => 'Hello, I need a visa for two'])->id : 0;
+            $route = str_replace('{message}', (string) $id, $route);
+        }
+
+        return $route;
     }
 
     private static function permissionsFor(string $route): array

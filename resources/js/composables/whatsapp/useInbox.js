@@ -34,6 +34,8 @@ export function useInbox(props, thread) {
         filter: props.filters?.filter || 'all',
         search: props.filters?.search || '',
         topic: props.filters?.topic || '',
+        // تصنيف داخلي (E29)
+        label: props.filters?.label ? String(props.filters.label) : '',
         activeId: null,
         thread: null,
         messages: [],
@@ -63,7 +65,7 @@ export function useInbox(props, thread) {
     const cannotReachPhoneless = computed(() => !!s.thread?.phoneless && mode.value === 'store');
     const canRequestPhone = computed(() => props.canReply && !!s.thread?.phoneless && !!s.thread?.window_open && mode.value !== 'store');
 
-    const params = () => ({ filter: s.filter, search: s.search || undefined, topic: s.topic || undefined });
+    const params = () => ({ filter: s.filter, search: s.search || undefined, topic: s.topic || undefined, label: s.label || undefined });
 
     /** الصفحة الأولى؛ تُدمج مع ما حُمّل بعدها. يعيد false عند الفشل (بعد فشلين متتاليين شريط «تعذّر التحديث») */
     async function load({ reset = false } = {}) {

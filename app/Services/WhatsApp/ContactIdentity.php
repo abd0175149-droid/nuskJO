@@ -171,6 +171,9 @@ final class ContactIdentity
                 DB::table('wa_conversation_topics')->insertOrIgnore(['conversation_id' => $b->id] + array_diff_key((array) $tag, ['id' => 0, 'conversation_id' => 0]));
             }
             DB::table('wa_conversation_topics')->where('conversation_id', $a->id)->delete();
+            // التصنيفات والتثبيت داخل الخيط (E29) تنتقل مع الرسائل
+            LabelService::moveConversation($a->id, $b->id);
+            ThreadPins::moveConversation($a->id, $b->id);
 
             // المعرّف فريد: يُصفَّر في A قبل كتابته في B
             $userId = $a->wa_user_id;

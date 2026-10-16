@@ -52,6 +52,11 @@ final class SettingsWriter
         $model->forceFill($changes);
         // عمود لم تُنشئه هجرته بعد (بين النشر والهجرة، أو نسخة مستعادة أقدم) لا يُسقط الإيقاف الآلي ولا الوضع الآمن
         $dirty = array_filter($model->getDirty(), fn ($column) => self::hasColumn($column), ARRAY_FILTER_USE_KEY);
+        // تأكيد الطبقة المدفوعة لمزوّد الذكاء (E29) يخص المزوّد والمفتاح اللذين أُكّد عليهما: تغيير أيهما يمسحه
+        if (array_intersect_key($dirty, ['provider' => 1, 'api_key' => 1]) !== [] && self::hasColumn('llm_terms_confirmed_at')) {
+            $dirty = ['llm_terms_confirmed_at' => null, 'llm_terms_confirmed_by' => null]
+                + (self::hasColumn('llm_terms_fp') ? ['llm_terms_fp' => null] : []) + $dirty;
+        }
         $expectedVersion = $versioned ? $expectedVersion : null;
         $bumpVersion = $bumpVersion && $versioned;
 

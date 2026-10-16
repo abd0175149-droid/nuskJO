@@ -35,6 +35,10 @@ final class FeatureFlags
         'delivery_status_v2' => ['label' => 'حالات التسليم الذرية: لا تتراجع، بوقت ميتا وتاريخ بلا تكرار، والإيصال المبكر لا يضيع، وعلامات ✓ و✓✓ في الصندوق', 'capability' => 'C050', 'available' => true],
         'wa_event_bus' => ['label' => 'ناقل الأحداث الداخلي: إشعار التحويل و«لم تصل رسالتك» وتدقيقهما من المستمعين بدل الإشعار المباشر', 'capability' => 'C087', 'available' => true],
         'user_preferences_optout' => ['label' => 'تسجيل إيقاف العميل للتسويق من إعدادات واتساب (user_preferences) في قائمة الرافضين', 'capability' => 'C087', 'available' => true],
+        // E29: التصنيفات وشارات النظام، والملاحظة المثبتة وبطاقة الحقائق، والترجمة عند الطلب (بعد تأكيد الطبقة المدفوعة)
+        'wa_labels' => ['label' => 'تصنيفات سير العمل على المحادثات وشارات من النظام (داخلية، لا تغيّر من يرى المحادثة)', 'capability' => 'C127', 'available' => true],
+        'thread_pins' => ['label' => 'الملاحظة المثبتة الداخلية والرسائل المثبتة وبطاقة حقائق العميل', 'capability' => 'C128', 'available' => true],
+        'staff_translation' => ['label' => 'ترجمة رسائل العملاء للموظف عند الطلب، ومعاينة ترجمة الرد مع فحص الأرقام', 'capability' => 'C293', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

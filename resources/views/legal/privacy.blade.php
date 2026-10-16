@@ -50,7 +50,7 @@
 <ul>
     <li><strong>مزوّدي خدمات السفر</strong> (شركات الطيران، الفنادق، شركات النقل، جهات التأشيرات) — بالقدر اللازم لإتمام حجزك فقط.</li>
     <li><strong>Meta (واتساب)</strong> — كونها مشغّل قناة المراسلة.</li>
-    <li><strong>مزوّد خدمة الذكاء الاصطناعي</strong> (<bdi>{{ implode('، ', $aiProviders ?? ['Google Gemini']) }}</bdi>) — يُعالَج نصّ المحادثة لتوليد الردّ، ولا يُستخدم لتدريب نماذج عامة.</li>
+    <li><strong>مزوّد خدمة الذكاء الاصطناعي</strong> (<bdi>{{ implode('، ', $aiProviders ?? ['Google Gemini']) }}</bdi>) — يُعالَج نصّ المحادثة لتوليد الردّ{{ ($staffTranslation ?? false) ? '، وترجمة الرسائل عند طلب الموظف' : '' }}، ولا يُستخدم لتدريب نماذج عامة.</li>
     <li><strong>الجهات الرسمية</strong> — عند وجود إلزام قانوني.</li>
 </ul>
 
@@ -60,6 +60,7 @@
     <li><strong>إشعارات واتساب التي تعذّرت معالجتها:</strong> نسخة مشفّرة تُحفظ {{ $webhookHours ?? 72 }} ساعة كحد أقصى لإعادة المعالجة، ثم تُمحى تلقائياً.</li>
     <li><strong>إحصاءات استعمال المساعد الآلي:</strong> 12 شهراً، ثم تُجمَّع شهرياً بلا ربط بشخص.</li>
     <li><strong>الإشعارات الداخلية للموظفين:</strong> حتى 6 أشهر.</li>
+    <li><strong>التصنيفات والملاحظات الداخلية:</strong> تُحذف مع المحادثة.</li>
     <li><strong>السجلات المالية (الفواتير والسندات):</strong> للمدّة التي يفرضها القانون الأردني، ولا يمكن حذفها قبلها.</li>
     <li><strong>بيانات التعريف:</strong> طوال كونك عميلاً لدينا.</li>
     @if ($mediaArchive ?? false)
@@ -98,12 +99,12 @@
     <h3>WhatsApp</h3>
     <p>We use the WhatsApp Business Platform by Meta. An automated assistant may answer first; you may ask for a human agent at any time and the conversation is handed over. Messages transit Meta's servers and are also governed by WhatsApp's own privacy policy. Send <strong>"STOP"</strong> to opt out of our messages.</p>
     <h3>Sharing</h3>
-    <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider{{ count($aiProviders ?? []) > 1 ? 's' : '' }} ({{ implode(', ', $aiProviders ?? ['Google Gemini']) }}) solely to generate replies (not used to train general models), and with authorities where legally required.</p>
+    <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider{{ count($aiProviders ?? []) > 1 ? 's' : '' }} ({{ implode(', ', $aiProviders ?? ['Google Gemini']) }}) solely to generate replies{{ ($staffTranslation ?? false) ? ' and to translate messages when a staff member asks' : '' }} (not used to train general models), and with authorities where legally required.</p>
     <h3>Retention</h3>
     @if ($mediaArchive ?? false)
     <p>Attachments you send (photos, documents such as a passport or a transfer receipt) are stored on our servers with access limited to the staff handling your booking, every view is logged, and they are deleted {{ $mediaDays }} days after receipt — or at once if you choose "Delete my files".</p>
     @endif
-    <p>Conversations: up to 24 months after last contact, unless attached to an invoice. Assistant usage statistics: 12 months, then aggregated monthly without any link to a person. Internal staff notifications: up to 6 months. WhatsApp notifications we could not process: an encrypted copy for at most {{ $webhookHours ?? 72 }} hours, then wiped automatically. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
+    <p>Conversations: up to 24 months after last contact, unless attached to an invoice. Assistant usage statistics: 12 months, then aggregated monthly without any link to a person. Internal staff notifications: up to 6 months. Internal labels and notes: deleted with the conversation. WhatsApp notifications we could not process: an encrypted copy for at most {{ $webhookHours ?? 72 }} hours, then wiped automatically. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
     <h3>Your rights</h3>
     <p>You may access your data (we send you a copy within 30 days after verifying your identity), correct it, or request its deletion — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>
     <h3>Contact</h3>

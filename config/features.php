@@ -29,5 +29,8 @@ return [
         'delivery_status_v2' => env('WA_FEATURE_DELIVERY_STATUS_V2'),
         'wa_event_bus' => env('WA_FEATURE_WA_EVENT_BUS'),
         'user_preferences_optout' => env('WA_FEATURE_USER_PREFERENCES_OPTOUT'),
+        'wa_labels' => env('WA_FEATURE_WA_LABELS'),
+        'thread_pins' => env('WA_FEATURE_THREAD_PINS'),
+        'staff_translation' => env('WA_FEATURE_STAFF_TRANSLATION'),
     ],
 ];

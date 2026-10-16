@@ -15,6 +15,12 @@
         <option value="">كل المواضيع</option>
         <option v-for="(label, key) in topics" :key="key" :value="key">{{ label }}</option>
       </select>
+      <!-- فلتر التصنيف (E29): يضيّق داخل نطاقك فقط -->
+      <select v-if="labels.length" :value="label" @change="$emit('update:label', $event.target.value)" aria-label="تصنيف بحسب التصنيف الداخلي"
+              class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs dark:text-white" data-test="label-filter">
+        <option value="">كل التصنيفات</option>
+        <option v-for="l in labels" :key="l.id" :value="String(l.id)">{{ l.name }}</option>
+      </select>
       <p v-if="!seesAll" class="text-[11px] text-gray-500 dark:text-gray-400">تظهر لك المحادثات التي تخصّ مجالاتك فقط</p>
     </div>
 
@@ -50,8 +56,11 @@ const props = defineProps({
   visible: { type: Boolean, default: true },
   // متابعة الصندوق (E17): تبويبات المغلقة والمؤجلة والمثبّتة وفلاتر البطاقات
   followup: Boolean,
+  // التصنيفات الفعّالة (E29، فارغة والعلم مطفأ) والمختار منها
+  labels: { type: Array, default: () => [] },
+  label: { type: String, default: '' },
 });
-const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'open', 'loadMore']);
+const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'update:label', 'open', 'loadMore']);
 
 const BASE_FILTERS = [
   { key: 'all', label: 'الكل' },

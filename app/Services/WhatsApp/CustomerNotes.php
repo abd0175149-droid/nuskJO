@@ -38,10 +38,13 @@ final class CustomerNotes
         return mb_substr(trim($t), 0, self::MAX);
     }
 
-    /** كتلة الملاحظات لبطاقة العميل، أو '' إن لم توجد. القديمة (قبل التنقية) تُنقّى وتُقصّ هنا */
+    /**
+     * كتلة الملاحظات لبطاقة العميل، أو '' إن لم توجد. القديمة (قبل التنقية) تُنقّى وتُقصّ هنا.
+     * ما حفظه البوت وحده (E29، دفاع في العمق): ملاحظة كتبها موظف أو النظام لا تصل سياق النموذج أبداً.
+     */
     public static function block(WaConversation $conv): string
     {
-        $rows = $conv->notes()->orderByDesc('id')->limit(self::SHOWN)->get(['note', 'source', 'created_at']);
+        $rows = $conv->notes()->where('source', 'bot')->orderByDesc('id')->limit(self::SHOWN)->get(['note', 'source', 'created_at']);
         if ($rows->isEmpty()) {
             return '';
         }

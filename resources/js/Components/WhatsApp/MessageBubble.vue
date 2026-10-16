@@ -13,6 +13,8 @@
       <WaText :text="m.body || ''"/>
       <!-- المرفق (E14) -->
       <slot name="media"/>
+      <!-- الترجمة والتثبيت الداخلي (E29) -->
+      <slot name="extras"/>
       <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70 flex-wrap">
         <span dir="ltr">{{ m.at }}</span>
         <span v-if="m.source !== 'customer' && !m.sender">· {{ SOURCES[m.source] || m.source }}</span>
