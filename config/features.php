@@ -26,5 +26,8 @@ return [
         'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
+        'message_search' => env('WA_FEATURE_MESSAGE_SEARCH'),
+        'message_search_all' => env('WA_FEATURE_MESSAGE_SEARCH_ALL'),
+        'conversation_export' => env('WA_FEATURE_CONVERSATION_EXPORT'),
     ],
 ];

@@ -20,6 +20,8 @@ class Permission extends Model
         'users.create', 'users.update', 'users.delete', 'roles.manage',
         'settings.update', 'accounting.manage', 'accounting.close', 'whatsapp.settings',
         'backups.run', 'backups.restore_ack',
+        // E30: تصدير محادثة كاملة ببيانات العميل الشخصية دفعة واحدة؛ يمنحها المدير وحده
+        'whatsapp.export',
     ];
 
     public function roles(): BelongsToMany

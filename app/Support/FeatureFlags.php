@@ -31,6 +31,10 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E30: البحث للمدراء أولاً (من يرى كل المحادثات)، ثم للجميع بالعلم الثاني؛ والحصر بالسياج في الحالتين
+        'message_search' => ['label' => 'البحث في نص الرسائل (للمدراء: من يرى كل المحادثات)', 'capability' => 'C141', 'available' => true],
+        'message_search_all' => ['label' => 'البحث في الرسائل لكل موظفي الصندوق، كلٌّ ضمن محادثاته (بعد أسبوع من الأول)', 'capability' => 'C141', 'available' => true],
+        'conversation_export' => ['label' => 'تصدير محادثة واحدة (نص أو CSV) بسبب مكتوب، لمن يملك صلاحية التصدير', 'capability' => 'C140', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

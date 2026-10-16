@@ -242,6 +242,13 @@ Schedule::command('whatsapp:webhook-events-prune')
     ->hourlyAt(15)
     ->withoutOverlapping(10);
 
+// فهرس البحث في الرسائل (E30): فحص يومي بعد النسخة الليلية والتقليم (03:45) والمرفقات (04:00)، يصلح ما ينقص
+// (هجرة تعيد بناء wa_messages تُسقط الـ triggers بصمت) ويُشعر المدراء مرة في اليوم
+Schedule::command('whatsapp:fts-check --repair')
+    ->timezone('Asia/Amman')
+    ->dailyAt('04:10')
+    ->withoutOverlapping(30);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

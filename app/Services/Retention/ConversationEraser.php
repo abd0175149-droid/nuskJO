@@ -68,6 +68,11 @@ final class ConversationEraser
         // 3–6. الرسائل والملاحظات والوسوم وطلبات التسعير غير المرتبطة بفاتورة
         $done['messages'] = $this->deleteInBatches('wa_messages', fn ($q) => $q->whereIn('conversation_id', $ids));
         $step('messages', $done['messages']);
+        // فهرس البحث (E30): الـ trigger حذف المداخل، وبلا 'secure-delete' (SQLite أقدم من 3.46.1) يُعاد كتابة الفهرس
+        // فلا يبقى أثر للنص المحذوف في ملف القاعدة
+        if ($done['messages'] > 0) {
+            \App\Services\WhatsApp\Search\FtsSchema::afterBulkDelete();
+        }
         $done['notes'] = $this->deleteInBatches('wa_customer_notes', fn ($q) => $q->whereIn('conversation_id', $ids));
         $done['topics'] = Schema::hasTable('wa_conversation_topics') ? $this->deleteInBatches('wa_conversation_topics', fn ($q) => $q->whereIn('conversation_id', $ids)) : 0;
         $quoteNumbers = DB::table('quote_requests')->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote())->pluck('request_number')->filter()->all();
