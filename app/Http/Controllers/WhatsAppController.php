@@ -901,16 +901,14 @@ class WhatsAppController extends Controller
 
     // ==================== التحليلات ====================
 
-    public function analytics()
+    public function analytics(Request $request)
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
-
-        [$usage, $quality] = $this->maskAdminChats(\App\Services\WhatsApp\BotAnalytics::usage(), \App\Services\WhatsApp\BotAnalytics::quality());
+        $request->validate(['period' => 'nullable|in:24h,7d,30d']);
 
         return Inertia::render('WhatsApp/Analytics', [
             'title' => 'استهلاك البوت وجودته',
-            'usage' => $usage,
-            'quality' => $quality,
+            ...$this->analyticsPayload($request->query('period')),
             // مصادر المحادثات (E38): أعداد فقط، خلف entry_tracking
             'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries() : null,
         ]);
@@ -919,16 +917,54 @@ class WhatsAppController extends Controller
     public function analyticsData(Request $request)
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+        $request->validate(['period' => 'nullable|in:24h,7d,30d']);
         $days = (int) $request->integer('entries_days', 30);
         // فلتر فترة «مصادر المحادثات» وحده: بلا حساب الاستهلاك والجودة
         if ($request->query('only') === 'entries') {
             return response()->json(['entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
         }
 
-        [$usage, $quality] = $this->maskAdminChats(\App\Services\WhatsApp\BotAnalytics::usage(), \App\Services\WhatsApp\BotAnalytics::quality());
-
-        return response()->json(['usage' => $usage, 'quality' => $quality,
+        return response()->json($this->analyticsPayload($request->query('period')) + [
             'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
+    }
+
+    /**
+     * الاستهلاك والجودة: بالعلم analytics_v2 بفترة (24h و7d و30d، الافتراضي 7d) وتجميع SQL مع تبويب «الحركة» وبطاقة
+     * تكلفة ميتا (E24)، وإلا BotAnalytics القديم كما هو. الأسماء بنطاق المستخدم، والأرقام مقنَّعة.
+     */
+    private function analyticsPayload(?string $period): array
+    {
+        $analytics = \App\Services\WhatsApp\PeriodAnalytics::class;
+        if (!$analytics::enabled()) {
+            [$usage, $quality] = $this->maskAdminChats(\App\Services\WhatsApp\BotAnalytics::usage(), \App\Services\WhatsApp\BotAnalytics::quality());
+
+            return ['usage' => $usage, 'quality' => $quality, 'v2' => false];
+        }
+
+        $period = $analytics::period($period);
+        $user = auth()->user();
+        $usage = $analytics::usage($period);
+        // أغلى المحادثات: الاسم أو الرقم مقنَّعاً لمن في نطاقه، وإلا «خارج نطاقك»
+        $visible = WaConversation::query()->visibleTo($user)->whereIn('wa_conversations.id', array_column($usage['top_conversations'], 'id'))->get()->keyBy('id');
+        $usage['top_conversations'] = array_map(fn ($row) => isset($visible[$row['id']])
+            ? $row + ['name' => \App\Services\Ops\FailuresCenter::conversationLabel($visible[$row['id']])]
+            : ['id' => null, 'name' => 'محادثة خارج نطاقك', 'cost' => $row['cost']], $usage['top_conversations']);
+        [$usage, $quality] = $this->maskAdminChats($usage, $analytics::quality($period));
+
+        return [
+            'v2' => true,
+            'period' => $period,
+            'usage' => $usage,
+            'quality' => $quality,
+            'traffic' => [
+                'series' => $analytics::traffic($period),
+                'peak' => $analytics::peakHours($period),
+                'top' => $analytics::topConversations($period, $user),
+                'first_human' => $analytics::firstHumanResponse($period),
+                'quotes' => $analytics::quoteConversion($period),
+            ],
+            'metaCost' => $analytics::metaCost($period),
+        ];
     }
 
     /**

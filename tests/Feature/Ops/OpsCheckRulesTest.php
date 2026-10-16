@@ -194,6 +194,12 @@ class OpsCheckRulesTest extends TestCase
         $this->assertStringContainsString('تعذّر الفحص', Artisan::output());
     }
 
+    public function test_ops_tick_runs_the_minute_commands_in_one_process(): void
+    {
+        $this->assertSame(0, Artisan::call('ops:tick'));
+        $this->assertStringNotContainsString('whatsapp:', Artisan::output(), 'لا فشل في أي من الأمرين');
+    }
+
     public function test_the_snapshot_is_cached_for_the_metrics_route(): void
     {
         $this->check();

@@ -25,6 +25,12 @@ class OpsStatus extends Command
         $this->table(['المكوّن', 'آخر نبضة'], $rows);
 
         $this->line('فحص /up: '.($s['enabled'] ? 'مفعّل' : 'مطفأ (OPS_HEALTH_CHECKS=false)'));
+        // E24: الإصدار المنشور، وعمر آخر لقطة من whatsapp:ops-check
+        $build = (array) config('app.build');
+        $this->line('الإصدار: '.($build['sha'] ?? 'unknown').(!empty($build['time']) ? ' — بُني '.$build['time'] : ''));
+        $snap = \App\Services\Ops\OpsMetrics::last();
+        $this->line('آخر لقطة تشغيل: '.($snap ? 'قبل '.max(0, now()->getTimestamp() - (int) ($snap['at'] ?? 0)).' ث · صادر اليوم '.($snap['outbound_today']['total'] ?? 0)
+            : 'لا لقطة (whatsapp:ops-check لم يعمل خلال 15 دقيقة)'));
         $s['codes'] === [] ? $this->info('✅ لا أعطال') : $this->error('❌ '.implode(', ', $s['codes']));
 
         return self::SUCCESS;

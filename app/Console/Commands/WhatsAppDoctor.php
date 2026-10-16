@@ -28,6 +28,9 @@ class WhatsAppDoctor extends Command
         $this->table(['المفتاح', 'المصدر', 'المتغير', 'محفوظ مظلَّل', 'يُفك'], $rows);
         // E26: إصدار كروميوم (توليد البطاقات) كما سُجّل عند البناء
         $this->line('chromium: '.(ChannelDoctor::chromiumVersion() ?? 'غير مسجّل (خارج الحاوية أو صورة أقدم)'));
+        // E24: الإصدار المنشور كما خُتم في الصورة
+        $build = (array) config('app.build');
+        $this->line('الإصدار: '.($build['sha'] ?? 'unknown').(!empty($build['time']) ? ' — بُني '.$build['time'] : ''));
 
         // E18: إثبات سر التطبيق آخر 7 أيام (شرط دخول E26: نداءات = بإثبات، وصفر رفض)، وفئات أخطاء ميتا اليوم
         $proof = GraphClient::proofSummary();
@@ -71,6 +74,9 @@ class WhatsAppDoctor extends Command
         }
 
         $checks = [...ChannelDoctor::checks(), ...ChannelDoctor::sourceWarnings($settings), ...WebhookStats::checks($hook)];
+        if (app()->isProduction() && ($build['sha'] ?? 'unknown') === 'unknown') {
+            $checks[] = ['level' => 'warn', 'code' => 'BUILD_UNSTAMPED', 'message' => 'الإصدار غير مختوم في الصورة: انشر بـ scripts/deploy.sh ليظهر الـ commit (E24).'];
+        }
         if ($checks === []) {
             $this->info('✅ صحة القناة: لا ملاحظات');
 
