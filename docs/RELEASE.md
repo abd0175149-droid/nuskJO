@@ -409,7 +409,7 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 4. اتصال من أصل غريب يُرفض: `wscat -c "wss://nuskjo.grade.sbs/app/<key>?protocol=7" -H "Origin: https://evil.example"` يعطي خطأ أصل.
 - إن انقطع الجرس: `REVERB_ALLOWED_ORIGINS='*'` مؤقتاً في `/opt/nuskJO/.env` ثم `docker compose up -d --force-recreate nuskjo-app`، وراجع `storage/logs/reverb*.log`. وإن بقي، الصورة `pre-e28`.
 
-العلم `inbox_realtime` (مطفأ)، بعد يوم نظيف من النشر:
+العلم `inbox_realtime` (مطفأ)، بعد يوم نظيف من النشر. يعمل في الصندوق الجديد (`inbox_v2`) وحده:
 1. فعّله من الإعدادات في ساعة هادئة.
 2. أرسل رسالة من هاتف الاختبار إلى محادثة موسومة: تظهر في صندوق مختصها خلال ثانيتين بلا استطلاع، ولا تظهر لموظف من اختصاص آخر صندوقه مفتوح.
 3. `docker compose restart nuskjo-app`: شريط «التحديث اللحظي متوقف» في الصندوق، ثم يختفي وتتحدث القائمة عند العودة.
