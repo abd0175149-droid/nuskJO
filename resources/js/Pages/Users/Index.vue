@@ -4,6 +4,7 @@
         <div class="space-y-6">
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
             <div v-if="$page.props.flash?.error" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">❌ {{ $page.props.flash.error }}</div>
+            <div v-if="$page.props.errors?.reason" role="alert" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">❌ {{ $page.props.errors.reason }}</div>
 
             <!-- Controls -->
             <div class="flex flex-wrap items-center justify-between gap-4 filter-bar">
@@ -12,6 +13,12 @@
                     <select v-model="roleFilter" class="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white" @change="applyFilter">
                         <option value="">كل الصلاحيات</option>
                         <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
+                    </select>
+                    <!-- E27: من يتطلب التحقق بخطوتين ولم يفعّله، والحسابات الخاملة -->
+                    <select v-model="statusFilter" aria-label="حالة الحساب" class="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white max-w-full" @change="applyFilter">
+                        <option value="">كل الحسابات</option>
+                        <option value="mfa_missing">يتطلب التحقق بخطوتين ولم يفعّله</option>
+                        <option value="idle">خامل (بلا نشاط منذ 60 يوماً)</option>
                     </select>
                 </div>
                 <button @click="openModal()" class="px-5 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md hover:shadow-gold-500/25 w-full sm:w-auto">
@@ -29,6 +36,9 @@
                         <th class="px-4 py-3 text-right font-bold hide-mobile">رقم الهاتف</th>
                         <th class="px-4 py-3 text-right font-bold">الدور (الصلاحية)</th>
                         <th class="px-4 py-3 text-right font-bold">الحالة</th>
+                        <th class="px-4 py-3 text-center font-bold" title="التحقق بخطوتين">2FA</th>
+                        <th class="px-4 py-3 text-right font-bold hide-mobile">آخر دخول</th>
+                        <th class="px-4 py-3 text-right font-bold hide-mobile">آخر نشاط</th>
                         <th class="px-4 py-3 text-center font-bold">إجراءات</th>
                     </tr></thead>
                     <tbody>
@@ -43,13 +53,24 @@
                                 <span v-if="user.is_active" class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">نشط</span>
                                 <span v-else class="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-700">موقوف</span>
                             </td>
+                            <td data-label="2FA" class="px-4 py-3 text-center">
+                                <span v-if="user.has_mfa" class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" title="التحقق بخطوتين مفعّل">✓</span>
+                                <span v-else-if="user.requires_mfa" class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" title="صلاحياته تتطلبه ولم يفعّله">✗</span>
+                                <span v-else class="text-gray-400" title="لا يتطلبه">—</span>
+                            </td>
+                            <td data-label="آخر دخول" class="px-4 py-3 text-right text-xs text-gray-600 dark:text-gray-400 hide-mobile" :title="loginTitle(user)">{{ user.last_login || '—' }}</td>
+                            <td data-label="آخر نشاط" class="px-4 py-3 text-right text-xs text-gray-600 dark:text-gray-400 hide-mobile">
+                                {{ user.last_seen || '—' }}
+                                <span v-if="user.idle" class="ms-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 font-bold">خامل</span>
+                            </td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap actions-cell">
                                 <button @click="openModal(user)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg mr-1 btn-mobile-sm" title="تعديل">✏️</button>
                                 <button v-if="$page.props.auth.isAdmin" @click="openReset(user)" class="px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 rounded-lg mr-1 btn-mobile-sm" title="إعادة تعيين كلمة المرور">🔑</button>
+                                <button v-if="$page.props.auth.isAdmin && user.has_mfa && $page.props.auth.user.id !== user.id" @click="resetTwoFactor(user)" class="px-2 py-1 text-xs text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg me-1 btn-mobile-sm" title="إعادة تعيين التحقق بخطوتين" aria-label="إعادة تعيين التحقق بخطوتين">🔐</button>
                                 <button v-if="$page.props.auth.user.id !== user.id" @click="delUser(user)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm" title="حذف">🗑️</button>
                             </td>
                         </tr>
-                        <tr v-if="!users.data?.length"><td colspan="6" class="px-5 py-12 text-center text-gray-400">لا يوجد موظفين</td></tr>
+                        <tr v-if="!users.data?.length"><td colspan="9" class="px-5 py-12 text-center text-gray-400">لا يوجد موظفين</td></tr>
                     </tbody>
                 </table>
                 </div>
@@ -58,7 +79,7 @@
             <!-- Pagination -->
             <div v-if="users.links?.length > 3" class="flex justify-center gap-1 mt-4">
                 <template v-for="(link, i) in users.links" :key="i">
-                    <button v-if="link.url" @click="router.get(link.url, {search, role_id: roleFilter}, {preserveState:true})" v-html="link.label" class="px-3 py-1 rounded text-sm" :class="link.active ? 'bg-gold-500 text-black font-bold' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'"></button>
+                    <button v-if="link.url" @click="router.get(link.url, {search, role_id: roleFilter, filter: statusFilter || undefined}, {preserveState:true})" v-html="link.label" class="px-3 py-1 rounded text-sm" :class="link.active ? 'bg-gold-500 text-black font-bold' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'"></button>
                     <span v-else v-html="link.label" class="px-3 py-1 text-gray-400 text-sm"></span>
                 </template>
             </div>
@@ -149,11 +170,13 @@
 import { ref, computed } from 'vue';
 import { useForm, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({ users: Object, roles: Array, assignableRoles: { type: Array, default: () => [] }, filters: Object });
 const page = usePage();
 const search = ref(props.filters?.search || '');
 const roleFilter = ref(props.filters?.role_id || '');
+const statusFilter = ref(props.filters?.filter || '');
 const showModal = ref(false);
 let t = null;
 
@@ -230,5 +253,23 @@ const submitReset = () => {
 };
 
 const debounceSearch = () => { clearTimeout(t); t = setTimeout(() => applyFilter(), 400); };
-const applyFilter = () => { router.get('/users', { search: search.value, role_id: roleFilter.value }, { preserveState: true, replace: true }); };
+const applyFilter = () => { router.get('/users', { search: search.value, role_id: roleFilter.value, filter: statusFilter.value || undefined }, { preserveState: true, replace: true }); };
+
+// آخر دخول: الوقت، والعنوان لمن يملك تعديل المستخدمين وحده (يرسله الخادم أو لا)
+const loginTitle = (user) => [user.last_login_at, user.last_login_ip].filter(Boolean).join(' — ') || undefined;
+
+// إعادة تعيين التحقق بخطوتين لموظف فقد هاتفه (E27): المدير وحده، بسبب، ويخرج الموظف من كل أجهزته
+const { prompt } = useConfirm();
+const resetTwoFactor = async (user) => {
+    const reason = await prompt({
+        title: 'إعادة تعيين التحقق بخطوتين',
+        message: `يُمسح التحقق بخطوتين لحساب ${user.name} ويخرج من كل أجهزته، ثم يسجّل هاتفه من جديد عند الدخول.`,
+        label: 'السبب (10 أحرف على الأقل)',
+        required: true,
+        maxLength: 200,
+        confirmLabel: '🔐 إعادة التعيين',
+        danger: true,
+    });
+    if (reason) router.post(`/users/${user.id}/two-factor/reset`, { reason }, { preserveScroll: true });
+};
 </script>

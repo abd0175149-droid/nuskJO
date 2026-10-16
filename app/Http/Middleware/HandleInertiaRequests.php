@@ -37,8 +37,9 @@ class HandleInertiaRequests extends Middleware
                 // E27: فعل حساس رُدّ لانتهاء نافذة التحقق المعزّز؛ نافذة التأكيد تعيده بعد النجاح
                 'stepup_required' => fn () => (bool) $request->session()->get('stepup_required'),
             ],
-            // E27: شريط «فعّل التحقق بخطوتين قبل…» لصاحب الصلاحية الحساسة بلا عامل (لا سر هنا)
-            'security' => fn () => \App\Services\Security\Mfa::shared($user),
+            // E27: شريط «فعّل التحقق بخطوتين قبل…» وطريقة تأكيد الهوية (لا سر هنا). مفتاح mfa لا security: صفحتا
+            // الملف الشخصي والأمان لهما prop باسم security يغلب المشترك
+            'mfa' => fn () => \App\Services\Security\Mfa::shared($user),
             // مزايا خلف أعلام: القائمة تُخفي ما لم يُفعَّل بعد
             'features' => [
                 'audit_page' => (bool) config('audit.page'),

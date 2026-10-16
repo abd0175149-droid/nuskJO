@@ -26,8 +26,8 @@ class MfaEnforcementTest extends TestCase
         config(['security.mfa.enforce' => 'warn', 'security.mfa.enforce_from' => now()->addDays(14)->toDateString()]);
 
         $this->actingAs($this->approver())->get('/invoices')->assertOk()
-            ->assertInertia(fn ($page) => $page->where('security.mfa_needed', true)
-                ->where('security.mfa_enforce_from', now()->addDays(14)->toDateString()));
+            ->assertInertia(fn ($page) => $page->where('mfa.needed', true)
+                ->where('mfa.enforce_from', now()->addDays(14)->toDateString()));
     }
 
     public function test_on_after_its_date_allows_only_the_security_page(): void
@@ -47,7 +47,7 @@ class MfaEnforcementTest extends TestCase
         $this->staffMfaOn();
         config(['security.mfa.enforce' => 'on', 'security.mfa.enforce_from' => now()->addDays(3)->toDateString()]);
 
-        $this->actingAs($this->approver())->get('/invoices')->assertOk()->assertInertia(fn ($page) => $page->where('security.mfa_needed', true));
+        $this->actingAs($this->approver())->get('/invoices')->assertOk()->assertInertia(fn ($page) => $page->where('mfa.needed', true));
     }
 
     public function test_enrolled_users_and_staff_without_sensitive_permissions_are_unaffected(): void
@@ -56,7 +56,7 @@ class MfaEnforcementTest extends TestCase
         config(['security.mfa.enforce' => 'on']);
 
         $sales = User::factory()->withPermissions(['clients.view'])->create();
-        $this->actingAs($sales)->get('/clients')->assertOk()->assertInertia(fn ($page) => $page->where('security.mfa_needed', false));
+        $this->actingAs($sales)->get('/clients')->assertOk()->assertInertia(fn ($page) => $page->where('mfa.needed', false));
 
         $approver = $this->approver();
         $this->enroll($approver);
@@ -67,6 +67,6 @@ class MfaEnforcementTest extends TestCase
     {
         config(['security.mfa.enforce' => 'on']);
 
-        $this->actingAs($this->approver())->get('/invoices')->assertOk()->assertInertia(fn ($page) => $page->where('security.mfa_needed', false));
+        $this->actingAs($this->approver())->get('/invoices')->assertOk()->assertInertia(fn ($page) => $page->where('mfa.needed', false));
     }
 }

@@ -76,8 +76,10 @@ final class Mfa
         $enforcement = $user ? self::enforcementFor($user) : 'off';
 
         return [
-            'mfa_needed' => $enforcement !== 'off',
-            'mfa_enforce_from' => $enforcement === 'warn' ? self::enforceFrom()?->toDateString() : null,
+            'needed' => $enforcement !== 'off',
+            'enforce_from' => $enforcement === 'warn' ? self::enforceFrom()?->toDateString() : null,
+            // نافذة تأكيد الهوية: رمز التطبيق لمن سجّله، وكلمة المرور لغيره
+            'stepup_method' => $user?->hasSecondFactor() ? 'totp' : 'password',
         ];
     }
 }
