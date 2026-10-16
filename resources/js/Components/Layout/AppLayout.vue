@@ -371,6 +371,7 @@ const menuGroups = [
         { icon: '👔', label: 'أرقام الإدارة', route: '/whatsapp/admin-numbers', permission: 'whatsapp.settings' },
         { icon: '📊', label: 'استهلاك البوت وجودته', route: '/whatsapp/analytics', permission: 'whatsapp.settings' },
         { icon: '🗑️', label: 'طلبات حذف البيانات', route: '/whatsapp/erasure-requests', permission: 'whatsapp.erase' },
+        { icon: '⛔', label: 'المحظورون', route: '/whatsapp/blocks', permission: 'whatsapp.block', feature: 'wa_block' },
     ]},
     { label: '📂 عمليات أخرى', items: [
         { icon: '🏢', label: 'الوكلاء', route: '/agents', permission: 'agents.view' },

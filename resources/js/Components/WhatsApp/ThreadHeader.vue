@@ -24,6 +24,14 @@
           <button v-if="thread.client_id" type="button" @click="$emit('unlink')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">فك الربط</button>
         </template>
         <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ attentionReasons[thread.attention_reason] || thread.attention_reason }}</span>
+        <!-- الحظر الرسمي (E31): بجانب «تجاوز الحد» لحظة المشكلة، ومعطّل خارج نافذة الـ24 ساعة (شرط ميتا) -->
+        <button v-if="blockable" type="button" data-test="block-btn" @click="$emit('block')" :disabled="!thread.window_open"
+                :title="thread.window_open ? 'حظر هذا الرقم عند واتساب' : 'ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
+                :aria-label="thread.window_open ? 'حظر هذا الرقم' : 'الحظر غير متاح: ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
+                class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="thread.attention_reason === 'rate_limit' && thread.needs_attention
+                  ? 'border-red-400 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                  : 'border-red-300 text-red-700 dark:border-red-800 dark:text-red-300'">⛔ {{ thread.attention_reason === 'rate_limit' && thread.needs_attention ? 'حظر الرقم' : 'حظر' }}</button>
         <button v-if="thread.needs_attention" type="button" @click="$emit('resolve')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-300">✅ تمّت المعالجة</button>
         <!-- حالة المتابعة (E17) -->
         <span v-if="thread.closed" class="px-2 py-0.5 rounded-lg text-[11px] bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">🗂️ مغلقة</span>
@@ -91,8 +99,11 @@ const props = defineProps({
   followup: Boolean,
   canReply: Boolean,
   canReprocess: Boolean,
+  // E31: الحظر لمن يملك whatsapp.block والعلم مفعّل، ولا يُحظر رقم إدارة ولا موظف
+  canBlock: Boolean,
 });
-const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action']);
+const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'block']);
+const blockable = computed(() => props.canBlock && !props.thread.blocked && !props.thread.is_admin && !props.thread.is_staff);
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
 
 // المواضيع غير المرتبطة بالمحادثة للإضافة اليدوية

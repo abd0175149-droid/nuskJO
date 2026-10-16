@@ -5,7 +5,20 @@
                     :can-link-client="canLinkClient" :can-toggle-bot="canToggleBot" :can-assign="canAssign" show-back
                     :followup="followup" :can-reply="canReply" :can-reprocess="canReprocess" @action="(n, p) => $emit('action', n, p)"
                     @back="$emit('back')" @link="$emit('link')" @unlink="$emit('unlink')" @resolve="$emit('resolve')"
-                    @toggle-bot="$emit('toggleBot')" @set-topic="(k, a) => $emit('setTopic', k, a)" @assign="(el) => $emit('assign', el)"/>
+                    @toggle-bot="$emit('toggleBot')" @set-topic="(k, a) => $emit('setTopic', k, a)" @assign="(el) => $emit('assign', el)"
+                    :can-block="canBlock" @block="$emit('block')"/>
+
+      <!-- المحادثة المحظورة (E31): من حظر ومتى ولماذا، وفك الحظر بسبب لمن يملك الصلاحية -->
+      <div v-if="thread.blocked" role="status" data-test="blocked-banner"
+           class="px-3 sm:px-4 py-2 border-b border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 text-xs text-red-800 dark:text-red-200 flex flex-wrap items-center gap-2 shrink-0">
+        <span class="font-bold">⛔ محظور</span>
+        <span v-if="thread.block?.since">منذ <bdi dir="ltr">{{ when(thread.block.since) }}</bdi></span>
+        <span v-if="thread.block?.by">بواسطة <bdi dir="auto">{{ thread.block.by }}</bdi></span>
+        <span v-if="thread.block?.reason_label">— السبب: {{ thread.block.reason_label }}<template v-if="thread.block.reason">: <bdi dir="auto" class="[unicode-bidi:plaintext]">{{ thread.block.reason }}</bdi></template></span>
+        <span v-if="thread.block?.meta_state === 'not_found' || thread.block?.meta_state === 'mismatch'" class="font-bold text-amber-800 dark:text-amber-300">⚠️ غير مؤكد عند ميتا — راجع صفحة المحظورين</span>
+        <button v-if="canBlock" type="button" @click="$emit('unblock')"
+                class="ms-auto min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-red-300 dark:border-red-700 bg-white dark:bg-gray-900 text-red-700 dark:text-red-300">فك الحظر</button>
+      </div>
 
       <div class="relative flex-1 min-h-0 flex flex-col">
         <div ref="scroller" @scroll.passive="onScroll" class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 bg-gray-50 dark:bg-gray-950/40" aria-live="polite">
@@ -35,7 +48,7 @@
       <Composer class="shrink-0" :model-value="draft" @update:model-value="(v) => $emit('update:draft', v)" @submit="$emit('send')"
                 @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
                 :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
-                :quick-replies="quickReplies" :conversation-id="thread.id"/>
+                :quick-replies="quickReplies" :conversation-id="thread.id" :blocked="!!thread.blocked"/>
     </template>
 
     <div v-else class="flex-1 grid place-items-center py-24 text-center">
@@ -55,6 +68,7 @@ import MediaChip from './MediaChip.vue';
 import MessageBubble from './MessageBubble.vue';
 import ThreadHeader from './ThreadHeader.vue';
 import { isNearBottom, preserveOnPrepend, scrollToBottom } from '@/composables/whatsapp/useStickToBottom.js';
+import { when } from '@/utils/waSettings.js';
 
 const props = defineProps({
   thread: { type: Object, default: null },
@@ -80,9 +94,11 @@ const props = defineProps({
   followup: Boolean,
   canReprocess: Boolean,
   quickReplies: Boolean,
+  // E31: الحظر الرسمي
+  canBlock: Boolean,
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
-  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend']);
+  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend', 'block', 'unblock']);
 
 const scroller = ref(null);
 

@@ -7,6 +7,7 @@ use App\Models\WaBlock;
 use App\Models\WaConversation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Inertia\Testing\AssertableInertia;
 use Tests\Concerns\BuildsWhatsAppStaff;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
@@ -136,6 +137,23 @@ class BlockRoutesTest extends TestCase
             $this->block($admin, $conv, ['confirm' => '0000'] + self::BODY)->assertStatus(422);
         }
         $this->block($admin, $conv, ['confirm' => '0000'] + self::BODY)->assertStatus(429);
+    }
+
+    public function test_the_blocks_page_lists_active_and_past_blocks(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $conv = $this->customer();
+        $conv->forceFill(['blocked_at' => now()])->save();
+        WaBlock::create(['conversation_id' => $conv->id, 'phone' => '16505551234', 'reason_code' => 'spam', 'reason' => 'إزعاج متكرر طوال اليوم', 'blocked_at' => now(), 'blocked_by' => $admin->id]);
+        WaBlock::create(['phone' => '16505553333', 'reason_code' => 'other', 'reason' => 'حظر قديم انتهى أمره', 'blocked_at' => now()->subWeek(),
+            'unblocked_at' => now()->subDay(), 'unblock_reason' => 'سوء فهم', 'meta_state' => 'unblocked']);
+
+        $this->actingAs($admin)->get('/whatsapp/blocks')->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('WhatsApp/Blocks', false)
+            ->has('active', 1)->has('history', 1)
+            ->where('active.0.last4', '1234')
+            ->where('active.0.reason_label', 'إزعاج متكرر')
+            ->where('history.0.unblock_reason', 'سوء فهم'));
     }
 
     public function test_the_privacy_page_mentions_official_blocking(): void

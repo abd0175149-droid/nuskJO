@@ -34,6 +34,7 @@
         <span v-if="c.snoozed_until" class="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
               :title="'مؤجلة حتى ' + hhmm(c.snoozed_until)">💤 حتى <bdi dir="ltr">{{ hhmm(c.snoozed_until) }}</bdi></span>
         <span v-if="c.closed" class="px-1.5 py-0.5 rounded text-[10px] bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">🗂️ مغلقة</span>
+        <span v-if="c.blocked" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white dark:bg-red-700" title="محظور رسمياً على واتساب">⛔ محظور</span>
         <span v-if="c.needs_attention" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">⚠️ تدخّل</span>
         <span v-if="c.phoneless" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="العميل يراسل باسم مستخدم ورقمه غير ظاهر">📵 بلا رقم</span>
         <span v-if="c.from_ad" class="px-1.5 py-0.5 rounded text-[10px] bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" title="بدأت المحادثة من إعلان">📣 من إعلان</span>

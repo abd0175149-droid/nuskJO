@@ -459,6 +459,9 @@
                     </div>
                 </div>
             </form>
+
+            <!-- ملف واتساب للأعمال (E31): خارج النموذج، بأزراره ونداءاته -->
+            <BusinessProfileCard/>
         </div>
 
         <OneTimeSecretModal :token="oneTimeToken" @close="oneTimeToken = null"/>
@@ -476,6 +479,7 @@ import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
 import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
 import MetaLastErrorCard from '@/Components/WhatsApp/MetaLastErrorCard.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
+import BusinessProfileCard from '@/Components/WhatsApp/BusinessProfileCard.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';

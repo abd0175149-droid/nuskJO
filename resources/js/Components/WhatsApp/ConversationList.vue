@@ -50,6 +50,7 @@ const props = defineProps({
   visible: { type: Boolean, default: true },
   // متابعة الصندوق (E17): تبويبات المغلقة والمؤجلة والمثبّتة وفلاتر البطاقات
   followup: Boolean,
+  canBlock: Boolean,
 });
 const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'open', 'loadMore']);
 
@@ -68,7 +69,8 @@ const FOLLOWUP_FILTERS = [
   { key: 'snoozed', label: '💤 مؤجلة' },
   { key: 'closed', label: '🗂️ مغلقة' },
 ];
-const filters = computed(() => (props.followup ? [...BASE_FILTERS, ...FOLLOWUP_FILTERS] : BASE_FILTERS));
+// E31: تبويب المحظورين لمن يملك whatsapp.block (الخادم يفرضه)
+const filters = computed(() => [...BASE_FILTERS, ...(props.followup ? FOLLOWUP_FILTERS : []), ...(props.canBlock ? [{ key: 'blocked', label: '⛔ المحظورون' }] : [])]);
 
 // البحث بتأخير 400ms
 const searchText = ref(props.search);
