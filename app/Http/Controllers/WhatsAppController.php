@@ -286,7 +286,7 @@ class WhatsAppController extends Controller
         }
         $canSupport = $user->can('whatsapp.settings');
         $failure = function ($m) use ($errorCols, $canSupport): array {
-            if ($errorCols === [] || $m->direction !== 'out' || !in_array($m->status, ['failed', 'unconfirmed', 'blocked'], true)) {
+            if ($errorCols === [] || $m->direction !== 'out' || !in_array($m->status, ['failed', 'unknown', 'blocked'], true)) {
                 return [];
             }
             $meaning = \App\Services\WhatsApp\MetaErrorCatalog::forStored($m->meta_code, $m->error_code, $m->error_category ?? null);

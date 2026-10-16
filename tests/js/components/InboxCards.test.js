@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import InboxCards from '@/Components/WhatsApp/InboxCards.vue';
 
-const summary = { waiting_staff: 3, window_closing: 1, failed_today: 2, failed_breakdown: { failed: 1, unconfirmed: 1 }, channel: { state: 'ok' } };
+const summary = { waiting_staff: 3, window_closing: 1, failed_today: 2, failed_breakdown: { failed: 1, unknown: 1 }, channel: { state: 'ok' } };
 
 describe('InboxCards', () => {
     it('shows counts and applies the matching filter on click, toggling back to all', async () => {

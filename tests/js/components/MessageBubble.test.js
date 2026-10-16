@@ -53,7 +53,7 @@ describe('MessageBubble', () => {
         expect(window.find('[data-test="error-category"]').classes()).toContain('bg-amber-100');
         const caller = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'failed', error: 'تعذّر التسليم', category: 'caller' }) } });
         expect(caller.find('[data-test="error-category"]').classes()).toContain('bg-gray-100');
-        const timeout = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'staff', status: 'unconfirmed', error: 'انتهت مهلة ميتا — قد تكون الرسالة وصلت.' }) } });
+        const timeout = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'staff', status: 'unknown', error: 'انتهت مهلة ميتا — قد تكون الرسالة وصلت.' }) } });
         expect(timeout.text()).toContain('قد تكون الرسالة وصلت');
         expect(timeout.find('[data-test="error-action"]').exists()).toBe(false);
     });

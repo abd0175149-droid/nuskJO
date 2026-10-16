@@ -38,7 +38,7 @@ const CHANNEL = {
 };
 const channelBad = computed(() => ['suspended', 'blocked', 'not_ready'].includes(props.summary.channel?.state));
 
-const FAILED = { failed: 'فشل', unconfirmed: 'غير مؤكد', blocked: 'حُجب' };
+const FAILED = { failed: 'فشل', unknown: 'غير مؤكد', blocked: 'حُجب' };
 const failedTitle = computed(() => Object.entries(props.summary.failed_breakdown || {})
   .map(([k, n]) => `${FAILED[k] || k}: ${n}`).join(' · ') || 'لا رسائل فاشلة اليوم');
 

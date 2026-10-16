@@ -68,7 +68,7 @@ class ChannelRecipientTest extends TestCase
         $result = WhatsAppChannel::sendText(WaConversation::factory()->windowOpen()->create(), 'أهلاً');
 
         $this->assertSame([true, true, null], [$result['ok'], $result['unconfirmed'], $result['message_id']]);
-        $this->assertSame(['unconfirmed', null], [WaMessage::sole()->status, WaMessage::sole()->wamid]);
+        $this->assertSame(['unknown', null], [WaMessage::sole()->status, WaMessage::sole()->wamid]);
     }
 
     public function test_a_staff_message_lost_to_a_timeout_stays_visible_as_unconfirmed(): void
@@ -82,7 +82,7 @@ class ChannelRecipientTest extends TestCase
         $this->assertSame([false, 'HTTP_ERROR', false, 'HTTP_ERROR'], [$staff['ok'], $staff['code'], $bot['ok'], $bot['code']]);
         $row = WaMessage::sole();
         // error_code رمز داخلي من MetaErrorCatalog (E18): المهلة HTTP_TIMEOUT
-        $this->assertSame(['unconfirmed', 'staff', 'موعدك غداً', 'HTTP_TIMEOUT', null], [$row->status, $row->source, $row->body, $row->error_code, $row->wamid]);
+        $this->assertSame(['unknown', 'staff', 'موعدك غداً', 'HTTP_TIMEOUT', null], [$row->status, $row->source, $row->body, $row->error_code, $row->wamid]);
     }
 
     public function test_the_contact_request_button_is_built_for_meta_and_labelled_in_the_inbox(): void

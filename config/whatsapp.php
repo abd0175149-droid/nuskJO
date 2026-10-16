@@ -6,6 +6,18 @@
 */
 
 return [
+    // دفتر الإرسال (E19): بادئة biz_opaque_callback_data ({بادئة}:m:{رقم الصف}) وحدود الإعادة المحدودة
+    'send' => [
+        'opaque_prefix' => preg_replace('/[^a-z0-9]/', '', strtolower((string) env('WA_OPAQUE_PREFIX', 'nj'))) ?: 'nj',
+        // مجموع انتظار الإعادات لرسالة واحدة (ثوانٍ)
+        'retry_max_sleep' => (int) env('WA_SEND_RETRY_MAX_SLEEP', 8),
+        // محاولات إضافية: الموظف طلب ويب متزامن، والبوت والنظام في الطابور
+        'retry_staff_max' => 1,
+        'retry_system_max' => 2,
+        // المنظّف: queued أقدم من هذا صار «غير مؤكد»
+        'reap_minutes' => 15,
+    ],
+
     // بوابة المحتوى الصادر (E15.9): حسابات الشركة المسموح ظهورها في الرسائل الآلية (IBAN بلا مسافات، مفصولة بفواصل)
     'outbound_policy' => [
         'allow_ibans' => array_values(array_filter(array_map(fn ($i) => strtoupper(str_replace(' ', '', trim($i))), explode(',', (string) env('WA_POLICY_ALLOW_IBANS', ''))))),

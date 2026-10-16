@@ -77,7 +77,7 @@ final class MetaError
         return new self(null, null, null, null, $code, $e['category'], $e['scope'], $e['message'], $e['action'], $e['retry'], false);
     }
 
-    /** HTTP_CONNECT_FAILED (لم يُرسل شيء) · HTTP_TIMEOUT (قد تكون وصلت) · HTTP_5XX_NO_BODY */
+    /** HTTP_CONNECT_FAILED (لم يُرسل شيء) · HTTP_TIMEOUT وHTTP_NO_RESPONSE (قد تكون وصلت) · HTTP_5XX_NO_BODY */
     public static function network(string $kind, ?int $httpStatus = null): self
     {
         $e = MetaErrorCatalog::byCode($kind);
@@ -93,12 +93,17 @@ final class MetaError
             $text .= ' '.$x->getMessage();
         }
 
-        // «Connection timed out» ومعرّفات الوصول (6 و7 و35) قبل أي بايت: لم تصل الرسالة
+        // «Connection timed out» (مهلة الاتصال لا الطلب) وأخطاء الوصول (6 و7 و35) قبل إرسال الجسم: لم تصل الرسالة
         if (preg_match('/Connection timed out|cURL error (6|7|35)\b|Could not resolve|Failed to connect/i', $text)) {
             return 'HTTP_CONNECT_FAILED';
         }
 
-        return preg_match('/cURL error 28|timed out/i', $text) ? 'HTTP_TIMEOUT' : 'HTTP_CONNECT_FAILED';
+        if (preg_match('/cURL error 28|timed out/i', $text)) {
+            return 'HTTP_TIMEOUT';
+        }
+
+        // انقطاع بعد الاتصال (إعادة ضبط، قراءة فاشلة…): ربما خرج الطلب، فلا يُعدّ «لم يُرسل» ولا يُعاد
+        return 'HTTP_NO_RESPONSE';
     }
 
     private static function make(?int $metaCode, string $message, ?int $http, ?string $trace, ?string $details, ?string $type): self

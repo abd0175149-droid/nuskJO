@@ -218,7 +218,7 @@
                     <span v-if="m.source !== 'customer' && !m.sender">· {{ srcLabel(m.source) }}</span>
                     <span v-if="m.status === 'failed'" class="text-red-200" :title="m.error || ''">· فشل</span>
                     <span v-else-if="m.status === 'blocked'" class="px-1.5 rounded bg-red-600 text-white font-bold" :title="m.error || ''">🛡️ حُجبت</span>
-                    <span v-else-if="m.status === 'unconfirmed'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
+                    <span v-else-if="m.status === 'unknown'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
                   </div>
                   <p v-if="(m.status === 'failed' || m.status === 'blocked') && m.error" class="mt-0.5 text-[10px] leading-4 opacity-80 break-words">{{ m.error }}</p>
                 </div>

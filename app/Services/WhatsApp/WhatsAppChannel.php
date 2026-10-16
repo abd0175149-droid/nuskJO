@@ -448,14 +448,14 @@ class WhatsAppChannel
      * إرسال رسالة نصية.
      * @return array{ok:bool, error:?string, code:?string, message_id:?string}
      */
-    public static function sendText(WaConversation $conv, string $text, string $source = 'bot', ?int $staffId = null, string $context = 'reply'): array
+    public static function sendText(WaConversation $conv, string $text, string $source = 'bot', ?int $staffId = null, string $context = 'reply', ?string $sendKey = null): array
     {
         return self::dispatch($conv, [
             'messaging_product' => 'whatsapp',
             'recipient_type' => 'individual',
             'type' => 'text',
             'text' => ['preview_url' => false, 'body' => mb_substr($text, 0, 4096)],
-        ], $text, 'text', $source, $staffId, $context);
+        ], $text, 'text', $source, $staffId, $context, $sendKey);
     }
 
     /**
@@ -471,7 +471,8 @@ class WhatsAppChannel
         string $url,
         ?string $caption = null,
         string $source = 'bot',
-        ?int $staffId = null
+        ?int $staffId = null,
+        ?string $sendKey = null
     ): array {
         if (!str_starts_with($url, 'https://')) {
             return self::failLocal('BAD_MEDIA_URL', 'رابط الصورة يجب أن يكون HTTPS ليقبله واتساب.');
@@ -487,14 +488,14 @@ class WhatsAppChannel
             'recipient_type' => 'individual',
             'type' => 'image',
             'image' => $image,
-        ], $caption ?: '📷 صورة', 'image', $source, $staffId);
+        ], $caption ?: '📷 صورة', 'image', $source, $staffId, sendKey: $sendKey);
     }
 
     /**
      * إرسال أزرار (حتى 3) — معرّف كل زر يحمل الحالة مثل offer:12
      * @param array<array{id:string,title:string}> $buttons
      */
-    public static function sendButtons(WaConversation $conv, string $body, array $buttons, string $source = 'bot'): array
+    public static function sendButtons(WaConversation $conv, string $body, array $buttons, string $source = 'bot', ?string $sendKey = null): array
     {
         $rows = [];
         foreach (array_slice($buttons, 0, 3) as $b) {
@@ -512,14 +513,14 @@ class WhatsAppChannel
                 'body' => ['text' => mb_substr($body, 0, 1024)],
                 'action' => ['buttons' => $rows],
             ],
-        ], $body, 'interactive', $source);
+        ], $body, 'interactive', $source, sendKey: $sendKey);
     }
 
     /**
      * إرسال قائمة (حتى 10 صفوف)
      * @param array<array{id:string,title:string,description?:string}> $items
      */
-    public static function sendList(WaConversation $conv, string $body, string $buttonLabel, array $items, string $source = 'bot'): array
+    public static function sendList(WaConversation $conv, string $body, string $buttonLabel, array $items, string $source = 'bot', ?string $sendKey = null): array
     {
         $rows = [];
         foreach (array_slice($items, 0, 10) as $it) {
@@ -544,14 +545,14 @@ class WhatsAppChannel
                     'sections' => [['title' => 'الخيارات', 'rows' => $rows]],
                 ],
             ],
-        ], $body, 'interactive', $source);
+        ], $body, 'interactive', $source, sendKey: $sendKey);
     }
 
     /**
      * زر «مشاركة رقم الهاتف» (request_contact_info): يرد العميل ببطاقة رقمه (contacts بأصل contact_request)
      * فتُملأ محادثته بلا رقم (ContactIdentity::acceptSharedPhone). داخل نافذة 24 ساعة كأي رسالة.
      */
-    public static function sendContactRequest(WaConversation $conv, string $body, string $source = 'staff', ?int $staffId = null): array
+    public static function sendContactRequest(WaConversation $conv, string $body, string $source = 'staff', ?int $staffId = null, ?string $sendKey = null): array
     {
         return self::dispatch($conv, [
             'messaging_product' => 'whatsapp',
@@ -562,7 +563,7 @@ class WhatsAppChannel
                 'body' => ['text' => mb_substr($body, 0, 1024)],
                 'action' => ['name' => 'request_contact_info'],
             ],
-        ], self::CONTACT_REQUEST_LABEL, 'interactive', $source, $staffId);
+        ], self::CONTACT_REQUEST_LABEL, 'interactive', $source, $staffId, sendKey: $sendKey);
     }
 
     // ==================== المحرّك ====================
@@ -587,38 +588,15 @@ class WhatsAppChannel
         string $msgType,
         string $source,
         ?int $staffId = null,
-        string $context = 'reply'
+        string $context = 'reply',
+        ?string $sendKey = null
     ): array {
-        // ── القفل 0: الموظف يرى المحادثة (سياج E04). يغطي الرد من الصندوق وإرسال السعر معاً.
-        //    رسائل البوت والنظام لا تمر به: الويبهوك والطابور والمساعد الإداري بلا مستخدم.
-        if ($source === 'staff') {
-            $staff = $staffId ? \App\Models\User::find($staffId) : null;
-            if (!$staff || !TopicRouter::canSee($conv, $staff)) {
-                return self::failLocal(self::ERR_OUT_OF_SCOPE, 'هذه المحادثة خارج نطاقك — لا يمكنك مراسلة هذا العميل.');
-            }
-        }
-
         $s = WaBotSetting::current();
 
-        // ── القفل 1: القناة مهيّأة؟
-        if (!$s->channelReady()) {
-            return self::failLocal(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
-        }
-
-        // ── القفل 2: إيقاف إرسال طارئ
-        if ($s->sendingSuspended()) {
-            return self::failLocal(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).');
-        }
-
-        // ── القفل 3: نافذة 24 ساعة
-        if (!$conv->isWindowOpen()) {
-            return self::failLocal(self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.');
-        }
-
-        // ── القفل 4: إلى من؟ الرقم إن عُرف، وإلا معرّف ميتا (BSUID) إن سمح وضع الهوية لهذا المصدر. لا الاثنان معاً
-        $target = self::target($conv, $source);
-        if ($target === null) {
-            return self::failLocal(self::ERR_NO_RECIPIENT, 'العميل يراسل باسم مستخدم ورقمه غير ظاهر، والرد عليه غير مفعّل بعد — أبلغ المدير.');
+        // ── الأقفال 0–4 (الموظف، القناة، الإيقاف، النافذة، الوجهة). تُعاد كلها قبل كل إعادة في الدفتر
+        [$fail, $target] = self::gate($conv, $s, $source, $staffId);
+        if ($fail !== null) {
+            return $fail;
         }
         $payload = ['messaging_product' => 'whatsapp'] + $target + $payload;
 
@@ -632,6 +610,11 @@ class WhatsAppChannel
                 return self::blockByPolicy($conv, $decision, $payload, $displayBody, $msgType, $source, $staffId, $s->phoneNumberId());
             }
             $stored['_policy'] = ['mode' => $enforce ? 'enforce' : 'log', 'context' => $context] + $decision->toArray();
+        }
+
+        // ── دفتر الإرسال (E19، العلم send_ledger): صف queued قبل النداء، ثم حسمه
+        if (self::ledgerOn()) {
+            return self::ledger($conv, $s, $payload, $stored, $displayBody, $msgType, $source, $staffId, $sendKey);
         }
 
         try {
@@ -664,15 +647,53 @@ class WhatsAppChannel
 
         // 200 بلا معرّف رسالة: قبلتها ميتا ولا دليل على الإرسال، فلا تُعرض «أُرسلت» (E12.8)
         $wamid = data_get($json, 'messages.0.id');
-        $status = is_string($wamid) && $wamid !== '' ? 'sent' : 'unconfirmed';
+        $status = is_string($wamid) && $wamid !== '' ? 'sent' : WaMessage::STATUS_UNKNOWN;
         self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $stored, phoneNumberId: $s->phoneNumberId());
-        if ($status === 'unconfirmed') {
-            WaLog::warning('wa.send.unconfirmed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType]);
+        if ($status === WaMessage::STATUS_UNKNOWN) {
+            WaLog::warning('wa.send.unknown', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType]);
         } else {
             WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType]);
         }
 
-        // ردّ الموظف يُوقف البوت مؤقتاً ويصفّر المؤشرات
+        self::afterSent($conv, $s, $source, $displayBody);
+
+        return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $status === 'sent' ? $wamid : null] + ($status === WaMessage::STATUS_UNKNOWN ? ['unconfirmed' => true, 'unknown' => true] : []);
+    }
+
+    /**
+     * الأقفال بالترتيب: 0) الموظف يرى المحادثة (سياج E04، يغطي الرد من الصندوق وإرسال السعر؛ البوت والنظام لا يمران به)
+     * 1) القناة مهيّأة 2) الإيقاف الطارئ 3) نافذة 24 ساعة 4) الوجهة: الرقم إن عُرف، وإلا BSUID إن سمح وضع الهوية. لا الاثنان معاً.
+     *
+     * @return array{0: ?array, 1: ?array} [نتيجة الفشل، الوجهة]
+     */
+    private static function gate(WaConversation $conv, WaBotSetting $s, string $source, ?int $staffId): array
+    {
+        if ($source === 'staff') {
+            $staff = $staffId ? \App\Models\User::find($staffId) : null;
+            if (!$staff || !TopicRouter::canSee($conv, $staff)) {
+                return [self::failLocal(self::ERR_OUT_OF_SCOPE, 'هذه المحادثة خارج نطاقك — لا يمكنك مراسلة هذا العميل.'), null];
+            }
+        }
+        if (!$s->channelReady()) {
+            return [self::failLocal(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).'), null];
+        }
+        if ($s->sendingSuspended()) {
+            return [self::failLocal(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).'), null];
+        }
+        if (!$conv->isWindowOpen()) {
+            return [self::failLocal(self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.'), null];
+        }
+        $target = self::target($conv, $source);
+        if ($target === null) {
+            return [self::failLocal(self::ERR_NO_RECIPIENT, 'العميل يراسل باسم مستخدم ورقمه غير ظاهر، والرد عليه غير مفعّل بعد — أبلغ المدير.'), null];
+        }
+
+        return [null, $target];
+    }
+
+    /** بعد قبول ميتا (أو مهلة رسالة الموظف): وقت المحادثة ومعاينتها، وردّ الموظف يوقف البوت مؤقتاً ويصفّر المؤشرات */
+    private static function afterSent(WaConversation $conv, WaBotSetting $s, string $source, string $displayBody): void
+    {
         $update = [
             'last_outbound_at' => now(),
             'last_message_at' => now(),
@@ -693,14 +714,234 @@ class WhatsAppChannel
         if ($source === 'staff') {
             ReplyState::advanceToNewest($conv);
         }
+    }
 
-        return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $status === 'sent' ? $wamid : null] + ($status === 'unconfirmed' ? ['unconfirmed' => true] : []);
+    // ==================== دفتر الإرسال (E19) ====================
+
+    private static ?bool $hasLedgerColumns = null;
+
+    /** العلم send_ledger، وبعد الهجرة 2026_10_14_000019 وحدها */
+    private static function ledgerOn(): bool
+    {
+        if (!\App\Support\FeatureFlags::on('send_ledger')) {
+            return false;
+        }
+
+        return self::$hasLedgerColumns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['attempts', 'answers_in_id', 'sent_at', 'error_category']);
+    }
+
+    /** biz_opaque_callback_data: البادئة ورقم الصف وحدهما، بلا أي بيان شخصي. تعيده ميتا في ويبهوك الحالة */
+    public static function opaque(int $rowId): string
+    {
+        return config('whatsapp.send.opaque_prefix', 'nj').':m:'.$rowId;
+    }
+
+    /**
+     * الصف queued يُكتب بعد كل الأقفال وقبل النداء، ثم يُحسم الصف نفسه: sent أو failed (المفتاح محرَّر) أو unknown (محجوز).
+     * لا معاملة تلف نداء HTTP: كل كتابة عبارة قصيرة مستقلة. وحسم الحالة مشروط بـ status='queued' فلا يكتب فوق ما حسمه الويبهوك.
+     * الإعادة (العلم send_retry) لرموز ميتا العابرة والخنق ولفشل الاتصال قبل الإرسال فقط، بتأخير 4^X وإعادة الأقفال قبل كل محاولة.
+     * لا إعادة أبداً بعد مهلة الطلب ولا بعد 5xx بلا JSON: ربما قبلتها ميتا.
+     */
+    private static function ledger(WaConversation $conv, WaBotSetting $s, array $payload, array $stored, string $displayBody,
+        string $msgType, string $source, ?int $staffId, ?string $sendKey): array
+    {
+        $hash = hash('sha256', $conv->id.'|'.$msgType.'|'.$displayBody);
+        $run = ReplyRun::current();
+        try {
+            $row = WaMessage::create([
+                'conversation_id' => $conv->id, 'direction' => 'out', 'source' => $source, 'msg_type' => $msgType,
+                'body' => $displayBody, 'payload' => $stored + ['_req_hash' => $hash], 'status' => WaMessage::STATUS_QUEUED,
+                'staff_id' => $staffId, 'phone_number_id' => $s->phoneNumberId(), 'send_key' => $sendKey !== null ? mb_substr($sendKey, 0, 64) : null,
+                'answers_in_id' => $source !== 'staff' && $run?->uptoId ? $run->uptoId : null, 'attempts' => 0,
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            return self::replay((string) $sendKey, $hash);
+        }
+        WaLog::info('wa.send.queued', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $msgType]);
+        $payload['biz_opaque_callback_data'] = self::opaque($row->id);
+
+        $maxRetries = \App\Support\FeatureFlags::on('send_retry')
+            ? (int) config($source === 'staff' ? 'whatsapp.send.retry_staff_max' : 'whatsapp.send.retry_system_max', 1) : 0;
+        $retries = 0;
+        $slept = 0.0;
+        for ($attempt = 1; ; $attempt++) {
+            WaMessage::whereKey($row->id)->update(['attempts' => $attempt]);
+            $res = null;
+            $exc = null;
+            try {
+                $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25, 5);
+            } catch (\InvalidArgumentException $e) {
+                WaLog::error('graph.config.invalid', ['reason' => $e->getMessage()]);
+                $err = MetaError::local(self::ERR_CONFIG);
+
+                return self::resolveFailed($row, $conv, $err, $sendKey, $source, $msgType, $attempt, null, $err->staffMessage);
+            } catch (\Throwable $e) {
+                $exc = $e;
+            }
+
+            if ($res !== null && $res->successful()) {
+                return self::resolveAccepted($row, $conv, $s, $res, $source, $displayBody, $msgType, $attempt, $sendKey);
+            }
+
+            $ref = null;
+            if ($exc !== null) {
+                WaLog::error('send.connection_failed', ['conv_id' => $conv->id, 'message_id' => $row->id, 'type' => class_basename($exc)]);
+                $ref = \App\Support\ErrorRef::log($exc, 'wa.send.connection_failed', ['conv_id' => $conv->id]);
+            }
+            $err = $exc !== null ? MetaError::network(MetaError::networkKind($exc)) : MetaError::fromGraphResponse($res);
+            $notSent = $exc !== null && $err->code === 'HTTP_CONNECT_FAILED';
+            // مهلة، أو انقطاع بعد الاتصال، أو 5xx بلا JSON: ربما قبلتها ميتا
+            if (!$notSent && ($exc !== null || $err->code === 'HTTP_5XX_NO_BODY')) {
+                return self::resolveUnknown($row, $conv, $s, $err, $source, $displayBody, $msgType, $attempt, $ref, $res?->status());
+            }
+
+            $delay = self::retryDelay($err, $notSent, $retries, $maxRetries, $slept, $source);
+            if ($delay === null) {
+                return self::resolveFailed($row, $conv, $err, $sendKey, $source, $msgType, $attempt, $res?->status(), null, $ref);
+            }
+
+            WaLog::info('wa.send.retry', ['message_id' => $row->id, 'attempt' => $attempt, 'meta_code' => $err->metaCode, 'category' => $err->category, 'error_code' => $err->code]);
+            \Illuminate\Support\Sleep::for((int) round($delay * 1000))->milliseconds();
+            $slept += $delay;
+            $retries++;
+
+            // قبل كل محاولة: الأقفال كلها من القاعدة الآن، وللبوت هل ما زال الرد مناسباً (ردّ موظف؟ أُطفئ البوت؟)
+            $conv->refresh();
+            $s = WaBotSetting::current();
+            [$fail] = self::gate($conv, $s, $source, $staffId);
+            $stale = $fail === null && $source !== 'staff' ? $run?->mayDeliver($conv) : null;
+            if ($fail !== null || $stale !== null) {
+                $local = MetaError::local($fail['code'] ?? 'REPLY_STALE');
+
+                return self::resolveFailed($row, $conv, $local, $sendKey, $source, $msgType, $attempt, null, $fail['error'] ?? $local->staffMessage, null, array_filter(['_stale' => $stale]));
+            }
+        }
+    }
+
+    /** التأخير قبل المحاولة التالية (ثوانٍ)، أو null: لا إعادة */
+    private static function retryDelay(MetaError $err, bool $notSent, int $retries, int $maxRetries, float $slept, string $source): ?float
+    {
+        if ($retries >= $maxRetries) {
+            return null;
+        }
+        if (!$notSent) {
+            if ($err->metaCode === null || MetaErrorCatalog::neverRetry($err->metaCode, $err->category)
+                || !in_array($err->category, ['throttle', 'transient'], true)) {
+                return null;
+            }
+            // العابر مرة واحدة، والخنق حتى محاولتين
+            if ($err->category === 'transient' && $retries >= 1) {
+                return null;
+            }
+        }
+        $delay = (4 ** $retries) + random_int(0, 250) / 1000;
+        if ($slept + $delay > (float) config('whatsapp.send.retry_max_sleep', 8)) {
+            return null;
+        }
+        // سلسلة ثوابت E07: ما بقي من ميزانية الرد يكفي الانتظار ونداءً كاملاً
+        $run = ReplyRun::current();
+        if ($run && $source !== 'staff' && $run->remaining() <= $delay + 30) {
+            return null;
+        }
+
+        return $delay;
+    }
+
+    /** 2xx: sent بالمعرّف، أو unknown إن لم يأتِ معرّف */
+    private static function resolveAccepted(WaMessage $row, WaConversation $conv, WaBotSetting $s, Response $res, string $source,
+        string $displayBody, string $msgType, int $attempt, ?string $sendKey): array
+    {
+        $wamid = data_get($res->json() ?? [], 'messages.0.id');
+        if (!is_string($wamid) || $wamid === '') {
+            return self::resolveUnknown($row, $conv, $s, MetaError::local('OUTCOME_UNKNOWN'), $source, $displayBody, $msgType, $attempt, null, $res->status());
+        }
+        $moved = WaMessage::whereKey($row->id)->where('status', WaMessage::STATUS_QUEUED)->update(['status' => 'sent', 'wamid' => $wamid, 'sent_at' => now()]);
+        if ($moved === 0) {
+            // سبق الويبهوك (بـ biz_opaque) فرفع الحالة: يُكمَل المعرّف وحده
+            WaMessage::whereKey($row->id)->whereNull('wamid')->update(['wamid' => $wamid, 'sent_at' => now()]);
+        }
+        WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'message_id' => $row->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType, 'attempt' => $attempt]);
+        self::afterSent($conv, $s, $source, $displayBody);
+
+        return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $wamid, 'meta_code' => null,
+            'status' => 'sent', 'row_id' => $row->id, 'replayed' => false];
+    }
+
+    /** رفض صريح من ميتا، أو فشل اتصال مؤكد قبل الإرسال، أو قفل بعد إعادة الفحص: failed، والمفتاح محرَّر لإعادة مشروعة */
+    private static function resolveFailed(WaMessage $row, WaConversation $conv, MetaError $err, ?string $sendKey, string $source, string $msgType,
+        int $attempt, ?int $http, ?string $message = null, ?string $ref = null, array $extra = []): array
+    {
+        [$code, $shown] = $message !== null ? [$err->code, $message] : self::shown($err);
+        if ($ref !== null) {
+            $shown .= " رقم المرجع: {$ref}";
+        }
+        // الحمولة من القاعدة الآن: ويبهوك قد أضاف statusHistory أثناء النداء
+        $payload = (array) (WaMessage::find($row->id)?->payload ?? []);
+        $payload = $extra + ['_meta_error' => $err->forPayload()] + ($sendKey !== null ? ['_released_key' => $sendKey] : []) + $payload;
+        WaMessage::whereKey($row->id)->where('status', WaMessage::STATUS_QUEUED)->update([
+            'status' => WaMessage::STATUS_FAILED, 'send_key' => null, 'error_message' => $shown,
+            'meta_code' => $err->metaCode, 'fbtrace_id' => $err->fbtraceId, 'error_code' => mb_substr($err->code, 0, 32), 'error_category' => $err->category,
+            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        ]);
+        WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $msgType,
+            'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category, 'fbtrace_id' => $err->fbtraceId,
+            'http' => $http, 'attempt' => $attempt, 'status' => 'failed']);
+        if ($err->metaCode !== null || str_starts_with($err->code, 'HTTP_') || $err->code === self::ERR_PROOF) {
+            self::legacyReact($err);
+            MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source]);
+        }
+
+        return self::failWith($err, $code, $shown) + ['status' => 'failed', 'row_id' => $row->id, 'replayed' => false];
+    }
+
+    /** لا نعرف هل وصلت: unknown والمفتاح محجوز (لا يكرره أحد). رسالة الموظف توقف البوت كأنها أُرسلت */
+    private static function resolveUnknown(WaMessage $row, WaConversation $conv, WaBotSetting $s, MetaError $err, string $source,
+        string $displayBody, string $msgType, int $attempt, ?string $ref, ?int $http): array
+    {
+        $shown = $err->staffMessage.($ref !== null ? " رقم المرجع: {$ref}" : '');
+        WaMessage::whereKey($row->id)->where('status', WaMessage::STATUS_QUEUED)->update([
+            'status' => WaMessage::STATUS_UNKNOWN, 'error_message' => $shown, 'error_code' => mb_substr($err->code, 0, 32), 'error_category' => $err->category,
+        ]);
+        WaLog::warning('wa.send.unknown', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $msgType,
+            'error_code' => $err->code, 'http' => $http, 'attempt' => $attempt, 'status' => 'unknown']);
+        MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source]);
+        if ($source === 'staff') {
+            self::afterSent($conv, $s, $source, $displayBody);
+        }
+
+        return self::failWith($err, $err->code, $shown) + ['status' => 'unknown', 'unknown' => true, 'row_id' => $row->id, 'replayed' => false];
+    }
+
+    /**
+     * المفتاح محجوز بصف سابق: أُرسل (يعود replayed بلا نداء)، أو قيد الإرسال، أو غير مؤكد. ونص مختلف بالمفتاح نفسه يُرفض.
+     * الصف failed لا يصطدم أصلاً لأن مفتاحه حُرّر.
+     */
+    private static function replay(string $sendKey, string $hash): array
+    {
+        $existing = WaMessage::where('send_key', $sendKey)->first();
+        if (!$existing) {
+            return self::failLocal('SEND_IN_PROGRESS', MetaError::local('SEND_IN_PROGRESS')->staffMessage) + ['status' => 'queued', 'replayed' => false];
+        }
+        if (data_get($existing->payload, '_req_hash') !== $hash) {
+            return self::failLocal('IDEMPOTENCY_MISMATCH', 'مفتاح الإرسال مستعمل لنص آخر — اضغط «إرسال» مرة أخرى.') + ['status' => 'mismatch', 'replayed' => false];
+        }
+        WaLog::info('wa.send.replayed', ['conv_id' => $existing->conversation_id, 'message_id' => $existing->id, 'status' => $existing->status]);
+        if (in_array($existing->status, ['sent', 'delivered', 'read', 'played'], true)) {
+            return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $existing->wamid, 'meta_code' => null,
+                'status' => 'replayed', 'row_id' => $existing->id, 'replayed' => true];
+        }
+        if ($existing->status === WaMessage::STATUS_QUEUED) {
+            return self::failLocal('SEND_IN_PROGRESS', MetaError::local('SEND_IN_PROGRESS')->staffMessage) + ['status' => 'queued', 'row_id' => $existing->id, 'replayed' => false];
+        }
+
+        return self::failLocal('OUTCOME_UNKNOWN', 'قد تكون الرسالة وصلت. تحقق من الخيط قبل إعادة الإرسال.')
+            + ['status' => 'unknown', 'unknown' => true, 'row_id' => $existing->id, 'replayed' => false];
     }
 
     /**
      * فشل الاتصال بميتا: نص الاستثناء يحمل الرابط، فللسجل منقّحاً ورقم مرجعي للواجهة.
      * رسالة الموظف تترك أثراً دائماً (E12)، ومع meta_error_v2 كل رسالة: تعذّر الاتصال => failed (لم تُرسل)،
-     * والمهلة => unconfirmed (قد تكون وصلت، فلا يعيدها أحد دون أن يرى ذلك).
+     * والمهلة => unknown «غير مؤكد» (قد تكون وصلت، فلا يعيدها أحد دون أن يرى ذلك).
      */
     private static function networkFailure(\Throwable $e, WaConversation $conv, string $displayBody, string $msgType, string $source, ?int $staffId, array $stored, ?string $phoneNumberId): array
     {
@@ -711,7 +952,7 @@ class WhatsAppChannel
 
         $row = null;
         if ($source === 'staff' || $v2) {
-            $status = !$v2 || $err->code === 'HTTP_TIMEOUT' ? 'unconfirmed' : 'failed';
+            $status = !$v2 || $err->code !== 'HTTP_CONNECT_FAILED' ? WaMessage::STATUS_UNKNOWN : 'failed';
             $text = $v2 ? "{$err->staffMessage} رقم المرجع: {$ref}" : "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}";
             $row = self::store($conv, null, $displayBody, $msgType, $source, $status, $text, $staffId, $stored + ['_meta_error' => $err->forPayload()],
                 errorCode: $err->code, phoneNumberId: $phoneNumberId, category: $err->category);

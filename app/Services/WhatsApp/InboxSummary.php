@@ -20,7 +20,7 @@ final class InboxSummary
     public const TTL_SECONDS = 60;
 
     /** حالات الصادر التي لم تصل العميل: فشل، أو بلا تأكيد من ميتا، أو حجبتها بوابة المحتوى */
-    public const UNDELIVERED = ['failed', 'unconfirmed', 'blocked'];
+    public const UNDELIVERED = ['failed', 'unknown', 'blocked'];
 
     public static function for(User $u): array
     {

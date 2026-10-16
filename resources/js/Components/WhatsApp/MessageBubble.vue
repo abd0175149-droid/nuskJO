@@ -20,7 +20,7 @@
         <slot name="status">
           <span v-if="m.status === 'failed'" class="font-bold" :title="m.error || ''">· فشل</span>
           <span v-else-if="m.status === 'blocked'" class="px-1.5 rounded bg-red-600 text-white font-bold" :title="m.error || ''">🛡️ حُجبت</span>
-          <span v-else-if="m.status === 'unconfirmed'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
+          <span v-else-if="m.status === 'unknown'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
         </slot>
       </div>
       <!-- سبب الفشل (E18): نص عربي من جدول الرموز، وفئة ملوّنة، وإجراء يُفتح بـ ⓘ. نص فقط بلا v-html -->
@@ -52,7 +52,7 @@ const CATEGORY_LABELS = {
   quality: 'جودة', caller: 'الطلب', unknown: 'غير معروف',
 };
 
-const hasReason = computed(() => ['failed', 'blocked', 'unconfirmed'].includes(props.m.status) && !!props.m.error);
+const hasReason = computed(() => ['failed', 'blocked', 'unknown'].includes(props.m.status) && !!props.m.error);
 
 // الاعتماد والتقييد أحمر، والنافذة كهرماني، والطلب رمادي. خلفية فاتحة ثابتة لتُقرأ فوق أي لون فقاعة
 const chip = computed(() => ({

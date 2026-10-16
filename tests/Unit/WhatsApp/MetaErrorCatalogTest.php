@@ -99,7 +99,8 @@ class MetaErrorCatalogTest extends TestCase
         $this->assertArrayNotHasKey('details', $auth->toArray());
         $this->assertStringNotContainsString('OAuth', json_encode($auth->toArray(), JSON_UNESCAPED_UNICODE));
 
-        $this->assertSame(['HTTP_5XX_NO_BODY', 'transient', 'once'], [($e = MetaError::fromGraphResponse(Http::get('https://b.test/x')))->code, $e->category, $e->retry]);
+        // 5xx بلا JSON: ربما قبلتها ميتا، فلا إعادة (E19)
+        $this->assertSame(['HTTP_5XX_NO_BODY', 'transient', 'none'], [($e = MetaError::fromGraphResponse(Http::get('https://b.test/x')))->code, $e->category, $e->retry]);
         $this->assertSame(['META_TRANSIENT', 'transient', 777], [($e = MetaError::fromGraphResponse(Http::get('https://c.test/x')))->code, $e->category, $e->metaCode]);
         $this->assertSame(['META_ERROR', 'unknown'], [($e = MetaError::fromGraphResponse(Http::get('https://d.test/x')))->code, $e->category]);
     }
@@ -113,6 +114,7 @@ class MetaErrorCatalogTest extends TestCase
         $this->assertSame('HTTP_CONNECT_FAILED', MetaError::networkKind($connect));
         $this->assertSame('HTTP_CONNECT_FAILED', MetaError::networkKind($handshake));
         $this->assertSame('HTTP_TIMEOUT', MetaError::networkKind($timeout));
+        $this->assertSame('HTTP_NO_RESPONSE', MetaError::networkKind(new \Illuminate\Http\Client\ConnectionException('cURL error 56: Recv failure: Connection reset by peer')), 'بعد الاتصال: ربما خرج الطلب');
         $this->assertTrue(MetaError::network('HTTP_CONNECT_FAILED')->isRetryable());
         $this->assertFalse(MetaError::network('HTTP_TIMEOUT')->isRetryable(), 'قد تكون وصلت: لا إعادة عمياء');
     }

@@ -202,7 +202,7 @@ class ChannelErrorClassificationTest extends TestCase
         $this->actingAs($staff)->postJson("/api/whatsapp/conversations/{$conv->id}/send", ['body' => 'موعدك غداً'])
             ->assertStatus(503)->assertJsonPath('code', 'HTTP_TIMEOUT')->assertJsonPath('category', 'transient')->assertJsonPath('retryable', false);
 
-        $this->assertSame(['unconfirmed', 'HTTP_TIMEOUT'], [WaMessage::sole()->status, WaMessage::sole()->error_code]);
+        $this->assertSame(['unknown', 'HTTP_TIMEOUT'], [WaMessage::sole()->status, WaMessage::sole()->error_code]);
     }
 
     public function test_send_endpoint_returns_category_and_action_on_failure(): void

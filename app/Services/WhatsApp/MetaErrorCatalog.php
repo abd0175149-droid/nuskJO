@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Cache;
  *
  * جرد E18.1 (ما وُجد فأُعيد توجيهه هنا ولم يُكرَّر): لا MetaErrors.php منفصل (جدول E06 هو هذا الملف)، وgraphError()
  * في WhatsAppChannel تقرأ الشكل وحده، وisAccountError هنا لا في MetaHealth، وWaLog بقائمة مفاتيح مسموحة،
- * والأعمدة meta_code وfbtrace_id (E06) وerror_code (E11) موجودة، و'unconfirmed' (E12) مستعملة لمهلة الموظف.
+ * والأعمدة meta_code وfbtrace_id (E06) وerror_code (E11) موجودة، و'unconfirmed' (E12) صارت 'unknown' في E19.
  *
  * وضع الظل: علم meta_error_v2 مطفأ يحسب التصنيف ويكتب error_category وpayload._meta_error والسجل، لكن الرسالة
  * المعروضة والرمز المعاد والتنبيه والإيقاف من الجدول القديم (LEGACY) كما كانت. يُحذف LEGACY مع إزالة العلم.
@@ -123,7 +123,13 @@ final class MetaErrorCatalog
         'APPSECRET_PROOF_INVALID' => ['auth', 'channel', 'ميتا رفضت إثبات سر التطبيق (appsecret_proof) — كل النداءات تُرفض.', 'صحّح سر التطبيق في الإعدادات، أو عطّل WA_APPSECRET_PROOF ثم config:cache.', 'none'],
         'HTTP_CONNECT_FAILED' => ['transient', 'channel', 'تعذّر الاتصال بميتا (شبكة)، ولم تُرسل الرسالة.', 'أعد المحاولة بعد قليل؛ وإن تكرر فراجع اتصال الخادم.', 'once'],
         'HTTP_TIMEOUT' => ['transient', 'channel', 'انتهت مهلة ميتا — قد تكون الرسالة وصلت.', 'افتح محادثة العميل وتأكد قبل إعادة الإرسال.', 'none'],
-        'HTTP_5XX_NO_BODY' => ['transient', 'channel', self::TRANSIENT, self::TRANSIENT_ACTION, 'once'],
+        'HTTP_5XX_NO_BODY' => ['transient', 'channel', 'خلل عند ميتا بلا رد مفهوم — قد تكون الرسالة وصلت.', 'افتح محادثة العميل وتأكد قبل إعادة الإرسال.', 'none'],
+        'HTTP_NO_RESPONSE' => ['transient', 'channel', 'انقطع الاتصال بميتا بعد إرسال الطلب — قد تكون الرسالة وصلت.', 'افتح محادثة العميل وتأكد قبل إعادة الإرسال.', 'none'],
+        // دفتر الإرسال (E19)
+        'OUTCOME_UNKNOWN' => ['transient', 'message', 'قد تكون الرسالة وصلت، ولم تؤكدها ميتا بعد.', 'تحقق من الخيط أو اسأل العميل قبل إعادة الإرسال.', 'none'],
+        'SEND_IN_PROGRESS' => ['transient', 'message', 'الرسالة نفسها قيد الإرسال الآن.', 'انتظر ثواني حتى تظهر في الخيط.', 'none'],
+        'IDEMPOTENCY_MISMATCH' => ['caller', 'message', 'مفتاح الإرسال مستعمل لنص آخر.', 'اضغط «إرسال» مرة أخرى.', 'none'],
+        'REPLY_STALE' => ['caller', 'message', 'أُلغي الرد الآلي لأن المحادثة تغيّرت أثناء الانتظار (ردّ موظف أو أُطفئ البوت).', 'لا شيء: المحادثة مع موظف.', 'none'],
         'POLICY_BLOCKED' => ['caller', 'message', 'حُجبت الرسالة قبل الإرسال بسياسة المحتوى الصادر.', 'راجع الرسالة الآلية في تقرير السياسة.', 'none'],
     ];
 

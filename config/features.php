@@ -22,6 +22,8 @@ return [
         'reprocess_button' => env('WA_FEATURE_REPROCESS_BUTTON'),
         'quick_replies' => env('WA_FEATURE_QUICK_REPLIES'),
         'meta_error_v2' => env('WA_FEATURE_META_ERROR_V2'),
+        'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
+        'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
     ],
 ];

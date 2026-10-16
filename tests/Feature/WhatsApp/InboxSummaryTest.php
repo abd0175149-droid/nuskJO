@@ -75,13 +75,13 @@ class InboxSummaryTest extends TestCase
         $manager = $this->staffWith('manager', [...self::INBOX_PERMISSIONS, 'whatsapp.view_all']);
         $c = WaConversation::factory()->windowOpen()->create();
         $this->failedOut($c, 'failed');
-        $this->failedOut($c, 'unconfirmed');
+        $this->failedOut($c, 'unknown');
         $this->failedOut($c, 'sent');
         $this->failedOut($c, 'failed', now()->subDays(2));
 
         $s = $this->summary($manager);
         $this->assertSame(2, $s['failed_today']);
-        $this->assertSame(['failed' => 1, 'unconfirmed' => 1], $s['failed_breakdown']);
+        $this->assertSame(['failed' => 1, 'unknown' => 1], $s['failed_breakdown']);
         $this->assertSame([$c->id], array_column($this->actingAs($manager)->getJson('/api/whatsapp/conversations?filter=failed_today')->json('conversations'), 'id'));
     }
 
