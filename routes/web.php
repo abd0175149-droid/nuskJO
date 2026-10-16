@@ -101,6 +101,10 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
 
     // API: تفاصيل فاتورة
     Route::get('api/invoices/{invoice}/details', [\App\Http\Controllers\InvoiceController::class, 'details'])->middleware('perm:invoices.view');
+    // فاتورة PDF وإرسالها على واتساب (E32): العلم invoice_whatsapp_send والصلاحيتان في المتحكم، والإرسال بحد wa-files
+    Route::get('invoices/{invoice}/pdf', [\App\Http\Controllers\InvoiceController::class, 'pdf'])->name('invoices.pdf')->middleware('perm:invoices.view');
+    Route::get('api/invoices/{invoice}/whatsapp-targets', [\App\Http\Controllers\InvoiceWhatsAppController::class, 'targets'])->middleware('perm:invoices.view');
+    Route::post('api/invoices/{invoice}/send-whatsapp', [\App\Http\Controllers\InvoiceWhatsAppController::class, 'send'])->middleware(['perm:invoices.view', 'throttle:wa-files']);
 
     // API: FCM Tokens
     Route::post('api/fcm-token', [\App\Http\Controllers\FcmTokenController::class, 'store']);

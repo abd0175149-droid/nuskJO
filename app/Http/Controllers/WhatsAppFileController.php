@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\AuditAction;
-use App\Jobs\SendWhatsAppMediaJob;
-use App\Models\AuditLog;
+use App\Http\Controllers\Concerns\QueuesWhatsAppFiles;
 use App\Models\WaConversation;
 use App\Services\WhatsApp\MetaError;
 use App\Services\WhatsApp\Outbound\OutboundFileStore;
@@ -26,6 +24,8 @@ use Illuminate\Validation\Rule;
  */
 class WhatsAppFileController extends Controller
 {
+    use QueuesWhatsAppFiles;
+
     public function store(Request $request, WaConversation $conversation)
     {
         $user = $request->user();
@@ -98,40 +98,11 @@ class WhatsAppFileController extends Controller
         }
 
         $stored = OutboundFileStore::put((string) $file->getRealPath(), (string) $info['ext']);
-        $res = WhatsAppChannel::reserve($conversation, $message, 'staff', $user->id, [
-            'send_key' => $key,
-            'media' => ['mime' => $info['mime'], 'sha256' => $stored['sha256'], 'size' => $stored['size'], 'filename' => $info['name'], 'path' => $stored['path']],
-            'payload' => array_filter(['_doc_kind' => $kind]),
-        ]);
+        $response = $this->queueWhatsAppFile($conversation, $message, $user->id, $key, $info, $stored, array_filter(['_doc_kind' => $kind]), $warnings);
 
-        if (!$res['ok'] || !empty($res['replayed'])) {
-            // لا صف جديد: النسخة الجديدة بلا مرجع تُحذف الآن
-            OutboundFileStore::delete($stored['path']);
-        }
-        if (!$res['ok']) {
-            // المفتاح نفسه ما زال في الطابور: نتيجة الطلب الأول نفسها، بلا رفع ثانٍ
-            if (($res['code'] ?? null) === 'SEND_IN_PROGRESS' && isset($res['row_id'])) {
-                return response()->json(['ok' => true, 'status' => 'queued', 'row_id' => $res['row_id'], 'message_id' => null, 'replayed' => true], 202);
-            }
-
-            return response()->json($res, match (true) {
-                ($res['code'] ?? null) === 'IDEMPOTENCY_MISMATCH' => 422,
-                !empty($res['conflict']) => 409,
-                default => 422,
-            });
-        }
-        if (!empty($res['replayed'])) {
-            return response()->json($res, 200);
-        }
-
-        SendWhatsAppMediaJob::dispatch($res['row_id'])->afterCommit();
-        if ($warnings) {
-            AuditLog::safe(AuditAction::WaPolicyOverride, 'wa_conversation', $conversation->id, null, ['reasons' => $warnings, 'message_id' => $res['row_id']]);
-        }
-        WaLog::info('wa.media.queued', ['conv_id' => $conversation->id, 'message_id' => $res['row_id'], 'type' => $info['type'],
-            'mime' => $info['mime'], 'bytes' => $stored['size'], 'sha12' => substr($stored['sha256'], 0, 12)]);
-
-        return response()->json(['ok' => true, 'status' => 'queued', 'row_id' => $res['row_id'], 'message_id' => null, 'replayed' => false]
-            + ($info['warning'] !== null ? ['warning' => $info['warning']] : []), 202);
+        // تنبيه غير مانع من الفحص (فيديو بلا faststart) يُعرض للموظف مع «في الطابور»
+        return $info['warning'] !== null && $response->getStatusCode() === 202
+            ? $response->setData($response->getData(true) + ['warning' => $info['warning']])
+            : $response;
     }
 }

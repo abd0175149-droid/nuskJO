@@ -18,6 +18,7 @@ use App\Services\TravelersReport;
 use App\Services\WhatsApp\Media\MediaArchiver;
 use App\Support\FeatureFlags;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -32,6 +33,9 @@ use Illuminate\Support\Facades\Storage;
  *
  * ما لا أداة له عمداً: اعتماد فاتورة أو سند، وكتابة قيد، والإرسال لرقم غير رقم المحادثة، والإرسال الجماعي،
  * وتعديل الصلاحيات أو المستخدمين، وحذف المحادثات أو الرسائل، والوصول لأسرار القناة.
+ *
+ * لا أدوات إرسال عامة للنموذج (E32، C109): الإرسال قرار بشري من الصندوق، أو مسار يبنيه الكود. send_offer_card وحدها
+ * (ببطاقة يبنيها الكود)، ويحرس ذلك NoGenericSendToolsTest.
  *
  * TOOLS هو المصدر الوحيد (E15): منه الإعلانات والتسميات وقائمة التحويل وحارس التسريب وقواعد التحقق ومفاتيح
  * tools_config المقبولة. لقطة tests/Snapshots/bot_declarations.json تثبّت العقد.
@@ -329,6 +333,72 @@ class BotTools
     private const CARD_AS_TEXT = 'تعذّر إرسال الصورة. اذكر تفاصيل العرض وأسعاره نصّاً بإيجاز بدلاً منها، ولا تعتذر عن الصورة.';
 
     /** إرسال بطاقة العرض كصورة — تُولَّد عند الطلب إن لم تكن جاهزة */
+    /**
+     * بطاقة العرض بالمعرّف (E32.11): تُفحص كأي صورة صادرة (أكبر من 5MB لا تُرسل)، وتُرفع مرة ويُخزَّن معرّفها 25 يوماً
+     * (ميتا تحفظه 30) فلا تُرفع لكل عميل، وتُحفظ نسختها على wa_media إثباتاً للسعر الذي رآه العميل ولو أُعيد توليدها.
+     * أي فشل: sent=false بلا رجوع إلى الرابط العام، فلا يقول البوت إن البطاقة وصلت وهي لم تُرسل.
+     */
+    private static function sendOfferCardById(Offer $offer, string $path, WaConversation $conv): array
+    {
+        $unsent = ['sent' => false, 'note' => 'تعذّر إرسال الصورة. اذكر التفاصيل نصّاً بإيجاز بدلاً منها.'];
+        $abs = Storage::disk('public')->path($path);
+        $info = Outbound\OutboundMediaPolicy::inspect($abs, 'offer-'.$offer->id.'.'.(pathinfo($path, PATHINFO_EXTENSION) ?: 'png'));
+        if (!$info['ok'] || $info['type'] !== 'image') {
+            WaLog::warning('bot.card.rejected', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $info['code'] ?? 'MEDIA_TYPE']);
+
+            return $unsent;
+        }
+
+        $cacheKey = 'wa:media:card:'.$info['sha256'];
+        $mediaId = Cache::get($cacheKey);
+        if (!is_string($mediaId) || $mediaId === '') {
+            // رفع جديد يأخذ من ميزانية الرد كالتوليد
+            if (($run = ReplyRun::current()) && !$run->hasAtLeast(ReplyRun::CARD_MIN_SECONDS)) {
+                WaLog::warning('bot.card.skipped_budget', ['offer_id' => $offer->id, 'conv_id' => $conv->id]);
+
+                return ['sent' => false, 'note' => self::CARD_AS_TEXT];
+            }
+            $up = WhatsAppChannel::uploadMedia($conv, $abs, (string) $info['mime'], (string) $info['name'], 'bot');
+            if (!$up['ok']) {
+                WaLog::warning('bot.card.upload_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $up['code']]);
+
+                return $unsent;
+            }
+            $mediaId = (string) $up['media_id'];
+            Cache::put($cacheKey, $mediaId, now()->addDays((int) config('whatsapp.outbound.card_id_days', 25)));
+        }
+
+        // نسخة إثبات السعر: تبقى ولو أُعيد توليد البطاقة وحُذفت القديمة (OfferCardService)
+        $stored = rescue(fn () => Outbound\OutboundFileStore::put($abs, (string) $info['ext']), null, false);
+        $title = mb_substr($offer->title, 0, 200);
+        $res = WhatsAppChannel::send($conv, Outbound\OutboundMessage::image($mediaId, $title), 'bot', null, [
+            'send_key' => SendKey::reply($conv, ReplyRun::current()?->uptoId, 'card:'.$offer->id),
+            // نص الصف كما في مسار الرابط: عنوان العرض
+            'display' => $title,
+            'media' => $stored ? ['mime' => $info['mime'], 'sha256' => $stored['sha256'], 'size' => $stored['size'],
+                'filename' => $info['name'], 'path' => $stored['path']] : null,
+        ]);
+        if ($stored && (!$res['ok'] || !empty($res['replayed'])) && !\App\Models\WaMessage::where('media_path', $stored['path'])->exists()) {
+            Outbound\OutboundFileStore::delete($stored['path']);
+        }
+        if (!$res['ok']) {
+            WaLog::warning('bot.card.send_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $res['code']]);
+            // معرّف رفضته ميتا (انتهى أو حُذف): يُنسى فيُرفع من جديد في المرة التالية
+            if (($res['meta_code'] ?? null) !== null) {
+                Cache::forget($cacheKey);
+            }
+
+            return $unsent;
+        }
+
+        return [
+            'sent' => true,
+            'offer' => $offer->title,
+            'note' => 'أُرسلت البطاقة للعميل بالفعل. لا تصف محتواها ولا تعيد سرد الأسعار — '
+                .'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
+        ];
+    }
+
     private static function sendOfferCard(array $in, WaConversation $conv): array
     {
         $offer = Offer::forBot()->with(['groups.options.stays', 'options.stays'])->find($in['offer_id'] ?? 0);
@@ -366,6 +436,11 @@ class BotTools
             $run->abort = $drop;
 
             return ['sent' => false, 'note' => 'لا ترسل شيئاً آخر.'];
+        }
+
+        // بالمعرّف بدل الرابط العام (E32.11، العلم offer_card_by_media_id)
+        if (FeatureFlags::on('offer_card_by_media_id')) {
+            return self::sendOfferCardById($offer, $path, $conv);
         }
 
         $res = WhatsAppChannel::sendImage(

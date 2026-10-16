@@ -65,6 +65,11 @@ return [
         ],
         // فاتورة PDF: نسخة مخزّنة مؤقتاً على wa_media تحت invoices/ تُكنس بعد هذه المدة (المرسلة لها نسختها في outbound/)
         'invoice_cache_days' => 7,
+        // شكل الفاتورة بقرار المالك: ورق الشركة الرسمي (card_letterhead_path) خلفية كاملة، والرقم الضريبي (مطفأ)
+        'invoice_letterhead' => (bool) env('INVOICE_PDF_LETTERHEAD', true),
+        'invoice_show_tax' => (bool) env('INVOICE_PDF_SHOW_TAX', false),
+        // الفواتير القابلة للإرسال: المعتمدة وحدها (approved). pending بقرار المالك تُرسل بعلامة «مسودة»
+        'invoice_send_statuses' => array_values(array_filter(array_map('trim', explode(',', (string) env('INVOICE_WHATSAPP_STATUSES', 'approved'))))),
     ],
 
     // بوابة المحتوى الصادر (E15.9): حسابات الشركة المسموح ظهورها في الرسائل الآلية (IBAN بلا مسافات، مفصولة بفواصل)
@@ -89,7 +94,7 @@ return [
         // معرّف الوسائط عند ميتا يعيش 7 أيام: آخر محاولة قبلها
         'id_lifetime_minutes' => 6 * 24 * 60 + 20 * 60,
         // أقل مساحة حرة (نسبة من القرص) قبل أي تنزيل
-        'min_free_pct' => 5,
+        'min_free_pct' => (int) env('WA_MEDIA_MIN_FREE_PCT', 5),
         // النوع المكتشف بـ finfo => [الامتداد، يُعاين في الصندوق]. كل ما سواه مرفوض (SVG وHTML وx-* والأرشيفات)
         'mimes' => [
             'image/jpeg' => ['jpg', true],

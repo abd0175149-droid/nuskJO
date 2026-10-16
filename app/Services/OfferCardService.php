@@ -4,11 +4,10 @@ namespace App\Services;
 
 use App\Models\Offer;
 use App\Models\Setting;
+use App\Services\Rendering\HeadlessChromium;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
-use Symfony\Component\Process\Exception\ProcessTimedOutException;
-use Symfony\Component\Process\Process;
 
 /**
  * توليد بطاقة العرض التسويقية كصورة PNG.
@@ -35,11 +34,11 @@ class OfferCardService
      * نِسَب ترويسة الورقة الرسمية وتذييلها من ارتفاع الصفحة.
      * تُضبط من الإعدادات لأنّ كل ورقة شركة تختلف.
      */
-    private const LH_TOP = 21.0;
-    private const LH_BOTTOM = 15.0;
+    public const LH_TOP = 21.0;
+    public const LH_BOTTOM = 15.0;
 
-    /** نسبة مئوية آمنة ضمن 0..60 */
-    private static function percent($value, float $fallback): float
+    /** نسبة مئوية آمنة ضمن 0..60 (تستعملها فاتورة PDF أيضاً، E32) */
+    public static function percent($value, float $fallback): float
     {
         if ($value === null || $value === '' || !is_numeric($value)) {
             return $fallback;
@@ -155,8 +154,8 @@ class OfferCardService
         return "'Noto Naskh Arabic', 'Noto Sans Arabic', 'Noto Kufi Arabic', 'DejaVu Sans', sans-serif";
     }
 
-    /** يحوّل ملفاً على قرص public إلى data: URI ليعمل القالب بلا شبكة */
-    private static function dataUri(?string $path): ?string
+    /** يحوّل ملفاً على قرص public إلى data: URI ليعمل القالب بلا شبكة (وقالب فاتورة PDF، E32) */
+    public static function dataUri(?string $path): ?string
     {
         if (!$path || !Storage::disk(self::DISK)->exists($path)) {
             return null;
@@ -174,117 +173,16 @@ class OfferCardService
         return $mime ? 'data:' . $mime . ';base64,' . base64_encode($bytes) : null;
     }
 
-    /** @return list<string> */
+    /** @return list<string> أعلام الالتقاط (المُشغّل المشترك HeadlessChromium منذ E32، بالترتيب نفسه) */
     private static function chromiumArguments(string $binary, string $profile, string $htmlPath, string $pngPath): array
     {
-        $args = [
-            $binary,
-            '--headless',
-            '--no-sandbox',                 // نعمل كـ root داخل حاوية معزولة
-            '--disable-gpu',
-            '--disable-dev-shm-usage',      // /dev/shm صغيرة في الحاويات
-            '--disable-software-rasterizer',
-            '--hide-scrollbars',
-            '--force-device-scale-factor=1',
-            '--default-background-color=FFFFFFFF',
-            '--user-data-dir=' . $profile,
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--window-size=' . self::WIDTH . ',' . self::HEIGHT,
-            '--virtual-time-budget=8000',   // ننتظر الخطوط وسكربت ضبط المقاس
-        ];
-
-        // عزل عن الشبكة: بروكسي ميت يشمل loopback (Reverb وphp-fpm وnginx على المضيف نفسه)، وحلّ أسماء فاشل،
-        // ولا خدمات خلفية. سياسة CSP في القالب هي الحاجز الأول؛ هذه طبقة ثانية لأي محتوى يفلت منها.
-        if (config('services.chromium.net_isolation')) {
-            array_push($args,
-                '--proxy-server=127.0.0.1:9',
-                '--proxy-bypass-list=<-loopback>',
-                '--host-resolver-rules=MAP * ~NOTFOUND',
-                '--disable-background-networking',
-                '--disable-component-update',
-                '--disable-sync',
-                '--disable-domain-reliability',
-                '--no-pings',
-            );
-        }
-
-        $args[] = '--screenshot=' . $pngPath;
-        $args[] = 'file://' . str_replace('\\', '/', $htmlPath);
-
-        return $args;
+        return HeadlessChromium::screenshotArguments($binary, $profile, $htmlPath, $pngPath, self::WIDTH, self::HEIGHT);
     }
 
-    /** يشغّل كروميوم بلا واجهة لالتقاط البطاقة */
+    /** يشغّل كروميوم بلا واجهة لالتقاط البطاقة (ملف تعريف مؤقت ومهلة 60 ثانية في HeadlessChromium) */
     private static function shoot(string $htmlPath, string $pngPath): void
     {
-        $binary = self::chromium();
-
-        // كروميوم يحتاج مجلّد ملفّ تعريف قابلاً للكتابة، و www-data بلا مجلّد منزل
-        // داخل الحاوية — فنمنحه مجلّداً مؤقتاً خاصاً بكل عملية ثم نحذفه.
-        $profile = sys_get_temp_dir() . '/chromium-' . bin2hex(random_bytes(5));
-
-        $process = new Process(self::chromiumArguments($binary, $profile, $htmlPath, $pngPath));
-
-        $process->setTimeout(60);
-        $process->setEnv(['HOME' => $profile]);
-
-        try {
-            $process->run();
-        } catch (ProcessTimedOutException $e) {
-            self::rmdir($profile);
-            throw new \RuntimeException('انتهت مهلة توليد البطاقة (60 ثانية).', 0, $e);
-        }
-
-        self::rmdir($profile);
-
-        if (!is_file($pngPath)) {
-            Log::error('فشل كروميوم في توليد البطاقة', [
-                'exit' => $process->getExitCode(),
-                'stderr' => mb_substr($process->getErrorOutput(), 0, 2000),
-            ]);
-            throw new \RuntimeException('تعذّر تشغيل مُصيّر الصور. راجع سجلّ الأخطاء.');
-        }
-    }
-
-    private static function rmdir(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-
-        $it = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($it as $f) {
-            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
-        }
-        @rmdir($dir);
-    }
-
-    /** مسار كروميوم — يُضبط بـ CHROMIUM_PATH عند الحاجة */
-    private static function chromium(): string
-    {
-        $configured = config('services.chromium.path');
-        if ($configured && is_executable($configured)) {
-            return $configured;
-        }
-
-        foreach ([
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chrome',
-        ] as $candidate) {
-            if (is_executable($candidate)) {
-                return $candidate;
-            }
-        }
-
-        throw new \RuntimeException(
-            'لم يُعثر على كروميوم داخل الحاوية — توليد البطاقات يحتاج حزمة chromium.'
-        );
+        HeadlessChromium::screenshot($htmlPath, $pngPath, self::WIDTH, self::HEIGHT, 'البطاقة');
     }
 
     /** حذف كل صور العرض عند حذفه */
