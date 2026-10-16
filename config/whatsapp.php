@@ -6,6 +6,26 @@
 */
 
 return [
+    // استقبال الويبهوك (E20، docs/whatsapp-webhook-contract.md؛ أرقامها يحرسها WebhookContractDocTest)
+    'webhook' => [
+        // حد الجسم قبل حساب التوقيع (413)، مساوٍ لكتلة nginx ولا يقل عن 3MB (أقصى حمولة عند ميتا)
+        'max_bytes' => max(3 * 1024 * 1024, (int) env('WA_WEBHOOK_MAX_BYTES', 4 * 1024 * 1024)),
+        // all: كل توصيلة موقّعة تُحفظ مشفّرة قبل المعالجة. failures: تُحفظ عند الخطأ وحده (إن ظهر ضغط كتابة)
+        'log_mode' => env('WA_WEBHOOK_LOG_MODE', 'all') === 'failures' ? 'failures' : 'all',
+        // الجسم المشفّر للفاشل حداً أقصى، والأثر الوصفي بلا جسم
+        'body_hours' => 72,
+        'meta_days' => 14,
+        // محاولات المعالجة (الأولى في الطلب)، والتأخير بعد الأولى ثم الثانية (دقائق)؛ بعد الثالثة dead
+        'max_attempts' => 3,
+        'retry_minutes' => [2, 10],
+        // pending أقدم من هذا انقطع طلبه أثناء المعالجة
+        'pending_stale_minutes' => 2,
+        // توقيعات مرفوضة في الساعة قبل التنبيه
+        'bad_signature_alert' => 20,
+        // أقل من مهلة كتلة nginx (60 ثانية)
+        'time_limit' => 55,
+    ],
+
     // دفتر الإرسال (E19): بادئة biz_opaque_callback_data ({بادئة}:m:{رقم الصف}) وحدود الإعادة المحدودة
     'send' => [
         'opaque_prefix' => preg_replace('/[^a-z0-9]/', '', strtolower((string) env('WA_OPAQUE_PREFIX', 'nj'))) ?: 'nj',

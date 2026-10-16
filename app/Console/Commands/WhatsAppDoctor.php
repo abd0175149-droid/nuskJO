@@ -6,6 +6,7 @@ use App\Models\WaBotSetting;
 use App\Services\WhatsApp\ChannelDoctor;
 use App\Services\WhatsApp\Graph\GraphClient;
 use App\Services\WhatsApp\MetaErrorReactor;
+use App\Services\WhatsApp\WebhookStats;
 use Illuminate\Console\Command;
 
 /** فحص صحة القناة والإعداد. يطبع فقط (لا سجل)، ويعيد 0 دائماً إلا مع --strict وعند أي تحذير. */
@@ -42,7 +43,26 @@ class WhatsAppDoctor extends Command
             $this->line("رسائل موظف بلا مفتاح منع تكرار اليوم: {$missing} — حدّث الصفحة في المتصفحات المفتوحة");
         }
 
-        $checks = [...ChannelDoctor::checks(), ...ChannelDoctor::sourceWarnings($settings)];
+        // استقبال الويبهوك (E20): أعداد 24 ساعة، والسياج، والتوقيعات، والحقول المجهولة، وحد nginx المنشور
+        $hook = WebhookStats::summary(true);
+        $nginx = WebhookStats::nginx();
+        $this->line('الويبهوك: الحفظ قبل الإقرار '.($hook['log']['on'] ? "مفعّل ({$hook['log']['mode']})" : 'مطفأ')
+            .' · السياج '.($hook['fence']['mode'] === 'enforce' ? 'فرض' : 'تسجيل')
+            .' · WABA '.($hook['fence']['source'] ?? 'غير مضبوط')
+            .' · nginx '.($nginx['webhook_max'] ?? '؟').' keepalive '.($nginx['keepalive'] ?? '؟').'s');
+        $this->table(['الويبهوك (24 ساعة)', 'العدد'], collect($hook['last24'])->map(fn ($n, $k) => [$k, $n])->values()->all());
+        $this->line("توقيعات مرفوضة: ساعة {$hook['signatures']['hour']} · يومان {$hook['signatures']['day']} · ينتظر يدوياً: {$hook['dead_open']} · أقدم جسم: "
+            .($hook['oldest_body_hours'] === null ? '—' : $hook['oldest_body_hours'].' ساعة'));
+        foreach ($hook['fence']['counts'] as $reason => $c) {
+            if ($c['rejected'] || $c['would']) {
+                $this->line("سياج {$reason}: مرفوض {$c['rejected']} · كان سيُرفض {$c['would']}");
+            }
+        }
+        foreach ($hook['unknown_fields'] as $field => $n) {
+            $this->line("حقل غير معالج: {$field} × {$n}");
+        }
+
+        $checks = [...ChannelDoctor::checks(), ...ChannelDoctor::sourceWarnings($settings), ...WebhookStats::checks($hook)];
         if ($checks === []) {
             $this->info('✅ صحة القناة: لا ملاحظات');
 

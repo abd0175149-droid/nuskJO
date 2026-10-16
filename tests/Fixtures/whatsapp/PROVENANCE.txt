@@ -69,3 +69,9 @@ send_ok.json                  [send] § رد POST /messages الناجح: contac
 send_ok_no_wamid.json         [send] رد 200 بلا messages: قبول بلا معرّف (يُحفظ «غير مؤكد»). مصنوع للاختبار. E19.
 error_130429.json             [errors] § 130429 Rate limit hit (خنق، إعادة 4^X). E19.
 error_131000.json             [errors] § 131000 Something went wrong (عابر، إعادة واحدة). E19.
+foreign_waba.json             [webhooks-override] entry.id لحساب أعمال غير حسابنا (109999999999999، مصنوع) برقمنا: السياج waba_mismatch. E20.
+missing_pnid.json             [messages] § حمولة messages بلا metadata.phone_number_id (مصنوعة): السياج pnid_missing. E20.
+batch_mixed.json              [messages] § change واحد فيه حالتان (delivered وread) ورسالتان نصيتان، بشكل المرجع. الاختبار يحقن فشلاً في الثانية. E20.
+calls_event.json              [calling] § حقل calls (connect) بشكل وثيقة المكالمات، وsdp مختصر مصنوع. لا نشترك فيه: يُسجَّل نوع الحدث فقط. E20.
+smb_message_echoes.json       [coexistence] § حقل smb_message_echoes (message_echoes) بشكل وثيقة التعايش. يُنبّه ولا يصل للبوت. E20.
+unknown_field.json            حقل مصنوع brand_new_field بجانب change رسائل عادي: الحقل المجهول لا يُسقط الرسالة. E20.

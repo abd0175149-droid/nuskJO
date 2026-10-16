@@ -23,6 +23,10 @@ final class SettingsSchema
         'enabled' => ['type' => 'bool', 'default' => false, 'patchable' => true, 'group' => 'status', 'ui' => 'custom', 'label' => 'تشغيل بوت العملاء'],
         'wa_phone_number_id' => ['type' => 'string', 'regex' => '/^\d{5,32}$/', 'nullable' => true, 'default' => null, 'patchable' => true, 'sensitive' => true,
             'env' => 'services.whatsapp.phone_number_id', 'env_var' => 'WA_PHONE_NUMBER_ID', 'group' => 'meta', 'ui' => 'custom', 'label' => 'Phone Number ID'],
+        // معرّف حساب الأعمال (E20): يدوي هنا أو WA_WABA_ID، وبه يفرض سياج الويبهوك. يكتبه أيضاً ما يُتعلَّم من entry.id
+        // ما لم يُضبط يدوياً (wa_waba_id_source). خاطئه يُسقط رسائل العملاء عند الفرض، فهو حساس
+        'wa_waba_id' => ['type' => 'string', 'regex' => '/^\d{5,32}$/', 'nullable' => true, 'default' => null, 'patchable' => true, 'sensitive' => true,
+            'env' => 'services.whatsapp.waba_id', 'env_var' => 'WA_WABA_ID', 'group' => 'meta', 'ui' => 'custom', 'label' => 'معرّف حساب الأعمال (WABA)'],
         'wa_app_id' => ['type' => 'string', 'regex' => '/^\d{5,20}$/', 'nullable' => true, 'default' => null, 'patchable' => true,
             'env' => 'services.whatsapp.app_id', 'env_var' => 'WA_APP_ID', 'group' => 'meta', 'ui' => 'custom', 'label' => 'App ID'],
         'provider' => ['type' => 'enum', 'values' => 'providers', 'default' => 'google', 'patchable' => true, 'sensitive' => true, 'group' => 'ai', 'ui' => 'custom', 'label' => 'مزوّد الذكاء'],
@@ -84,7 +88,7 @@ final class SettingsSchema
     public const METADATA = [
         'wa_verify_token_hash', 'wa_verify_token_rotated_at', 'wa_token_rotated_at', 'wa_app_secret_rotated_at', 'api_key_rotated_at',
         'wa_suspended_at', 'wa_suspended_by', 'wa_suspended_source', 'wa_suspended_reason', 'feature_flags',
-        'fallback_api_key_rotated_at',
+        'fallback_api_key_rotated_at', 'wa_waba_id_source', 'wa_display_phone',
     ];
 
     /** النصوص الطويلة: طولها وبصمتها في التدقيق لا نصها */

@@ -233,6 +233,15 @@ Schedule::command('whatsapp:reap-pending')
     ->everyTenMinutes()
     ->withoutOverlapping(5);
 
+// استقبال الويبهوك (E20): إعادة الفاشل والمنقطع كل دقيقة بميزانية 3 محاولات، والمحو كل ساعة (الجسم 72 ساعة حداً
+// أقصى، والأثر الوصفي 14 يوماً). لا يتوقفان بالعلم: صفوف قائمة تُعاد وتُمحى حتى بعد إطفاء الحفظ
+Schedule::command('whatsapp:replay-webhooks')
+    ->everyMinute()
+    ->withoutOverlapping(5);
+Schedule::command('whatsapp:webhook-events-prune')
+    ->hourlyAt(15)
+    ->withoutOverlapping(10);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

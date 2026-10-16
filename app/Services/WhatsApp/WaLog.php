@@ -16,6 +16,8 @@ final class WaLog
         'http', 'host', 'entry', 'reason', 'offer_id', 'code', 'bytes', 'policy_reason',
         // E18: تصنيف أخطاء ميتا (لا body ولا phone ولا name ولا token ولا Authorization ولا رابط كامل)
         'error_code', 'category', 'attempt', 'scope',
+        // E20: استقبال الويبهوك (أنواع أحداث المكالمات ببصمة مقتطعة، ورقم الصف والعنصر، وأعداد المحو والإعادة)
+        'events', 'item', 'event_id', 'wiped', 'deleted', 'overdue', 'processed', 'failed', 'dead',
     ];
 
     public static function info(string $event, array $context = []): void

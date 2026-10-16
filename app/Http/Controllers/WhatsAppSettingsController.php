@@ -57,6 +57,8 @@ class WhatsAppSettingsController extends Controller
             'ops' => app(OpsHealth::class)->snapshot(),
             'meta' => MetaHealth::summary(WaBotSetting::current()),
             'mediaArchive' => rescue(fn () => \App\Services\WhatsApp\Media\MediaArchiver::summary(), null, false),
+            // E20: استقبال الويبهوك (أعداد فقط)
+            'webhookIntake' => rescue(fn () => \App\Services\WhatsApp\WebhookStats::summary(), null, false),
             // E18: آخر خطأ قناة من ميتا، وفئات اليوم، ونسبة إثبات سر التطبيق خلال 7 أيام
             'metaErrors' => [
                 'last' => WaBotSetting::current()->wa_last_error,
@@ -84,6 +86,7 @@ class WhatsAppSettingsController extends Controller
             'changes.model.regex' => 'اسم النموذج يقبل الحروف والأرقام و . _ - فقط',
             'changes.wa_app_id.regex' => 'معرّف التطبيق أرقام فقط (من App settings › Basic)',
             'changes.wa_phone_number_id.regex' => 'Phone Number ID أرقام فقط',
+            'changes.wa_waba_id.regex' => 'معرّف حساب الأعمال أرقام فقط (من WhatsApp Manager)',
         ]);
 
         $settings = WaBotSetting::current();
@@ -102,8 +105,15 @@ class WhatsAppSettingsController extends Controller
             if ($changes['wa_phone_number_id'] !== null && WhatsAppChannel::probePhoneNumberId((string) $changes['wa_phone_number_id']) === false) {
                 throw ValidationException::withMessages(['changes.wa_phone_number_id' => 'ميتا لا تعرف هذا المعرّف برمزنا الحالي — انسخه من WhatsApp › API Setup']);
             }
-            // رقم جديد: ما تعلّمناه عن القديم لا يصلح لتمييز أحداث الحساب، فيُتعلّم من أول رسالة
-            $changes += ['wa_waba_id' => null, 'wa_display_phone' => null];
+            // رقم جديد: ما تعلّمناه عن القديم لا يصلح لتمييز أحداث الحساب، فيُتعلّم من أول رسالة. المضبوط يدوياً يبقى
+            $changes += ['wa_display_phone' => null];
+            if ($settings->wa_waba_id_source !== 'manual') {
+                $changes += ['wa_waba_id' => null, 'wa_waba_id_source' => null];
+            }
+        }
+        // معرّف الحساب من الإعدادات يدوي (يفرض السياج ولا يكتب فوقه المتعلَّم)، ومسحه يعيده للتعلّم
+        if (array_key_exists('wa_waba_id', $changes) && !array_key_exists('wa_waba_id_source', $changes)) {
+            $changes['wa_waba_id_source'] = $changes['wa_waba_id'] === null ? null : 'manual';
         }
 
         // الاحتياطي يجب أن يختلف عن الأساسي (مزوّداً أو نموذجاً)، وإلا لا معنى له
@@ -388,7 +398,7 @@ class WhatsAppSettingsController extends Controller
             ],
             'signature' => [
                 'last_ok_at' => Cache::get('wa:sig:last_ok_at'),
-                'failures_last_hour' => (int) Cache::get('wa:sig:fail:'.now()->format('YmdH'), 0),
+                'failures_last_hour' => \App\Services\WhatsApp\WebhookIntake::badSignatureCounts()['hour'],
             ],
             'killSwitch' => $this->killSwitchState($s),
             'breaker' => $this->breakerState($s),
@@ -407,8 +417,10 @@ class WhatsAppSettingsController extends Controller
         return [
             'enabled' => (bool) $s->enabled,
             'wa_phone_number_id' => $s->wa_phone_number_id,
-            // يُتعلّمان من أول رسالة لرقمنا؛ بهما تُميَّز أحداث الحساب لأرقام أخرى على التطبيق نفسه
-            'wa_waba_id' => $s->wa_waba_id,
+            // حقل النموذج: المضبوط يدوياً وحده (E20). المتعلَّم من أول رسالة لرقمنا يُعرض «مكتشفاً» للمقارنة
+            'wa_waba_id' => $s->wa_waba_id_source === 'manual' ? $s->wa_waba_id : null,
+            'wa_waba_id_source' => $s->wa_waba_id_source,
+            'wa_waba_detected' => \App\Services\Ops\OpsHealth::store()->get('wa:waba:detected') ?: ($s->wa_waba_id_source !== 'manual' ? $s->wa_waba_id : null),
             'wa_display_phone' => $s->wa_display_phone,
             'wa_app_id' => $s->wa_app_id,
             'provider' => $s->provider ?: SettingsSchema::default('provider'),

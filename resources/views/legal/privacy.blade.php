@@ -57,6 +57,7 @@
 <h2>٥ · مدّة الاحتفاظ</h2>
 <ul>
     <li><strong>المحادثات:</strong> حتى 24 شهراً من آخر تواصل، ما لم ترتبط بفاتورة.</li>
+    <li><strong>إشعارات واتساب التي تعذّرت معالجتها:</strong> نسخة مشفّرة تُحفظ {{ $webhookHours ?? 72 }} ساعة كحد أقصى لإعادة المعالجة، ثم تُمحى تلقائياً.</li>
     <li><strong>إحصاءات استعمال المساعد الآلي:</strong> 12 شهراً، ثم تُجمَّع شهرياً بلا ربط بشخص.</li>
     <li><strong>الإشعارات الداخلية للموظفين:</strong> حتى 6 أشهر.</li>
     <li><strong>السجلات المالية (الفواتير والسندات):</strong> للمدّة التي يفرضها القانون الأردني، ولا يمكن حذفها قبلها.</li>
@@ -102,7 +103,7 @@
     @if ($mediaArchive ?? false)
     <p>Attachments you send (photos, documents such as a passport or a transfer receipt) are stored on our servers with access limited to the staff handling your booking, every view is logged, and they are deleted {{ $mediaDays }} days after receipt — or at once if you choose "Delete my files".</p>
     @endif
-    <p>Conversations: up to 24 months after last contact, unless attached to an invoice. Assistant usage statistics: 12 months, then aggregated monthly without any link to a person. Internal staff notifications: up to 6 months. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
+    <p>Conversations: up to 24 months after last contact, unless attached to an invoice. Assistant usage statistics: 12 months, then aggregated monthly without any link to a person. Internal staff notifications: up to 6 months. WhatsApp notifications we could not process: an encrypted copy for at most {{ $webhookHours ?? 72 }} hours, then wiped automatically. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
     <h3>Your rights</h3>
     <p>You may access your data (we send you a copy within 30 days after verifying your identity), correct it, or request its deletion — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>
     <h3>Contact</h3>

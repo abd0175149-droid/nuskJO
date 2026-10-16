@@ -24,7 +24,9 @@ class AppServiceProvider extends ServiceProvider
         // أرشيف المرفقات (E14): نصّه في الصفحتين يظهر ما دام العلم مفعّلاً، فلا تَعِد الصفحة بما لا يجري
         \Illuminate\Support\Facades\View::composer(['legal.privacy', 'legal.data-deletion'], function ($view) {
             $view->with('mediaArchive', rescue(fn () => \App\Support\FeatureFlags::on('media_archive'), false, false))
-                ->with('mediaDays', (int) config('whatsapp.media.retention_days'));
+                ->with('mediaDays', (int) config('whatsapp.media.retention_days'))
+                // سجل الويبهوك (E20): أقصى مدة لجسم إشعار لم يُعالج
+                ->with('webhookHours', (int) config('whatsapp.webhook.body_hours', 72));
         });
         \Illuminate\Support\Facades\View::composer('legal.privacy', function ($view) {
             $view->with('aiProviders', rescue(function () {

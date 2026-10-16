@@ -13,6 +13,8 @@ return [
         'reply_queue' => env('WA_REPLY_QUEUE', 'wa-replies'),
         'token' => env('WA_TOKEN'),
         'phone_number_id' => env('WA_PHONE_NUMBER_ID'),
+        // معرّف حساب واتساب للأعمال (WABA): به يفرض سياج الويبهوك (E20) رفض حمولة حساب آخر. فارغ = وضع التسجيل
+        'waba_id' => env('WA_WABA_ID'),
         'verify_token' => env('WA_WEBHOOK_VERIFY_TOKEN'),
         'app_secret' => env('WA_APP_SECRET'),
         // معرّف التطبيق (App settings › Basic): عام لا سري، لفحص الرمز اليومي (E08)

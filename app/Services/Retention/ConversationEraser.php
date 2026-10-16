@@ -45,6 +45,7 @@ final class ConversationEraser
         ];
         $media = $mode === 'forget' ? $this->recentMediaIds($ids) : [];
         $counts['media_meta'] = count($media);
+        $counts['webhook_bodies'] = $mode === 'forget' ? count($this->webhookBodies($ids, $canonical)) : 0;
 
         return new ErasurePlan($conv->id, $ids, $mode, $canonical, $counts, $media);
     }
@@ -84,10 +85,55 @@ final class ConversationEraser
             ? $this->adminActionsQuery($plan->canonicalPhone)->update(['input' => json_encode(['redacted' => 'erasure'])]) : 0;
         $done['usage_detached'] = DB::table('wa_bot_usage')->whereIn('conversation_id', $ids)->update(['conversation_id' => null]);
 
-        // 12. المحادثة (والمدموجة فيها) صفوف شاهدة بلا بيانات شخصية
+        // 12. أجسام ويبهوك فاشلة محفوظة مشفّرة (E20، 72 ساعة حداً أقصى) تحمل الرقم أو المعرّف: تُحذف صفوفها. العدد وحده
+        $done['webhook_bodies'] = 0;
+        if ($plan->mode === 'forget') {
+            foreach (array_chunk($this->webhookBodies($ids, $plan->canonicalPhone), 200) as $chunk) {
+                $done['webhook_bodies'] += DB::table('wa_webhook_events')->whereIn('id', $chunk)->delete();
+            }
+        }
+
+        // 13. المحادثة (والمدموجة فيها) صفوف شاهدة بلا بيانات شخصية
         $this->witness($ids, $plan->mode === 'retention' ? 'pruned' : 'erased');
 
         return $done;
+    }
+
+    /**
+     * صفوف wa_webhook_events التي في جسمها رقم المحادثة أو معرّفها (BSUID): يُفك في الذاكرة ولا يُكتب في أي مكان.
+     * قليلة بطبيعتها: الناجح يُمحى جسمه فوراً.
+     * @return list<int>
+     */
+    private function webhookBodies(array $ids, ?string $canonical): array
+    {
+        if (!Schema::hasTable('wa_webhook_events')) {
+            return [];
+        }
+        $needles = array_values(array_filter(array_merge([$canonical],
+            Schema::hasColumn('wa_conversations', 'wa_user_id') ? DB::table('wa_conversations')->whereIn('id', $ids)->pluck('wa_user_id')->all() : []),
+            fn ($v) => is_string($v) && strlen($v) >= 5));
+        if ($needles === []) {
+            return [];
+        }
+
+        $out = [];
+        \App\Models\WaWebhookEvent::whereNotNull('raw_body')->select(['id', 'raw_body'])->chunkById(200, function ($rows) use ($needles, &$out) {
+            foreach ($rows as $row) {
+                try {
+                    $raw = (string) $row->raw_body;
+                } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+                    continue;
+                }
+                foreach ($needles as $needle) {
+                    if (str_contains($raw, $needle)) {
+                        $out[] = (int) $row->id;
+                        break;
+                    }
+                }
+            }
+        });
+
+        return $out;
     }
 
     /** المحادثة شاهداً: لا رقم ولا اسم ولا معرّف ولا مقتطف. رسالة لاحقة من الرقم تنشئ محادثة جديدة نظيفة */

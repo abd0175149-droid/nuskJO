@@ -21,85 +21,132 @@ use Illuminate\Support\Facades\DB;
 class WhatsAppInbox
 {
     /**
-     * معالجة حمولة الويبهوك كاملة.
-     * @param  array<int>  $touched  يُملأ أولاً بأول، فيجد المتحكم ما خُزّن قبل أي استثناء لاحق في الحمولة
-     * @return array<int> معرّفات المحادثات التي وصلتها رسالة عميل تنتظر رداً (للتمرير للبوت)
+     * معالجة حمولة الويبهوك كاملة (بعد السياج WebhookFence). كل change وكل رسالة وكل حالة معزولة (E20):
+     * استثناء في عنصر يُسجَّل في النتيجة باسم صنفه ومعرّفه، ويكمل ما بعده. ويُملأ touched أولاً بأول.
      */
-    public static function handleWebhook(array $payload, array &$touched = []): array
+    public static function handleWebhook(array $payload): WebhookResult
     {
+        $result = new WebhookResult;
         // للتطبيق أكثر من رقم، والويبهوك واحد للتطبيق كلّه — نعالج رقمنا وحده
         $settings = WaBotSetting::current();
         $ownId = (string) $settings->phoneNumberId();
 
-        foreach (data_get($payload, 'entry', []) as $entry) {
+        foreach ((array) data_get($payload, 'entry', []) as $e => $entry) {
             $entryId = (string) data_get($entry, 'id', '');
 
-            foreach (data_get($entry, 'changes', []) as $change) {
-                $field = data_get($change, 'field');
-                $value = data_get($change, 'value', []);
-
-                // تغيّر معرّف العميل (إن وصل حقلاً): هوية لا حدث حساب، فلا يمس الإيقاف أبداً
-                if ($field === 'user_id_update') {
-                    $to = (string) data_get($value, 'metadata.phone_number_id', '');
-                    if ($ownId === '' || $to === $ownId) {
-                        ContactIdentity::applyUserIdUpdate((array) $value);
-                    }
-                    continue;
-                }
-                if ($field !== 'messages') {
-                    // صحّة الحساب / حالة القوالب → قفل الإرسال احتياطاً، إن كان الحدث لرقمنا أو حسابنا
-                    self::handleAccountEvent((string) $field, (array) $value, $entryId, $settings);
-                    continue;
-                }
-
-                // حمولة بلا phone_number_id لا يُعرف رقمها، فلا تُعامل كأنها لنا
-                $to = (string) data_get($value, 'metadata.phone_number_id', '');
-                if ($ownId !== '' && $to !== $ownId) {
-                    if ($to === '') {
-                        WaLog::warning('webhook.messages.no_phone_number_id', ['entry' => $entryId]);
-                    }
-                    continue;
-                }
-                if ($ownId !== '') {
-                    self::learnOwnAccount($settings, $entryId, (string) data_get($value, 'metadata.display_phone_number', ''));
-                }
-
-                // مطابقة كل رسالة بمدخلها: بالمعرّف (BSUID) ثم بالرقم (ContactIdentity::contactFor)
-                $contacts = (array) data_get($value, 'contacts', []);
-
-                // أخطاء على مستوى الحمولة (130429 مثلاً): الرمز وفئته فقط، ولا شيء في wa_messages
-                foreach ((array) data_get($value, 'errors', []) as $error) {
-                    try {
-                        $err = MetaError::fromWebhookError((array) $error);
-                        WaLog::warning('wa.webhook_error', ['field' => $field, 'meta_code' => $err->metaCode, 'category' => $err->category, 'error_code' => $err->code]);
-                        MetaErrorReactor::react($err, ['source' => 'webhook']);
-                    } catch (\Throwable $e) {
-                        WaLog::error('wa.webhook_error.classify_failed', ['type' => class_basename($e)]);
-                    }
-                }
-
-                // حالات التسليم
-                foreach (data_get($value, 'statuses', []) as $st) {
-                    self::handleStatus($st);
-                }
-
-                // الرسائل الواردة
-                foreach (data_get($value, 'messages', []) as $msg) {
-                    // وارد غير مدعوم (131051): نصه العربي من InboundMessage، وهنا الرمز وفئته فقط بلا تنبيه
-                    foreach ((array) data_get($msg, 'errors', []) as $error) {
-                        $inCode = data_get($error, 'code');
-                        WaLog::notice('wa.inbound_error', ['wamid' => data_get($msg, 'id'), 'meta_code' => is_numeric($inCode) ? (int) $inCode : null,
-                            'category' => is_numeric($inCode) ? MetaErrorCatalog::classify((int) $inCode)['category'] : 'unknown']);
-                    }
-                    $convId = self::storeInbound((array) $msg, $contacts, $to);
-                    if ($convId) {
-                        $touched[] = $convId;
-                    }
+            foreach ((array) data_get($entry, 'changes', []) as $c => $change) {
+                $field = WebhookFields::name(data_get($change, 'field'));
+                $value = (array) data_get($change, 'value', []);
+                try {
+                    self::handleChange($field, $value, $entryId, (int) data_get($entry, 'time', 0), $settings, $ownId, $result);
+                } catch (\Throwable $ex) {
+                    $result->fail('change', "{$e}.{$c}", $ex);
+                    WaLog::error('webhook.item_failed', ['field' => $field, 'item' => "{$e}.{$c}", 'exception' => $ex]);
                 }
             }
         }
 
-        return array_values(array_unique($touched));
+        return $result;
+    }
+
+    private static function handleChange(string $field, array $value, string $entryId, int $entryTime, WaBotSetting $settings, string $ownId, WebhookResult $result): void
+    {
+        if ($field !== 'messages') {
+            $result->count($field);
+        }
+
+        // تغيّر معرّف العميل (إن وصل حقلاً، وليس حقل اشتراك حسب ميتا): هوية لا حدث حساب، فلا يمس الإيقاف أبداً
+        if ($field === 'user_id_update') {
+            $to = (string) data_get($value, 'metadata.phone_number_id', '');
+            if ($ownId === '' || $to === $ownId) {
+                ContactIdentity::applyUserIdUpdate($value);
+            }
+
+            return;
+        }
+        if ($field === 'calls') {
+            WebhookFields::calls($value);
+
+            return;
+        }
+        if (in_array($field, WebhookFields::COEXISTENCE, true)) {
+            WebhookFields::coexistence($field);
+
+            return;
+        }
+        if ($field !== 'messages') {
+            if (!WebhookFields::isKnown($field)) {
+                // باسمه وعدده فقط، بلا value
+                WebhookFields::unknown($field);
+
+                return;
+            }
+            // صحّة الحساب / حالة القوالب → قفل الإرسال احتياطاً، إن كان الحدث لرقمنا أو حسابنا
+            self::handleAccountEvent($field, $value, $entryId, $settings, $entryTime);
+
+            return;
+        }
+
+        // حمولة بلا phone_number_id لا يُعرف رقمها، فلا تُعامل كأنها لنا
+        $to = (string) data_get($value, 'metadata.phone_number_id', '');
+        if ($ownId !== '' && $to !== $ownId) {
+            if ($to === '') {
+                WaLog::warning('webhook.messages.no_phone_number_id', ['entry' => $entryId]);
+            }
+
+            return;
+        }
+        if ($ownId !== '') {
+            self::learnOwnAccount($settings, $entryId, (string) data_get($value, 'metadata.display_phone_number', ''));
+        }
+
+        // مطابقة كل رسالة بمدخلها: بالمعرّف (BSUID) ثم بالرقم (ContactIdentity::contactFor)
+        $contacts = (array) data_get($value, 'contacts', []);
+
+        // أخطاء على مستوى الحمولة (130429 مثلاً): الرمز وفئته فقط، ولا شيء في wa_messages
+        foreach ((array) data_get($value, 'errors', []) as $error) {
+            $result->count('errors');
+            try {
+                $err = MetaError::fromWebhookError((array) $error);
+                WaLog::warning('wa.webhook_error', ['field' => $field, 'meta_code' => $err->metaCode, 'category' => $err->category, 'error_code' => $err->code]);
+                MetaErrorReactor::react($err, ['source' => 'webhook']);
+            } catch (\Throwable $e) {
+                WaLog::error('wa.webhook_error.classify_failed', ['type' => class_basename($e)]);
+            }
+        }
+
+        // حالات التسليم
+        foreach ((array) data_get($value, 'statuses', []) as $i => $st) {
+            $result->count('statuses');
+            try {
+                self::handleStatus((array) $st);
+            } catch (\Throwable $e) {
+                $ref = data_get($st, 'id') ?: "status.{$i}";
+                $result->fail('status', is_scalar($ref) ? (string) $ref : "status.{$i}", $e);
+                WaLog::error('webhook.item_failed', ['field' => $field, 'wamid' => is_scalar($ref) ? (string) $ref : null, 'exception' => $e]);
+            }
+        }
+
+        // الرسائل الواردة
+        foreach ((array) data_get($value, 'messages', []) as $i => $msg) {
+            $result->count('messages');
+            $wamid = is_scalar(data_get($msg, 'id')) ? (string) data_get($msg, 'id') : null;
+            try {
+                // وارد غير مدعوم (131051): نصه العربي من InboundMessage، وهنا الرمز وفئته فقط بلا تنبيه
+                foreach ((array) data_get($msg, 'errors', []) as $error) {
+                    $inCode = data_get($error, 'code');
+                    WaLog::notice('wa.inbound_error', ['wamid' => $wamid, 'meta_code' => is_numeric($inCode) ? (int) $inCode : null,
+                        'category' => is_numeric($inCode) ? MetaErrorCatalog::classify((int) $inCode)['category'] : 'unknown']);
+                }
+                $convId = self::storeInbound((array) $msg, $contacts, $to);
+                if ($convId) {
+                    $result->touch($convId);
+                }
+            } catch (\Throwable $e) {
+                $result->fail('message', $wamid ?? "message.{$i}", $e);
+                WaLog::error('webhook.item_failed', ['field' => $field, 'wamid' => $wamid, 'exception' => $e]);
+            }
+        }
     }
 
     private static ?bool $hasMetaAt = null;
@@ -386,7 +433,11 @@ class WhatsAppInbox
         $pendingBefore = in_array($m->status, WaMessage::PENDING_STATES, true);
 
         $payload = $m->payload ?? [];
-        $payload['statusHistory'][] = ['status' => $status, 'at' => now()->toIso8601String()];
+        // إعادة ميتا للحالة نفسها لا تُلحق مرتين (E20)
+        $history = (array) ($payload['statusHistory'] ?? []);
+        if (data_get($history === [] ? [] : $history[array_key_last($history)], 'status') !== $status) {
+            $payload['statusHistory'][] = ['status' => $status, 'at' => now()->toIso8601String()];
+        }
 
         // ميتا توصي بالبناء على code لا على title: MetaError من الجدول الوحيد. خطأ في التصنيف لا يُسقط بقية الحالات
         $code = is_numeric(data_get($st, 'errors.0.code')) ? (int) data_get($st, 'errors.0.code') : null;
@@ -476,6 +527,8 @@ class WhatsAppInbox
      */
     private static ?bool $canLearn = null;
 
+    private static ?bool $hasWabaSource = null;
+
     private static function learnOwnAccount(WaBotSetting $settings, string $entryId, string $displayPhone): void
     {
         // بين نشر الكود وتشغيل الهجرة: لا عمودين بعد، والرسالة يجب أن تُخزَّن رغم ذلك
@@ -484,10 +537,20 @@ class WhatsAppInbox
             return;
         }
 
+        // المكتشف يُعرض بجانب المضبوط يدوياً أو من البيئة (E20)؛ كتابة عند التغيّر فقط
+        $store = \App\Services\Ops\OpsHealth::store();
+        if ($entryId !== '' && $store->get('wa:waba:detected') !== $entryId) {
+            $store->forever('wa:waba:detected', $entryId);
+        }
+        // قيمة يدوية لا يكتب فوقها ما يُتعلَّم
+        $manual = $settings->wa_waba_id_source === 'manual';
         $learned = array_filter([
-            'wa_waba_id' => $entryId,
+            'wa_waba_id' => $manual ? '' : $entryId,
             'wa_display_phone' => PhoneNormalizer::digits($displayPhone),
         ], fn ($v) => $v !== '');
+        if (isset($learned['wa_waba_id']) && self::$hasWabaSource ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_bot_settings', 'wa_waba_id_source')) {
+            $learned['wa_waba_id_source'] = 'learned';
+        }
 
         $settings->forceFill($learned);
         if ($settings->isDirty()) {
@@ -503,16 +566,13 @@ class WhatsAppInbox
      * ما لم نعرفهما بعد (لم تصل رسالة لرقمنا)، يبقى الإيقاف الاحتياطي.
      * وكل حقل لنا صف تدقيق دائم بفاعل meta (E09)؛ فشل كتابته لا يقطع بقية الحمولة.
      */
-    private static function handleAccountEvent(string $field, array $value, string $entryId, WaBotSetting $settings): void
+    private static function handleAccountEvent(string $field, array $value, string $entryId, WaBotSetting $settings, int $entryTime = 0): void
     {
-        $ours = (string) $settings->wa_display_phone;
-        $theirs = PhoneNormalizer::digits((string) data_get($value, 'display_phone_number', ''));
-        $otherNumber = $field === 'phone_number_quality_update' && $ours !== '' && $theirs !== '' && $theirs !== $ours;
-        $otherAccount = $field !== 'phone_number_quality_update' && (string) $settings->wa_waba_id !== '' && $entryId !== '' && $entryId !== (string) $settings->wa_waba_id;
-        if ($otherNumber || $otherAccount) {
+        if (WebhookFence::otherAccountEvent($field, $value, $entryId, $settings)) {
             WaLog::warning('account.event.other_number', ['field' => $field, 'event' => data_get($value, 'event'), 'entry' => $entryId]);
             return;
         }
+
 
         $event = strtoupper((string) (data_get($value, 'event') ?: data_get($value, 'alert_type') ?: data_get($value, 'decision') ?: $field));
         $critical = in_array($field, ['account_update', 'phone_number_quality_update'], true);
@@ -529,6 +589,15 @@ class WhatsAppInbox
         }
 
         if (!$critical) {
+            return;
+        }
+
+        // إعادة ميتا للحدث نفسه (أو إعادة معالجة الحمولة بأمر الإعادة) لا تكرر الإشعار ولا الإيقاف (E20).
+        // صف التدقيق يبقى لكل توصيلة (E09). ووقت entry في المفتاح: حدث مماثل حقيقي بعد أيام ليس مكرراً
+        $seen = sha1($field.'|'.$entryId.'|'.$entryTime.'|'.json_encode($value));
+        if (!\Illuminate\Support\Facades\Cache::add('wa:acct:seen:'.$seen, 1, now()->addDays(7))) {
+            WaLog::info('account.event.duplicate', ['field' => $field, 'event' => $event]);
+
             return;
         }
 

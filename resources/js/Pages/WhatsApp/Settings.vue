@@ -53,6 +53,7 @@
 
                 <!-- ================= صحة النظام والقناة ================= -->
                 <MediaArchivePanel v-if="props.mediaArchive" :summary="props.mediaArchive"/>
+                <WebhookIntakePanel v-if="props.webhookIntake" :summary="props.webhookIntake"/>
 
                 <div id="ops" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6 scroll-mt-20">
                     <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
@@ -159,18 +160,29 @@
                         </div>
 
                         <div>
-                            <p class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المكتشف من ميتا</p>
-                            <dl class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-4 py-2.5 text-sm space-y-1">
+                            <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                <label for="wa-waba" class="block text-sm font-medium text-gray-700 dark:text-gray-300">معرّف حساب الأعمال (WABA)</label>
+                                <SourceBadge :source="sources.wa_waba_id"/>
+                            </div>
+                            <input id="wa-waba" v-model="form.wa_waba_id" dir="ltr" inputmode="numeric" :placeholder="settings.wa_waba_detected ? 'المكتشف: ' + settings.wa_waba_detected : 'من WhatsApp Manager'"
+                                   :disabled="sources.wa_waba_id?.source === 'env'"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white disabled:opacity-40"
+                                   :class="isDirty('wa_waba_id') ? 'ring-1 ring-gold-400' : ''"/>
+                            <p v-if="errors.wa_waba_id" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.wa_waba_id }}</p>
+                            <p v-else-if="wabaMismatch" class="text-xs font-bold text-red-700 dark:text-red-400 mt-1" role="alert">
+                                ⚠️ المضبوط لا يطابق المكتشف من ميتا (<bdi dir="ltr" class="font-mono">{{ settings.wa_waba_detected }}</bdi>) — صحّحه قبل تفعيل فرض السياج.
+                            </p>
+                            <p v-else class="text-xs text-gray-500 mt-1">به يرفض سياج الويبهوك إشعارات حساب آخر (عند تفعيل الفرض). اتركه فارغاً حتى تقارنه بالمكتشف أدناه.</p>
+                            <dl class="mt-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-4 py-2.5 text-sm space-y-1">
                                 <div class="flex items-center justify-between gap-3">
-                                    <dt class="text-gray-500 dark:text-gray-400">معرّف حساب الأعمال</dt>
-                                    <dd class="font-mono dark:text-white" dir="ltr">{{ settings.wa_waba_id || '—' }}</dd>
+                                    <dt class="text-gray-500 dark:text-gray-400">المكتشف من ميتا</dt>
+                                    <dd class="font-mono dark:text-white" dir="ltr">{{ settings.wa_waba_detected || '—' }}</dd>
                                 </div>
                                 <div class="flex items-center justify-between gap-3">
                                     <dt class="text-gray-500 dark:text-gray-400">الرقم المعروض</dt>
                                     <dd class="font-mono dark:text-white" dir="ltr">{{ settings.wa_display_phone || '—' }}</dd>
                                 </div>
                             </dl>
-                            <p class="text-xs text-gray-500 mt-1">للقراءة فقط: يُعرفان من أول رسالة تصل لرقمنا، وبهما تُتجاهل تنبيهات ميتا لأرقام أخرى على التطبيق نفسه.</p>
                         </div>
 
                         <!-- رمز التحقق: يُولَّد ولا يُكتب يدوياً، ويُعرض مرة واحدة -->
@@ -461,6 +473,7 @@ import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
 import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
+import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
 import MetaLastErrorCard from '@/Components/WhatsApp/MetaLastErrorCard.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
@@ -497,6 +510,7 @@ const props = defineProps({
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
     mediaArchive: { type: Object, default: null },
+    webhookIntake: { type: Object, default: null },
     metaErrors: { type: Object, default: () => ({ last: null, today: {}, proof: null }) },
     toolMeta: { type: Array, default: () => [] },
 });
@@ -515,15 +529,15 @@ watch(() => props.breaker, (v) => { breaker.value = { ...v }; });
 watch(() => props.sources, (v) => { sources.value = { ...v }; });
 
 const LABELS = {
-    enabled: 'تشغيل البوت', wa_phone_number_id: 'Phone Number ID', wa_app_id: 'App ID', provider: 'المزوّد', model: 'الموديل',
+    enabled: 'تشغيل البوت', wa_phone_number_id: 'Phone Number ID', wa_waba_id: 'معرّف حساب الأعمال', wa_app_id: 'App ID', provider: 'المزوّد', model: 'الموديل',
     system_prompt: 'نص الشخصية', fail_message: 'رسالة الاعتذار', fail_handoff: 'التحويل عند الفشل',
     breaker_mode: 'وضع القاطع', breaker_threshold: 'إخفاقات متتالية تفتحه', breaker_window_minutes: 'نافذة العدّ (دقائق)',
     breaker_open_minutes: 'مدة وضع التحويل (دقائق)', fallback_provider: 'المزوّد الاحتياطي', fallback_model: 'نموذج الاحتياطي',
 };
 props.fields.forEach((f) => { LABELS[f.key] = f.label; });
-const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff',
+const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_waba_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff',
     'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes', 'fallback_provider', 'fallback_model'];
-const SENSITIVE = ['wa_phone_number_id', 'provider', 'fallback_provider'];
+const SENSITIVE = ['wa_phone_number_id', 'wa_waba_id', 'provider', 'fallback_provider'];
 // من سجل الأدوات في الخادم (E15): ما يحوّل لموظف، وما لا يُطفأ
 const handoffTools = (props.toolMeta || []).filter((t) => t.escalates).map((t) => t.key);
 const lockedTools = (props.toolMeta || []).filter((t) => !t.disableable).map((t) => t.key);
@@ -547,6 +561,11 @@ const form = reactive(clone(baseline.value));
 
 const norm = (v) => (v === '' ? null : v);
 const isDirty = (k) => norm(form[k]) !== norm(baseline.value[k]);
+// المضبوط (يدوياً أو من البيئة) يخالف ما تعلّمناه من حمولة رقمنا
+const wabaMismatch = computed(() => {
+    const set = sources.value.wa_waba_id?.source === 'env' ? props.webhookIntake?.fence?.waba : settings.value.wa_waba_id;
+    return !!set && !!settings.value.wa_waba_detected && String(set) !== String(settings.value.wa_waba_detected);
+});
 const toolDirty = (k) => form.tools[k] !== baseline.value.tools[k];
 const changes = computed(() => {
     const c = {};

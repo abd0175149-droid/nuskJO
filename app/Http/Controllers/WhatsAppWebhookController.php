@@ -3,20 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AuditAction;
-use App\Jobs\ProcessWhatsAppReply;
 use App\Models\AuditLog;
 use App\Models\WaBotSetting;
 use App\Services\WhatsApp\WhatsAppChannel;
 use App\Services\WhatsApp\WaLog;
-use App\Services\WhatsApp\WhatsAppInbox;
+use App\Services\WhatsApp\WebhookIntake;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * ويبهوك ميتا — خارج auth وخارج CSRF.
- * قاعدة حاكمة: تحقّق التوقيع، ثمّ خزّن، ثمّ ردّ 200 (وإلا تعيد ميتا الإرسال وقد تعطّل الويبهوك).
- * الاستثناء الوحيد: عطل القاعدة مع العلم webhook_5xx يرد 503 لتعيد ميتا ما لم يُخزَّن.
+ * ويبهوك ميتا — خارج auth وخارج CSRF وخارج مجموعة web (routes/webhooks.php).
+ * قاعدة حاكمة: تحقّق التوقيع، ثمّ احفظ الجسم مشفّراً، ثمّ عالج، ثمّ ردّ 200 (وإلا تعيد ميتا الإرسال 7 أيام).
+ * الاستثناء الوحيد: عطل القاعدة قبل أي حفظ مع العلم webhook_5xx يرد 503 لتعيد ميتا ما لم يُخزَّن.
+ * العقد كاملاً: docs/whatsapp-webhook-contract.md
  */
 class WhatsAppWebhookController extends Controller
 {
@@ -48,23 +48,34 @@ class WhatsAppWebhookController extends Controller
         return response('Forbidden', 403);
     }
 
-    /** استقبال الرسائل والحالات */
+    /**
+     * استقبال الرسائل والحالات (E20). الترتيب: الحجم، ثم التوقيع، ثم الحفظ المشفّر، ثم المعالجة المعزولة.
+     * بعد الحفظ الرد 200 دائماً (الفاشل يُعاد بـ whatsapp:replay-webhooks). 503 لفشل الحفظ العابر وحده.
+     */
     public function receive(Request $request)
     {
-        $s = WaBotSetting::current();
+        @set_time_limit((int) config('whatsapp.webhook.time_limit', 55));
         $raw = $request->getContent();
 
+        // قبل حساب HMAC: حد مساوٍ لكتلة nginx (ميتا لا ترسل أكثر من 3MB)
+        if (strlen($raw) > (int) config('whatsapp.webhook.max_bytes')) {
+            WaLog::warning('webhook.too_large', ['bytes' => strlen($raw)]);
+
+            return response()->json(['ok' => false], 413);
+        }
+
+        $s = WaBotSetting::current();
         // التوقيع إلزامي — لا استثناء في الإنتاج
         // appSecret() لا يرمي إن تعذّر فك السر: null فرفض 403، وميتا تعيد 7 أيام
         if (!WhatsAppChannel::verifySignature($raw, $request->header('X-Hub-Signature-256'), $s->appSecret())) {
-            $hourKey = 'wa:sig:fail:'.now()->format('YmdH');
-            Cache::add($hourKey, 0, 7200);
-            Cache::increment($hourKey);
-            WaLog::warning('webhook.bad_signature');
-            // عيّنة لكل عنوان: الجسم لا يُسجَّل، ولا حد ولا 429 (الطلب الموقَّع لا يمر من هنا)
+            // الفاشل وحده يُعدّ، ولا حد ولا 429 أبداً (الطلب الموقَّع لا يمر من هنا)
+            $count = WebhookIntake::badSignature();
+            WaLog::warning('webhook.bad_signature', ['count' => $count]);
+            // عيّنة لكل عنوان: الجسم لا يُسجَّل
             AuditLog::sampled(AuditAction::WaWebhookBadSignature, 'wa_sig:'.$request->ip(), 'webhook', null, null, [
                 'has_header' => $request->hasHeader('X-Hub-Signature-256'), 'bytes' => strlen($raw),
             ]);
+
             return response()->json(['ok' => false], 403);
         }
 
@@ -73,32 +84,53 @@ class WhatsAppWebhookController extends Controller
             Cache::forever('wa:sig:last_ok_at', now()->toIso8601String());
         }
 
-        $touched = [];
-        $status = 200;
-        try {
-            $payload = json_decode($raw, true) ?: [];
-            WhatsAppInbox::handleWebhook($payload, $touched);
-        } catch (QueryException|\PDOException $e) {
-            // عطل قاعدة (مقفلة، قرص ممتلئ): 503 تجعل ميتا تعيد الإرسال، وwamid الفريد يمنع الازدواج.
-            // خلف العلم webhook_5xx (يُفعَّل بعد WAL)، وإلا 200 كما كان
-            WaLog::error('webhook.db_error', ['exception' => $e]);
-            if ($s->flag('webhook_5xx')) {
-                $status = 503;
-            }
-        } catch (\Throwable $e) {
-            // حمولة معطوبة أو خلل منطق: 200 دائماً، فالإعادة لن تصلحه وميتا تعيد 7 أيام
-            WaLog::error('webhook.error', ['exception' => $e]);
-        }
-
-        // ما خُزّن قبل أي استثناء يُمرَّر للبوت أيضاً. كل جدولة مستقلة، وفشلها لا يغيّر الرد (يلتقطه المُصالِح)
-        foreach (array_unique($touched) as $id) {
+        $event = null;
+        if (WebhookIntake::storesAll()) {
             try {
-                ProcessWhatsAppReply::schedule($id);
-            } catch (\Throwable $e) {
-                WaLog::error('webhook.schedule_failed', ['conv_id' => $id, 'exception' => $e]);
+                [$event, $settled] = WebhookIntake::store($raw);
+                if ($settled) {
+                    // إعادة من ميتا لحمولة حُسمت: wamid الفريد كان سيحميها أيضاً
+                    return response()->json(['ok' => true]);
+                }
+            } catch (QueryException|\PDOException $e) {
+                // عطل قاعدة عابر قبل أي معالجة: 503 تجعل ميتا تعيد الإرسال (خلف webhook_5xx)، وإلا معالجة بلا سجل كما كان
+                WaLog::error('webhook.store_failed', ['exception' => $e]);
+                if ($s->flag('webhook_5xx')) {
+                    return response()->json(['ok' => false], 503)->header('Retry-After', '30');
+                }
             }
         }
 
-        return response()->json(['ok' => $status === 200], $status);
+        try {
+            $result = WebhookIntake::process($event, $raw);
+        } catch (\Throwable $e) {
+            // خارج العناصر المعزولة (السياج أو قراءة الإعدادات): محاولة فاشلة، والجسم المحفوظ يُعاد بأمر الإعادة
+            WaLog::error('webhook.error', ['exception' => $e]);
+            $result = null;
+            if ($event !== null) {
+                rescue(fn () => WebhookIntake::failWhole($event, $e), report: false);
+            }
+            if ($event === null && ($e instanceof QueryException || $e instanceof \PDOException) && $s->flag('webhook_5xx')) {
+                return response()->json(['ok' => false], 503);
+            }
+        }
+
+        if ($event === null && $result?->failed()) {
+            // بلا سجل محفوظ قبل المعالجة: وضع failures يحفظ الجسم الآن للإعادة، وإلا خطأ القاعدة العابر يرد 503 (E07)
+            $stored = false;
+            if (WebhookIntake::storesFailures()) {
+                try {
+                    WebhookIntake::storeFailed($raw, $result);
+                    $stored = true;
+                } catch (QueryException|\PDOException $e) {
+                    WaLog::error('webhook.store_failed', ['exception' => $e]);
+                }
+            }
+            if (!$stored && $result->transient && $s->flag('webhook_5xx')) {
+                return response()->json(['ok' => false], 503);
+            }
+        }
+
+        return response()->json(['ok' => true]);
     }
 }

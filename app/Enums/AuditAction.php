@@ -115,6 +115,7 @@ enum AuditAction: string
     case WaWebhookOther = 'wa.webhook_other';
     case WaWebhookBadSignature = 'wa.webhook_bad_sig';
     case WaWebhookVerifyFailed = 'wa.webhook_verify_fail';
+    case WaWebhookReplay = 'wa.webhook_replay';
 
     // ===== النظام =====
     case AuditExport = 'audit.export';
@@ -144,7 +145,7 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -168,7 +169,7 @@ enum AuditAction: string
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
-            self::RetentionPruned, self::ConfigExport => 'system',
+            self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay => 'system',
             default => 'whatsapp',
         };
     }
@@ -274,6 +275,7 @@ enum AuditAction: string
             self::WaWebhookOther => 'حدث ميتا آخر',
             self::WaWebhookBadSignature => 'توقيع ويبهوك مرفوض',
             self::WaWebhookVerifyFailed => 'فشل ربط الويبهوك',
+            self::WaWebhookReplay => 'إعادة معالجة إشعار ويبهوك',
             self::AuditExport => 'تصدير سجل التدقيق',
             self::SystemReset => 'مسح بيانات النظام',
             self::AuditPruned => 'تقليم سجل التدقيق',
@@ -284,7 +286,9 @@ enum AuditAction: string
     /** يُكتب ولو كان audit.extended مطفأً: المال، وقفل الدخول (يُدقَّق منذ E03)، والإيقاف التلقائي للإرسال، والاطّلاع على مرفقات العملاء (E14) */
     public function alwaysOn(): bool
     {
-        return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload, self::WaMediaRefetch], true);
+        return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload, self::WaMediaRefetch,
+            // إعادة إشعار بعينه بيد مطوّر (نادرة، وقد تتجاوز الميزانية): أثرها دائم
+            self::WaWebhookReplay], true);
     }
 
     public function isNoise(): bool
