@@ -594,6 +594,19 @@ class WhatsAppController extends Controller
             \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaPolicyOverride, 'wa_conversation', $conversation->id, null, ['reasons' => $warnings]);
         }
 
+        return self::sendResponse($res);
+    }
+
+    /**
+     * رد الإرسال. مع connection_resilience (E28): النتيجة المجهولة (مهلة أو انقطاع بعد بدء الإرسال، والمسار القديم أيضاً)
+     * 202 OUTCOME_UNKNOWN «قد تكون أُرسلت»، والرفض الصريح 422 كما هو، وتعارض المفتاح 409 كما في E19.
+     */
+    private static function sendResponse(array $res): \Illuminate\Http\JsonResponse
+    {
+        if (empty($res['conflict']) && \App\Services\WhatsApp\SendOutcome::unknown($res) && \App\Services\WhatsApp\SendOutcome::enabled()) {
+            return response()->json(\App\Services\WhatsApp\SendOutcome::body($res), 202);
+        }
+
         return response()->json($res, self::sendStatus($res));
     }
 
@@ -709,7 +722,7 @@ class WhatsAppController extends Controller
 
         $res = WhatsAppChannel::sendContactRequest($conversation, self::CONTACT_REQUEST_BODY, 'staff', auth()->id(), self::staffSendKey(request()));
 
-        return response()->json($res, self::sendStatus($res));
+        return self::sendResponse($res);
     }
 
     private const CONTACT_REQUEST_BODY = 'لنكمل خدمتك، شارك رقم هاتفك بالضغط على الزر أدناه.';
