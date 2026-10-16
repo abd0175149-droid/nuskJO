@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\BackupRun;
+use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Search\FtsSchema;
@@ -66,6 +68,27 @@ class ForgetRemovesFromIndexTest extends TestCase
         $this->assertSame(0, $this->actingAs($manager)->getJson('/api/whatsapp/search?q=qzxjvk')->json('total'));
         $this->assertSame(0, $this->traces('qzx'), 'النص المحذوف باقٍ في الفهرس (secure_delete='.(FtsSchema::secureDeleteOn() ? 'on' : 'off').')');
         $this->assertSame(1, $this->actingAs($manager)->getJson('/api/whatsapp/search?q=الموعد')->json('total'));
+        $this->assertTrue(FtsSchema::integrityOk());
+    }
+
+    public function test_retention_pruning_leaves_no_trace_in_the_index(): void
+    {
+        if (!FtsSchema::available()) {
+            $this->markTestSkipped('بلا فهرس بحث');
+        }
+        config(['retention.conversations_days' => 365]);
+        WaBotSetting::current()->forceFill(['feature_flags' => ['retention_purge' => true]])->save();
+        BackupRun::create(['reason' => 'scheduled', 'status' => 'ok', 'finished_at' => now()->subHours(2)]);
+        foreach (['qzvkxa', 'jxwqvz'] as $word) {
+            $conv = WaConversation::factory()->create(['last_message_at' => now()->subDays(400), 'last_inbound_at' => now()->subDays(400)]);
+            WaMessage::factory()->create(['conversation_id' => $conv->id, 'body' => "قديم {$word}", 'created_at' => now()->subDays(400)]);
+        }
+        $this->assertGreaterThan(0, $this->traces('qzv') + $this->traces('jxw'));
+
+        $this->assertSame(0, Artisan::call('whatsapp:prune'));
+
+        $this->assertSame(0, WaMessage::count());
+        $this->assertSame(0, $this->traces('qzv') + $this->traces('jxw'));
         $this->assertTrue(FtsSchema::integrityOk());
     }
 

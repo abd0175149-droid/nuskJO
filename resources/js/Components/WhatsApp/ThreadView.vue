@@ -9,8 +9,8 @@
                     :can-filter="canFilter" :filters-open="filtersOpen || filtered" :can-export="canExport"
                     @toggle-filters="filtersOpen = !filtersOpen" @export="$emit('export')"/>
 
-      <!-- فلاتر الخيط وشريط «عرض مفلتر» (E30) -->
-      <ThreadFilters v-if="canFilter && (filtersOpen || filtered)" :filters="filters" @apply="(f) => $emit('setFilters', f)" @clear="$emit('clearFilters')"/>
+      <!-- فلاتر الخيط (E30): تُطوى بزر «تصفية» فتتسع الرسائل على الجوال، وشريط «عرض مفلتر» باقٍ ما دام فلتر -->
+      <ThreadFilters v-if="canFilter && filtersOpen" :filters="filters" @apply="(f) => $emit('setFilters', f)" @clear="$emit('clearFilters')"/>
       <div v-if="filtered" role="status" class="flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 text-[11px] bg-gold-50 dark:bg-gold-900/20 text-gold-800 dark:text-gold-300 shrink-0">
         <span>عرض مفلتر — لا تظهر كل الرسائل</span>
         <button type="button" @click="$emit('clearFilters')" class="min-h-8 px-2 rounded-lg font-bold hover:bg-gold-100 dark:hover:bg-gold-900/40">إلغاء</button>

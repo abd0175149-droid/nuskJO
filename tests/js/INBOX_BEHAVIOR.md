@@ -56,3 +56,14 @@
 ## الطوارئ والتوقيت
 - [x] `visibilitychange` إلى ظاهر: استطلاع فوري. — ✅ usePolling (createPoller)
 - [x] عند مغادرة الصفحة: إيقاف المؤقتات وإبطال الطلبات المعلّقة (`seq++`). — ✅ Inbox.vue onUnmounted (poller.stop + dispose)
+
+## البحث في الرسائل والقفز والتصدير (E30)
+- [x] «🔎 في الرسائل» بجانب بحث الأسماء لمن يتيح له الخادم البحث (`messageSearch`: العلم للمدراء ثم للجميع)؛ اللوحة تحل محل القائمة في عمودها وتبقى نتائجها عند الرجوع على الجوال. — ✅ ConversationList + MessageSearchPanel (MessageSearchPanel.test.js)
+- [x] تأخير 300ms، والرد القديم لا يُطبَّق (seq + AbortController)، و«المزيد» بلا تكرار حتى total أو إزاحة 500، وأقل من 3 أحرف بلا طلب إلا داخل «هذه المحادثة فقط»، و429 بنص عربي. — ✅ useMessageSearch (messageSearch.test.js)
+- [x] Escape: يلغي الطلب ويغلق النتائج ويعيد التركيز، ومرة ثانية يغلق اللوحة. — ✅ MessageSearchPanel
+- [x] المقتطف أجزاء نصية من الخادم و`<mark>` للمطابق على النص الأصلي بتشكيله؛ لا HTML من نص العميل. — ✅ HighlightedSnippet (HighlightedSnippet.test.js)
+- [x] النقر على نتيجة: المحادثة حول الرسالة (around)، موسَّطة بحلقة ذهبية 3 ثوانٍ؛ والرابط `?conv=&msg=` يقفز مرة ويُزال `msg`. — ✅ useInbox.openAround/openFromUrl + ThreadView.scrollToMessage
+- [x] الوضع المنفصل: الاستطلاع لا يلحق الجديد ولا يطبّق gap، بل يعدّه في «⬇ العودة إلى الأحدث (n جديدة)» ويحدّث الحالات؛ النزول يحمّل ما بعد النافذة حتى الأحدث. — ✅ useInbox (inboxDetached.test.js) + ThreadView (ThreadDetached.test.js)
+- [x] فلاتر الخيط (المرسل والنوع والفترة) على كل طلب، وشريط «عرض مفلتر — إلغاء»، والفلتر يُلغى بعد الإرسال. — ✅ ThreadFilters + useInbox.setThreadFilters
+- [x] «⬇️ تصدير» لمن يملك الصلاحية والعلم: الصيغة والفترة وسبب إلزامي وتنبيه البيانات الشخصية؛ الأخطاء داخل النافذة. — ✅ ExportDialog (ExportDialog.test.js)
+- [x] طلبات القائمة: رد أقدم لا يغلب أحدث منه، وصفحة «تحميل المزيد» لفلتر سابق تُهمل. — ✅ useInbox.load/loadMore (inboxDetached.test.js)

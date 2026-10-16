@@ -69,8 +69,8 @@ final class ConversationEraser
         $done['messages'] = $this->deleteInBatches('wa_messages', fn ($q) => $q->whereIn('conversation_id', $ids));
         $step('messages', $done['messages']);
         // فهرس البحث (E30): الـ trigger حذف المداخل، وبلا 'secure-delete' (SQLite أقدم من 3.46.1) يُعاد كتابة الفهرس
-        // فلا يبقى أثر للنص المحذوف في ملف القاعدة
-        if ($done['messages'] > 0) {
+        // فلا يبقى أثر للنص المحذوف في ملف القاعدة. التقليم (retention) يعيد كتابته مرة واحدة في آخر whatsapp:prune
+        if ($done['messages'] > 0 && $plan->mode !== 'retention') {
             \App\Services\WhatsApp\Search\FtsSchema::afterBulkDelete();
         }
         $done['notes'] = $this->deleteInBatches('wa_customer_notes', fn ($q) => $q->whereIn('conversation_id', $ids));

@@ -119,9 +119,9 @@ class MessageSearchScopeTest extends TestCase
     {
         $manager = $this->staffWith('manager', ['whatsapp.view', 'whatsapp.view_all']);
         $c = $this->conversationTagged([], ['phone' => '16505551234', 'wa_phone' => '16505551234', 'display_name' => null, 'wa_profile_name' => null]);
-        $this->say($c, 'رقمي 16505551234 للتواصل');
+        $this->say($c, 'رقمي 16505551234 للاتصال');
 
-        $response = $this->search($manager, ['q' => 'للتواصل'])->assertOk();
+        $response = $this->search($manager, ['q' => 'للاتصال'])->assertOk();
 
         $this->assertSame("محادثة #{$c->id}", $response->json('hits.0.conversation_name'));
         $this->assertSame(['message_id', 'conversation_id', 'conversation_name', 'at', 'direction', 'source', 'msg_type', 'segments'], array_keys($response->json('hits.0')));

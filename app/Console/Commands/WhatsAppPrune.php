@@ -91,6 +91,10 @@ class WhatsAppPrune extends Command
         }
 
         $summary = ['days' => $days, 'dry_run' => $dry] + $totals + ['skipped' => $skipped];
+        if (!$dry && $totals['messages'] > 0) {
+            // فهرس البحث (E30): مرة واحدة بعد كل المحادثات بدل مرة لكل محادثة (يعيد كتابته بلا 'secure-delete' وحده)
+            \App\Services\WhatsApp\Search\FtsSchema::afterBulkDelete();
+        }
         if (!$dry) {
             Retention::recordShrink(['wa_messages' => $totals['messages'], 'wa_conversations' => $totals['deleted_rows'], 'quote_requests' => $totals['quotes']]);
             AuditActor::as('system', 'artisan:whatsapp:prune', fn () => AuditLog::log(AuditAction::RetentionPruned, 'retention', null, 'conversations', $summary));
