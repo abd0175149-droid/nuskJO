@@ -60,6 +60,12 @@ class WhatsAppChannel
     // E22: ميتا تحجب الإرسال (wa_health=BLOCKED)، مستقل عن الإيقاف اليدوي SENDING_SUSPENDED
     public const ERR_CHANNEL_BLOCKED = 'CHANNEL_BLOCKED';
 
+    // السقف الصلب للإرسال الذي يبدؤه النظام (E24): مصادر مبادرة لا ترد على وارد داخل النافذة. لا مصدر منها اليوم،
+    // فالسقف حارس لأي إرسال مبادر يقرره المالك كتابةً (قالب أو تذكير). وأي مصدر منها يقرأ wa_optouts قبل الإرسال
+    public const ERR_DAILY_CAP = 'DAILY_CAP';
+
+    public const SYSTEM_INITIATED_SOURCES = ['proactive', 'template'];
+
     /** نص الزر المعروض في الصندوق (الجسم المرسل للعميل غيره) */
     public const CONTACT_REQUEST_LABEL = '📱 طلب مشاركة رقم الهاتف';
 
@@ -1067,6 +1073,51 @@ class WhatsAppChannel
         return $moved > 0;
     }
 
+    /**
+     * إعادة إرسال صف فاشل في مكانه (E24، صفحة الإخفاقات): الصف نفسه يعود queued بالمفتاح الذي حرّره الدفتر عند الفشل
+     * (payload._released_key، E19)، ثم dispatch بأقفاله كلها والسياسة والدفتر وbiz_opaque نفسه (nj:m:{id}). المستلم من
+     * المحادثة والنص والحمولة كما حُفظت، فلا تعديل يدوي. لا صف جديد. المتحكم يفحص قبله الفئة والنافذة والنطاق والقفل.
+     * attempts يبدأ من جديد في الدفتر، وعدد الإعادات في payload._redrive.
+     *
+     * @return array نتيجة dispatch، أو فشل محلي: REDRIVE_UNSUPPORTED (لا حمولة رسمية، كملف لم يُرفع)،
+     *   REDRIVE_STALE (لم يعد failed)، REDRIVE_KEY_TAKEN (أُرسلت نسخة أخرى بالمفتاح نفسه)
+     */
+    public static function redrive(WaMessage $row, ?int $byUserId = null): array
+    {
+        $payload = (array) ($row->payload ?? []);
+        $key = $payload['_released_key'] ?? null;
+        $type = $payload['type'] ?? null;
+        if (!is_string($key) || $key === '' || !is_string($type) || !isset($payload[$type])) {
+            return self::fail('REDRIVE_UNSUPPORTED', 'لا يمكن إعادة هذه الرسالة من هنا — أعد إرسالها من المحادثة.');
+        }
+        // الحمولة الرسمية كما أُرسلت، بلا الوجهة (يعيدها gate من المحادثة نفسها) ولا حقولنا الداخلية
+        $graph = array_diff_key(
+            array_filter($payload, fn ($k) => !str_starts_with((string) $k, '_'), ARRAY_FILTER_USE_KEY),
+            array_flip(['messaging_product', 'to', 'recipient', 'recipient_type', 'statusHistory', 'biz_opaque_callback_data']),
+        );
+        $previous = (array) ($payload['_redrive'] ?? []);
+        $requeued = [
+            '_redrive' => ['n' => (int) ($previous['n'] ?? 0) + 1, 'prev_attempts' => (int) $row->attempts, 'by' => $byUserId, 'at' => now()->toIso8601String()],
+        ] + array_diff_key($payload, array_flip(['_released_key', '_meta_error', '_reaped', '_stale']));
+        try {
+            $moved = WaMessage::whereKey($row->id)->where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->whereNull('send_key')->update([
+                'status' => WaMessage::STATUS_QUEUED, 'send_key' => mb_substr($key, 0, 64), 'attempts' => 0,
+                'error_message' => null, 'error_code' => null, 'error_category' => null, 'meta_code' => null, 'fbtrace_id' => null,
+                'payload' => json_encode($requeued, JSON_UNESCAPED_UNICODE),
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            return self::fail('REDRIVE_KEY_TAKEN', 'أُرسلت نسخة أخرى من هذه الرسالة — افتح المحادثة.') + ['conflict' => true];
+        }
+        if ($moved === 0) {
+            return self::fail('REDRIVE_STALE', 'تغيّرت حالة الرسالة — حدّث الصفحة.') + ['conflict' => true];
+        }
+        $fresh = WaMessage::find($row->id);
+        WaLog::info('wa.send.redrive', ['conv_id' => $fresh->conversation_id, 'message_id' => $fresh->id, 'source' => $fresh->source, 'type' => $fresh->msg_type]);
+
+        return self::dispatch($fresh->conversation, $graph, (string) $fresh->body, (string) $fresh->msg_type, (string) $fresh->source,
+            $fresh->staff_id !== null ? (int) $fresh->staff_id : null, 'reply', $key, [], $fresh);
+    }
+
     /** الاقتباس من المحادثة نفسها وحدها: wamid من محادثة أخرى أو مجهول يُسقط بسطر سجل، فلا يقتبس أحد رسالة غيره */
     private static function quotable(WaConversation $conv, ?string $wamid): ?string
     {
@@ -1833,6 +1884,12 @@ class WhatsAppChannel
         // المحظور رسمياً (E31): بلا نداء ولا صف. القفل بعد النافذة وقبل اختيار الوجهة، فلا يتغيّر ترتيب ما قبله
         if ($conv->isBlocked()) {
             return [self::failLocal(self::ERR_BLOCKED, 'هذا العميل محظور — فكّ الحظر أولاً من صفحة المحظورين.'), null];
+        }
+        // السقف اليومي للإرسال المبادر (E24) بعد قفل النافذة: bot وstaff وsystem وrule لا تُعدّ ولا تُمس. و«السقف البارد
+        // صفر» بنيوي: قفل النافذة قبله يرفض أي رقم بلا وارد حديث، لأي مصدر
+        if (in_array($source, self::SYSTEM_INITIATED_SOURCES, true)
+            && OutboundCounter::systemInitiatedToday() >= (int) ($s->wa_system_daily_cap ?? 50)) {
+            return [self::failLocal(self::ERR_DAILY_CAP, 'بلغ الإرسال المبادر حدّه اليومي.'), null];
         }
         $target = self::target($conv, $source);
         if ($target === null) {

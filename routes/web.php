@@ -193,6 +193,12 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::get('api/whatsapp/channel-health/events/{event}', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'event'])->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
     Route::post('api/whatsapp/channel-health/unblock', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'unblock'])->middleware(['perm:whatsapp.settings', 'throttle:6,1']);
     Route::post('api/whatsapp/channel-health/acknowledge', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'acknowledge'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    // الإخفاقات والطابور (E24): العلم failures_center (مطفأ = 404)، والإعادة بالعلم failures_redrive. throttle بمفتاح لكل مسار
+    Route::get('whatsapp/failures', [\App\Http\Controllers\WhatsAppFailuresController::class, 'index'])->name('whatsapp.failures')->middleware('perm:whatsapp.settings');
+    Route::get('api/whatsapp/failures', [\App\Http\Controllers\WhatsAppFailuresController::class, 'data'])->middleware(['perm:whatsapp.settings', 'throttle:30,1,wa-failures']);
+    Route::post('api/whatsapp/messages/{message}/redrive', [\App\Http\Controllers\WhatsAppFailuresController::class, 'redrive'])->name('whatsapp.failures.redrive')->middleware(['perm:whatsapp.settings', 'throttle:10,1,wa-redrive']);
+    Route::post('api/ops/failed-jobs/{uuid}/retry', [\App\Http\Controllers\WhatsAppFailuresController::class, 'retryJob'])->name('ops.failed-jobs.retry')->where('uuid', '[0-9a-fA-F\-]{36}')->middleware(['perm:whatsapp.settings', 'throttle:10,1,ops-retry']);
+    Route::post('api/whatsapp/webhook-events/{id}/replay', [\App\Http\Controllers\WhatsAppFailuresController::class, 'replayWebhook'])->name('whatsapp.webhook-events.replay')->whereNumber('id')->middleware(['perm:whatsapp.settings', 'throttle:10,1,wa-replay']);
 
     // أرقام الإدارة: المساعد الإداري على واتساب وصلاحيات كل رقم
     Route::get('whatsapp/admin-numbers', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'index'])->name('whatsapp.admin-numbers')->middleware('perm:whatsapp.settings');
@@ -331,6 +337,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::get('quote-requests', [\App\Http\Controllers\QuoteRequestController::class, 'index'])->name('quote-requests.index')->middleware('perm:quotes.view');
     Route::post('quote-requests/{quoteRequest}/price', [\App\Http\Controllers\QuoteRequestController::class, 'price'])->name('quote-requests.price')->middleware(['perm:quotes.price', 'throttle:wa-send']);
     Route::post('quote-requests/{quoteRequest}/status', [\App\Http\Controllers\QuoteRequestController::class, 'updateStatus'])->name('quote-requests.status')->middleware('perm:quotes.price');
+    // تصدير CSV (E24): العلم quote_export والصلاحية quotes.export، 5 في الدقيقة بمفتاحه
+    Route::get('quote-requests/export', [\App\Http\Controllers\QuoteRequestController::class, 'export'])->name('quote-requests.export')->middleware(['perm:quotes.export', 'throttle:5,1,quote-export']);
 
     // تجربة مزوّد أسعار الرحلات (أداة مقارنة — المدير فقط)
     Route::get('flights/search', [\App\Http\Controllers\FlightSearchController::class, 'index'])->name('flights.search')->middleware('perm:admin');

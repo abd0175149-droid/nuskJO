@@ -42,6 +42,9 @@ class WhatsAppDoctor extends Command
         $this->line('ffmpeg: '.($ffmpeg !== null ? 'متاح — '.$ffmpeg : 'غير متاح (زر التسجيل مخفي)')
             ." · تحويلات اليوم {$voice['ok']}".($voice['avg_ms'] !== null ? " بمتوسط {$voice['avg_ms']}ms" : '')
             ." · مشغول {$voice['busy']} · فشل {$voice['failed']}");
+        // E24: الإصدار المنشور كما خُتم في الصورة
+        $build = (array) config('app.build');
+        $this->line('الإصدار: '.($build['sha'] ?? 'unknown').(!empty($build['time']) ? ' — بُني '.$build['time'] : ''));
 
         // E18: إثبات سر التطبيق آخر 7 أيام (شرط دخول E26: نداءات = بإثبات، وصفر رفض)، وفئات أخطاء ميتا اليوم
         $proof = GraphClient::proofSummary();
@@ -100,6 +103,10 @@ class WhatsAppDoctor extends Command
         // E34: علم الرسائل الصوتية مفعّل وffmpeg غير موجود في الصورة
         if ($ffmpeg === null && \App\Support\FeatureFlags::on('staff_voice_notes')) {
             $checks[] = ['section' => 'local', 'level' => 'error', 'code' => 'FFMPEG_MISSING', 'message' => 'العلم staff_voice_notes مفعّل وffmpeg غير موجود: زر التسجيل مخفي والمسار يرد 503. أعد بناء الصورة أو أطفئ العلم.'];
+        }
+        // E24: الإصدار غير مختوم في الإنتاج
+        if (app()->isProduction() && ($build['sha'] ?? 'unknown') === 'unknown') {
+            $checks[] = ['section' => 'local', 'level' => 'warn', 'code' => 'BUILD_UNSTAMPED', 'message' => 'الإصدار غير مختوم في الصورة: انشر بـ scripts/deploy.sh ليظهر الـ commit (E24).'];
         }
         if ($checks === []) {
             $this->info('✅ صحة القناة: لا ملاحظات');

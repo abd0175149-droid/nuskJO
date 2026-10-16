@@ -317,7 +317,7 @@
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mt-4">
-                        <SettingField v-for="f in fields" :key="f.key" :field="f" v-model="form[f.key]"
+                        <SettingField v-for="f in aiFields" :key="f.key" :field="f" v-model="form[f.key]"
                                       :default-value="defaults[f.key]" :error="errors[f.key]" :dirty="isDirty(f.key)"/>
                     </div>
 
@@ -465,6 +465,24 @@
                     </div>
                 </div>
 
+                <!-- ================= 7. حدود الصادر وتكلفة ميتا (E24) ================= -->
+                <div v-if="limitFields.length" id="limits" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6 scroll-mt-20" data-test="limits">
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">📊 حدود الصادر وتكلفة ميتا</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        السقف اليومي للإرسال الذي يبدؤه النظام وحده (قوالب أو تذكيرات يقرّها المالك)؛ لا يمس ردود البوت والموظفين داخل النافذة.
+                        <template v-if="outbound">ورسائل الخدمة تُحتسب بعد {{ outbound.service_free_tier }} مجانية شهرياً.</template>
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <SettingField v-for="f in limitFields" :key="f.key" :field="f" v-model="form[f.key]"
+                                      :default-value="defaults[f.key]" :error="errors[f.key]" :dirty="isDirty(f.key)"/>
+                    </div>
+                    <p v-if="outbound" class="text-xs text-gray-600 dark:text-gray-300 mt-4" data-test="outbound-today">
+                        صادر اليوم {{ outbound.today?.total }} من حد التنبيه {{ outbound.daily_alert_threshold }} ·
+                        الإرسال المبادر {{ outbound.system_initiated_today }} من {{ outbound.system_daily_cap }} ·
+                        رسائل خدمة محتسبة هذا الشهر {{ outbound.service_billable_month }} من {{ outbound.service_free_tier }}
+                    </p>
+                </div>
+
                 <IdentityModePanel :mode="identityMode"/>
 
                 <FeatureFlagsPanel id="flags" class="scroll-mt-20" :flags="flags"/>
@@ -493,6 +511,10 @@
             <!-- المكالمات والتعايش (E39): خلف أعلامهما، خارج النموذج بمساراتهما -->
             <CallingCard v-if="props.calling" :calling="props.calling" @changed="refreshVersion"/>
             <CoexistenceCard v-if="props.coexistence" :coexistence="props.coexistence" @changed="refreshVersion"/>
+            <!-- الإصدار المنشور (E24): الـ commit ووقت البناء من الصورة، للمدير وحده -->
+            <p v-if="build" class="text-center text-xs text-gray-400 dark:text-gray-500" data-test="build">
+                الإصدار <bdi dir="ltr" class="font-mono">{{ build.sha || 'unknown' }}</bdi><template v-if="build.time"> — بُني <bdi dir="ltr">{{ buildTime }}</bdi></template>
+            </p>
         </div>
 
         <OneTimeSecretModal :token="oneTimeToken" @close="oneTimeToken = null"/>
@@ -568,6 +590,18 @@ const props = defineProps({
     // E39: بطاقتا المكالمات والتعايش (null والأعلام مطفأة)
     calling: { type: Object, default: null },
     coexistence: { type: Object, default: null },
+    // E24: صادر اليوم والحدود، والإصدار المنشور
+    outbound: { type: Object, default: null },
+    build: { type: Object, default: null },
+});
+// حقول السجل المولَّدة: الذكاء في قسمه، وحدود الصادر في قسمها (E24)
+const aiFields = computed(() => props.fields.filter((f) => f.group !== 'limits'));
+const limitFields = computed(() => props.fields.filter((f) => f.group === 'limits'));
+const buildTime = computed(() => {
+    const t = props.build?.time;
+    if (!t) return '';
+    const d = new Date(t);
+    return Number.isNaN(d.getTime()) ? t : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 });
 
 // ===== الحالة المحلية (تتحدّث من ردود الخادم دون إعادة تحميل الصفحة) =====

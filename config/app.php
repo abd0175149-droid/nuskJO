@@ -16,6 +16,15 @@ return [
     'name' => env('APP_NAME', 'Laravel'),
 
     /*
+    | الإصدار المنشور (E24): الـ commit ووقت البناء يختمهما scripts/deploy.sh في الصورة (--build-arg GIT_COMMIT وBUILD_TIME)،
+    | فيُخبزان عند config:cache. يُعرضان للمدير في الإعدادات وwhatsapp:doctor وops:status، ولا يظهران في /up العام.
+    */
+    'build' => [
+        'sha' => env('APP_COMMIT') ?: 'unknown',
+        'time' => in_array(env('APP_BUILD_TIME'), [null, '', 'unknown'], true) ? null : env('APP_BUILD_TIME'),
+    ],
+
+    /*
     |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------

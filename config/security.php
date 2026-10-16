@@ -71,6 +71,8 @@ return [
             // التكاملات الصادرة ورموز MCP (E40): وجهة البيانات وسرها، والرمز الذي يقرأ التقارير من خارج النظام
             'integrations.endpoints.store', 'integrations.endpoints.update', 'integrations.endpoints.destroy', 'integrations.endpoints.rotate',
             'integrations.mcp-tokens.store',
+            // E24: تصدير طلبات التسعير، وأفعال صفحة الإخفاقات (رسالة تُعاد لعميل، ومهمة، وإشعار ميتا)
+            'quote-requests.export', 'whatsapp.failures.redrive', 'ops.failed-jobs.retry', 'whatsapp.webhook-events.replay',
         ],
     ],
 

@@ -76,6 +76,9 @@ class WhatsAppSettingsController extends Controller
             // E39: بطاقتا المكالمات والتعايش، خلف أعلامهما (مطفأة = لا بطاقة)
             'calling' => rescue(fn () => \App\Services\WhatsApp\CallEventHandler::enabled() ? \App\Services\WhatsApp\CallingSettings::panel() : null, null, false),
             'coexistence' => rescue(fn () => \App\Services\WhatsApp\CoexistenceSync::active() ? \App\Services\WhatsApp\CoexistenceSync::panel() : null, null, false),
+            // E24: صادر اليوم بمصادره والإرسال المبادر وسقفه ورسائل الخدمة هذا الشهر، والإصدار المنشور
+            'outbound' => rescue(fn () => \App\Services\WhatsApp\OutboundCounter::summary(), null, false),
+            'build' => config('app.build'),
             // E18: آخر خطأ قناة من ميتا، وفئات اليوم، ونسبة إثبات سر التطبيق خلال 7 أيام
             'metaErrors' => [
                 'last' => WaBotSetting::current()->wa_last_error,
@@ -499,6 +502,10 @@ class WhatsAppSettingsController extends Controller
             'fallback_model' => $s->fallback_model,
             'tools_config' => $s->tools_config ?? (object) [],
             'env_app_id' => !empty(config('services.whatsapp.app_id')),
+            // حدود الصادر (E24)
+            'wa_daily_alert_threshold' => (int) ($s->wa_daily_alert_threshold ?? SettingsSchema::default('wa_daily_alert_threshold')),
+            'wa_system_daily_cap' => (int) ($s->wa_system_daily_cap ?? SettingsSchema::default('wa_system_daily_cap')),
+            'wa_service_rate_usd' => $s->wa_service_rate_usd !== null ? (float) $s->wa_service_rate_usd : null,
         ];
     }
 

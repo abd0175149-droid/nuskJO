@@ -22,6 +22,8 @@ cd "$REPO_DIR"
 # 1) السحب: المجلد ملك root، فالسحب عبر حاوية git
 docker run --rm -v "$REPO_DIR":/repo -w /repo alpine/git:latest pull origin main
 SHA="$(docker run --rm -v "$REPO_DIR":/repo -w /repo alpine/git:latest rev-parse --short HEAD)"
+# وقت البناء مع الـ commit في الصورة (E24): يظهران للمدير في الإعدادات وwhatsapp:doctor
+BUILD_TIME="$(date -u +%FT%TZ)"
 log "deploy start sha=$SHA gate=$GATE"
 
 # 1ب) بوابة تدقيق التبعيات (E26.9): ثغرة high أو critical جديدة غير مستثناة بسبب (composer.json audit.ignore
@@ -94,14 +96,14 @@ fi
 DB_VOLUME="${DB_VOLUME:-nuskjo_nuskjo-dbdata}"
 if grep -q '^ *- nuskjo-dbdata:/var/www/html/database/data' docker-compose.yml \
     && ! docker volume inspect "$DB_VOLUME" >/dev/null 2>&1; then
-    docker compose build --build-arg GIT_COMMIT="$SHA" "$APP_CONTAINER"
+    docker compose build --build-arg GIT_COMMIT="$SHA" --build-arg BUILD_TIME="$BUILD_TIME" "$APP_CONTAINER"
     log "sha=$SHA built; database volume not split yet: run scripts/backup/move-db-volume.sh (docs/RELEASE.md)"
     echo "التالي: bash scripts/backup/move-db-volume.sh --compose-dir $REPO_DIR --project nuskjo --service $APP_CONTAINER --old nuskjo_nuskjo-database --new $DB_VOLUME --check-only" >&2
     exit 1
 fi
 
 # 5) البناء والتشغيل
-docker compose build --build-arg GIT_COMMIT="$SHA" "$APP_CONTAINER"
+docker compose build --build-arg GIT_COMMIT="$SHA" --build-arg BUILD_TIME="$BUILD_TIME" "$APP_CONTAINER"
 docker compose up -d "$APP_CONTAINER"
 
 for _ in $(seq 1 30); do

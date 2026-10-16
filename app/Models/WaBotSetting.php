@@ -36,6 +36,8 @@ class WaBotSetting extends Model
         // E39: المكالمات والتعايش (مساراتها في بطاقتيهما، وكلها عبر SettingsWriter)
         'calls_answer_mode', 'calls_auto_reject', 'calls_followup_text', 'calls_followup_text_en', 'calling_snapshot',
         'echo_pause_minutes', 'coexistence_holder_user_id',
+        // E24: حد تنبيه الصادر اليومي، وسقف الإرسال المبادر، وسعر رسالة الخدمة (للتقدير)
+        'wa_daily_alert_threshold', 'wa_system_daily_cap', 'wa_service_rate_usd',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
@@ -83,6 +85,9 @@ class WaBotSetting extends Model
         'calls_auto_reject' => 'boolean',
         'echo_pause_minutes' => 'integer',
         'coexistence_holder_user_id' => 'integer',
+        'wa_daily_alert_threshold' => 'integer',
+        'wa_system_daily_cap' => 'integer',
+        'wa_service_rate_usd' => 'float',
     ];
 
     protected static function booted(): void

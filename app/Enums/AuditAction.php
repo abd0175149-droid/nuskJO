@@ -70,6 +70,8 @@ enum AuditAction: string
     case QuoteRequestCreate = 'quote.create';
     case QuotePrice = 'quote.price';
     case QuoteStatus = 'quote.status';
+    // E24: تصدير طلبات التسعير CSV (أعمدة بيضاء، وعدد الصفوف)
+    case QuoteExport = 'quote.export';
 
     // ===== واتساب من جهة الموظفين والنظام =====
     case WaSettingsUpdate = 'wa.settings_update';
@@ -170,6 +172,8 @@ enum AuditAction: string
     case WaCallingSettingsApply = 'wa.calling_apply';
     case WaCoexistenceHolderSet = 'wa.coexistence_holder';
     case WaHistoryDiscard = 'wa.history_discard';
+    // E24: إعادة إرسال رسالة فشلت فشلاً عابراً من صفحة الإخفاقات (الصف نفسه بالمفتاح نفسه)
+    case WaRedrive = 'wa.redrive';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -197,6 +201,8 @@ enum AuditAction: string
     case RetentionPruned = 'retention.pruned';
     case ClientDataExport = 'client.data_export';
     case ConfigExport = 'config.export';
+    // E24: queue:retry لمهمة خلفية فاشلة من صفحة الإخفاقات
+    case OpsJobRetry = 'ops.job_retry';
 
     // ===== التكاملات الصادرة وخادم MCP (E40): لا سر ولا رمز ولا نتيجة أداة في changes أبداً =====
     case IntegrationEndpointCreate = 'integ.endpoint_create';
@@ -242,6 +248,7 @@ enum AuditAction: string
             self::IntegrationEndpointAutoPaused, self::McpTokenCreate, self::McpTokenRevoke => AuditSeverity::Warn,
             self::WaMsgCorrect => AuditSeverity::Warn,
             self::WaCallsFollowupUpdate, self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard => AuditSeverity::Warn,
+            self::WaRedrive, self::QuoteExport => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -285,6 +292,7 @@ enum AuditAction: string
             self::IntegrationEndpointAutoPaused => 'system',
             self::McpTokenCreate, self::McpTokenRevoke, self::McpToolCall => 'access',
             self::McpAuthFailed => 'noise',
+            self::QuoteExport, self::OpsJobRetry => 'system',
             default => 'whatsapp',
         };
     }
@@ -433,6 +441,9 @@ enum AuditAction: string
             self::WaCallingSettingsApply => 'تطبيق إعدادات الاتصال عند ميتا',
             self::WaCoexistenceHolderSet => 'تعيين حامل جهاز التعايش',
             self::WaHistoryDiscard => 'إهمال سجل التعايش السابق المحفوظ',
+            self::WaRedrive => 'إعادة إرسال رسالة فشلت (صفحة الإخفاقات)',
+            self::QuoteExport => 'تصدير طلبات التسعير',
+            self::OpsJobRetry => 'إعادة مهمة خلفية فاشلة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -489,7 +500,9 @@ enum AuditAction: string
             // E23: كل رسالة تجريبية خرجت إلى رقم حقيقي
             self::WaTestSend,
             // E39: تفعيل الاتصال عند ميتا، ومن يحمل هاتف الوكالة (يرى كل المحادثات)، ومحو السجل السابق: لا تراجع عنها
-            self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard], true);
+            self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard,
+            // E24: رسالة أُعيدت لعميل، وطلبات تسعير خرجت في ملف
+            self::WaRedrive, self::QuoteExport], true);
     }
 
     public function isNoise(): bool

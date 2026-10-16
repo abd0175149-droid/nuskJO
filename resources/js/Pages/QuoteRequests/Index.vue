@@ -24,10 +24,16 @@
             <span v-if="t.count" class="mr-1 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{{ t.count }}</span>
           </button>
         </div>
-        <input v-model="search" type="text" placeholder="بحث برقم الطلب أو الهاتف أو الاسم..."
-               class="w-72 max-w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
-               @input="debounceSearch"/>
+        <div class="flex flex-wrap items-center gap-2 max-w-full">
+          <input v-model="search" type="text" placeholder="بحث برقم الطلب أو الهاتف أو الاسم..."
+                 class="w-72 max-w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
+                 @input="debounceSearch"/>
+          <!-- تصدير CSV (E24): لمن يملك quotes.export، والخادم يفحص الصلاحية والعلم -->
+          <button v-if="canExport" type="button" data-test="export" @click="exporting = true"
+                  class="min-h-11 px-4 py-2 rounded-xl text-sm font-bold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">⬇️ تصدير CSV</button>
+        </div>
       </div>
+      <QuoteExportDialog v-if="canExport" :open="exporting" :status="filters?.status" :search="search || null" @close="exporting = false"/>
 
       <!-- القائمة -->
       <div class="space-y-3">
@@ -190,6 +196,7 @@
 import { ref, computed } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
+import QuoteExportDialog from '@/Components/Quotes/QuoteExportDialog.vue';
 
 const props = defineProps({
   title: String,
@@ -197,7 +204,10 @@ const props = defineProps({
   filters: Object,
   counts: Object,
   canReply: Boolean,
+  canExport: Boolean,
 });
+
+const exporting = ref(false);
 
 const search = ref(props.filters?.search || '');
 let t = null;

@@ -171,6 +171,8 @@ final class MetaErrorCatalog
         'PLACE_INACTIVE' => ['caller', 'message', 'هذا الموقع غير فعّال.', 'اختر موقعاً من القائمة المعتمدة.', 'none'],
         'CARD_INACTIVE' => ['caller', 'message', 'بطاقة الاتصال غير فعّالة.', 'اختر من البطاقات المعتمدة.', 'none'],
         'BAD_CONTACTS' => ['caller', 'message', 'اختر من بطاقة إلى 3 بطاقات.', 'اختر البطاقات من جديد.', 'none'],
+        // السقف الصلب للإرسال الذي يبدؤه النظام (E24)، لا ردود البوت والموظف داخل النافذة
+        'DAILY_CAP' => ['caller', 'channel', 'بلغ الإرسال المبادر حدّه اليومي.', 'يرفع المدير السقف من «حدود الصادر» في الإعدادات، أو ينتظر الغد.', 'none'],
     ];
 
     // ==================== التصنيف ====================
@@ -258,6 +260,23 @@ final class MetaErrorCatalog
     public static function neverRetry(?int $metaCode, ?string $category = null): bool
     {
         return in_array($metaCode, self::NEVER_RETRY, true) || ($category ?? ($metaCode !== null ? self::classify($metaCode)['category'] : null)) === 'auth';
+    }
+
+    /**
+     * إعادة الإرسال اليدوية من صفحة الإخفاقات (E24): الفشل العابر والخنق من ميتا، وفشل اتصال قبل أن يغادر الطلب.
+     * لا رموز الحساب (auth وintegrity) ولا النافذة ولا المستلم (window وquality وcaller وحد الزوج وNEVER_RETRY)،
+     * ولا رمز محلي آخر (ملف لم يُرفع أو سياسة حجبت): هذه لا تصلحها الإعادة.
+     */
+    public static function redrivable(?int $metaCode, ?string $errorCode, ?string $category = null): bool
+    {
+        if ($metaCode === null) {
+            return $errorCode === 'HTTP_CONNECT_FAILED';
+        }
+        $entry = self::classify($metaCode);
+        $category = $category ?: $entry['category'];
+
+        return in_array($category, ['transient', 'throttle'], true) && !self::neverRetry($metaCode, $category)
+            && $entry['code'] !== 'PAIR_RATE_LIMITED';
     }
 
     /** خنق من ميتا (إعادة مؤجلة تستحق المحاولة) */

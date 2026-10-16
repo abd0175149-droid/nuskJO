@@ -127,9 +127,10 @@ COPY docker/entrypoint.sh /entrypoint.sh
 COPY docker/check-env.sh /usr/local/bin/check-env.sh
 RUN chmod +x /entrypoint.sh /usr/local/bin/check-env.sh
 
-# رقم الإصدار في manifest النسخ الاحتياطية (يمرّره scripts/deploy.sh)
+# رقم الإصدار في manifest النسخ الاحتياطية ووقت البناء (يمرّرهما scripts/deploy.sh)، ويعرضهما config('app.build') للمدير (E24)
 ARG GIT_COMMIT=unknown
-ENV APP_COMMIT=$GIT_COMMIT
+ARG BUILD_TIME=unknown
+ENV APP_COMMIT=$GIT_COMMIT APP_BUILD_TIME=$BUILD_TIME
 
 EXPOSE 4020
 

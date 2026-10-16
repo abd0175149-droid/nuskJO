@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "statuses": [
+              {
+                "id": "wamid.HBgLMTY1MDU1NTEyMzQVAgARGBJFMjRGQUlMRUQzNjhSRVNUUjEA",
+                "status": "failed",
+                "timestamp": "1760425900",
+                "recipient_id": "16505551234",
+                "errors": [
+                  {
+                    "code": 368,
+                    "title": "Temporarily blocked for policies violations",
+                    "message": "Temporarily blocked for policies violations",
+                    "error_data": {
+                      "details": "Temporarily blocked for policies violations."
+                    },
+                    "href": "https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes/"
+                  }
+                ]
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

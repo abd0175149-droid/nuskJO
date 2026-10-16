@@ -226,6 +226,10 @@ return [
     'WhatsAppCallingController@refresh' => 'none: قراءة إعدادات الاتصال من ميتا؛ تُحفظ آخر قراءة للعرض وحده',
     'WhatsAppCallingController@update' => 'wa.calls_followup',
     'WhatsAppCoexistenceController@update' => 'wa.coexistence_holder',
+    // E24: صفحة الإخفاقات (إعادة إرسال، وqueue:retry، وإعادة إشعار يدقّقه أمر E20 باسم المدير)
+    'WhatsAppFailuresController@redrive' => 'wa.redrive',
+    'WhatsAppFailuresController@retryJob' => 'ops.job_retry',
+    'WhatsAppFailuresController@replayWebhook' => 'wa.webhook_replay',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

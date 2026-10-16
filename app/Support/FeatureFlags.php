@@ -100,6 +100,14 @@ final class FeatureFlags
         'coexistence_guard' => ['label' => 'حارس التعايش: أي رسالة من تطبيق الأعمال على الهاتف توقف البوت في محادثتها فوراً، بلا تخزين', 'capability' => 'C011', 'available' => true],
         'coexistence_echoes' => ['label' => 'التعايش: رسائل هاتف الوكالة تُحفظ في الصندوق وتوقف البوت (بقرار المالك المكتوب)', 'capability' => 'C011', 'available' => true],
         'coexistence_history_hold' => ['label' => 'حفظ سجل المحادثات السابق (history) مشفّراً بانتظار قرار الاستيراد، ثم يُمحى بعد مدته', 'capability' => 'C012', 'available' => true],
+        // E24: المراقبة التشغيلية ومركز الإخفاقات والتحليلات
+        'ops_alerts' => ['label' => 'تنبيهات التشغيل كل 5 دقائق للمدراء (الطابور والمهام والإرسال والويبهوك والصادر؛ مطفأ = تسجيل فقط)', 'capability' => 'C226', 'available' => true],
+        'failures_center' => ['label' => 'صفحة «الإخفاقات والطابور»: رسائل لم تصل، ومهام خلفية فاشلة، وويبهوك فاشل، والطابور الآن', 'capability' => 'C255', 'available' => true],
+        'failures_redrive' => ['label' => 'زر «إعادة الإرسال» في صفحة الإخفاقات (الفشل العابر داخل النافذة وحده، بالرسالة نفسها)', 'capability' => 'C255', 'available' => true],
+        'analytics_v2' => ['label' => 'تحليلات بفترات 24 ساعة و7 و30 يوماً: الحركة وساعات الذروة وأول رد بشري وتحوّل الطلب إلى فاتورة وتكلفة ميتا', 'capability' => 'C209', 'available' => true],
+        'quote_export' => ['label' => 'تصدير طلبات التسعير CSV بحقول بلا هاتف ولا اسم عميل (لمن يملك quotes.export)', 'capability' => 'C097', 'available' => true],
+        'meta_analytics_reconcile' => ['label' => 'مطابقة يومية مع تحليلات ميتا للحساب (أُرسل وسُلّم) للمقارنة فقط', 'capability' => 'C209', 'available' => true],
+        'ops_tick' => ['label' => 'دمج مهام الدقيقة (إعادة الويبهوك والمُصالِح) في أمر واحد ops:tick لتخفيف الحمل', 'capability' => 'C226', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

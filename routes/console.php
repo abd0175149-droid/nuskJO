@@ -236,7 +236,8 @@ Schedule::command('whatsapp:reap-pending')
 // أقصى، والأثر الوصفي 14 يوماً). لا يتوقفان بالعلم: صفوف قائمة تُعاد وتُمحى حتى بعد إطفاء الحفظ
 Schedule::command('whatsapp:replay-webhooks')
     ->everyMinute()
-    ->withoutOverlapping(5);
+    ->withoutOverlapping(5)
+    ->when(fn () => !\App\Support\FeatureFlags::on('ops_tick'));
 Schedule::command('whatsapp:webhook-events-prune')
     ->hourlyAt(15)
     ->withoutOverlapping(10);
@@ -312,6 +313,24 @@ Schedule::command('whatsapp:coexistence-history --prune')
     ->hourlyAt(35)
     ->withoutOverlapping(10);
 
+// المراقبة التشغيلية (E24): لقطة المقاييس كل 5 دقائق في مخزن ops (file) وقواعد التنبيه (العلم ops_alerts؛ مطفأ = سجل perf
+// فقط). قراءات مجمّعة وحدها، ولا رسالة واتساب. القائمة الموحدة للمهام وميزانية الحمل في docs/ops/load-budget.md
+Schedule::command('whatsapp:ops-check')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5)
+    ->name('wa:ops-check');
+// ميزانية الحمل (E24): أمرا الدقيقة أعلاه (إعادة الويبهوك والمُصالِح) في عملية واحدة بالعلم ops_tick
+Schedule::command('ops:tick')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->when(fn () => \App\Support\FeatureFlags::on('ops_tick'));
+// المطابقة الاختيارية مع تحليلات ميتا (E24): نداء GET واحد يومياً بالعلم meta_analytics_reconcile وحده
+Schedule::command('whatsapp:meta-analytics')
+    ->timezone('Asia/Amman')
+    ->dailyAt('08:20')
+    ->withoutOverlapping(10)
+    ->when(fn () => \App\Support\FeatureFlags::on('meta_analytics_reconcile'));
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');
@@ -378,7 +397,8 @@ Schedule::command('whatsapp:window-reminders')
 // فلا يعلق إن قُتل schedule:work
 Schedule::command('whatsapp:reconcile-replies')
     ->everyMinute()
-    ->withoutOverlapping(5);
+    ->withoutOverlapping(5)
+    ->when(fn () => !\App\Support\FeatureFlags::on('ops_tick'));
 
 // مطابقة دورية بين الدفترين (المبسّط مقابل القيود) + إشعار الإدارة عند أي انحراف
 Schedule::command('accounting:reconcile')

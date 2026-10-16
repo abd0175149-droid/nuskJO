@@ -52,6 +52,8 @@ class HandleInertiaRequests extends Middleware
                     && (\App\Support\FeatureFlags::on('integration_outbox') || \App\Support\FeatureFlags::on('mcp_server')), false, false),
                 // E23: رابط «حالة النظام» لمن يملك ops.view والعلم مفعّل
                 'ops_status' => $user?->can('ops.view') ? rescue(fn () => \App\Support\FeatureFlags::on('ops_status_page'), false, false) : false,
+                // E24: رابط «الإخفاقات» لمن يملك whatsapp.settings والعلم failures_center مفعّل
+                'failures_center' => $user?->can('whatsapp.settings') ? rescue(fn () => \App\Support\FeatureFlags::on('failures_center'), false, false) : false,
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);
