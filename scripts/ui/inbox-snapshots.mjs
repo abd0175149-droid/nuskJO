@@ -1,6 +1,6 @@
-// لقطات صندوق المحادثات قبل الهيكلة وبعدها (E16.1). تطوير فقط، على Demo أو نسخة محلية ببيانات اصطناعية، لا بيانات عملاء.
+// لقطات صندوق المحادثات قبل الهيكلة وبعدها (E16.1). تطوير فقط، على نسخة محلية ببيانات اصطناعية، لا بيانات عملاء.
 //
-//   BASE=https://demo.example EMAIL=... PASSWORD=... CHROME_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe" \
+//   BASE=http://127.0.0.1:8124 EMAIL=... PASSWORD=... CHROME_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe" \
 //   OUT=../inbox-shots CONV_IDS=1,2,3 node scripts/ui/inbox-snapshots.mjs
 //
 // CHROME_ARGS اختيارية. CONV_IDS: محادثات الحالات بالترتيب (عادية، نافذة مغلقة، إدارة، إنجليزية، تنسيق ورابط). الصور تُحفظ في OUT خارج المستودع.
