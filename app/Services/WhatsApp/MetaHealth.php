@@ -37,6 +37,9 @@ final class MetaHealth
         'unreachable' => ['⚠️ تعذّر فحص صحة القناة', 'فشل الاتصال بميتا مرتين متتاليتين. راجع الشبكة أو صفحة حالة ميتا.'],
     ];
 
+    /** آخر فحص قناة وصل إلى ميتا (ردّت، ولو بخطأ) */
+    private bool $reached = false;
+
     public function __construct(private OpsAlerts $alerts) {}
 
     /** ملخصات آخر فحوص ميتا وآخر خطأ اعتماد عند الإرسال لبطاقة الإعدادات (لا رمز ولا سر) */
@@ -114,7 +117,12 @@ final class MetaHealth
      */
     public function channel(bool $humanInitiated = false): array
     {
+        $this->reached = false;
         $summary = $this->probeChannel();
+        // فشل الاتصال يحفظ ملخص آخر فحص وصل (last_known)، فلا يُقرأ بعده كأنه نتيجة جديدة
+        if (!$this->reached) {
+            return $summary;
+        }
         try {
             ChannelHealth::recordPoll($summary);
             ChannelHealth::fromPoll($summary, $humanInitiated);
@@ -137,6 +145,7 @@ final class MetaHealth
         if (!$r['reached']) {
             return $this->unreachable($s, 'wa_channel_health', 'channel', self::CHANNEL_ALERTS);
         }
+        $this->reached = true;
         Cache::forget('meta:unreachable:channel');
         if ($r['status'] !== 200) {
             return $this->conclude($s, 'wa_channel_health', 'channel', 'unreachable', [], ['error_code' => (int) data_get($r['json'], 'error.code') ?: null], self::CHANNEL_ALERTS);

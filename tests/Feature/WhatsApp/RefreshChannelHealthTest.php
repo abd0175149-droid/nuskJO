@@ -175,6 +175,19 @@ class RefreshChannelHealthTest extends TestCase
         $this->assertSame(['⚠️ تعذّر فحص صحة القناة'], $this->titles());
     }
 
+    public function test_a_network_failure_never_reuses_the_previous_answer(): void
+    {
+        $this->state('BLOCKED');
+        WaBotSetting::current()->forceFill(['wa_channel_health' => ['state' => 'ok', 'reasons' => [], 'can_send_message' => 'AVAILABLE', 'error_code' => 131000]])->save();
+        Http::fake(['graph.facebook.com/*' => Http::failedConnection()]);
+
+        $this->poll();
+
+        $this->assertSame('BLOCKED', $this->s()->wa_health);
+        $this->assertFalse((bool) $this->s()->wa_health_unblock_suggested);
+        $this->assertNull($this->s()->wa_health_checked_at);
+    }
+
     public function test_a_different_business_account_at_meta_alerts_without_locking(): void
     {
         config(['services.whatsapp.waba_id' => '109999999999999']);
