@@ -72,6 +72,11 @@ export function installStepUpVisits(router) {
     router.on('success', (event) => handleVisitResult(event.detail.page, (url, options) => router.visit(url, options)));
 }
 
+/** رمز الخطأ من جسم وصل Blob (تنزيل بـ responseType: blob كتصدير المحادثة) */
+async function blobCode(data) {
+    try { return JSON.parse(await data.text())?.code; } catch { return undefined; }
+}
+
 /**
  * معترض axios: 423 STEP_UP_REQUIRED → النافذة ثم إعادة الطلب مرة واحدة. 401 MFA_REQUIRED (جلسة لم تجتز التحدّي)
  * و403 MFA_ENROLL_REQUIRED (التسجيل مفروض) يستدعيان معالجيهما.
@@ -79,7 +84,9 @@ export function installStepUpVisits(router) {
 export function installStepUpInterceptor(axios, { onMfaRequired, onEnrollRequired } = {}) {
     return axios.interceptors.response.use(undefined, async (error) => {
         const response = error?.response;
-        const code = response?.data?.code;
+        const data = response?.data;
+        // الجسم العادي يُقرأ بلا انتظار، فتُفتح النافذة في الدورة نفسها
+        const code = data && typeof data === 'object' && typeof data.text === 'function' ? await blobCode(data) : data?.code;
         const config = error?.config;
         if (response?.status === 423 && code === 'STEP_UP_REQUIRED' && config && !config.stepUpRetried && stepUpState.hosts.length > 0) {
             if (await requestStepUp()) {

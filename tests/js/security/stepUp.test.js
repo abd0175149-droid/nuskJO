@@ -37,6 +37,21 @@ describe('step-up interceptor', () => {
         expect(ax.request.mock.calls[0][0]).toMatchObject({ url: '/x', method: 'post', data: '{"a":1}', stepUpRetried: true });
     });
 
+    it('reads the code from a Blob body (file downloads) and resends after confirming', async () => {
+        host = registerStepUpHost();
+        const ax = fakeAxios();
+        installStepUpInterceptor(ax);
+        const body = new Blob([JSON.stringify({ code: 'STEP_UP_REQUIRED' })], { type: 'application/json' });
+        const config = { url: '/api/whatsapp/conversations/7/export', method: 'get', responseType: 'blob' };
+
+        const pending = ax.handler({ response: { status: 423, data: body }, config });
+        await vi.waitFor(() => expect(stepUpState.open).toBe(true));
+        settleStepUp(true);
+
+        expect((await pending).data).toBe('retried');
+        expect(ax.request.mock.calls[0][0]).toMatchObject({ responseType: 'blob', stepUpRetried: true });
+    });
+
     it('rejects with the original error when cancelled, when no dialog is mounted, or on a second 423', async () => {
         const ax = fakeAxios();
         installStepUpInterceptor(ax);

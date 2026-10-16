@@ -62,8 +62,8 @@ return [
             // المحاسبة
             'accounting.periods.close', 'accounting.periods.open', 'accounting.close-year',
             'accounting.trial-balance.relocate-line', 'accounting.journal-entries.destroy',
-            // التصدير
-            'audit-logs.export',
+            // التصدير: سجل التدقيق، ومحادثة كاملة ببيانات العميل (E30، يُنزَّل بـ axios فيأتي 423 داخل Blob)
+            'audit-logs.export', 'GET api/whatsapp/conversations/{conversation}/export',
         ],
     ],
 

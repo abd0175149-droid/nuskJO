@@ -60,6 +60,17 @@ class StepUpTest extends TestCase
         $this->assertNull(session('url.intended'), 'لا وجهة محفوظة لطلب غير GET');
     }
 
+    public function test_the_conversation_export_asks_for_a_fresh_confirmation(): void
+    {
+        config(['features.env.conversation_export' => true]);
+        $conv = \App\Models\WaConversation::factory()->create();
+        $url = "/api/whatsapp/conversations/{$conv->id}/export?format=txt&reason=".urlencode('طلب اطّلاع من العميل');
+
+        $this->actingAs($this->admin)->withSession($this->stale($this->admin))
+            ->getJson($url)->assertStatus(423)->assertJson(['code' => 'STEP_UP_REQUIRED']);
+        $this->withSession([StepUp::SESSION_KEY => now()->getTimestamp()])->getJson($url)->assertOk();
+    }
+
     public function test_confirming_with_the_password_lets_the_same_request_through(): void
     {
         $this->actingAs($this->admin)->withSession($this->stale($this->admin))->from('/users');
@@ -147,7 +158,8 @@ class StepUpTest extends TestCase
         }
 
         foreach (['invoices.approve', 'receipts.approve', 'disbursements.approve', 'payrolls.approve', 'advances.approve', 'accounting.close-year',
-            'users.store', 'roles.update', 'settings.update', 'whatsapp.admin-numbers.store', 'audit-logs.export'] as $sensitive) {
+            'users.store', 'roles.update', 'settings.update', 'whatsapp.admin-numbers.store', 'audit-logs.export',
+            'GET api/whatsapp/conversations/{conversation}/export'] as $sensitive) {
             $this->assertContains($sensitive, config('security.stepup.routes'));
         }
         // التصفح اليومي والإيقاف الطارئ ليسا هنا

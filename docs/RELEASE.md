@@ -430,6 +430,7 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 العلم `conversation_export` (مطفأ)، بعد قرار المالك بمن يملك الصلاحية:
 1. لغير المدير: سكربت موجّه (insertOrIgnore في role_permissions)، لا RolePermissionSeeder.
 2. جرّب تصدير TXT وCSV لمحادثة اختبار، وافتح CSV في Excel: عربية سليمة، وخلية تبدأ بـ = تظهر نصاً. كل تصدير صف warn في /audit-logs مع سببه.
+3. مع العلم `step_up` (E27) يطلب التصدير تأكيد الهوية إن مرّ على آخر تأكيد أكثر من 15 دقيقة، ثم يكمل التنزيل نفسه.
 - **التراجع:** العلمان إلى off فوراً. وإن سبّب الفهرس مشكلة في الكتابة: `php artisan migrate:rollback --path=database/migrations/2026_10_14_000030_wa_messages_fts.php` (يُسقط الـ triggers ثم الجدول، والبحث يعود إلى LIKE). لا تُشغَّل صورة بـ SQLite أقدم من 3.42 على هذه القاعدة قبل ذلك.
 
 ## ترويسات الأمان والحاوية وسلسلة التوريد (E26، على مراحل)
