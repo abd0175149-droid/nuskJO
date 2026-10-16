@@ -124,6 +124,9 @@
                         </p>
                     </div>
 
+                    <!-- صحة القناة كآلة حالات (E22): الحالة والسبب والانتهاء، واقتراح الرفع والرفع اليدوي، وسجل أحداث ميتا -->
+                    <ChannelHealthCard v-if="channelHealth" :health="channelHealth" @changed="(v) => { channelHealth = v; }"/>
+
                     <!-- آخر خطأ من ميتا على مستوى القناة، وفئات اليوم، ونسبة إثبات سر التطبيق (E18) -->
                     <MetaLastErrorCard :last="metaErrors.last" :today="metaErrors.today" :proof="metaErrors.proof" @cleared="metaErrors.last = null"/>
                 </div>
@@ -475,6 +478,7 @@ import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
 import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
 import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
 import MetaLastErrorCard from '@/Components/WhatsApp/MetaLastErrorCard.vue';
+import ChannelHealthCard from '@/Components/WhatsApp/ChannelHealthCard.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
@@ -512,6 +516,7 @@ const props = defineProps({
     mediaArchive: { type: Object, default: null },
     webhookIntake: { type: Object, default: null },
     metaErrors: { type: Object, default: () => ({ last: null, today: {}, proof: null }) },
+    channelHealth: { type: Object, default: null },
     toolMeta: { type: Array, default: () => [] },
 });
 
@@ -714,6 +719,8 @@ const metaChecking = ref(false);
 const metaMsg = ref('');
 const metaMsgOk = ref(false);
 watch(() => props.meta, (v) => { meta.value = { ...v }; });
+const channelHealth = ref(props.channelHealth);
+watch(() => props.channelHealth, (v) => { channelHealth.value = v; });
 
 const opsComponents = computed(() => {
     const codes = props.ops?.codes || [];
@@ -752,6 +759,7 @@ const checkMeta = async () => {
     try {
         const { data } = await axios.post('/api/whatsapp/meta-check', {}, { headers: { Accept: 'application/json' } });
         meta.value = data.meta;
+        if (data.channelHealth) channelHealth.value = data.channelHealth;
         metaMsgOk.value = true;
         metaMsg.value = '✅ تم الفحص';
     } catch (e) {

@@ -78,6 +78,14 @@ class ChannelHealthCardTest extends TestCase
         }
     }
 
+    public function test_the_inbox_summary_card_shows_the_channel_as_blocked(): void
+    {
+        WaBotSetting::current()->forceFill(['wa_health' => 'BLOCKED'])->save();
+        $staff = User::factory()->withPermissions(['whatsapp.view'], 'staff')->create();
+
+        $this->assertSame('blocked', \App\Services\WhatsApp\InboxSummary::for($staff)['channel']['state']);
+    }
+
     public function test_the_settings_page_has_no_card_data_for_staff(): void
     {
         $staff = User::factory()->withPermissions(['whatsapp.view'], 'staff')->create();

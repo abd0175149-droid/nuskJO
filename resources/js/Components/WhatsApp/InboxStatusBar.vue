@@ -19,8 +19,14 @@
       <a href="/whatsapp/settings" class="text-gold-700 dark:text-gold-400 font-bold text-xs hover:underline ms-auto">⚙️ الإعدادات</a>
     </div>
 
+    <!-- صحة القناة (E22): شارة عامة بلا سبب ولا رمز، والتفاصيل في بطاقة «صحة القناة» للمدير -->
+    <div v-if="healthBadge" :role="healthBadge.small ? 'status' : 'alert'" data-test="health-badge"
+         class="rounded-xl border text-sm font-bold" :class="[TONES[healthBadge.tone], healthBadge.small ? 'p-2 text-xs' : 'p-3.5']">
+      {{ healthBadge.text }}
+    </div>
+
     <!-- ميتا أوقفت القناة: عام بلا تفاصيل، والتفاصيل في الإعدادات -->
-    <div v-if="status.meta_blocked" role="alert"
+    <div v-if="status.meta_blocked && healthBadge?.tone !== 'red'" role="alert"
          class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3.5 text-sm font-bold text-red-700 dark:text-red-300">
       ⛔ القناة متوقفة من جهة ميتا — أبلغ المدير.
     </div>
@@ -55,15 +61,19 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { SUSPEND_SOURCES } from '@/utils/waSettings.js';
+import { TONES, inboxBadge } from '@/utils/channelHealth.js';
 
-defineProps({
+const props = defineProps({
   status: { type: Object, default: () => ({}) },
   llm: { type: Object, default: () => ({ state: 'closed' }) },
   staleSince: { type: String, default: '' },
   notice: { type: String, default: '' },
 });
 defineEmits(['dismiss']);
+
+const healthBadge = computed(() => inboxBadge(props.status));
 
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
 </script>

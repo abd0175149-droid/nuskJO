@@ -88,7 +88,8 @@ final class InboxSummary
         $s = WaBotSetting::current();
         $state = match (true) {
             $s->sendingSuspended() => 'suspended',
-            data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED' || data_get($s->wa_credentials_status, 'state') === 'critical' => 'blocked',
+            // E22: حجب آلة صحة القناة (BLOCKED، أو TOKEN_INVALID بعلمه) كحجب الفحص
+            ChannelHealth::blocksSending($s) || data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED' || data_get($s->wa_credentials_status, 'state') === 'critical' => 'blocked',
             !$s->channelReady() => 'not_ready',
             !$s->botReady() => 'bot_off',
             default => 'ok',
