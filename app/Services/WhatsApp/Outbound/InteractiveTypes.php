@@ -145,7 +145,7 @@ final class InteractiveTypes
     }
 
     /**
-     * نموذج ثابت (Flow) بوضع navigate إلى شاشته الأولى، بلا نقطة نهاية: flow_message_version=3، وflow_id وحده (لا flow_name)،
+     * نموذج ثابت (Flow) بوضع navigate إلى شاشته الأولى، بلا نقطة نهاية: flow_message_version=3، والمعرّف flow_id وحده،
      * وflow_token يولّده الخادم ويربطه بالمحادثة، وزر حتى 30 حرفاً. mode: draft للتجربة أو published.
      */
     public static function flow(string $body, string $flowId, string $flowToken, string $cta, string $mode = 'published', string $screen = 'QUOTE'): ?OutboundMessage

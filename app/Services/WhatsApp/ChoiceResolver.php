@@ -99,6 +99,18 @@ final class ChoiceResolver
         return self::REASONS[$reason] ?? 'خيار غير صالح';
     }
 
+    /** بين الوارد المنتظر نقرة على خيار أرسله البوت (صالحة أو قديمة) */
+    public static function hasChoice(iterable $messages): bool
+    {
+        foreach ($messages as $m) {
+            if (is_array(data_get($m->payload, '_choice'))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** نقرة «كلّم موظفاً» من أزرارنا: تحويل بالكود بلا نموذج، صالحة أم قديمة */
     public static function wantsHuman(iterable $messages): bool
     {

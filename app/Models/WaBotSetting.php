@@ -33,6 +33,8 @@ class WaBotSetting extends Model
         // E22: صحة القناة كآلة حالات (يكتبها ChannelHealth وحده عبر SettingsWriter)
         'wa_health', 'wa_health_reason', 'wa_health_source', 'wa_health_until', 'wa_health_checked_at', 'wa_health_changed_at',
         'wa_health_unblock_suggested', 'wa_health_meta',
+        // E36: نموذج طلب التسعير (معرّف الـ Flow المنشور ووضعه draft | published)
+        'wa_quote_flow_id', 'wa_quote_flow_mode',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */

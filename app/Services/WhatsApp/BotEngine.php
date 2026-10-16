@@ -217,7 +217,8 @@ TXT;
 
         // ③ القواعد الحتمية (E37): بعد كل البوابات ومنها حد المعدّل، وقبل قاطع المزوّد والنموذج، فتجيب الأسئلة الثابتة
         //    حتى أثناء عطل المزوّد. null = لا قاعدة (أو وضع الظل)، فيكمل المسار كما هو
-        if (!$limited && ($ruled = AutoRuleEngine::tryReply($conv, $s, $run, $pending, $pendingMsgs)) !== null) {
+        //    نقرة على خيار أرسله البوت (E36) تذهب للنموذج بوصفها المؤكد، لا لقاعدة نصية تطابق عنوان الزر
+        if (!$limited && !ChoiceResolver::hasChoice($pendingMsgs) && ($ruled = AutoRuleEngine::tryReply($conv, $s, $run, $pending, $pendingMsgs)) !== null) {
             return $ruled;
         }
 
