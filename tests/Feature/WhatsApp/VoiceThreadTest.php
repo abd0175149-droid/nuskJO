@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
@@ -87,6 +88,23 @@ class VoiceThreadTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'wa.media_view', 'entity_id' => $row->id]);
     }
 
+    public function test_audio_is_served_with_ranges_so_the_player_knows_its_length_and_keeps_the_inert_headers(): void
+    {
+        $row = $this->voiceRow();
+        $bytes = Storage::disk('wa_media')->get($row->media_path);
+
+        $full = $this->actingAs($this->staff)->get("/api/whatsapp/messages/{$row->id}/media")->assertOk();
+        $full->assertHeader('Accept-Ranges', 'bytes')->assertHeader('Content-Type', 'audio/ogg')->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertStringStartsWith('attachment;', (string) $full->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('no-store', (string) $full->headers->get('Cache-Control'));
+        $this->assertStringContainsString('sandbox', (string) $full->headers->get('Content-Security-Policy'));
+
+        $part = $this->actingAs($this->staff)->get("/api/whatsapp/messages/{$row->id}/media", ['Range' => 'bytes=0-9']);
+        $part->assertStatus(206)->assertHeader('Content-Range', 'bytes 0-9/'.strlen($bytes));
+        // صف تدقيق واحد للاطلاع رغم طلبات Range المتتالية
+        $this->assertSame(1, AuditLog::where('action', 'wa.media_view')->where('entity_id', $row->id)->count());
+    }
+
     public function test_without_the_flag_the_row_stays_a_plain_audio_attachment(): void
     {
         config(['features.env.staff_voice_notes' => false]);
@@ -129,7 +147,6 @@ class VoiceThreadTest extends TestCase
         $page = fn (User $u) => $this->actingAs($u)->get('/whatsapp/inbox')->assertOk()->viewData('page')['props'];
 
         $this->assertSame(['enabled' => true, 'max_seconds' => 120, 'max_bytes' => 3000000], $page($this->staff)['voicePolicy']);
-        $this->assertTrue($page($this->staff)['flags']['staff_voice_notes']);
         $this->assertNull($page($this->staffWith('viewer', ['whatsapp.view'], ['visa']))['voicePolicy']);
 
         MediaConverter::fake(null);

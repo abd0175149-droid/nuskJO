@@ -37,8 +37,8 @@
           <p v-if="jumpMiss" class="text-center text-[11px] text-amber-700 dark:text-amber-400" role="status">الرسالة المثبتة أقدم من المعروض — حمّل الرسائل الأقدم ثم أعد المحاولة.</p>
           <MessageBubble v-for="m in messages" :key="m.id" :m="m" :data-msg-id="m.id" :flash="flashId === m.id" :read-upto="thread.read_receipt_upto_id || null" @resend="(msg) => $emit('resend', msg)">
             <template v-if="m.media || m.voice" #media>
-              <!-- الرسالة الصوتية (E34): مشغّل ومدة وتفريغ بدل بطاقة المرفق -->
-              <VoiceNote v-if="flags.staff_voice_notes && m.type === 'audio'" :message-id="m.id" :media="m.media || null" :voice="m.voice || null"/>
+              <!-- رسالة الموظف الصوتية (E34، حقل voice مع العلم وحده): مشغّل ومدة وتفريغ بدل بطاقة المرفق -->
+              <VoiceNote v-if="m.voice" :message-id="m.id" :media="m.media || null" :voice="m.voice"/>
               <MediaChip v-else-if="m.media" :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
             </template>
             <template v-if="flags.staff_translation || flags.thread_pins" #extras>

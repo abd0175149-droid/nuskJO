@@ -6,14 +6,16 @@
     <div v-if="r.status === 'starting' || r.status === 'recording'" class="flex flex-wrap items-center gap-2">
       <span class="inline-flex items-center gap-1.5 text-sm font-bold text-red-600 dark:text-red-400">
         <span class="w-2.5 h-2.5 rounded-full bg-red-600 dark:bg-red-400" :class="r.status === 'recording' ? 'animate-pulse' : 'opacity-50'" aria-hidden="true"></span>
-        {{ r.status === 'starting' ? 'اسمح باستعمال الميكروفون…' : 'جارٍ التسجيل' }}
+        <template v-if="r.status === 'starting'">اسمح باستعمال الميكروفون…</template>
+        <template v-else><span class="hidden sm:inline">جارٍ </span>التسجيل</template>
       </span>
-      <span role="timer" aria-live="polite" aria-label="مدة التسجيل" dir="ltr" class="font-mono text-sm tabular-nums" data-test="voice-timer">{{ clock(r.elapsed) }} / {{ clock(maxSeconds) }}</span>
-      <span class="flex-1"></span>
-      <button type="button" data-test="voice-stop" :disabled="r.status !== 'recording'" @click="recorder.stop()"
-              class="min-h-11 px-3 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">⏹ إيقاف</button>
-      <button type="button" data-test="voice-cancel" @click="cancel"
-              class="min-h-11 px-3 rounded-xl text-sm border border-gray-200 dark:border-gray-700 hover:border-gold-400">✖ إلغاء</button>
+      <span role="timer" aria-live="polite" aria-label="مدة التسجيل" dir="ltr" class="font-mono text-xs sm:text-sm tabular-nums" data-test="voice-timer">{{ clock(r.elapsed) }} / {{ clock(maxSeconds) }}</span>
+      <span class="ms-auto flex items-center gap-2">
+        <button type="button" data-test="voice-stop" :disabled="r.status !== 'recording'" @click="recorder.stop()"
+                class="min-h-11 px-2.5 sm:px-3 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">⏹ إيقاف</button>
+        <button type="button" data-test="voice-cancel" @click="cancel"
+                class="min-h-11 px-2.5 sm:px-3 rounded-xl text-sm border border-gray-200 dark:border-gray-700 hover:border-gold-400">✖ إلغاء</button>
+      </span>
     </div>
     <div v-else-if="r.status === 'preview' || r.status === 'sending'" class="flex flex-wrap items-center gap-2">
       <audio :src="r.url || undefined" controls preload="metadata" aria-label="معاينة الرسالة الصوتية" data-test="voice-preview"

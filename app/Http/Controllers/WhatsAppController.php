@@ -78,7 +78,6 @@ class WhatsAppController extends Controller
                 'wa_labels' => \App\Services\WhatsApp\LabelService::enabled(),
                 'thread_pins' => \App\Services\WhatsApp\ThreadPins::enabled(),
                 'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
-                'staff_voice_notes' => \App\Support\FeatureFlags::on('staff_voice_notes'),
             ],
             'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
             // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص

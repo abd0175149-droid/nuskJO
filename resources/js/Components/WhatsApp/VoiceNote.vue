@@ -8,7 +8,7 @@
       <span v-if="seconds" dir="ltr" class="opacity-70 tabular-nums">{{ clock(seconds) }}</span>
     </div>
     <audio v-if="media?.viewable" controls preload="none" :src="mediaUrl(messageId)" aria-label="تشغيل الرسالة الصوتية" data-test="voice-player"
-           class="block w-full max-w-72 h-9"></audio>
+           class="block w-64 max-w-full h-9"></audio>
     <p v-else-if="media" class="opacity-80" data-test="voice-locked">{{ statusLabel(media) || 'الاستماع لمن يملك صلاحية عرض المرفقات' }}</p>
     <details v-if="voice?.transcript" data-test="voice-transcript">
       <summary class="cursor-pointer font-bold select-none">📝 النص (تفريغ آلي للزملاء)</summary>
