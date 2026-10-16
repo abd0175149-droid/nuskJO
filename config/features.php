@@ -26,5 +26,6 @@ return [
         'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
+        'read_receipts' => env('WA_FEATURE_READ_RECEIPTS'),
     ],
 ];

@@ -26,6 +26,8 @@ class WaBotSetting extends Model
         // E12: قاطع المزوّد والمزوّد الاحتياطي
         'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes',
         'fallback_provider', 'fallback_model', 'fallback_api_key', 'fallback_api_key_rotated_at',
+        // E35: إشعار القراءة ومؤشر الكتابة (off | on_reply | on_open)
+        'send_read_receipts',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */

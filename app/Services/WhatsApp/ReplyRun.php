@@ -49,6 +49,9 @@ final class ReplyRun
     /** سبب قطع الحلقة (budget أو stale_*) */
     public ?string $abort = null;
 
+    /** آخر مؤشر «يكتب…» أُرسل في هذا التشغيل (microtime)؛ null = لا مؤشر ظاهر يُجدَّد (E35) */
+    public ?float $lastTypingAt = null;
+
     private static ?self $current = null;
 
     public function __construct(public string $token, public int $startMaxMsgId, ?float $startedAt = null)

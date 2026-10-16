@@ -116,7 +116,7 @@ return [
     'WhatsAppErasureController@reject' => 'wa.erasure_reject',
     'WhatsAppController@unlinkClient' => 'wa.unlink_client',
     'WhatsAppController@resolve' => 'none: حالة محادثة (شارة التدخّل) بلا أثر خارجي',
-    'WhatsAppController@markRead' => 'none: عدّاد غير مقروء',
+    'WhatsAppController@markRead' => 'none: عدّاد غير مقروء، وإيصال قراءة لميتا في الوضع on_open (ليس رسالة)',
     'WhatsAppConversationStateController@close' => 'wa.conv_close',
     'WhatsAppConversationStateController@reopen' => 'wa.conv_reopen',
     'WhatsAppConversationStateController@snooze' => 'wa.conv_snooze',

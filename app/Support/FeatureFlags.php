@@ -31,6 +31,8 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E35: الوضع من الإعداد send_read_receipts؛ مطفأ = لا إشعار قراءة ولا «يكتب…» مهما كان الوضع
+        'read_receipts' => ['label' => 'إشعار القراءة ومؤشر «يكتب…» (الوضع من «ربط قناة ميتا»؛ مطفأ = لا شيء يصل ميتا)', 'capability' => 'C049', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

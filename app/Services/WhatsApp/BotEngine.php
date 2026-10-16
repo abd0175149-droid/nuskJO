@@ -104,6 +104,31 @@ TXT;
         }
     }
 
+    /**
+     * سيرد البوت فعلاً على هذه المحادثة الآن؟ البوابات الرخيصة نفسها التي تسبق أي إرسال في reply، بلا أثر جانبي
+     * (لا «تدخّل» ولا كتابة). منها يُقرَّر مؤشر «يكتب…» (E35): كل مسار بعدها يرسل رسالة (رد، أو تأكيد تحويل، أو failSafe).
+     *   العملاء: الإيقاف الطارئ، والدمج، ووارد معلّق، وbotReady، والرقم في غير الوضع full، وbotActive، والنافذة، والحداثة.
+     *   أرقام الإدارة: القناة ومفتاح النموذج والنافذة ووارد معلّق، وحد ردود المساعد في الساعة.
+     */
+    public static function willReply(WaConversation $conv): bool
+    {
+        $s = WaBotSetting::current();
+        if ($s->sendingSuspended() || $conv->status === 'merged') {
+            return false;
+        }
+        if (WaAdminNumber::forPhone($conv->phone)) {
+            return $s->channelReady() && !empty($s->llmKey()) && $conv->isWindowOpen() && self::hasPendingInbound($conv, $s)
+                && (int) Cache::get(self::adminRateKey($conv), 0) < self::ADMIN_RATE_PER_HOUR;
+        }
+
+        return self::hasPendingInbound($conv, $s)
+            && $s->botReady()
+            && ($conv->hasPhone() || IdentityMode::botServesWithoutPhone())
+            && $conv->botActive()
+            && $conv->isWindowOpen()
+            && !(self::watermarkOn($s) && $s->flag('stale_gate') && ReplyState::isStale($conv, $s));
+    }
+
     private static function replyWith(WaConversation $conv, ReplyRun $run): array
     {
         $s = WaBotSetting::current();
@@ -333,7 +358,7 @@ TXT;
                 break;
             }
 
-            $r = self::generate($provider, $apiKey, $model, $system, $history, $tools, $conv, $run);
+            $r = self::generate($provider, $apiKey, $model, $system, $history, $tools, $conv, $run, $admin === null);
 
             $usage['calls']++;
             foreach (['in', 'out', 'cache_read', 'cache_write'] as $k) {
@@ -379,9 +404,11 @@ TXT;
      * نداء واحد بمهلة من الميزانية. خلل عابر (غير متاح، أو خنق قصير ≤ 5 ثوانٍ) يُعاد مرة واحدة بعد 1.5 ثانية
      * إن بقي وقت يكفي، وإلا يصعد الاستثناء. القاطع يعدّ الإخفاق النهائي وحده (E12).
      */
-    private static function generate(LlmProvider $provider, #[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, WaConversation $conv, ?ReplyRun $run): array
+    private static function generate(LlmProvider $provider, #[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, WaConversation $conv, ?ReplyRun $run, bool $customer = true): array
     {
         try {
+            // «يكتب…» ينطفئ عند ميتا بعد 25 ثانية: يُجدَّد قبل النداء إن مرت 20 (E35)، بلا أي تأخير مصطنع
+            ReadReceipts::renewTyping($conv, $run, $customer);
             $out = $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
             LlmCircuitBreaker::recordSuccess($provider->key());
 
@@ -393,6 +420,7 @@ TXT;
             WaLog::warning('bot.llm.retry', ['conv_id' => $conv->id, 'exception' => $e]);
             Sleep::for(ReplyRun::RETRY_DELAY_MS)->milliseconds();
 
+            ReadReceipts::renewTyping($conv, $run, $customer);
             $out = $provider->generate($apiKey, $model, $system, $history, $tools, $run?->callTimeout());
             LlmCircuitBreaker::recordSuccess($provider->key());
 
@@ -584,9 +612,9 @@ TXT;
             return self::adminOutage($conv, (string) $s->provider);
         }
 
-        $key = 'wa:rate:admin:' . $conv->id . ':' . now()->format('YmdH');
+        $key = self::adminRateKey($conv);
         $count = (int) Cache::get($key, 0);
-        if ($count >= 60) {
+        if ($count >= self::ADMIN_RATE_PER_HOUR) {
             return self::skip('تجاوز حدّ ردود المساعد الإداري');
         }
         Cache::put($key, $count + 1, now()->addHour());
@@ -689,6 +717,14 @@ TXT;
         $last = $conv->messages()->where('source', '!=', 'system')->where('msg_type', '!=', 'reaction')->orderByDesc('id')->first();
 
         return $last && $last->direction === 'in';
+    }
+
+    /** حد ردود المساعد الإداري لكل محادثة في الساعة */
+    private const ADMIN_RATE_PER_HOUR = 60;
+
+    private static function adminRateKey(WaConversation $conv): string
+    {
+        return 'wa:rate:admin:' . $conv->id . ':' . now()->format('YmdH');
     }
 
     private static function rateKey(WaConversation $conv): string

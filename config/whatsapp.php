@@ -38,6 +38,12 @@ return [
         'reap_minutes' => 15,
     ],
 
+    // إشعار القراءة ومؤشر الكتابة (E35): مفتاح طوارئ داخلي للمؤشر وحده. إن رفض إصدار Graph المضبوط typing_indicator
+    // يُطفأ (WA_TYPING_INDICATOR=false) فيبقى إشعار القراءة عند رد الموظف وحده حتى يُرقّى الإصدار
+    'read_receipts' => [
+        'typing' => (bool) env('WA_TYPING_INDICATOR', true),
+    ],
+
     // بوابة المحتوى الصادر (E15.9): حسابات الشركة المسموح ظهورها في الرسائل الآلية (IBAN بلا مسافات، مفصولة بفواصل)
     'outbound_policy' => [
         'allow_ibans' => array_values(array_filter(array_map(fn ($i) => strtoupper(str_replace(' ', '', trim($i))), explode(',', (string) env('WA_POLICY_ALLOW_IBANS', ''))))),

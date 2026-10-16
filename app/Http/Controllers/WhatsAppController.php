@@ -394,7 +394,12 @@ class WhatsAppController extends Controller
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
-            ] + (\App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::state(
+            ] + (\App\Services\WhatsApp\ReadReceipts::available() ? [
+                // الشفافية (E35): ما أُبلغ العميل بقراءته (👁 على الوارد حتى هذا المعرّف)، والوضع، وتنبيه الموكَّل في on_open
+                'read_receipt_upto_id' => (int) $conversation->read_receipt_upto_id ?: null,
+                'receipts_mode' => \App\Services\WhatsApp\ReadReceipts::mode(),
+                'receipts_open_notice' => \App\Services\WhatsApp\ReadReceipts::openNotice($conversation, $user),
+            ] : []) + (\App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::state(
                 $conversation,
                 \App\Models\WaConversationPin::where('user_id', auth()->id())->where('conversation_id', $conversation->id)->exists(),
             ) : [])
@@ -537,6 +542,9 @@ class WhatsAppController extends Controller
 
         // الفتح الصريح يمحو «غير مقروء» الداخلي (E17) أيضاً
         $conversation->forceFill(['unread_count' => 0] + (\App\Services\WhatsApp\InboxFollowup::available() ? ['marked_unread_at' => null, 'marked_unread_by' => null] : []))->save();
+
+        // الوضع on_open (E35): إيصال قراءة لميتا بعد الاستجابة، للموكَّل أو لغير الموكلة، ومرة في الدقيقة. الاستطلاع لا يمر من هنا
+        \App\Services\WhatsApp\ReadReceipts::afterOpen($conversation, auth()->user());
 
         return response()->json(['ok' => true]);
     }

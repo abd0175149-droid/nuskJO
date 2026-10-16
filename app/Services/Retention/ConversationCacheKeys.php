@@ -14,6 +14,8 @@ final class ConversationCacheKeys
     public const EXACT = [
         'wa:debounce:{id}', 'wa:running:{id}', 'wa:rerun:{id}', 'wa:admin:pending:{id}', 'wa:unserved:{id}',
         'wa:llm:isolated:{id}', 'wa:outage-notice:notify:{id}', 'wa:media:notice:{id}', 'wa:reprocess:{id}',
+        // E35: تهدئة إيصال الفتح
+        'wa:rr:open:{id}',
     ];
 
     public const PATTERNS = [

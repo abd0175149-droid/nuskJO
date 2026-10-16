@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\WaConversation;
 use App\Services\WhatsApp\BotEngine;
+use App\Services\WhatsApp\ReadReceipts;
 use App\Services\WhatsApp\ReplyRun;
 use App\Services\WhatsApp\VoiceTranscriber;
 use App\Support\AuditActor;
@@ -146,6 +147,8 @@ class ProcessWhatsAppReply implements ShouldQueue
                 $run = ReplyRun::start($conv, $this->token);
                 // ما يكتبه البوت في سجل التدقيق (طلب تسعير، تحويل) يُنسب إليه وإلى المحادثة
                 AuditActor::as('bot', 'conv:' . $conv->id, function () use ($conv, $run) {
+                    // «يكتب…» (E35) إن كان البوت سيرد فعلاً، وقبل التفريغ كي يغطيه. فشله لا يوقف شيئاً، ولا تأخير مصطنع
+                    ReadReceipts::startTyping($conv, $run);
                     // الصوتيات تُفرَّغ أولاً، فيقرؤها البوت نصّاً ضمن السياق؛ ومن ميزانية الرد نفسها
                     VoiceTranscriber::run($conv, $run);
                     $result = BotEngine::reply($conv, $run);

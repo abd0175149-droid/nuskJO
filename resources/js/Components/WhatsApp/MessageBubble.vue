@@ -15,6 +15,8 @@
       <slot name="media"/>
       <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70 flex-wrap">
         <span dir="ltr">{{ m.at }}</span>
+        <!-- إشعار القراءة (E35): ما يراه العميل، العلامتان الزرقاوان على هذه الرسالة -->
+        <span v-if="seen" data-test="read-receipt" title="أُبلغ العميل بالقراءة" aria-label="أُبلغ العميل بالقراءة">· 👁</span>
         <span v-if="m.source !== 'customer' && !m.sender">· {{ SOURCES[m.source] || m.source }}</span>
         <!-- حالة التسليم (يكملها E21) -->
         <slot name="status">
@@ -50,7 +52,8 @@
 import { computed } from 'vue';
 import WaText from './WaText.vue';
 
-const props = defineProps({ m: { type: Object, required: true } });
+// readUpto (E35): أعلى وارد أُبلغت ميتا بقراءته في هذه المحادثة
+const props = defineProps({ m: { type: Object, required: true }, readUpto: { type: Number, default: null } });
 defineEmits(['resend']);
 
 const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' };
@@ -60,6 +63,8 @@ const CATEGORY_LABELS = {
   auth: 'اعتماد', integrity: 'تقييد', window: 'النافذة', throttle: 'خنق', transient: 'مؤقت',
   quality: 'جودة', caller: 'الطلب', unknown: 'غير معروف',
 };
+
+const seen = computed(() => props.m.direction === 'in' && !props.m.is_system && !!props.readUpto && props.m.id <= props.readUpto);
 
 const hasReason = computed(() => ['failed', 'blocked', 'unknown'].includes(props.m.status) && !!props.m.error);
 

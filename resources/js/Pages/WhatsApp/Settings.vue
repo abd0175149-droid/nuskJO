@@ -261,6 +261,10 @@
                         <p v-else-if="graphAlert === 'amber'" class="text-xs font-bold text-amber-700 dark:text-amber-400 mt-2">⚠️ إصدار يقترب من نهاية دعمه — رقِّه قبل التاريخ.</p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">يُغيَّر من بيئة الخادم (WA_GRAPH_VERSION وWA_WEBHOOK_VERSION)، لا من هنا.</p>
                     </div>
+
+                    <!-- إشعار القراءة ومؤشر الكتابة (E35) -->
+                    <ReadReceiptsField class="mt-4" v-model="form.send_read_receipts" :flag-on="readReceiptsFlagOn"
+                                       :dirty="isDirty('send_read_receipts')" :error="errors.send_read_receipts"/>
                 </div>
 
                 <!-- ================= 3. الذكاء ================= -->
@@ -479,6 +483,7 @@ import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
+import ReadReceiptsField from '@/Components/WhatsApp/ReadReceiptsField.vue';
 import SecretCard from '@/Components/WhatsApp/SecretCard.vue';
 import SettingField from '@/Components/WhatsApp/SettingField.vue';
 import SourceBadge from '@/Components/WhatsApp/SourceBadge.vue';
@@ -533,11 +538,12 @@ const LABELS = {
     system_prompt: 'نص الشخصية', fail_message: 'رسالة الاعتذار', fail_handoff: 'التحويل عند الفشل',
     breaker_mode: 'وضع القاطع', breaker_threshold: 'إخفاقات متتالية تفتحه', breaker_window_minutes: 'نافذة العدّ (دقائق)',
     breaker_open_minutes: 'مدة وضع التحويل (دقائق)', fallback_provider: 'المزوّد الاحتياطي', fallback_model: 'نموذج الاحتياطي',
+    send_read_receipts: 'إشعار القراءة ومؤشر الكتابة',
 };
 props.fields.forEach((f) => { LABELS[f.key] = f.label; });
 const SCALARS = ['enabled', 'wa_phone_number_id', 'wa_waba_id', 'wa_app_id', 'provider', 'model', 'system_prompt', ...props.fields.map((f) => f.key), 'fail_message', 'fail_handoff',
-    'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes', 'fallback_provider', 'fallback_model'];
-const SENSITIVE = ['wa_phone_number_id', 'wa_waba_id', 'provider', 'fallback_provider'];
+    'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes', 'fallback_provider', 'fallback_model', 'send_read_receipts'];
+const SENSITIVE = ['wa_phone_number_id', 'wa_waba_id', 'provider', 'fallback_provider', 'send_read_receipts'];
 // من سجل الأدوات في الخادم (E15): ما يحوّل لموظف، وما لا يُطفأ
 const handoffTools = (props.toolMeta || []).filter((t) => t.escalates).map((t) => t.key);
 const lockedTools = (props.toolMeta || []).filter((t) => !t.disableable).map((t) => t.key);
@@ -567,6 +573,8 @@ const wabaMismatch = computed(() => {
     return !!set && !!settings.value.wa_waba_detected && String(set) !== String(settings.value.wa_waba_detected);
 });
 const toolDirty = (k) => form.tools[k] !== baseline.value.tools[k];
+// E35: العلم فوق الإعداد؛ مطفأ = لا يصل ميتا شيء مهما كان الوضع
+const readReceiptsFlagOn = computed(() => !!flags.value.find((f) => f.key === 'read_receipts')?.on);
 const changes = computed(() => {
     const c = {};
     SCALARS.forEach((k) => { if (isDirty(k)) c[k] = norm(form[k]); });

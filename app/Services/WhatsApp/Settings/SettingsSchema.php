@@ -29,6 +29,11 @@ final class SettingsSchema
             'env' => 'services.whatsapp.waba_id', 'env_var' => 'WA_WABA_ID', 'group' => 'meta', 'ui' => 'custom', 'label' => 'معرّف حساب الأعمال (WABA)'],
         'wa_app_id' => ['type' => 'string', 'regex' => '/^\d{5,20}$/', 'nullable' => true, 'default' => null, 'patchable' => true,
             'env' => 'services.whatsapp.app_id', 'env_var' => 'WA_APP_ID', 'group' => 'meta', 'ui' => 'custom', 'label' => 'App ID'],
+        // إشعار القراءة ومؤشر الكتابة (E35): طلب واحد عند ميتا، فـ«يكتب…» يُظهر العلامتين الزرقاوين حتماً. يغيّر ما يراه
+        // كل العملاء، فهو حساس. وفوقه العلم read_receipts (مطفأ = لا شيء يُرسل مهما كان الوضع)
+        'send_read_receipts' => ['type' => 'enum', 'values' => 'read_receipt_modes', 'default' => 'off', 'patchable' => true, 'sensitive' => true,
+            'group' => 'channel', 'ui' => 'custom', 'label' => 'إشعار القراءة ومؤشر الكتابة',
+            'help' => 'off: لا علامة زرقاء ولا «يكتب…» · on_reply: «يكتب…» حين يبدأ البوت، والعلامتان عند رد الموظف · on_open: كالسابق، ويُضاف فتح الموكَّل للمحادثة'],
         'provider' => ['type' => 'enum', 'values' => 'providers', 'default' => 'google', 'patchable' => true, 'sensitive' => true, 'group' => 'ai', 'ui' => 'custom', 'label' => 'مزوّد الذكاء'],
         // مقطع مسار عند المزوّد: حروف وأرقام و . _ - فقط (E05)
         'model' => ['type' => 'string', 'regex' => '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', 'default' => 'gemini-2.5-flash', 'patchable' => true, 'group' => 'ai', 'ui' => 'custom', 'label' => 'النموذج'],
@@ -168,6 +173,7 @@ final class SettingsSchema
         return match (self::FIELDS[$key]['values'] ?? null) {
             'providers' => array_keys(LlmFactory::PROVIDERS),
             'breaker_modes' => ['off', 'shadow', 'on'],
+            'read_receipt_modes' => \App\Services\WhatsApp\ReadReceipts::MODES,
             default => [],
         };
     }

@@ -23,6 +23,8 @@ use Illuminate\Support\Facades\Cache;
  *   2) قفل الإرسال الطارئ (wa_suspended)
  *   3) نافذة 24 ساعة من آخر رسالة واردة — لا استثناء لأحد
  *
+ * إشعار القراءة ومؤشر الكتابة (E35) ليسا رسالة: markRead خارج dispatch، بالقفلين 1 و2 وحدهما.
+ *
  * كل نداء Graph عبر Graph\GraphClient (الإصدار من الإعداد، ومقاطع مرمَّزة، ولا تحويلات، وappsecret_proof خلف
  * WA_APPSECRET_PROOF)، وكل خطأ ميتا يصير MetaError من الجدول الوحيد MetaErrorCatalog (E18).
  */
@@ -566,6 +568,71 @@ class WhatsAppChannel
         ], self::CONTACT_REQUEST_LABEL, 'interactive', $source, $staffId, sendKey: $sendKey);
     }
 
+    // ==================== إشعار القراءة ومؤشر الكتابة (E35) ====================
+
+    /**
+     * إشعار قراءة (العلامتان الزرقاوان) على أحدث وارد، ومعه «يكتب…» إن طُلب: طلب واحد عند ميتا
+     * POST /{pnid}/messages {status: read, message_id, typing_indicator?}، يعلّم معه كل ما قبله.
+     *
+     * ليس رسالة، فلا يمر بـ dispatch: لا صف في wa_messages، ولا send_key ولا دفتر، ولا OutboundPolicy، ولا قفل النافذة
+     * (حدّه 30 يوماً من الاستلام). يحترم القفلين الأولين وحدهما: القناة مهيّأة، والإيقاف الطارئ (يوقف كل ما يخرج).
+     * كل رفض قبل أي HTTP: الوضع off أو العلم مطفأ (DISABLED)، والقناة، والإيقاف، والمحادثة المدموجة (MERGED)، ولا هدف
+     * (NO_TARGET)، وإشعار بلا مؤشر لما أُبلغ سابقاً (ALREADY). المهلة 5 ثوانٍ والاتصال ثانيتان، ولا إعادة، ولا يرمي.
+     * الفشل سطر info وعدّاد يومي (ReadReceipts::failed): لا wa_last_error ولا تنبيه ولا إيقاف.
+     *
+     * @return array{ok: bool, code: ?string}
+     */
+    public static function markRead(WaConversation $conv, bool $typing = false, ?int $uptoMessageId = null): array
+    {
+        try {
+            if (ReadReceipts::mode() === 'off') {
+                return ['ok' => false, 'code' => 'DISABLED'];
+            }
+            $s = WaBotSetting::current();
+            if (!$s->channelReady()) {
+                return ['ok' => false, 'code' => self::ERR_NOT_CONFIGURED];
+            }
+            if ($s->sendingSuspended()) {
+                return ['ok' => false, 'code' => self::ERR_SUSPENDED];
+            }
+            if ($conv->status === 'merged') {
+                return ['ok' => false, 'code' => 'MERGED'];
+            }
+            $target = ReadReceipts::target($conv, $uptoMessageId);
+            if (!$target) {
+                return ['ok' => false, 'code' => 'NO_TARGET'];
+            }
+            if (!$typing && $target->id <= ReadReceipts::upto($conv)) {
+                return ['ok' => false, 'code' => 'ALREADY'];
+            }
+
+            $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], [
+                'messaging_product' => 'whatsapp',
+                'status' => 'read',
+                'message_id' => (string) $target->wamid,
+            ] + ($typing ? ['typing_indicator' => ['type' => 'text']] : []), (string) $s->token(), ReadReceipts::TIMEOUT, ReadReceipts::CONNECT_TIMEOUT);
+        } catch (\InvalidArgumentException) {
+            ReadReceipts::failed($conv, self::ERR_CONFIG);
+
+            return ['ok' => false, 'code' => self::ERR_CONFIG];
+        } catch (\Throwable $e) {
+            $code = $e instanceof \Illuminate\Http\Client\ConnectionException ? MetaError::networkKind($e) : 'ERROR';
+            ReadReceipts::failed($conv, $code);
+
+            return ['ok' => false, 'code' => $code];
+        }
+
+        if (!$res->successful()) {
+            $err = MetaError::fromGraphResponse($res);
+            ReadReceipts::failed($conv, $err->code, $err->metaCode, $err->fbtraceId, $res->status());
+
+            return ['ok' => false, 'code' => $err->code];
+        }
+        ReadReceipts::advance($conv, (int) $target->id);
+
+        return ['ok' => true, 'code' => null];
+    }
+
     // ==================== المحرّك ====================
 
     /** @return array{to: string}|array{recipient: string}|null */
@@ -617,6 +684,8 @@ class WhatsAppChannel
             return self::ledger($conv, $s, $payload, $stored, $displayBody, $msgType, $source, $staffId, $sendKey);
         }
 
+        // إشعار القراءة عند رد الموظف (E35): أعلى وارد لحظة الإرسال، فلا يُعلَّم مقروءاً ما يصل أثناء النداء
+        $receiptUpto = ReadReceipts::replyUpto($conv, $source, $msgType);
         try {
             $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25);
         } catch (\InvalidArgumentException $e) {
@@ -656,6 +725,9 @@ class WhatsAppChannel
         }
 
         self::afterSent($conv, $s, $source, $displayBody);
+        if ($status === 'sent') {
+            ReadReceipts::queueAfterReply($conv, $receiptUpto);
+        }
 
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $status === 'sent' ? $wamid : null] + ($status === WaMessage::STATUS_UNKNOWN ? ['unconfirmed' => true, 'unknown' => true] : []);
     }
@@ -862,6 +934,8 @@ class WhatsAppChannel
         }
         WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'message_id' => $row->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType, 'attempt' => $attempt]);
         self::afterSent($conv, $s, $source, $displayBody);
+        // إشعار القراءة عند رد الموظف (E35): ما وصل قبل صف الرد وحده (الصف كُتب قبل النداء)
+        ReadReceipts::queueAfterReply($conv, ReadReceipts::replyUpto($conv, $source, $msgType, $row->id));
 
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $wamid, 'meta_code' => null,
             'status' => 'sent', 'row_id' => $row->id, 'replayed' => false];
