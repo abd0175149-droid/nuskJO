@@ -59,6 +59,7 @@ class AppServiceProvider extends ServiceProvider
         $this->defineCspReportRateLimit();
         $this->defineFileSendRateLimit();
         $this->defineMfaRateLimit();
+        $this->defineMcpRateLimit();
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
@@ -211,6 +212,16 @@ class AppServiceProvider extends ServiceProvider
                 \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('security.mfa.per_ip_per_minute', 20))->by('mfa:ip:'.$request->ip())->response($limited),
             ];
         });
+    }
+
+    /**
+     * خادم MCP للقراءة (E40.9، throttle:mcp): 30 طلباً في الدقيقة لكل مستخدم بعد المصادقة، على مخزن الحدود (لا SQLite).
+     */
+    private function defineMcpRateLimit(): void
+    {
+        \Illuminate\Support\Facades\RateLimiter::for('mcp', fn (\Illuminate\Http\Request $request) => \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('integrations.mcp.per_minute', 30))
+            ->by('mcp:'.($request->user()?->id ?? $request->ip()))
+            ->response(fn () => response()->json(['jsonrpc' => '2.0', 'id' => null, 'error' => ['code' => -32000, 'message' => 'Too many requests']], 429)));
     }
 
     /**

@@ -12,6 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             // ويبهوك ميتا بلا وسيط مجموعة: لا جلسة ولا CSRF ولا Inertia (routes/webhooks.php)
             \Illuminate\Support\Facades\Route::group([], base_path('routes/webhooks.php'));
+            // خادم MCP للقراءة (E40): خارج مجموعة web كذلك، وخلف علمه وCloudflare Access ورمز الوصول (routes/ai.php)
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/ai.php'));
         },
     )
     // broadcasting/auth (E27): لا حدث لحظي لجلسة لم تجتز العامل الثاني. الدخول والتعطيل يُفحصان في routes/channels.php

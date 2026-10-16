@@ -175,6 +175,10 @@ return [
     // E32: يكتبه SendWhatsAppMediaJob بعد قبول ميتا (والتحذير المؤكَّد wa.policy_override)
     'WhatsAppFileController@store' => 'wa.file_sent',
 
+    // ===== التكاملات الصادرة وخادم MCP (E40) =====
+    'McpController@handle' => 'mcp.tool_call',
+    'McpController@unsupported' => 'none: 405 بلا أثر (لا جلسات ولا قناة SSE)',
+
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',
     'AgentController@update' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

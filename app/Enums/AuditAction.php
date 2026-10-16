@@ -185,7 +185,7 @@ enum AuditAction: string
     public const INTENTIONALLY_UNEMITTED = [
         'IntegrationEndpointCreate' => 'E40 قيد البناء', 'IntegrationEndpointUpdate' => 'E40 قيد البناء', 'IntegrationEndpointDelete' => 'E40 قيد البناء',
         'IntegrationEndpointRotate' => 'E40 قيد البناء', 'IntegrationEndpointToggle' => 'E40 قيد البناء', 'IntegrationDeliveryRedrive' => 'E40 قيد البناء',
-        'McpTokenCreate' => 'E40 قيد البناء', 'McpTokenRevoke' => 'E40 قيد البناء', 'McpToolCall' => 'E40 قيد البناء', 'McpAuthFailed' => 'E40 قيد البناء',
+        'McpTokenCreate' => 'E40 قيد البناء', 'McpTokenRevoke' => 'E40 قيد البناء',
     ];
 
     public function severity(): AuditSeverity
