@@ -45,6 +45,8 @@ final class ConversationEraser
             // E29: التصنيفات على المحادثة والتثبيت داخل الخيط (قائمة wa_labels نفسها عامة بلا بيانات شخصية فلا تُمس)
             'labels' => Schema::hasTable('wa_conversation_labels') ? DB::table('wa_conversation_labels')->whereIn('conversation_id', $ids)->count() : 0,
             'thread_pins' => Schema::hasTable('wa_thread_pins') ? DB::table('wa_thread_pins')->whereIn('conversation_id', $ids)->count() : 0,
+            // E39: سجل المكالمات (أوقات ومدد بلا صوت ولا رقم)
+            'calls' => Schema::hasTable('wa_calls') ? DB::table('wa_calls')->whereIn('conversation_id', $ids)->count() : 0,
         ];
         $media = $mode === 'forget' ? $this->recentMediaIds($ids) : [];
         $counts['media_meta'] = count($media);
@@ -85,6 +87,7 @@ final class ConversationEraser
         // E29: الترجمات داخل payload ذهبت مع الرسائل
         $done['labels'] = $this->deleteInBatches('wa_conversation_labels', fn ($q) => $q->whereIn('conversation_id', $ids));
         $done['thread_pins'] = $this->deleteInBatches('wa_thread_pins', fn ($q) => $q->whereIn('conversation_id', $ids));
+        $done['calls'] = Schema::hasTable('wa_calls') ? $this->deleteInBatches('wa_calls', fn ($q) => $q->whereIn('conversation_id', $ids)) : 0;
         $quoteNumbers = DB::table('quote_requests')->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote())->pluck('request_number')->filter()->all();
         $done['quotes'] = $this->deleteInBatches('quote_requests', fn ($q) => $q->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote()));
         $done['quotes_kept_invoiced'] = DB::table('quote_requests')->whereIn('conversation_id', $ids)->count();

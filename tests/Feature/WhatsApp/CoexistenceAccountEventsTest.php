@@ -164,6 +164,7 @@ class CoexistenceAccountEventsTest extends TestCase
         config(['features.env.coexistence_history_hold' => true]);
         $this->postMetaWebhook('history_batch.json')->assertOk();
         $conv = WhatsAppInbox::conversationFor('16505551234');
+        \App\Models\WaCall::create(['conversation_id' => $conv->id, 'wa_call_id' => 'wacid.TEST.forget', 'direction' => 'USER_INITIATED', 'status' => 'missed', 'missed' => true]);
 
         $eraser = app(ConversationEraser::class);
         $plan = $eraser->plan($conv);
@@ -173,6 +174,8 @@ class CoexistenceAccountEventsTest extends TestCase
         $done = $eraser->execute($plan);
 
         $this->assertSame(1, $done['history_threads']);
+        $this->assertSame(1, $done['calls'], 'سجل المكالمات يُمحى مع المحادثة');
+        $this->assertSame(0, \App\Models\WaCall::count());
         $chunk = WaHistoryChunk::sole();
         $this->assertSame([1, 1], [(int) $chunk->threads, (int) $chunk->messages]);
         $this->assertStringNotContainsString('16505551234', json_encode($chunk->payload));
