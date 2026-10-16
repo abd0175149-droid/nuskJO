@@ -51,3 +51,22 @@ describe('Composer', () => {
         expect(w.emitted('update:modelValue')[0]).toEqual(['أهلاً']);
     });
 });
+
+describe('Composer quick replies (E17)', () => {
+    it('blocks sending while a {{variable}} is unfilled and says which', async () => {
+        const w = make({ modelValue: 'أهلاً {{ name }}', finePointer: true });
+        expect(w.text()).toContain('أكمل قبل الإرسال');
+        expect(w.text()).toContain('{{name}}');
+        expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined();
+        await w.find('form').trigger('submit');
+        expect(w.emitted('submit')).toBeUndefined();
+    });
+
+    it('shows the quick replies button only when enabled, disabled with a closed window', () => {
+        expect(make().find('button[aria-label="ردود جاهزة"]').exists()).toBe(false);
+        const on = make({ quickReplies: true, conversationId: 3 });
+        expect(on.find('button[aria-label="ردود جاهزة"]').attributes('disabled')).toBeUndefined();
+        const closed = make({ quickReplies: true, conversationId: 3, windowOpen: false });
+        expect(closed.find('button[aria-label="ردود جاهزة"]').attributes('disabled')).toBeDefined();
+    });
+});

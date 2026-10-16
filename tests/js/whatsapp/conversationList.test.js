@@ -11,6 +11,12 @@ describe('conversation list paging', () => {
         expect(mergeFirstPage(loaded, page, true).map((c) => c.id)).toEqual([5, 9, 8, 7, 6]);
     });
 
+    it('keeps pinned rows on top when merging, and drops a stale pin', () => {
+        const loaded = [{ id: 3, sort_ts: 100, pinned: true }, row(9, 900), row(8, 800), row(7, 700)];
+        const page = [{ id: 4, sort_ts: 50, pinned: true }, row(9, 900), row(8, 800)];
+        expect(mergeFirstPage(loaded, page, true).map((c) => c.id)).toEqual([4, 9, 8, 7]);
+    });
+
     it('a complete first page replaces everything', () => {
         expect(mergeFirstPage([row(1, 1), row(2, 2)], [row(3, 3)], false).map((c) => c.id)).toEqual([3]);
     });

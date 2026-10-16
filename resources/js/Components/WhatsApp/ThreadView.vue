@@ -3,6 +3,7 @@
     <template v-if="thread">
       <ThreadHeader :thread="thread" :topics="topics" :staff="staff" :attention-reasons="attentionReasons"
                     :can-link-client="canLinkClient" :can-toggle-bot="canToggleBot" :can-assign="canAssign" show-back
+                    :followup="followup" :can-reply="canReply" :can-reprocess="canReprocess" @action="(n, p) => $emit('action', n, p)"
                     @back="$emit('back')" @link="$emit('link')" @unlink="$emit('unlink')" @resolve="$emit('resolve')"
                     @toggle-bot="$emit('toggleBot')" @set-topic="(k, a) => $emit('setTopic', k, a)" @assign="(el) => $emit('assign', el)"/>
 
@@ -33,7 +34,8 @@
 
       <Composer class="shrink-0" :model-value="draft" @update:model-value="(v) => $emit('update:draft', v)" @submit="$emit('send')"
                 @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
-                :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"/>
+                :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
+                :quick-replies="quickReplies" :conversation-id="thread.id"/>
     </template>
 
     <div v-else class="flex-1 grid place-items-center py-24 text-center">
@@ -74,9 +76,13 @@ const props = defineProps({
   staff: { type: Array, default: () => [] },
   topics: { type: Object, default: () => ({}) },
   attentionReasons: { type: Object, default: () => ({}) },
+  // E17: المتابعة وزر الإعادة والردود الجاهزة
+  followup: Boolean,
+  canReprocess: Boolean,
+  quickReplies: Boolean,
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
-  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone']);
+  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action']);
 
 const scroller = ref(null);
 

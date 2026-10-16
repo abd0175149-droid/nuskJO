@@ -5,7 +5,7 @@
              aria-label="بحث في المحادثات"
              class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm dark:text-white [unicode-bidi:plaintext]"/>
       <div class="flex flex-wrap gap-1.5" role="group" aria-label="تصفية المحادثات">
-        <button v-for="f in FILTERS" :key="f.key" type="button" @click="$emit('update:filter', f.key)" :aria-pressed="filter === f.key"
+        <button v-for="f in filters" :key="f.key" type="button" @click="$emit('update:filter', f.key)" :aria-pressed="filter === f.key"
                 class="px-2.5 py-1 rounded-lg text-[11px] font-bold border"
                 :class="filter === f.key ? 'bg-gold-50 dark:bg-gold-900/20 border-gold-400 text-gold-700 dark:text-gold-400'
                                          : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gold-400'">{{ f.label }}</button>
@@ -32,7 +32,7 @@
 </template>
 
 <script setup>
-import { nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import ConversationListItem from './ConversationListItem.vue';
 
 const props = defineProps({
@@ -48,10 +48,12 @@ const props = defineProps({
   attentionReasons: { type: Object, default: () => ({}) },
   // على الجوال تُخفى القائمة عند فتح محادثة: يُحفظ موضع التمرير ويُعاد عند الرجوع
   visible: { type: Boolean, default: true },
+  // متابعة الصندوق (E17): تبويبات المغلقة والمؤجلة والمثبّتة وفلاتر البطاقات
+  followup: Boolean,
 });
 const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'open', 'loadMore']);
 
-const FILTERS = [
+const BASE_FILTERS = [
   { key: 'all', label: 'الكل' },
   { key: 'unread', label: 'غير مقروء' },
   { key: 'attention', label: '⚠️ تدخّل' },
@@ -59,6 +61,14 @@ const FILTERS = [
   { key: 'human', label: '👤 بشري' },
   { key: 'mine', label: '🙋 الموكلة لي' },
 ];
+const FOLLOWUP_FILTERS = [
+  { key: 'pinned', label: '📍 المثبّتة' },
+  { key: 'window_closing', label: '⏳ نافذة تُغلق' },
+  { key: 'failed_today', label: '❌ فشل اليوم' },
+  { key: 'snoozed', label: '💤 مؤجلة' },
+  { key: 'closed', label: '🗂️ مغلقة' },
+];
+const filters = computed(() => (props.followup ? [...BASE_FILTERS, ...FOLLOWUP_FILTERS] : BASE_FILTERS));
 
 // البحث بتأخير 400ms
 const searchText = ref(props.search);

@@ -58,6 +58,8 @@ class WhatsAppController extends Controller
             // بطاقات أعلى الصندوق (E17.6): أعداد فقط، وتتحدّث من /api/whatsapp/inbox-summary
             'summary' => \App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxSummary::for(auth()->user()) : null,
             'canReprocess' => auth()->user()->can('whatsapp.settings') && \App\Support\FeatureFlags::on('reprocess_button'),
+            // الردود الجاهزة في المنشئ (E17.7)
+            'quickReplies' => auth()->user()->can('whatsapp.reply') && \App\Support\FeatureFlags::on('quick_replies'),
             'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
@@ -341,7 +343,10 @@ class WhatsAppController extends Controller
             ] + (\App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::state(
                 $conversation,
                 \App\Models\WaConversationPin::where('user_id', auth()->id())->where('conversation_id', $conversation->id)->exists(),
-            ) : []),
+            ) : [])
+              // زر «إعادة معالجة» للمدير وللعالقة وحدها (E17.5)
+              + (auth()->user()->can('whatsapp.settings') && \App\Support\FeatureFlags::on('reprocess_button')
+                ? ['stuck' => in_array($conversation->id, \App\Services\WhatsApp\StuckReplies::cachedIds(), true)] : []),
             'notes' => $first ? $conversation->notes()->orderByDesc('id')->limit(10)->pluck('note') : null,
         ], fn ($value) => $value !== null));
     }

@@ -25,10 +25,14 @@
         </template>
         <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ attentionReasons[thread.attention_reason] || thread.attention_reason }}</span>
         <button v-if="thread.needs_attention" type="button" @click="$emit('resolve')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-300">✅ تمّت المعالجة</button>
-        <button v-if="canToggleBot" type="button" @click="$emit('toggleBot')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border"
+        <!-- حالة المتابعة (E17) -->
+        <span v-if="thread.closed" class="px-2 py-0.5 rounded-lg text-[11px] bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">🗂️ مغلقة</span>
+        <span v-if="thread.snoozed_until" class="px-2 py-0.5 rounded-lg text-[11px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">💤 حتى <bdi dir="ltr">{{ hhmm(thread.snoozed_until) }}</bdi></span>
+                <button v-if="canToggleBot" type="button" @click="$emit('toggleBot')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border"
                 :class="thread.bot_enabled ? 'border-gray-300 text-gray-600 dark:text-gray-300' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-300'">
           {{ thread.bot_enabled ? '⏸️ إيقاف البوت' : '▶️ تشغيل البوت' }}
         </button>
+        <ThreadActionsMenu v-if="followup" :thread="thread" :can-reply="canReply" :can-reprocess="canReprocess" @action="(n, p) => $emit('action', n, p)"/>
       </div>
     </div>
 
@@ -73,6 +77,7 @@
 import { computed, ref, watch } from 'vue';
 import { colorFor, initials } from '@/composables/whatsapp/useInitials.js';
 import { formatPhone } from '@/composables/whatsapp/usePhoneFormat.js';
+import ThreadActionsMenu from './ThreadActionsMenu.vue';
 
 const props = defineProps({
   thread: { type: Object, required: true },
@@ -83,8 +88,12 @@ const props = defineProps({
   canToggleBot: Boolean,
   canAssign: Boolean,
   showBack: Boolean,
+  followup: Boolean,
+  canReply: Boolean,
+  canReprocess: Boolean,
 });
-const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign']);
+const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action']);
+const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
 
 // المواضيع غير المرتبطة بالمحادثة للإضافة اليدوية
 const newTopic = ref('');

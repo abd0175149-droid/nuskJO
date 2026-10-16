@@ -45,6 +45,8 @@ export function useInbox(props, thread) {
         requesting: false,
         // الجوال: إما القائمة وإما المحادثة (تحت lg)
         view: 'list',
+        // بطاقات أعلى الصندوق (E17): أعداد فقط
+        summary: props.summary || null,
     });
     let failures = 0;
     let syncedAt = null;
@@ -303,6 +305,59 @@ export function useInbox(props, thread) {
     }
     const unlinkClient = () => act('link-client', null, () => Object.assign(s.thread, { client_id: null, client: null, client_code: null, client_link: 'blocked' }), 'تعذّر فك الربط', 'delete');
 
+    // ===== متابعة الصندوق (E17): حالة داخلية عندنا، لا شيء يصل العميل أو ميتا =====
+    const FOLLOW_FIELDS = ['closed', 'snoozed_until', 'pinned', 'marked_unread', 'marked_unread_by'];
+    function applyState(id, data) {
+        const picked = Object.fromEntries(FOLLOW_FIELDS.filter((k) => k in data).map((k) => [k, data[k]]));
+        if ('unread' in data) picked.unread = data.unread;
+        if (s.thread?.id === id) Object.assign(s.thread, picked);
+        const row = s.list.find((c) => c.id === id);
+        if (row) Object.assign(row, picked);
+    }
+
+    async function loadSummary() {
+        if (!props.followup) return;
+        try {
+            const { data } = await axios.get('/api/whatsapp/inbox-summary', api);
+            s.summary = data;
+        } catch {
+            // البطاقات ليست حرجة؛ شريط «تعذّر التحديث» يغطي الانقطاع
+        }
+    }
+
+    const FOLLOW_ROUTES = {
+        close: ['close', 'post'], reopen: ['reopen', 'post'], snooze: ['snooze', 'post'], unsnooze: ['snooze', 'delete'],
+        pin: ['pin', 'post'], unpin: ['pin', 'delete'], markUnread: ['mark-unread', 'post'], reprocess: ['reprocess', 'post'],
+    };
+    const FOLLOW_ERRORS = {
+        close: 'تعذّر إغلاق المحادثة', reopen: 'تعذّر إعادة الفتح', snooze: 'تعذّر التأجيل', unsnooze: 'تعذّر إلغاء التأجيل',
+        pin: 'تعذّر التثبيت', unpin: 'تعذّر إلغاء التثبيت', markUnread: 'تعذّر التعليم', reprocess: 'تعذّرت إعادة المعالجة',
+    };
+
+    /** confirmFn(options): Promise<boolean> لإعادة المعالجة */
+    async function followAction(name, payload, confirmFn) {
+        const id = s.activeId;
+        const route = FOLLOW_ROUTES[name];
+        if (!id || !route) return;
+        if (name === 'reprocess' && !(await confirmFn({
+            title: 'إعادة معالجة الرد العالق',
+            message: 'يُعاد تشغيل رد البوت لهذه المحادثة. لا يُقطع رد جارٍ، وتُسجَّل الإعادة في سجل التدقيق.',
+            confirmLabel: '🔁 إعادة المعالجة',
+        }))) return;
+
+        const ok = await act(route[0], payload || {}, (data) => {
+            if (name === 'reprocess') s.notice = data.message || '';
+            else applyState(id, data);
+        }, FOLLOW_ERRORS[name], route[1]);
+        if (!ok) return;
+        loadSummary();
+        // «غير مقروء»: يُغلق الخيط ويعود الموظف للقائمة، فلا يمحو الفتح التلقائي (POST /read) العلامة
+        if (name === 'markUnread') {
+            resetThread();
+            back();
+        }
+    }
+
     // ===== التنقل: على الجوال فتح المحادثة من القائمة خطوة في history، والرجوع (الزر أو الجهاز) يعيد القائمة =====
     const inboxPath = window.location.pathname;
     const urlConv = () => Number(new URLSearchParams(window.location.search).get('conv')) || null;
@@ -344,7 +399,8 @@ export function useInbox(props, thread) {
         toggleBot, resolve, setTopic, assignTo, requestPhone, onLinked, unlinkClient,
         openFromList, back, onPopState, openFromUrl,
         refilter: () => load({ reset: true }),
-        tick: async () => { const ok = await load(); await poll(); if (!ok) throw new Error('list refresh failed'); },
+        followAction, loadSummary,
+        tick: async () => { const ok = await load(); await poll(); loadSummary(); if (!ok) throw new Error('list refresh failed'); },
         dispose: () => { seq++; },
     };
 }

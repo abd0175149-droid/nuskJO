@@ -6,11 +6,13 @@
     <div class="flex flex-col gap-3 sm:gap-4 h-[calc(100dvh-var(--app-header)-2*var(--app-pad))] min-h-[28rem]">
       <InboxStatusBar :class="s.view === 'thread' ? 'hidden lg:block' : ''" class="shrink-0"
                       :status="status" :llm="s.llm" :stale-since="s.staleSince" :notice="s.notice" @dismiss="s.notice = ''"/>
+      <InboxCards v-if="followup && s.summary" :class="s.view === 'thread' ? 'hidden lg:flex' : ''" class="shrink-0"
+                  :summary="s.summary" :active="s.filter" @filter="(f) => { s.filter = f; inbox.refilter(); }"/>
 
       <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <ConversationList :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-1"
                           :visible="s.view === 'list'" :items="s.list" :active-id="s.activeId" :has-more="s.listHasMore" :loading-more="s.loadingMore"
-                          :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons"
+                          :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
                           @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
                           @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"/>
 
@@ -20,6 +22,7 @@
                     :cannot-reach-phoneless="inbox.cannotReachPhoneless.value" :can-request-phone="inbox.canRequestPhone.value"
                     :can-reply="canReply" :can-assign="canAssign" :can-toggle-bot="canToggleBot" :can-link-client="canLinkClient"
                     :staff="staff" :topics="topics" :attention-reasons="attentionReasons"
+                    :followup="followup" :can-reprocess="canReprocess" :quick-replies="quickReplies" @action="(n, p) => inbox.followAction(n, p, confirm)"
                     @back="inbox.back" @link="linkOpen = true" @unlink="unlink" @resolve="inbox.resolve" @toggle-bot="inbox.toggleBot"
                     @set-topic="inbox.setTopic" @assign="inbox.assignTo" @load-older="inbox.loadOlder" @jump-to-new="inbox.jumpToNew"
                     @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"/>
@@ -38,6 +41,7 @@ import { usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import ConversationList from '@/Components/WhatsApp/ConversationList.vue';
 import InboxStatusBar from '@/Components/WhatsApp/InboxStatusBar.vue';
+import InboxCards from '@/Components/WhatsApp/InboxCards.vue';
 import LinkClientDialog from '@/Components/WhatsApp/LinkClientDialog.vue';
 import MediaViewer from '@/Components/WhatsApp/MediaViewer.vue';
 import ThreadView from '@/Components/WhatsApp/ThreadView.vue';
@@ -64,6 +68,11 @@ const props = defineProps({
   topics: { type: Object, default: () => ({}) },
   staff: { type: Array, default: () => [] },
   attentionReasons: { type: Object, default: () => ({}) },
+  // E17: المتابعة والبطاقات وزر الإعادة والردود الجاهزة
+  followup: Boolean,
+  summary: { type: Object, default: null },
+  canReprocess: Boolean,
+  quickReplies: Boolean,
 });
 
 const threadView = ref(null);
