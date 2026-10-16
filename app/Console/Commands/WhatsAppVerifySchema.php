@@ -53,6 +53,9 @@ class WhatsAppVerifySchema extends Command
 
     private const NULLABLE_SINCE = '2026_10_14_000009_wa_identity_bsuid';
 
+    /** فهرس البحث في الرسائل (E30): الجدول والـ triggers الثلاثة متوقعة بعد هجرته حيث تدعمها SQLite */
+    private const FTS_SINCE = '2026_10_14_000030_wa_messages_fts';
+
     public function handle(): int
     {
         $report = $this->inspect();
@@ -68,6 +71,7 @@ class WhatsAppVerifySchema extends Command
             foreach ($report['nullable'] as $column => $nullable) {
                 $this->line("{$column} يقبل الفراغ: ".($nullable === null ? '—' : ($nullable ? 'نعم' : 'لا')));
             }
+            $this->line('فهرس البحث: '.$report['search_index']['state']);
             $this->line('JSON: '.$path);
         }
 
@@ -135,6 +139,23 @@ class WhatsAppVerifySchema extends Command
             }
         }
 
+        $search = ['state' => 'n/a'];
+        if (DB::getDriverName() === 'sqlite' && in_array(self::FTS_SINCE, $ran, true)) {
+            if (!\App\Services\WhatsApp\Search\FtsSchema::supported()) {
+                $search = ['state' => 'unsupported'];
+            } else {
+                $table = Schema::hasTable(\App\Services\WhatsApp\Search\FtsSchema::TABLE);
+                $missing = \App\Services\WhatsApp\Search\FtsSchema::missingTriggers();
+                $search = ['state' => $table && $missing === [] ? 'ok' : 'gaps', 'table' => $table, 'missing_triggers' => $missing];
+                if (!$table) {
+                    $gaps[] = 'جدول فهرس البحث wa_messages_fts غير موجود (whatsapp:fts-check --repair)';
+                }
+                foreach ($missing as $trigger) {
+                    $gaps[] = "trigger ناقص: {$trigger} (whatsapp:fts-check --repair)";
+                }
+            }
+        }
+
         return [
             'generated_at' => now()->toIso8601String(),
             'driver' => DB::getDriverName(),
@@ -143,6 +164,7 @@ class WhatsAppVerifySchema extends Command
             'integrity_check' => $integrity,
             'foreign_key_violations' => $fkViolations,
             'nullable' => $nullable,
+            'search_index' => $search,
             'gaps' => $gaps,
         ];
     }

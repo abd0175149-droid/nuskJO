@@ -79,6 +79,7 @@
 
 <h2>٧ · أمان البيانات</h2>
 <p>نحمي بياناتك بالاتصال المشفّر (HTTPS)، وبتشفير مفاتيح الوصول الحسّاسة، وبنظام صلاحيات يقصر الاطّلاع على الموظفين المخوّلين، وبالتحقّق من توقيع كل رسالة واردة من واتساب.</p>
+<p>يقتصر البحث في المحادثات وتصديرها على الموظفين المخوّلين، كلٌّ ضمن المحادثات المسندة إليه، وكل تصدير مسجّل باسم من قام به وسببه.</p>
 
 <h2>٨ · الأطفال</h2>
 <p>خدماتنا موجّهة لمن أتمّ 18 عاماً. لا نجمع بيانات الأطفال عن قصد.</p>
@@ -105,6 +106,8 @@
     <p>Attachments you send (photos, documents such as a passport or a transfer receipt) are stored on our servers with access limited to the staff handling your booking, every view is logged, and they are deleted {{ $mediaDays }} days after receipt — or at once if you choose "Delete my files".</p>
     @endif
     <p>Conversations: up to 24 months after last contact, unless attached to an invoice. Assistant usage statistics: 12 months, then aggregated monthly without any link to a person. Internal staff notifications: up to 6 months. Internal labels and notes: deleted with the conversation. WhatsApp notifications we could not process: an encrypted copy for at most {{ $webhookHours ?? 72 }} hours, then wiped automatically. Financial records: for the period required by Jordanian law. Backups: encrypted, kept for at most 6 months, then destroyed.</p>
+    <h3>Security</h3>
+    <p>Searching and exporting conversations is limited to authorised staff, each within the conversations assigned to them, and every export is logged with who made it and why.</p>
     <h3>Your rights</h3>
     <p>You may access your data (we send you a copy within 30 days after verifying your identity), correct it, or request its deletion — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>
     <h3>Contact</h3>

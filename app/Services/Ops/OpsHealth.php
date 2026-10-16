@@ -117,6 +117,8 @@ final class OpsHealth
             'queues' => collect(self::queues())->mapWithKeys(fn ($q) => [$q => $age(self::beatKey($q))])->all(),
             'failed_24h' => $failed,
             'warnings' => $this->warnings($now),
+            // فهرس البحث في الرسائل (E30): آخر فحص يومي، أو null قبل أول فحص
+            'search_index' => \App\Services\WhatsApp\Search\FtsSchema::lastCheck(),
         ];
     }
 

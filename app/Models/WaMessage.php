@@ -57,7 +57,9 @@ class WaMessage extends Model
 
     protected static function booted(): void
     {
-        // نص البحث المطبَّع (بلا تشكيل، والهمزات والتاء المربوطة موحّدة) لكل حفظ: الوارد والصادر وتحديث التفريغ الصوتي
+        // نص البحث المطبَّع (بلا تشكيل، والهمزات والتاء المربوطة موحّدة) لكل حفظ: الوارد والصادر وتحديث التفريغ الصوتي.
+        // حدّث body عبر Eloquent فقط: DB::table('wa_messages')->update(['body' => …]) يتجاوز هذا الخطاف فيبقى body_norm
+        // وفهرس البحث (E30) قديمين. whatsapp:fts-check يصلح عيّنة يومياً، لكنها ليست بديلاً
         static::saving(function (self $m) {
             self::$hasBodyNorm ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'body_norm');
             if (self::$hasBodyNorm && ($m->isDirty('body') || !$m->exists)) {

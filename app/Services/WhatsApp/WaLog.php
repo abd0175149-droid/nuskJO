@@ -20,6 +20,8 @@ final class WaLog
         'events', 'item', 'event_id', 'wiped', 'deleted', 'overdue', 'processed', 'failed', 'dead',
         // E21: اسم صنف المستمع الذي فشل (fail-open)
         'listener',
+        // E30: البحث والتصدير (صف التدقيق ومحرّك البحث، بلا نص الاستعلام)
+        'audit_id', 'engine',
     ];
 
     public static function info(string $event, array $context = []): void

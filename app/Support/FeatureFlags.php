@@ -39,6 +39,10 @@ final class FeatureFlags
         'wa_labels' => ['label' => 'تصنيفات سير العمل على المحادثات وشارات من النظام (داخلية، لا تغيّر من يرى المحادثة)', 'capability' => 'C127', 'available' => true],
         'thread_pins' => ['label' => 'الملاحظة المثبتة الداخلية والرسائل المثبتة وبطاقة حقائق العميل', 'capability' => 'C128', 'available' => true],
         'staff_translation' => ['label' => 'ترجمة رسائل العملاء للموظف عند الطلب، ومعاينة ترجمة الرد مع فحص الأرقام', 'capability' => 'C293', 'available' => true],
+        // E30: البحث للمدراء أولاً (من يرى كل المحادثات)، ثم للجميع بالعلم الثاني؛ والحصر بالسياج في الحالتين
+        'message_search' => ['label' => 'البحث في نص الرسائل (للمدراء: من يرى كل المحادثات)', 'capability' => 'C141', 'available' => true],
+        'message_search_all' => ['label' => 'البحث في الرسائل لكل موظفي الصندوق، كلٌّ ضمن محادثاته (بعد أسبوع من الأول)', 'capability' => 'C141', 'available' => true],
+        'conversation_export' => ['label' => 'تصدير محادثة واحدة (نص أو CSV) بسبب مكتوب، لمن يملك صلاحية التصدير', 'capability' => 'C140', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

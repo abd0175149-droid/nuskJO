@@ -32,6 +32,12 @@
                 :class="thread.bot_enabled ? 'border-gray-300 text-gray-600 dark:text-gray-300' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-300'">
           {{ thread.bot_enabled ? '⏸️ إيقاف البوت' : '▶️ تشغيل البوت' }}
         </button>
+        <!-- فلاتر الخيط والتصدير (E30) -->
+        <button v-if="canFilter" type="button" @click="$emit('toggleFilters')" :aria-pressed="filtersOpen ? 'true' : 'false'" data-test="toggle-filters"
+                class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border"
+                :class="filtersOpen ? 'border-gold-400 text-gold-700 dark:text-gold-400 bg-gold-50 dark:bg-gold-900/20' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'">⏷ تصفية</button>
+        <button v-if="canExport" type="button" @click="$emit('export')" data-test="open-export"
+                class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">⬇️ تصدير</button>
         <ThreadActionsMenu v-if="followup" :thread="thread" :can-reply="canReply" :can-reprocess="canReprocess" @action="(n, p) => $emit('action', n, p)"/>
       </div>
     </div>
@@ -91,8 +97,12 @@ const props = defineProps({
   followup: Boolean,
   canReply: Boolean,
   canReprocess: Boolean,
+  // E30
+  canFilter: Boolean,
+  filtersOpen: Boolean,
+  canExport: Boolean,
 });
-const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action']);
+const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'toggleFilters', 'export']);
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
 
 // المواضيع غير المرتبطة بالمحادثة للإضافة اليدوية

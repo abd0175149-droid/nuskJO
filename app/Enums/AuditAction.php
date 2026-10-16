@@ -114,6 +114,10 @@ enum AuditAction: string
     case WaPinClear = 'wa.pin_clear';
     case WaTranslate = 'wa.translate';
     case WaLlmTermsConfirm = 'wa.llm_terms_confirm';
+    // E30: البحث في نص الرسائل (بالعيّنات، بلا نص الاستعلام)، وتصدير محادثة، وإصلاح فهرس البحث
+    case WaMessageSearch = 'wa.message_search';
+    case WaConversationExport = 'wa.conv_export';
+    case WaSearchIndexRepair = 'wa.search_index_repair';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -162,6 +166,7 @@ enum AuditAction: string
             self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
             self::WaHealthChange => AuditSeverity::Warn,
             self::WaLlmTermsConfirm => AuditSeverity::Warn,
+            self::WaConversationExport, self::WaSearchIndexRepair => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -187,7 +192,7 @@ enum AuditAction: string
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
             self::WaOptoutMeta, self::WaOptinMeta, self::WaHealthChange => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
-            self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay => 'system',
+            self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay, self::WaSearchIndexRepair => 'system',
             default => 'whatsapp',
         };
     }
@@ -290,6 +295,9 @@ enum AuditAction: string
             self::WaPinClear => 'إلغاء تثبيت داخلي',
             self::WaTranslate => 'ترجمة رسالة للموظف',
             self::WaLlmTermsConfirm => 'تأكيد الطبقة المدفوعة لمزوّد الذكاء',
+            self::WaMessageSearch => 'بحث في نص الرسائل',
+            self::WaConversationExport => 'تصدير محادثة واتساب',
+            self::WaSearchIndexRepair => 'إصلاح فهرس البحث في الرسائل',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -318,7 +326,9 @@ enum AuditAction: string
     {
         return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload, self::WaMediaRefetch,
             // إعادة إشعار بعينه بيد مطوّر (نادرة، وقد تتجاوز الميزانية): أثرها دائم
-            self::WaWebhookReplay], true);
+            self::WaWebhookReplay,
+            // E30: البحث عبر المحادثات اطّلاع على بيانات العملاء (صف بالعيّنات لكل موظف)، وإصلاح الفهرس نادر
+            self::WaMessageSearch, self::WaSearchIndexRepair], true);
     }
 
     public function isNoise(): bool

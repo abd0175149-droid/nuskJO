@@ -72,6 +72,9 @@ class WhatsAppController extends Controller
                 'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
             ],
             'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
+            // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص
+            'messageSearch' => \App\Services\WhatsApp\Search\MessageSearch::enabledFor(auth()->user()),
+            'canExport' => auth()->user()->can('whatsapp.export') && \App\Support\FeatureFlags::on('conversation_export'),
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
             // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
@@ -258,7 +261,10 @@ class WhatsAppController extends Controller
 
     /**
      * خيط المحادثة بمؤشر keyset على الفهرس [conversation_id, id]:
-     *   بلا مؤشر: أحدث 100 · before=<id>: الأقدم منه · after=<id>&since=<وقت>: الجديد وتحديثات حالة الصادر.
+     *   بلا مؤشر: أحدث 100 · before=<id>: الأقدم منه · after=<id>&since=<وقت>: الجديد وتحديثات حالة الصادر
+     *   (حتى limit، 200 افتراضياً، مع has_more_after) · around=<id> (E30): 50 قبلها والرسالة و49 بعدها للقفز إليها،
+     *   مع has_more_before وhas_more_after وdetached (أحدث منها لم يُحمَّل) وanchor_id وlatest_id.
+     * الفلاتر (E30): direction وsource وmsg_type وdate_from وdate_to على كل الأوضاع، والرد يحمل filtered.
      * طلب GET بلا آثار جانبية: التصفير صار POST /read صريحاً.
      */
     public function messages(Request $request, WaConversation $conversation)
@@ -275,9 +281,18 @@ class WhatsAppController extends Controller
         $v = $request->validate([
             'before' => 'nullable|integer|min:1|prohibits:after',
             'after' => 'nullable|integer|min:0|prohibits:before',
+            'around' => 'nullable|integer|min:1|prohibits:before,after',
             'since' => 'nullable|date',
             'limit' => 'nullable|integer|min:1',
-        ]);
+        ] + \App\Services\WhatsApp\Search\MessageFilters::rules());
+        $filtered = \App\Services\WhatsApp\Search\MessageFilters::present($v) !== [];
+        // رسائل المحادثة بعد الفلاتر (كل الأوضاع)
+        $scoped = function () use ($conversation, $v) {
+            $q = $conversation->messages()->with('staff:id,name');
+            \App\Services\WhatsApp\Search\MessageFilters::apply($q, $v);
+
+            return $q;
+        };
         $syncedAt = now()->subSeconds(5)->format('Y-m-d H:i:s');   // تداخل مقصود؛ تطبيق التحديثات بالمعرّف idempotent
         $limit = min((int) ($v['limit'] ?? 100), 100);
         $columns = ['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'staff_id', 'created_at'];
@@ -357,13 +372,17 @@ class WhatsAppController extends Controller
         };
 
         $hasMore = false;
+        $hasMoreAfter = null;
         $gap = false;
         $updates = [];
 
         if (isset($v['after'])) {
-            $rows = $conversation->messages()->with('staff:id,name')
-                ->where('id', '>', $v['after'])->orderBy('id')->limit(200)->get($columns);
-            $gap = $rows->count() >= 200;
+            // الاستطلاع حتى 200، ونزول الوضع المنفصل (E30) بصفحات أصغر حتى has_more_after=false
+            $afterLimit = min((int) ($v['limit'] ?? 200), 200);
+            $rows = $scoped()->where('id', '>', $v['after'])->orderBy('id')->limit($afterLimit + 1)->get($columns);
+            $hasMoreAfter = $rows->count() > $afterLimit;
+            $rows = $rows->take($afterLimit)->values();
+            $gap = $hasMoreAfter;
 
             if (!empty($v['since'])) {
                 // حالات الصادر، وحالة أرشفة المرفق الوارد (جارٍ الحفظ ← عرض) بلا إعادة تحميل
@@ -376,8 +395,18 @@ class WhatsAppController extends Controller
                     ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
                     ->all();
             }
+        } elseif (isset($v['around'])) {
+            // القفز إلى رسالة (E30): من المحادثة نفسها وإلا 404. الرسالة نفسها تظهر ولو لم تطابق الفلتر
+            abort_unless($conversation->messages()->whereKey($v['around'])->exists(), 404);
+            $older = $scoped()->where('id', '<', $v['around'])->orderByDesc('id')->limit(51)->get($columns);
+            $newer = $scoped()->where('id', '>', $v['around'])->orderBy('id')->limit(50)->get($columns);
+            $hasMore = $older->count() > 50;
+            $hasMoreAfter = $newer->count() > 49;
+            $rows = $older->take(50)->reverse()
+                ->concat($conversation->messages()->with('staff:id,name')->whereKey($v['around'])->get($columns))
+                ->concat($newer->take(49))->values();
         } else {
-            $rows = $conversation->messages()->with('staff:id,name')
+            $rows = $scoped()
                 ->when(isset($v['before']), fn ($q) => $q->where('id', '<', $v['before']))
                 ->orderByDesc('id')->limit($limit + 1)->get($columns);
             $hasMore = $rows->count() > $limit;
@@ -408,9 +437,18 @@ class WhatsAppController extends Controller
 
         $first = !isset($v['before']) && !isset($v['after']);
 
+        $around = isset($v['around']);
+
         return response()->json(array_filter([
             'messages' => $msgs,
             'has_more' => $hasMore,
+            // E30: النافذة حول رسالة، والنزول منها، وشريط «عرض مفلتر»
+            'has_more_before' => $around ? $hasMore : null,
+            'has_more_after' => $hasMoreAfter,
+            'detached' => $around ? $hasMoreAfter : null,
+            'anchor_id' => $around ? (int) $v['around'] : null,
+            'latest_id' => $around ? (int) $conversation->messages()->max('id') : null,
+            'filtered' => $filtered,
             'gap' => $gap,
             'updates' => $updates,
             'synced_at' => $syncedAt,

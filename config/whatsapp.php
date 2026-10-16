@@ -88,4 +88,17 @@ return [
         ],
         'allow_office' => (bool) env('WA_MEDIA_ALLOW_OFFICE', false),
     ],
+
+    // البحث في الرسائل (E30): التدقيق صف واحد لكل موظف كل audit_minutes (بلا نص الاستعلام)، وسطر warn
+    // حين يبحث موظف burst_per_minute مرة أو أكثر في كل دقيقة من burst_minutes دقائق متتالية (استكشاف جماعي)
+    'search' => [
+        'audit_minutes' => 10,
+        'burst_per_minute' => 20,
+        'burst_minutes' => 3,
+    ],
+
+    // تصدير محادثة واحدة (E30): ما زاد على هذا يُرفض «ضيّق الفترة»
+    'export' => [
+        'max_rows' => 20000,
+    ],
 ];

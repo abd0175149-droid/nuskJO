@@ -60,6 +60,8 @@ class ConversationScopeTest extends TestCase
         'messages/{message}/translate' => ['POST', [], [], [], 409],
         'translate-reply' => ['POST', ['text' => 'السعر 150 دينار للشخص', 'target' => 'en'], [], [], 409],
         'send-translated' => ['POST', ['body' => 'Price 150 JOD', 'translation' => ['source_text' => 'السعر 150 دينار', 'target' => 'en', 'check_token' => 'x']], [], [], 422],
+        // تصدير محادثة (E30): بصلاحيته وسبب مكتوب، والسياج نفسه (ConversationExportTest)
+        'export' => ['GET', ['format' => 'txt', 'reason' => 'طلب اطّلاع من العميل'], [], ['whatsapp.export']],
     ];
 
     protected function setUp(): void
@@ -69,7 +71,8 @@ class ConversationScopeTest extends TestCase
         $this->fakeGraph();
         \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
         config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true,
-            'features.env.wa_labels' => true, 'features.env.thread_pins' => true, 'features.env.staff_translation' => true]);
+            'features.env.wa_labels' => true, 'features.env.thread_pins' => true, 'features.env.staff_translation' => true,
+            'features.env.conversation_export' => true]);
     }
 
     public static function routes(): array

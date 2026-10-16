@@ -15,7 +15,8 @@
                           :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
                           @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
                           @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"
-                          :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"/>
+                          :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"
+                          :message-search="messageSearch" @jump="(h) => inbox.openFromSearch(h.conversation_id, h.message_id)"/>
 
         <ThreadView ref="threadView" :class="s.view === 'list' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-2"
                     :thread="s.thread" :messages="s.messages" :notes="s.notes" :has-more="s.hasMore" :loading-older="s.loadingOlder" :new-below="s.newBelow"
@@ -29,12 +30,17 @@
                     @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"
                     @resend="(m) => inbox.copyToDraft(m, askResend)"
                     :flags="flags" :labels="labels" :can-manage-labels="canManageLabels" :translate-targets="translateTargets"
-                    @labels-changed="onLabels" @translated-sent="onTranslatedSent"/>
+                    @labels-changed="onLabels" @translated-sent="onTranslatedSent"
+                    :detached="s.detached" :loading-newer="s.loadingNewer" :pending-new="s.pendingNew" :pending-more="s.pendingMore"
+                    :filtered="s.filtered" :filters="s.threadFilters" :can-filter="messageSearch" :can-export="canExport"
+                    @load-newer="inbox.loadNewer" @back-to-latest="inbox.backToLatest" @set-filters="inbox.setThreadFilters"
+                    @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"/>
       </div>
     </div>
 
     <LinkClientDialog :open="linkOpen" :conversation="s.thread || {}" @close="linkOpen = false" @linked="inbox.onLinked"/>
     <MediaViewer :open="viewer.open" :message-id="viewer.id" :media="viewer.media" :watermark="viewer.watermark" @close="viewer.open = false"/>
+    <ExportDialog v-if="canExport" :open="exportOpen" :conversation="s.thread || {}" @close="exportOpen = false"/>
   </AppLayout>
 </template>
 
@@ -44,6 +50,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import ConversationList from '@/Components/WhatsApp/ConversationList.vue';
+import ExportDialog from '@/Components/WhatsApp/ExportDialog.vue';
 import InboxStatusBar from '@/Components/WhatsApp/InboxStatusBar.vue';
 import InboxCards from '@/Components/WhatsApp/InboxCards.vue';
 import LinkClientDialog from '@/Components/WhatsApp/LinkClientDialog.vue';
@@ -82,12 +89,16 @@ const props = defineProps({
   canManageLabels: Boolean,
   flags: { type: Object, default: () => ({}) },
   translateTargets: { type: Object, default: () => ({}) },
+  // E30: البحث في الرسائل وفلاتر الخيط، وتصدير المحادثة (الخادم يعيد الفحص)
+  messageSearch: Boolean,
+  canExport: Boolean,
 });
 
 const threadView = ref(null);
 const inbox = useInbox(props, () => threadView.value);
 const { s } = inbox;
 const linkOpen = ref(false);
+const exportOpen = ref(false);
 
 // تحذير السياسة (E15.9) وفك الربط بنافذة التأكيد الموحّدة (E16.9)
 const { confirm } = useConfirm();

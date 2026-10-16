@@ -204,6 +204,9 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::post('whatsapp/knowledge/reorder', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'reorder'])->name('whatsapp.knowledge.reorder')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'update'])->name('whatsapp.knowledge.update')->middleware('perm:whatsapp.settings');
     Route::delete('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'destroy'])->name('whatsapp.knowledge.destroy')->middleware('perm:whatsapp.settings');
+    // البحث في الرسائل وتصدير محادثة (E30): throttle بمفتاح لكل مسار، فلا يشارك عدّاد مسارات throttle الأخرى للمستخدم نفسه
+    Route::get('api/whatsapp/search', [\App\Http\Controllers\WhatsAppSearchController::class, 'search'])->middleware(['perm:whatsapp.view', 'throttle:30,1,wa-search']);
+    Route::get('api/whatsapp/conversations/{conversation}/export', [\App\Http\Controllers\WhatsAppExportController::class, 'export'])->middleware(['perm:whatsapp.export', 'throttle:5,1,wa-export']);
 
     // التصنيفات والملاحظة المثبتة والترجمة عند الطلب (E29): الإدارة للمدير، وكل مسار محادثة عبر الربط المقيّد بالنطاق،
     // والرسالة من المحادثة نفسها وحدها. الأعلام wa_labels وthread_pins وstaff_translation تُفحص في المتحكمات (مطفأ = 404)

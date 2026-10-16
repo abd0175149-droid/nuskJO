@@ -32,5 +32,8 @@ return [
         'wa_labels' => env('WA_FEATURE_WA_LABELS'),
         'thread_pins' => env('WA_FEATURE_THREAD_PINS'),
         'staff_translation' => env('WA_FEATURE_STAFF_TRANSLATION'),
+        'message_search' => env('WA_FEATURE_MESSAGE_SEARCH'),
+        'message_search_all' => env('WA_FEATURE_MESSAGE_SEARCH_ALL'),
+        'conversation_export' => env('WA_FEATURE_CONVERSATION_EXPORT'),
     ],
 ];

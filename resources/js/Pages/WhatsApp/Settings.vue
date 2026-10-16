@@ -80,6 +80,13 @@
                         مهام فاشلة خلال 24 ساعة: <span class="font-bold">{{ ops.failed_24h ?? '؟' }}</span>
                         <template v-if="!ops.enabled"> · فحص /up مطفأ (OPS_HEALTH_CHECKS)</template>
                     </p>
+                    <!-- فهرس البحث في الرسائل (E30): آخر فحص يومي لـ whatsapp:fts-check -->
+                    <p v-if="ops.search_index" data-test="search-index" class="text-xs text-gray-500 dark:text-gray-400 -mt-3 mb-4">
+                        فهرس البحث: <span class="font-bold" :class="searchIndex.cls">{{ searchIndex.label }}</span>
+                        · آخر فحص: <bdi dir="ltr">{{ when(ops.search_index.at) }}</bdi>
+                        <template v-if="ops.search_index.repaired_at"> · أُصلح في <bdi dir="ltr">{{ when(ops.search_index.repaired_at) }}</bdi></template>
+                        <template v-if="ops.search_index.secure_delete === false"> · المحذوف يُمحى من الفهرس بإعادة كتابته</template>
+                    </p>
 
                     <!-- رمز ميتا -->
                     <p class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">رمز ميتا</p>
@@ -732,6 +739,18 @@ const opsComponents = computed(() => {
         { code: 'backlog', label: 'الطابور', ok: !codes.includes('backlog') },
         ...((props.ops?.warnings || []).includes('media_backlog') ? [{ code: 'media_backlog', label: 'تأخر أرشفة المرفقات', ok: false }] : []),
     ];
+});
+
+// فهرس البحث في الرسائل (E30)
+const SEARCH_INDEX = {
+    ok: ['سليم', 'text-green-700 dark:text-green-400'],
+    repaired: ['أُصلح آلياً', 'text-amber-700 dark:text-amber-400'],
+    failed: ['خلل — whatsapp:fts-check --repair', 'text-red-700 dark:text-red-400'],
+    unsupported: ['غير مدعوم في SQLite، والبحث بطريقة أبطأ', 'text-amber-700 dark:text-amber-400'],
+};
+const searchIndex = computed(() => {
+    const [label, cls] = SEARCH_INDEX[props.ops?.search_index?.state] || [props.ops?.search_index?.state || '—', ''];
+    return { label, cls };
 });
 
 const ageText = (seconds) => {
