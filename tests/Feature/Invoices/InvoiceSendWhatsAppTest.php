@@ -194,4 +194,18 @@ class InvoiceSendWhatsAppTest extends TestCase
         config(['features.env.invoice_whatsapp_send' => true]);
         $this->actingAs($this->staff)->get("/invoices/{$this->invoice->id}/pdf")->assertOk();
     }
+
+    public function test_the_invoice_list_shows_the_send_button_for_the_configured_statuses(): void
+    {
+        $this->actingAs($this->staff)->get('/invoices')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('invoicePdf', true)->where('invoiceWhatsapp', true)->where('invoiceSendStatuses', ['approved']));
+
+        config(['whatsapp.outbound.invoice_send_statuses' => ['approved', 'pending']]);
+        $this->actingAs($this->staff)->get('/invoices')
+            ->assertInertia(fn ($page) => $page->where('invoiceSendStatuses', ['approved', 'pending']));
+
+        config(['features.env.invoice_whatsapp_send' => false]);
+        $this->actingAs($this->staff)->get('/invoices')
+            ->assertInertia(fn ($page) => $page->where('invoicePdf', false)->where('invoiceWhatsapp', false));
+    }
 }

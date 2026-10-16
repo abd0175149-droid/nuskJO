@@ -62,6 +62,8 @@ class InvoiceController extends Controller
             // فاتورة PDF وإرسالها على واتساب (E32): العلم، والمدير يعاين PDF قبل التفعيل
             'invoicePdf' => \App\Support\FeatureFlags::on('invoice_whatsapp_send') || auth()->user()->isAdmin(),
             'invoiceWhatsapp' => \App\Support\FeatureFlags::on('invoice_whatsapp_send') && auth()->user()->can('whatsapp.reply'),
+            // الحالات القابلة للإرسال بقرار المالك (INVOICE_WHATSAPP_STATUSES، المعتمدة وحدها افتراضياً)
+            'invoiceSendStatuses' => (array) config('whatsapp.outbound.invoice_send_statuses', ['approved']),
         ]);
     }
 
