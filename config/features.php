@@ -26,5 +26,8 @@ return [
         'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
+        'wa_labels' => env('WA_FEATURE_WA_LABELS'),
+        'thread_pins' => env('WA_FEATURE_THREAD_PINS'),
+        'staff_translation' => env('WA_FEATURE_STAFF_TRANSLATION'),
     ],
 ];

@@ -30,7 +30,7 @@ class WhatsAppController extends Controller
             'title' => 'محادثات الواتساب',
             'conversations' => $page['items'],
             'listMeta' => ['has_more' => $page['has_more'], 'next_cursor' => $page['next_cursor']],
-            'filters' => $request->only(['filter', 'search', 'topic']),
+            'filters' => $request->only(['filter', 'search', 'topic', 'label']),
             'status' => [
                 'channel_ready' => $s->channelReady(),
                 'bot_ready' => $s->botReady(),
@@ -63,6 +63,15 @@ class WhatsAppController extends Controller
             // الردود الجاهزة في المنشئ (E17.7)
             'quickReplies' => auth()->user()->can('whatsapp.reply') && \App\Support\FeatureFlags::on('quick_replies'),
             'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
+            // E29: التصنيفات والملاحظة المثبتة والترجمة عند الطلب. الأعلام للواجهة، والخادم يفحص كل شيء مجدداً
+            'labels' => \App\Services\WhatsApp\LabelService::enabled() ? \App\Services\WhatsApp\LabelService::activeList() : [],
+            'canManageLabels' => auth()->user()->can('whatsapp.settings'),
+            'flags' => [
+                'wa_labels' => \App\Services\WhatsApp\LabelService::enabled(),
+                'thread_pins' => \App\Services\WhatsApp\ThreadPins::enabled(),
+                'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
+            ],
+            'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
             // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
@@ -183,6 +192,10 @@ class WhatsAppController extends Controller
                     ->whereColumn('wa_conversation_topics.conversation_id', 'wa_conversations.id')
                     ->where('wa_conversation_topics.topic', $t);
             }))
+            // تصنيف (E29): شرط AND بعد السياج، يضيّق ولا يوسّع
+            ->when(\App\Services\WhatsApp\LabelService::enabled() && $request->integer('label') > 0, fn ($q) => $q->whereExists(fn ($sub) => $sub->selectRaw(1)
+                ->from('wa_conversation_labels')->whereColumn('wa_conversation_labels.conversation_id', 'wa_conversations.id')
+                ->where('wa_conversation_labels.label_id', $request->integer('label'))))
             ->when($filter === 'mine', fn ($q) => $q->where('assigned_to', $me->id))
             ->when($request->search, function ($q, $s) {
                 $q->where(function ($w) use ($s) {
@@ -205,6 +218,10 @@ class WhatsAppController extends Controller
         $followup = \App\Services\WhatsApp\InboxFollowup::enabled();
         // محادثات أرقام الإدارة تُعلَّم في الصندوق — يخدمها المساعد الإداري لا بوت العملاء
         $adminPhones = rescue(fn () => \App\Models\WaAdminNumber::where('is_active', true)->pluck('phone')->flip()->all(), [], false);
+        // التصنيفات وشارات النظام (E29): استعلام واحد لكل منهما للصفحة كلها، والشارات المالية بصلاحياتها
+        $labelsOn = \App\Services\WhatsApp\LabelService::enabled();
+        $labels = $labelsOn ? \App\Services\WhatsApp\LabelService::chipsFor($rows->pluck('id')->all()) : [];
+        $badges = $labelsOn ? \App\Services\WhatsApp\ConversationBadges::forPage(collect($rows), auth()->user()) : [];
 
         return $rows->map(fn ($c) => [
             'id' => $c->id,
@@ -235,7 +252,8 @@ class WhatsAppController extends Controller
             'assignee' => $c->assignee?->name,
             'assigned_to' => $c->assigned_to,
             'topics' => TopicRouter::topicsOf($c),
-        ] + ($followup ? \App\Services\WhatsApp\InboxFollowup::state($c, in_array($c->id, $pinned, true)) : []))->all();
+        ] + ($followup ? \App\Services\WhatsApp\InboxFollowup::state($c, in_array($c->id, $pinned, true)) : [])
+          + ($labelsOn ? ['labels' => $labels[$c->id] ?? [], 'badges' => $badges[$c->id] ?? []] : []))->all();
     }
 
     /**
@@ -291,6 +309,11 @@ class WhatsAppController extends Controller
             array_push($columns, 'attempts', 'payload');
         }
         $canResend = $ledger && $user->can('whatsapp.reply') && $conversation->isWindowOpen();
+        // الترجمة عند الطلب (E29): المخزّنة وقابلية الترجمة ووسم الصادر المترجم، من الحمولة في الخادم وحده
+        $translate = \App\Services\WhatsApp\MessageTranslator::enabled();
+        if ($translate && !in_array('payload', $columns, true)) {
+            $columns[] = 'payload';
+        }
         $ledgerFields = function ($m) use ($ledger, $canResend): array {
             if (!$ledger || $m->direction !== 'out') {
                 return [];
@@ -362,7 +385,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m) + $ledgerFields($m))->values();
+        ] + $failure($m) + $ledgerFields($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 
@@ -394,7 +417,8 @@ class WhatsAppController extends Controller
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
-            ] + (\App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::state(
+            ] + (\App\Services\WhatsApp\LabelService::enabled() ? ['labels' => \App\Services\WhatsApp\LabelService::chipsFor([$conversation->id])[$conversation->id] ?? []] : [])
+              + (\App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::state(
                 $conversation,
                 \App\Models\WaConversationPin::where('user_id', auth()->id())->where('conversation_id', $conversation->id)->exists(),
             ) : [])
@@ -591,9 +615,9 @@ class WhatsAppController extends Controller
 
     /**
      * أُرسلت أو أُعيدت (replayed) 200 · غير مؤكدة من هذا الإرسال 202 · المفتاح نفسه قيد الإرسال أو غير مؤكد 409، ولنص آخر 422 ·
-     * مهلة المسار القديم 503 · سائر الفشل 422 بالفئة والإجراء
+     * مهلة المسار القديم 503 · سائر الفشل 422 بالفئة والإجراء. عام لمسار الرد المترجم (E29)
      */
-    private static function sendStatus(array $res): int
+    public static function sendStatus(array $res): int
     {
         return match (true) {
             (bool) $res['ok'] => 200,

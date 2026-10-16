@@ -89,6 +89,8 @@ final class SettingsSchema
         'wa_verify_token_hash', 'wa_verify_token_rotated_at', 'wa_token_rotated_at', 'wa_app_secret_rotated_at', 'api_key_rotated_at',
         'wa_suspended_at', 'wa_suspended_by', 'wa_suspended_source', 'wa_suspended_reason', 'feature_flags',
         'fallback_api_key_rotated_at', 'wa_waba_id_source', 'wa_display_phone',
+        // E29: تأكيد الطبقة المدفوعة لمزوّد الذكاء (مساره الخاص، ويُمسح عند تغيير المزوّد أو المفتاح)
+        'llm_terms_confirmed_at', 'llm_terms_confirmed_by', 'llm_terms_fp',
     ];
 
     /** النصوص الطويلة: طولها وبصمتها في التدقيق لا نصها */

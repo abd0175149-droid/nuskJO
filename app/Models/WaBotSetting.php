@@ -60,6 +60,8 @@ class WaBotSetting extends Model
         'wa_app_secret_rotated_at' => 'datetime',
         'api_key_rotated_at' => 'datetime',
         'wa_suspended_at' => 'datetime',
+        // E29
+        'llm_terms_confirmed_at' => 'datetime',
     ];
 
     protected static function booted(): void

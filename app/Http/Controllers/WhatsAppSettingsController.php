@@ -329,6 +329,27 @@ class WhatsAppSettingsController extends Controller
         return response()->json(['ok' => true, 'last_error' => null]);
     }
 
+    /**
+     * POST api/whatsapp/settings/llm-terms {confirm}: المدير يؤكد أن مفتاح مزوّد الذكاء على الطبقة المدفوعة (شرط الترجمة،
+     * E29)، أو يلغي تأكيده. التأكيد مربوط ببصمة المزوّد والمفتاح، ويُمسح آلياً عند تغيير أيهما. تدقيق صارم.
+     */
+    public function llmTerms(Request $request): JsonResponse
+    {
+        $this->authorizeSettings();
+        $confirm = (bool) $request->validate(['confirm' => 'required|boolean'])['confirm'];
+        $s = WaBotSetting::current();
+        if ($confirm && blank($s->llmKey())) {
+            throw ValidationException::withMessages(['confirm' => 'أضف مفتاح المزوّد أولاً، ثم أكّد']);
+        }
+
+        SettingsWriter::apply($confirm
+            ? ['llm_terms_confirmed_at' => now(), 'llm_terms_confirmed_by' => auth()->id(), 'llm_terms_fp' => \App\Services\WhatsApp\MessageTranslator::termsFingerprint($s)]
+            : ['llm_terms_confirmed_at' => null, 'llm_terms_confirmed_by' => null, 'llm_terms_fp' => null],
+            null, AuditAction::WaLlmTermsConfirm, ['confirm' => $confirm, 'provider' => (string) $s->provider], label: 'تأكيد الطبقة المدفوعة لمزوّد الذكاء');
+
+        return response()->json(['llmTerms' => \App\Services\WhatsApp\MessageTranslator::termsState(WaBotSetting::current())]);
+    }
+
     /** حالة القاطع للأساسي والاحتياطي، وآخر 10 حوادث: أنواع وأوقات وأعداد، بلا بيانات عملاء */
     private function breakerState(WaBotSetting $s): array
     {
@@ -402,6 +423,8 @@ class WhatsAppSettingsController extends Controller
             ],
             'killSwitch' => $this->killSwitchState($s),
             'breaker' => $this->breakerState($s),
+            // E29: تأكيد الطبقة المدفوعة لمزوّد الذكاء (شرط ترجمة الرسائل للموظف)
+            'llmTerms' => \App\Services\WhatsApp\MessageTranslator::termsState($s),
             'flags' => FeatureFlags::panel(),
             'identityMode' => IdentityMode::current(),
             'can' => [

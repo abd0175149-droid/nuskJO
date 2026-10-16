@@ -140,6 +140,21 @@ return [
     'WhatsAppAdminNumberController@update' => 'update',
     'WhatsAppAdminNumberController@destroy' => 'delete',
     'WhatsAppWebhookController@receive' => 'wa.webhook_bad_sig',
+    // E29: التصنيفات والتثبيت داخل الخيط والترجمة عند الطلب
+    'WhatsAppLabelController@store' => 'wa.label_create',
+    'WhatsAppLabelController@update' => 'wa.label_update',
+    'WhatsAppLabelController@destroy' => 'wa.label_delete',
+    'WhatsAppLabelController@reorder' => 'none: ترتيب العرض فقط',
+    'WhatsAppConversationLabelController@attach' => 'wa.label_attach',
+    'WhatsAppConversationLabelController@detach' => 'wa.label_detach',
+    'WhatsAppThreadPinController@saveNote' => 'wa.pin_set',
+    'WhatsAppThreadPinController@clearNote' => 'wa.pin_clear',
+    'WhatsAppThreadPinController@pinMessage' => 'wa.pin_set',
+    'WhatsAppThreadPinController@unpinMessage' => 'wa.pin_clear',
+    'WhatsAppTranslationController@translate' => 'wa.translate',
+    'WhatsAppTranslationController@translateReply' => 'wa.translate',
+    'WhatsAppTranslationController@sendTranslated' => 'wa.policy_override',
+    'WhatsAppSettingsController@llmTerms' => 'wa.llm_terms_confirm',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

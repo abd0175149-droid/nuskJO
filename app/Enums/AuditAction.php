@@ -104,6 +104,16 @@ enum AuditAction: string
     case WaQuickReplyDelete = 'wa.quick_reply_delete';
     case WaQuickReplyApprove = 'wa.quick_reply_approve';
     case WaLastErrorCleared = 'wa.last_error_clear';
+    // E29: التصنيفات والتثبيت داخل الخيط والترجمة عند الطلب
+    case WaLabelCreate = 'wa.label_create';
+    case WaLabelUpdate = 'wa.label_update';
+    case WaLabelDelete = 'wa.label_delete';
+    case WaLabelAttach = 'wa.label_attach';
+    case WaLabelDetach = 'wa.label_detach';
+    case WaPinSet = 'wa.pin_set';
+    case WaPinClear = 'wa.pin_clear';
+    case WaTranslate = 'wa.translate';
+    case WaLlmTermsConfirm = 'wa.llm_terms_confirm';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -145,7 +155,8 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
+            self::WaLlmTermsConfirm => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -158,13 +169,14 @@ enum AuditAction: string
             self::Reverse, self::PeriodClose, self::PeriodOpen, self::YearClose, self::LineRelocate,
             self::OfferPriceChange, self::QuotePrice, self::ExchangeRateSet => 'money',
             self::AuthLogin, self::AuthLogout, self::AuthLoginFailed, self::AccessDenied,
-            self::WaConversationView, self::WaWebhookBadSignature, self::WaWebhookVerifyFailed => 'noise',
+            self::WaConversationView, self::WaWebhookBadSignature, self::WaWebhookVerifyFailed, self::WaTranslate => 'noise',
             self::AuthLockout, self::AuthInactiveBlocked, self::AuthzDenied, self::AuthzWouldDeny, self::AuthzUnmapped,
             self::UserCreate, self::UserUpdate, self::UserRoleChange, self::UserPasswordReset, self::UserPasswordChange,
             self::UserActivate, self::UserDeactivate, self::UserDelete, self::UserRestoreAdmin,
             self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
-            self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove => 'config',
+            self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove,
+            self::WaLabelCreate, self::WaLabelUpdate, self::WaLabelDelete, self::WaLlmTermsConfirm => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
@@ -263,6 +275,15 @@ enum AuditAction: string
             self::WaQuickReplyDelete => 'حذف رد جاهز',
             self::WaQuickReplyApprove => 'اعتماد رد جاهز يذكر بيانات دفع',
             self::WaLastErrorCleared => 'تصفير آخر خطأ من ميتا («تمّ الحل»)',
+            self::WaLabelCreate => 'إضافة تصنيف محادثات',
+            self::WaLabelUpdate => 'تعديل تصنيف محادثات',
+            self::WaLabelDelete => 'حذف تصنيف محادثات',
+            self::WaLabelAttach => 'وضع تصنيف على محادثة',
+            self::WaLabelDetach => 'إزالة تصنيف عن محادثة',
+            self::WaPinSet => 'تثبيت ملاحظة أو رسالة داخلية',
+            self::WaPinClear => 'إلغاء تثبيت داخلي',
+            self::WaTranslate => 'ترجمة رسالة للموظف',
+            self::WaLlmTermsConfirm => 'تأكيد الطبقة المدفوعة لمزوّد الذكاء',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

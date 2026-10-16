@@ -31,6 +31,10 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E29: التصنيفات وشارات النظام، والملاحظة المثبتة وبطاقة الحقائق، والترجمة عند الطلب (بعد تأكيد الطبقة المدفوعة)
+        'wa_labels' => ['label' => 'تصنيفات سير العمل على المحادثات وشارات من النظام (داخلية، لا تغيّر من يرى المحادثة)', 'capability' => 'C127', 'available' => true],
+        'thread_pins' => ['label' => 'الملاحظة المثبتة الداخلية والرسائل المثبتة وبطاقة حقائق العميل', 'capability' => 'C128', 'available' => true],
+        'staff_translation' => ['label' => 'ترجمة رسائل العملاء للموظف عند الطلب، ومعاينة ترجمة الرد مع فحص الأرقام', 'capability' => 'C293', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */
