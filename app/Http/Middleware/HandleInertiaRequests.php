@@ -47,6 +47,8 @@ class HandleInertiaRequests extends Middleware
                 'wa_block' => $user?->can('whatsapp.block') ? rescue(fn () => \App\Support\FeatureFlags::on('wa_block'), false, false) : false,
                 // شريط الانقطاع والتعافي بعد النشر و«قد تكون أُرسلت» (E28، العلم connection_resilience)
                 'resilience' => \App\Services\WhatsApp\SendOutcome::enabled(),
+                // E23: رابط «حالة النظام» لمن يملك ops.view والعلم مفعّل
+                'ops_status' => $user?->can('ops.view') ? rescue(fn () => \App\Support\FeatureFlags::on('ops_status_page'), false, false) : false,
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);

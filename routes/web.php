@@ -271,6 +271,10 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::get('whatsapp/qr-links/{link}/{format}', [\App\Http\Controllers\WhatsAppQrController::class, 'download'])->whereNumber('link')->where('format', 'png|svg')->middleware('perm:whatsapp.settings');
     // أدوات التشخيص (E23): فحص الإعدادات بزر (قراءة، 3 كل 10 دقائق)
     Route::post('api/whatsapp/doctor', [\App\Http\Controllers\WhatsAppController::class, 'runDoctor'])->middleware(['perm:whatsapp.settings', 'throttle:3,10,wa-doctor']);
+    // حالة النظام (E23): قراءة فقط بالصلاحية ops.view والعلم ops_status_page
+    Route::get('ops/status', [\App\Http\Controllers\OpsStatusController::class, 'index'])->name('ops.status')->middleware('perm:ops.view');
+    Route::get('api/ops/status', [\App\Http\Controllers\OpsStatusController::class, 'data'])->middleware('perm:ops.view');
+    Route::post('api/ops/status/refresh', [\App\Http\Controllers\OpsStatusController::class, 'refresh'])->middleware(['perm:ops.view', 'throttle:6,1,ops-status']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');

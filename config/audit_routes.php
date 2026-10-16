@@ -195,6 +195,7 @@ return [
     'WhatsAppChannelHealthController@acknowledge' => 'wa.health_ack',
     // E23: أدوات التشخيص
     'WhatsAppController@runDoctor' => 'none: فحص للقراءة (الحصيلة في الكاش يومين)',
+    'OpsStatusController@refresh' => 'none: إعادة بناء لقطة القراءة (كاش 60 ثانية)',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',
