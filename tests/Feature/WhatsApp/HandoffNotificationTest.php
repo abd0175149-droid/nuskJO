@@ -14,6 +14,7 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\NotificationService;
 use App\Services\WhatsApp\BotEngine;
+use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\Tools\ToolInvoker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -115,8 +116,8 @@ class HandoffNotificationTest extends TestCase
     {
         config(['features.env.wa_event_bus' => true]);
 
-        \App\Services\WhatsApp\BotTools::handoffFromCode($this->conv->fresh(), 'أول');
-        \App\Services\WhatsApp\BotTools::handoffFromCode($this->conv->fresh(), 'ثانٍ');
+        BotTools::handoffFromCode($this->conv->fresh(), 'أول');
+        BotTools::handoffFromCode($this->conv->fresh(), 'ثانٍ');
 
         $this->assertCount(2, $this->events);
         $this->assertSame([1, 1], [$this->notes($this->admin), $this->notes($this->assignee)]);

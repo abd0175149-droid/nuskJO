@@ -5,6 +5,7 @@ namespace Tests\Feature\WhatsApp;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\ConfiguresWhatsApp;
@@ -26,7 +27,7 @@ class UnreadCountAtomicTest extends TestCase
         parent::setUp();
         Queue::fake();
         $this->configureChannel();
-        $this->travelTo(\Illuminate\Support\Carbon::createFromTimestamp(1760425800 + 60));
+        $this->travelTo(Carbon::createFromTimestamp(1760425800 + 60));
     }
 
     public function test_a_write_between_loading_the_conversation_and_counting_is_not_lost(): void

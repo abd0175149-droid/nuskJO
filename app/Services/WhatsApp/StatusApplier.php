@@ -88,6 +88,10 @@ final class StatusApplier
             // يتيم: إيصال سبق حفظ المعرّف (failed لا تحمل biz_opaque في أمثلة المرجع)
             if (!$fromOrphan) {
                 OrphanStatus::remember($wamid, $st);
+                // كُتب المعرّف بين البحث والحفظ (وفرّغ الإرسالُ الكاشَ قبلنا): يُطبَّق الآن. التطبيق المكرر بلا أثر
+                if (WaMessage::where('wamid', $wamid)->where('direction', 'out')->exists()) {
+                    OrphanStatus::drain($wamid);
+                }
             }
 
             return;
@@ -269,11 +273,5 @@ final class StatusApplier
         if (Cache::add('wa:status:unknown:'.$value, 1, now()->addHour())) {
             WaLog::info('wa.status.unknown_value', ['status' => $value]);
         }
-    }
-
-    /** للاختبارات: إعادة فحص الأعمدة بعد هجرة أو تراجع */
-    public static function forgetSchema(): void
-    {
-        self::$ready = null;
     }
 }

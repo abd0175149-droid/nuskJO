@@ -63,7 +63,7 @@ final class UserPreferencesHandler
             $kind = self::apply((array) $p, $contacts);
             $out[$kind ?? 'skipped']++;
         }
-        WaLog::info('webhook.user_preferences', ['count' => $out['stop'] + $out['resume'], 'deleted' => $out['resume']]);
+        WaLog::info('webhook.user_preferences', ['count' => $out['stop'] + $out['resume']]);
 
         return $out;
     }
@@ -115,17 +115,20 @@ final class UserPreferencesHandler
 
     /**
      * الرقم الكامل من wa_id، وإلا معرّف BSUID (user_id) يُحل بمحادثته: رقمها إن عُرف، وإلا المعرّف نفسه.
+     * عنصر بلا هوية يأخذها من مدخل contacts الوحيد إن كان واحداً.
      *
      * @return array{phone: string}|array{wa_user_id: string}|null
      */
     private static function identity(array $p, array $contacts): ?array
     {
-        $phone = ContactIdentity::phoneFrom(data_get($p, 'wa_id'));
+        $contact = ContactIdentity::contactFor($contacts, is_string(data_get($p, 'wa_id')) ? data_get($p, 'wa_id') : null,
+            is_string(data_get($p, 'user_id')) ? data_get($p, 'user_id') : null);
+        $phone = ContactIdentity::phoneFrom(data_get($p, 'wa_id') ?? data_get($contact, 'wa_id'));
         if ($phone !== null) {
             return ['phone' => $phone];
         }
 
-        $userId = data_get($p, 'user_id') ?? data_get(ContactIdentity::contactFor($contacts, null, null), 'user_id');
+        $userId = data_get($p, 'user_id') ?? data_get($contact, 'user_id');
         if (!is_string($userId) || !preg_match(InboundMessage::BSUID, $userId) || str_contains($userId, '.ENT.')) {
             return null;
         }

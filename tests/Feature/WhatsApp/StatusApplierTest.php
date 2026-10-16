@@ -5,7 +5,6 @@ namespace Tests\Feature\WhatsApp;
 use App\Events\NewNotification;
 use App\Events\WhatsApp\WaMessageFailed;
 use App\Events\WhatsApp\WaMessageStatusChanged;
-use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\MetaErrorCatalog;

@@ -140,6 +140,25 @@ class OrphanStatusTest extends TestCase
         $this->assertSame(0, DB::table('cache')->where('key', 'like', '%wa:orphan-status:%')->count());
     }
 
+    public function test_an_id_written_while_the_receipt_is_being_cached_still_gets_the_receipt(): void
+    {
+        $conv = WaConversation::factory()->windowOpen()->create();
+        // الإرسال يكتب المعرّف ويفرّغ الكاش بعد أن بحث الويبهوك عن الصف ولم يجده، وقبل أن يحفظ الإيصال
+        $created = false;
+        Event::listen(\Illuminate\Cache\Events\WritingKey::class, function ($e) use ($conv, &$created) {
+            if (!$created && str_starts_with($e->key, OrphanStatus::PREFIX)) {
+                $created = true;
+                WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'wamid' => self::WAMID, 'status' => 'sent']);
+            }
+        });
+
+        $this->postMetaWebhook('status_delivered.json')->assertOk();
+
+        $this->assertTrue($created);
+        $this->assertSame('delivered', WaMessage::sole()->status);
+        $this->assertNull(Cache::get(OrphanStatus::PREFIX.self::WAMID));
+    }
+
     public function test_a_status_never_becomes_an_orphan_while_the_flag_is_off(): void
     {
         config(['features.env.delivery_status_v2' => false]);

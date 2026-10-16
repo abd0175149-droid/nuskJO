@@ -12,6 +12,7 @@ use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\Concerns\SignsMetaWebhooks;
@@ -127,7 +128,7 @@ class DeliveryFailureNotifyTest extends TestCase
         config(['features.env.wa_event_bus' => true]);
         $this->fakeGraph(['graph.facebook.com/*' => Http::response(json_decode((string) file_get_contents($this->fixturePath('error_131026.json')), true), 400)]);
 
-        $res = WhatsAppChannel::sendText($this->conv, 'مرحباً', 'staff', $this->staff->id, sendKey: SendKey::staff((string) \Illuminate\Support\Str::uuid()));
+        $res = WhatsAppChannel::sendText($this->conv, 'مرحباً', 'staff', $this->staff->id, sendKey: SendKey::staff((string) Str::uuid()));
 
         $this->assertFalse($res['ok'], 'المرسل يرى السبب في المنشئ');
         $this->assertCount(0, $this->bells($this->staff));

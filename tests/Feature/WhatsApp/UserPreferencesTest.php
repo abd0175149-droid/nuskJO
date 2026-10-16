@@ -9,6 +9,7 @@ use App\Models\WaConversation;
 use App\Models\WaOptout;
 use App\Services\WhatsApp\UserPreferencesHandler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -140,7 +141,7 @@ class UserPreferencesTest extends TestCase
 
     public function test_a_typed_stop_and_the_optout_button_record_their_source(): void
     {
-        $this->travelTo(\Illuminate\Support\Carbon::createFromTimestamp(1760425800 + 60));
+        $this->travelTo(Carbon::createFromTimestamp(1760425800 + 60));
         $this->fakeGraph();
 
         $this->postMetaWebhook('optout_iqaf.json')->assertOk();
