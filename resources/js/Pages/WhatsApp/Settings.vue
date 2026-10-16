@@ -462,6 +462,9 @@
 
             <!-- ملف واتساب للأعمال (E31): خارج النموذج، بأزراره ونداءاته -->
             <BusinessProfileCard/>
+
+            <!-- روابط ورموز QR عامة (E38): خلف العلم wa_qr_links -->
+            <QrGeneralPanel v-if="qrLinksOn"/>
         </div>
 
         <OneTimeSecretModal :token="oneTimeToken" @close="oneTimeToken = null"/>
@@ -480,6 +483,7 @@ import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
 import MetaLastErrorCard from '@/Components/WhatsApp/MetaLastErrorCard.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import BusinessProfileCard from '@/Components/WhatsApp/BusinessProfileCard.vue';
+import QrGeneralPanel from '@/Components/WhatsApp/QrGeneralPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
@@ -528,6 +532,7 @@ const verify = ref({ ...props.verify });
 const signature = ref({ ...props.signature });
 const killSwitch = ref({ ...props.killSwitch });
 const flags = ref([...props.flags]);
+const qrLinksOn = computed(() => flags.value.some((f) => f.key === 'wa_qr_links' && f.on));
 const breaker = ref({ ...props.breaker });
 watch(() => props.breaker, (v) => { breaker.value = { ...v }; });
 watch(() => props.sources, (v) => { sources.value = { ...v }; });

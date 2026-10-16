@@ -408,6 +408,8 @@ class WhatsAppController extends Controller
                 'is_staff' => (bool) $conversation->user_id,
                 'blocked' => $conversation->isBlocked(),
                 'block' => $conversation->isBlocked() ? self::blockInfo($conversation) : null,
+                // مصدر المحادثة (E38): «📷 من رمز» أو «📣 من إعلان» لمن يرى المحادثة أصلاً
+                'entry' => \App\Services\WhatsApp\EntryRecorder::badge($conversation),
             ] + (\App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::state(
                 $conversation,
                 \App\Models\WaConversationPin::where('user_id', auth()->id())->where('conversation_id', $conversation->id)->exists(),
@@ -773,16 +775,24 @@ class WhatsAppController extends Controller
             'title' => 'استهلاك البوت وجودته',
             'usage' => $usage,
             'quality' => $quality,
+            // مصادر المحادثات (E38): أعداد فقط، خلف entry_tracking
+            'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries() : null,
         ]);
     }
 
-    public function analyticsData()
+    public function analyticsData(Request $request)
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+        $days = (int) $request->integer('entries_days', 30);
+        // فلتر فترة «مصادر المحادثات» وحده: بلا حساب الاستهلاك والجودة
+        if ($request->query('only') === 'entries') {
+            return response()->json(['entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
+        }
 
         [$usage, $quality] = $this->maskAdminChats(\App\Services\WhatsApp\BotAnalytics::usage(), \App\Services\WhatsApp\BotAnalytics::quality());
 
-        return response()->json(['usage' => $usage, 'quality' => $quality]);
+        return response()->json(['usage' => $usage, 'quality' => $quality,
+            'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
     }
 
     /**

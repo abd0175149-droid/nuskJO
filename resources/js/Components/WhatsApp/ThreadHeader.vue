@@ -13,6 +13,12 @@
           <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<template v-if="thread.username"> · <bdi dir="ltr" class="font-mono">@{{ thread.username }}</bdi></template><span v-if="thread.client" class="text-gray-500 dark:text-gray-400"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
           <p v-if="thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
              title="اسم يضعه العميل بنفسه — غير موثّق">اسم واتساب: <bdi dir="auto">{{ thread.profile_name }}</bdi></p>
+          <!-- مصدر المحادثة (E38): رمز أو رابط أو إعلان، قياس داخلي تقريبي -->
+          <p v-if="thread.entry" data-test="entry-badge" class="text-[11px] text-sky-700 dark:text-sky-300 truncate"
+             title="مصدر بدء المحادثة (قياس داخلي تقريبي)">
+            <template v-if="thread.entry.channel === 'ad'">📣 من إعلان<template v-if="thread.entry.headline">: <bdi dir="auto">{{ thread.entry.headline }}</bdi></template></template>
+            <template v-else>{{ thread.entry.channel === 'qr' ? '📷 من رمز' : '🔗 من رابط' }}<template v-if="thread.entry.title">: <bdi dir="auto">{{ thread.entry.title }}</bdi></template></template>
+          </p>
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -47,7 +53,7 @@
     <!-- المواضيع -->
     <div class="flex flex-wrap items-center gap-1.5">
       <span class="text-[11px] text-gray-400 dark:text-gray-500">المواضيع:</span>
-      <span v-for="tp in (thread.topics || [])" :key="tp.key" :title="tp.source === 'manual' ? 'وسم يدوي' : 'وسم آلي من البوت'"
+      <span v-for="tp in (thread.topics || [])" :key="tp.key" :title="TOPIC_SOURCES[tp.source] || 'وسم آلي من البوت'"
             class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] leading-4"
             :class="tp.source === 'manual'
               ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-300 ring-1 ring-gold-300 dark:ring-gold-700'
@@ -105,6 +111,8 @@ const props = defineProps({
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'block']);
 const blockable = computed(() => props.canBlock && !props.thread.blocked && !props.thread.is_admin && !props.thread.is_staff);
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
+// مصدر الوسم: يدوي، أو قاعدة، أو البوت، أو رمز QR ورابط، أو إعلان (E38)
+const TOPIC_SOURCES = { manual: 'وسم يدوي', rule: 'وسم بقاعدة توجيه', bot: 'وسم آلي من البوت', qr: 'وسم من رمز أو رابط العرض', ad: 'وسم من إعلان العرض' };
 
 // المواضيع غير المرتبطة بالمحادثة للإضافة اليدوية
 const newTopic = ref('');

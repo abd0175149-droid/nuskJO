@@ -341,6 +341,61 @@ class BotAnalytics
         ];
     }
 
+    // ==================================================================
+    //  مصادر المحادثات (E38): رمز QR أو رابط أو إعلان — أعداد فقط، بلا أسماء ولا أرقام
+    // ==================================================================
+
+    public const ENTRIES_NOTE = 'قياس داخلي تقريبي: لا تحليلات من ميتا للرموز، والعميل الذي حذف المرجع لا يُحسب.';
+
+    /**
+     * لكل قناة وعرض ورمز وإعلان: المحادثات المميزة، وطلبات التسعير التي أُنشئت للمحادثة نفسها بعد صف الدخول (لعرضه
+     * أو بلا عرض)، ومنها المحسومة (won). تجميع SQL لا في الذاكرة.
+     *
+     * @return array{days: int, note: string, channels: array<string, int>, rows: list<array>}
+     */
+    public static function entries(int $days = 30): array
+    {
+        $days = in_array($days, [7, 30, 90], true) ? $days : 30;
+        $empty = ['days' => $days, 'note' => self::ENTRIES_NOTE, 'channels' => [], 'rows' => []];
+        if (!\Illuminate\Support\Facades\Schema::hasTable('wa_conversation_entries')) {
+            return $empty;
+        }
+        $since = now()->subDays($days);
+        $db = \Illuminate\Support\Facades\DB::class;
+
+        $channels = $db::table('wa_conversation_entries')->where('created_at', '>=', $since)
+            ->groupBy('channel')->selectRaw('channel, COUNT(DISTINCT conversation_id) as n')->pluck('n', 'channel')
+            ->map(fn ($n) => (int) $n)->all();
+
+        $rows = $db::table('wa_conversation_entries as e')
+            ->leftJoin('quote_requests as q', function ($j) {
+                $j->on('q.conversation_id', '=', 'e.conversation_id')->on('q.created_at', '>=', 'e.created_at')
+                    ->where(fn ($w) => $w->whereColumn('q.offer_id', 'e.offer_id')->orWhereNull('q.offer_id')->orWhereNull('e.offer_id'));
+            })
+            ->leftJoin('offers as o', 'o.id', '=', 'e.offer_id')
+            ->leftJoin('wa_qr_links as l', 'l.id', '=', 'e.qr_link_id')
+            ->where('e.created_at', '>=', $since)
+            ->groupBy('e.channel', 'e.offer_id', 'e.qr_link_id', 'e.referral_source_id')
+            ->selectRaw('e.channel, e.offer_id, e.qr_link_id, e.referral_source_id, MAX(o.title) as offer_title, MAX(l.label) as qr_label,
+                MAX(l.channel) as qr_channel, MAX(e.referral_headline) as headline, COUNT(DISTINCT e.conversation_id) as conversations,
+                COUNT(DISTINCT q.id) as quotes, COUNT(DISTINCT CASE WHEN q.status = ? THEN q.id END) as won', ['won'])
+            ->orderByDesc('conversations')->limit(200)->get();
+
+        return ['days' => $days, 'note' => self::ENTRIES_NOTE, 'channels' => $channels, 'rows' => $rows->map(fn ($r) => [
+            'channel' => $r->channel,
+            'offer_id' => $r->offer_id !== null ? (int) $r->offer_id : null,
+            'offer_title' => $r->offer_title,
+            'qr_link_id' => $r->qr_link_id !== null ? (int) $r->qr_link_id : null,
+            'qr_label' => $r->qr_label,
+            'qr_channel' => $r->qr_channel,
+            'source_id' => $r->referral_source_id,
+            'headline' => $r->headline,
+            'conversations' => (int) $r->conversations,
+            'quotes' => (int) $r->quotes,
+            'won' => (int) $r->won,
+        ])->values()->all()];
+    }
+
     private static function toolStatusCount($usage, string $status): int
     {
         return $usage->sum(fn ($u) => count(array_filter((array) $u->tools_used, fn ($t) => str_starts_with((string) $t, $status.':'))));

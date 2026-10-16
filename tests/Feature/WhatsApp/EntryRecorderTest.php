@@ -114,6 +114,15 @@ class EntryRecorderTest extends TestCase
         $this->assertSame(0, DB::table('wa_conversation_topics')->count());
     }
 
+    public function test_the_thread_shows_where_the_conversation_came_from(): void
+    {
+        $this->textWebhook('[N-45/Q7]', 'h')->assertOk();
+        $conv = WaConversation::sole();
+
+        $this->actingAs(User::factory()->admin()->create())->getJson("/api/whatsapp/conversations/{$conv->id}/messages")->assertOk()
+            ->assertJsonPath('conversation.entry.channel', 'qr')->assertJsonPath('conversation.entry.title', 'عمرة رجب');
+    }
+
     public function test_the_bot_card_names_the_offer_or_apologises_for_a_closed_one(): void
     {
         $card = fn (WaConversation $c) => (new \ReflectionMethod(BotEngine::class, 'customerCard'))->invoke(null, $c);
