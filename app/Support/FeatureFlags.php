@@ -61,6 +61,9 @@ final class FeatureFlags
         'step_up' => ['label' => 'تأكيد الهوية قبل الأفعال الحساسة (اعتماد، إعدادات، أسرار، مستخدمون…) مرة كل ربع ساعة', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'admin_number_mfa' => ['label' => 'أرقام الإدارة التي تعدّل: حساب مرتبط إلزامي، والمساعد موقوف حتى يفعّل صاحبه التحقق بخطوتين', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'idle_report' => ['label' => 'تقرير أسبوعي للمدراء بالحسابات وأرقام الإدارة الخاملة (تنبيه بلا تعطيل)', 'capability' => 'C162', 'available' => true],
+        // E34: رسائل الموظف الصوتية، والتفريغ للزملاء علم مستقل يُطفأ وحده بقرار المالك
+        'staff_voice_notes' => ['label' => 'رسائل الموظف الصوتية من الصندوق (تسجيل حتى دقيقتين، وتصل العميل رسالة صوتية بزر تشغيل)', 'capability' => 'C018,C021', 'available' => true],
+        'staff_voice_transcript' => ['label' => 'تفريغ رسائل الموظف الصوتية نصاً للزملاء عبر Gemini (لا يصل العميل)', 'capability' => 'C018', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

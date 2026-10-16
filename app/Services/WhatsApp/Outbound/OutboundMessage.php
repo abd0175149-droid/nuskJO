@@ -25,7 +25,7 @@ final class OutboundMessage
 
     public const MAX_FILENAME = 200;
 
-    /** @var array<string, array{payload: callable(self): array, display: callable(self): string}> */
+    /** @var array<string, array{payload: callable(self): array, display: callable(self): string, media?: bool}> */
     private static array $registered = [];
 
     private function __construct(
@@ -96,22 +96,23 @@ final class OutboundMessage
 
     public function isMedia(): bool
     {
-        return in_array($this->type, self::MEDIA_TYPES, true);
+        return in_array($this->type, self::MEDIA_TYPES, true) || (self::$registered[$this->type]['media'] ?? false);
     }
 
     /**
      * يسجّل نوعاً جديداً على المغلف (E33: location وcontacts وreaction، E34: audio). $payload يعيد كائن النوع
-     * (بلا messaging_product ولا وجهة)، و$display نص صف wa_messages في الصندوق.
+     * (بلا messaging_product ولا وجهة)، و$display نص صف wa_messages في الصندوق. $media: وسيط بالمعرّف (E34: الصوت)،
+     * فيُحجز مؤجلاً وتُكتب أعمدة media_* مثل الصورة والمستند.
      *
      * @param  callable(self): array  $payload
      * @param  callable(self): string  $display
      */
-    public static function registerType(string $type, callable $payload, callable $display): void
+    public static function registerType(string $type, callable $payload, callable $display, bool $media = false): void
     {
         if (in_array($type, self::TYPES, true)) {
             throw new \InvalidArgumentException("النوع {$type} مبني في المغلف");
         }
-        self::$registered[$type] = ['payload' => $payload, 'display' => $display];
+        self::$registered[$type] = ['payload' => $payload, 'display' => $display, 'media' => $media];
     }
 
     /** للاختبارات: إزالة نوع مسجّل */

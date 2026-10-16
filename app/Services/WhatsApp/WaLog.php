@@ -26,6 +26,8 @@ final class WaLog
         'rule',
         // E32: الملفات الصادرة (النوع المكتشف، وأول 12 حرفاً من البصمة؛ لا اسم ملف أبداً)
         'mime', 'sha12',
+        // E34: الرسائل الصوتية (المدة، ورمز خروج ffmpeg وstderr مقصوصاً بلا مسار المجلد المؤقت)
+        'seconds', 'exit', 'stderr',
     ];
 
     public static function info(string $event, array $context = []): void

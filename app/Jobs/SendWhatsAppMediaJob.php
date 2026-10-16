@@ -9,6 +9,7 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Outbound\OutboundFileStore;
 use App\Services\WhatsApp\Outbound\OutboundMessage;
+use App\Services\WhatsApp\Outbound\VoiceNote;
 use App\Services\WhatsApp\WaLog;
 use App\Services\WhatsApp\WhatsAppChannel;
 use App\Support\AuditActor;
@@ -91,17 +92,28 @@ final class SendWhatsAppMediaJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $message = OutboundMessage::media((string) $row->msg_type, $up['media_id'], $row->media_filename, data_get($row->payload, '_caption'))
-            ->withReplyTo($row->reply_to_wamid);
-        $res = WhatsAppChannel::send($conv->fresh() ?? $conv, $message, (string) $row->source, $row->staff_id, [
+        $opts = [
             'row' => $row,
             'send_key' => $row->send_key,
             'media' => ['mime' => $row->media_mime, 'sha256' => $row->media_sha256, 'size' => $row->media_size,
                 'filename' => $row->media_filename, 'path' => $row->media_path],
-        ]);
+        ];
+        // رسالة الموظف الصوتية (E34): sendVoice بمصدر staff ثابت، ثم تفريغها للزملاء في wa-media
+        $voice = $row->msg_type === VoiceNote::TYPE;
+        if ($voice) {
+            $res = WhatsAppChannel::sendVoice($conv->fresh() ?? $conv, $up['media_id'], (int) $row->staff_id,
+                $opts + ['seconds' => (float) data_get($row->payload, '_voice.seconds', 0)]);
+        } else {
+            $message = OutboundMessage::media((string) $row->msg_type, $up['media_id'], $row->media_filename, data_get($row->payload, '_caption'))
+                ->withReplyTo($row->reply_to_wamid);
+            $res = WhatsAppChannel::send($conv->fresh() ?? $conv, $message, (string) $row->source, $row->staff_id, $opts);
+        }
 
         if ($res['ok']) {
             self::audit($row->fresh() ?? $row);
+            if ($voice) {
+                TranscribeStaffVoice::schedule($row->id);
+            }
         } elseif (empty($res['unknown'])) {
             // رفض صريح بعد الرفع: لا يبقى الملف عند ميتا 30 يوماً بلا رسالة (محاولة واحدة، والفشل يُعدّ فقط)
             WhatsAppChannel::deleteMedia($up['media_id']);
@@ -130,7 +142,9 @@ final class SendWhatsAppMediaJob implements ShouldBeUnique, ShouldQueue
             'message_id' => $row->id, 'type' => $row->msg_type, 'mime' => $row->media_mime, 'size' => $row->media_size,
             'sha256' => $row->media_sha256 ? substr((string) $row->media_sha256, 0, 16) : null,
             'via' => $invoiceId ? 'invoice' : 'inbox', 'doc_kind' => $kind,
-        ], fn ($v) => $v !== null);
+        ], fn ($v) => $v !== null)
+            // E34: الرسالة الصوتية بمدتها، بلا محتوى
+            + ($row->msg_type === VoiceNote::TYPE ? ['kind' => 'voice', 'seconds' => (int) round((float) data_get($payload, '_voice.seconds', 0))] : []);
 
         AuditActor::as('user', 'job:send-media', function () use ($row, $changes, $kind, $invoiceId) {
             AuditLog::safe(AuditAction::WaFileSent, 'wa_conversation', $row->conversation_id, null, $changes,

@@ -744,6 +744,18 @@ class WhatsAppChannel
     }
 
     /**
+     * رسالة صوتية من الموظف (E34): type=audio بعلم voice، وملف ogg/opus أحادي مرفوع بالمعرّف. لا معامل للمصدر: staff ثابت
+     * هنا، والبوت والنظام لا يرسلان صوتاً أبداً (dispatch يرفضه لغير الموظف، وNoBotAudioTest يحرس أدوات البوت).
+     *
+     * @param  array{seconds?: float|int, send_key?: ?string, media?: ?array, row?: ?WaMessage}  $opts  row: الصف المحجوز في send-file
+     */
+    public static function sendVoice(WaConversation $conv, string $mediaId, int $staffId, array $opts = []): array
+    {
+        return self::send($conv, Outbound\VoiceNote::message($mediaId, (float) ($opts['seconds'] ?? 0)), 'staff', $staffId,
+            array_intersect_key($opts, array_flip(['send_key', 'media', 'row'])));
+    }
+
+    /**
      * الأقفال 0–4 كما في dispatch (الموظف، والقناة، والإيقاف الطارئ، والنافذة، والوجهة) بلا إرسال: قبل أي رفع إلى ميتا،
      * وقبل حجز صف ملف، وفي الوظيفة المؤجلة قبل الرفع ثم قبل الإرسال. null: مسموح.
      */
@@ -766,6 +778,9 @@ class WhatsAppChannel
         }
         if (!$m->isMedia() || !\Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['attempts', 'media_path'])) {
             return self::failLocal(self::ERR_UNSUPPORTED, 'الإرسال المؤجل للملفات وحدها.');
+        }
+        if ($source !== 'staff' && Outbound\VoiceNote::isVoicePayload($m->payload())) {
+            return self::voiceRefused($conv, $source);
         }
         $s = WaBotSetting::current();
         [$fail] = self::gate($conv, $s, $source, $staffId);
@@ -978,6 +993,14 @@ class WhatsAppChannel
         array $columns = [],
         ?WaMessage $reserved = null
     ): array {
+        // الرسالة الصوتية الأصلية (E34) من الموظف وحده: لا يرسل البوت ولا النظام صوتاً أياً كان المسار
+        if ($source !== 'staff' && Outbound\VoiceNote::isVoicePayload($payload)) {
+            if ($reserved !== null) {
+                self::failReserved($reserved, ['code' => self::ERR_UNSUPPORTED, 'error' => 'الرسائل الصوتية من الموظف وحده.']);
+            }
+
+            return self::voiceRefused($conv, $source);
+        }
         $s = WaBotSetting::current();
 
         // ── الأقفال 0–4 (الموظف، القناة، الإيقاف، النافذة، الوجهة). تُعاد كلها قبل كل إعادة في الدفتر
@@ -1481,6 +1504,13 @@ class WhatsAppChannel
     }
 
     /** قفل محلي قبل ميتا (بلا صف): النص كما هو، ومع meta_error_v2 فئته وإجراؤه من الجدول */
+    private static function voiceRefused(WaConversation $conv, string $source): array
+    {
+        WaLog::warning('wa.voice.refused', ['conv_id' => $conv->id, 'source' => $source]);
+
+        return self::failLocal(self::ERR_UNSUPPORTED, 'الرسائل الصوتية من الموظف وحده.');
+    }
+
     private static function failLocal(string $code, string $msg): array
     {
         return self::failWith(MetaError::local($code), $code, $msg);

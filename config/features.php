@@ -50,5 +50,8 @@ return [
         'step_up' => env('WA_FEATURE_STEP_UP'),
         'admin_number_mfa' => env('WA_FEATURE_ADMIN_NUMBER_MFA'),
         'idle_report' => env('WA_FEATURE_IDLE_REPORT'),
+        // E34: رسائل الموظف الصوتية وتفريغها للزملاء
+        'staff_voice_notes' => env('WA_FEATURE_STAFF_VOICE_NOTES'),
+        'staff_voice_transcript' => env('WA_FEATURE_STAFF_VOICE_TRANSCRIPT'),
     ],
 ];

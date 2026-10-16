@@ -84,6 +84,28 @@ return [
         'invoice_send_statuses' => array_values(array_filter(array_map('trim', explode(',', (string) env('INVOICE_WHATSAPP_STATUSES', 'approved'))))),
     ],
 
+    // رسائل الموظف الصوتية (E34، العلم staff_voice_notes): تسجيل المتصفح يُحوَّل على الخادم إلى ogg/opus أحادي (الصيغة الوحيدة
+    // التي تظهر عند العميل رسالة صوتية بزر تشغيل)، ثم يمر بمسار send-file المؤجل نفسه. ffmpeg في الصورة منذ E34
+    'voice' => [
+        'ffmpeg_path' => env('WA_VOICE_FFMPEG', '/usr/bin/ffmpeg'),
+        'ffprobe_path' => env('WA_VOICE_FFPROBE', '/usr/bin/ffprobe'),
+        // حد التسجيل في المتصفح وفي الخادم (مع سماح 5 ثوانٍ لفرق القياس)
+        'max_seconds' => max(10, min(300, (int) env('WA_VOICE_MAX_SECONDS', 120))),
+        // الملف الخام من المتصفح قبل التحويل (webm أو mp4 أو ogg)
+        'max_upload_bytes' => 3_000_000,
+        // ميتا تعرض زر التشغيل لما يبلغ 512KB أو أقل، وإلا زر تنزيل: إعادة ترميز واحدة بالمعدل الأدنى ثم الرفض
+        'max_voice_bytes' => 512 * 1024,
+        'bitrate' => env('WA_VOICE_BITRATE', '32k'),
+        'fallback_bitrate' => '24k',
+        // مهلة ffmpeg، وانتظار القفل (تحويل واحد على الحاوية) قبل رد 503 «المحوّل مشغول»
+        'timeout' => 60,
+        'probe_timeout' => 10,
+        'lock_seconds' => 75,
+        'lock_wait' => 3,
+        // تفريغ صوت الموظف للزملاء (العلم staff_voice_transcript): مهلة نداء Gemini
+        'transcribe_timeout' => 60,
+    ],
+
     // بوابة المحتوى الصادر (E15.9): حسابات الشركة المسموح ظهورها في الرسائل الآلية (IBAN بلا مسافات، مفصولة بفواصل)
     'outbound_policy' => [
         'allow_ibans' => array_values(array_filter(array_map(fn ($i) => strtoupper(str_replace(' ', '', trim($i))), explode(',', (string) env('WA_POLICY_ALLOW_IBANS', ''))))),
