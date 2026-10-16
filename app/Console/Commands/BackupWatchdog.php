@@ -22,7 +22,7 @@ class BackupWatchdog extends Command
         $sent = 0;
         foreach ($status->alerts() as $type => $message) {
             if (Cache::add("backup:watchdog:{$type}:".now()->format('Ymd'), true, now()->addDay())) {
-                WhatsAppInbox::notifyAdmins('⚠️ النسخ الاحتياطي', $message, '/settings/backups');
+                WhatsAppInbox::notifyAdmins('⚠️ النسخ الاحتياطي', $message, '/settings/backups', $type === 'disk' ? 'RB-08' : 'RB-06');
                 $sent++;
             }
         }

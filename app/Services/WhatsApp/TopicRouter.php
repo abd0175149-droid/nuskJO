@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Schema;
  * يخصّ الاثنين.
  *
  * تصنيفات سير العمل (E29) في جدول منفصل: لا تمس الرؤية ولا التوكيل، ولا يقرؤها هذا الصنف أبداً.
+ * التفصيل: docs/whatsapp/topic-routing.md
  */
 class TopicRouter
 {

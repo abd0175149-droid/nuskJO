@@ -560,11 +560,7 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 5. **`admin_number_mfa`:** بعد أن يسجّل أصحاب أرقام الإدارة التي تعدّل. الرقم الذي يعدّل يحتاج حساب صاحبه، ويتوقف مساعده برسالة واحدة في اليوم حتى يفعّل صاحبه التحقق.
 6. **`idle_report`**، و`PASSWORD_MIN_LENGTH=10` مع `PASSWORD_LETTERS_AND_NUMBERS=true` بقرار المالك.
 
-فقد الموظف عامله الثاني، بالترتيب:
-1. «فقدت هاتفي؟» في شاشة التحدّي، برمز استرداد. ثم من «الأمان»: يعطّل التحقق ويسجّل الهاتف الجديد.
-2. بلا رموز: مدير آخر من المستخدمين › 🔐 بسبب مكتوب. يخرج الموظف من كل أجهزته ثم يسجّل من جديد.
-3. المدير الوحيد، أو آخر مدير نشط بعامل ثانٍ: `docker exec -it -u www-data nuskjo-app php artisan security:mfa-reset <البريد> --reason="…"`، ويطلب البريد مرة ثانية. إن نسي كلمة المرور أيضاً فقبله `auth:restore-admin <البريد> --reset-password`.
-4. عطل يمس الجميع: `MFA_CHALLENGE=off` ثم `up -d`، ويُسجَّل استعماله في CHANGELOG، ثم يعود `on`.
+فقد الموظف عامله الثاني، والقفل بعد محاولات خاطئة، ومنفذ الطوارئ `MFA_CHALLENGE`: الكتيّب RB-16 في [RUNBOOK.md](RUNBOOK.md#rb-16).
 - **تدوير APP_KEY:** أبقِ المفتاح القديم في `APP_PREVIOUS_KEYS`، فأسرار التحقق مشفّرة به.
 
 جانب ميتا، يدوي للمالك، ويُراجع كل ربع سنة: PIN التحقق بخطوتين للرقم معروف ومحفوظ خارج الخادم (أو يُغيَّر من WhatsApp Manager › Two-step verification)، و2FA لكل أعضاء Business portfolio بالقيمة Everyone، ولا موظف سابقاً في People وSystem users، ورمز System User بصلاحيتين فقط. لا رموز دخول عبر قوالب واتساب.
@@ -827,6 +823,26 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 
 قرارات المالك (الافتراضي بين قوسين): قائمة العروض بدل السرد النصي (تُعرض إن فُعّلت الأداة)؛ أزرار الحجز بعد البطاقة (نعم)؛ زرّا المساعد الإداري (موصى بهما)؛ النموذج (بعد التوثيق وبقرار مكتوب، وحقوله كما في الملف)؛ الكتالوج (لا، يحتاج قراراً مكتوباً منفصلاً).
 - **التراجع:** العلم المعني إلى off فوراً، أو `WA_FEATURE_*=false` ثم `docker compose up -d`. القوائم المرسلة تُرفض نقراتها بأمان، والبوت يعود للسرد النصي و`request_quote`. الجدول والعمودان لا يضران الكود القديم، و`git revert` ثم النشر للضرورة. لا استعادة للنسخة إلا لتلف مثبت.
+
+## كتيّبات التشغيل والتوثيق المحروس بالاختبارات (E25، على مراحل)
+
+وثائق واختبارات في معظمها، والفهرس في `docs/README.md`. ما يتغيّر على الإنتاج عند النشر بلا علم:
+- **`/.well-known/security.txt`** ملف نصي ثابت، بكتلة nginx تخدمه وحده قبل حجب الملفات النقطية. أي مسار آخر تحت `/.well-known/` يبقى محجوباً.
+- **قسم «الإبلاغ عن ثغرة أمنية»** في `/privacy` بالعربية والإنجليزية، بمرساة `#security`.
+- **لا هجرة.** والوثائق لا تدخل الصورة (`docs/` و`**/*.md` في `.dockerignore`)، وتدخل حاوية بوابة النشر. البوابة تستثني مجموعة `horizon` المرتبطة بالتاريخ، وتبقى في CI.
+
+الخطوات:
+1. نسخة `backup:run --reason=manual --label=pre-e25` ووسم الصورة الحالية `nuskjo-nuskjo-app:backup-pre-e25`.
+2. انشر كالمعتاد، فالصورة تُبنى من جديد لكتلة nginx.
+3. تحقق:
+   - `curl -sI https://nuskjo.grade.sbs/.well-known/security.txt` يعيد 200 ونوعه `text/plain`.
+   - `curl -sI https://nuskjo.grade.sbs/.env` و`https://nuskjo.grade.sbs/.well-known/x` ما زالا 403 أو 404.
+   - `/privacy#security` ظاهر.
+   - `docker run --rm --entrypoint sh nuskjo-nuskjo-app -c 'test -e /var/www/html/docs && echo LEAK || echo OK'` يطبع OK.
+4. **العلم `alert_runbook_refs`** في ساعة هادئة: تنتهي تنبيهات المدراء بـ « — الكتيب RB-NN». لا إشعار تجريبي في الإنتاج: يكفي أول تنبيه حقيقي، والاختبار في CI.
+5. للمالك: تفعيل GitHub Private vulnerability reporting وSecret scanning push protection من Settings › Code security، واعتماد البريد الأمني ومهل الاستجابة في `docs/RISKS.md`، وتجديد `Expires` في `security.txt` قبل 2027-09-30.
+
+- **التراجع:** العلم إلى off يعيد نص التنبيهات كما كان. وإن عطّلت كتلة `/.well-known/security.txt` شيئاً فتُحذف وحدها من `docker/nginx.conf` ثم يُعاد البناء. وإلا `git revert` ثم `scripts/deploy.sh`. لا شيء في القاعدة.
 
 ## مغادرة موظف
 

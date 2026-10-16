@@ -104,6 +104,9 @@
     البريد الإلكتروني: <a href="mailto:info@nusuk-jo.com">info@nusuk-jo.com</a>
 </div>
 
+<h2 id="security">١١ · الإبلاغ عن ثغرة أمنية</h2>
+<p>للإبلاغ عن ثغرة أمنية في أنظمتنا: <a href="mailto:info@nusuk-jo.com">info@nusuk-jo.com</a> بعنوان «ثغرة أمنية» — نرد خلال 72 ساعة. لا تختبر على بيانات عملاء حقيقية، ولا ترسل رسائل واتساب لأرقام لا تملكها، ولا تعطّل الخدمة. البحث بحسن نية ضمن هذه الحدود لا نلاحقه قانونياً.</p>
+
 <div class="en">
     <h2>Privacy Policy (English Summary)</h2>
     <p><strong>NUSK Travel &amp; Tourism</strong> (Jordan) collects your name, phone number, message content, booking details and billing records in order to answer your enquiries, issue quotations, complete your bookings and keep lawful accounting records.</p>
@@ -122,6 +125,8 @@
     <p>You may access your data (we send you a copy within 30 days after verifying your identity), correct it, or request its deletion — see our <a href="/data-deletion">Data Deletion</a> page — and object to receiving messages.</p>
     <h3>Contact</h3>
     <p>NUSK Travel &amp; Tourism, Jordan — <a href="mailto:info@nusuk-jo.com">info@nusuk-jo.com</a></p>
+    <h3 id="security-en">Reporting a security vulnerability</h3>
+    <p>Email <a href="mailto:info@nusuk-jo.com">info@nusuk-jo.com</a> with the subject "Security vulnerability" — we reply within 72 hours. Do not test on real customer data, do not message WhatsApp numbers you do not own, and do not disrupt the service. Good-faith research within these limits will not face legal action.</p>
 </div>
 
 @endsection

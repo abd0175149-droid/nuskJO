@@ -217,7 +217,7 @@ final class LlmCircuitBreaker
         if (!$shadow) {
             WhatsAppInbox::notifyAdmins('🔌 البوت في وضع التحويل',
                 self::kindLabel($kind).' منذ '.now()->format('H:i').'، والمحاولة التالية '.Carbon::createFromTimestamp($now + $seconds)->format('H:i')
-                .'. يُحوَّل كل عميل لموظف برسالة ثابتة حتى يعود المزوّد.', '/whatsapp/settings#breaker');
+                .'. يُحوَّل كل عميل لموظف برسالة ثابتة حتى يعود المزوّد.', '/whatsapp/settings#breaker', 'RB-10');
         }
     }
 
@@ -232,7 +232,7 @@ final class LlmCircuitBreaker
         if ($incident && !$incident->shadow) {
             $minutes = (int) max(1, round($incident->opened_at->diffInMinutes(now())));
             WhatsAppInbox::notifyAdmins('✅ عاد البوت للعمل',
-                "انتهى وضع التحويل بعد {$minutes} دقيقة. حُوِّلت خلاله {$incident->handoffs} محادثة لموظف.", '/whatsapp/inbox?filter=attention');
+                "انتهى وضع التحويل بعد {$minutes} دقيقة. حُوِّلت خلاله {$incident->handoffs} محادثة لموظف.", '/whatsapp/inbox?filter=attention', 'RB-10');
         }
     }
 

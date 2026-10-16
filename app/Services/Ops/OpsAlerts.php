@@ -4,6 +4,7 @@ namespace App\Services\Ops;
 
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Support\Ops\RunbookMap;
 use App\Support\SecretRedactor;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Log;
@@ -24,12 +25,16 @@ final class OpsAlerts
         // db: لا تنبيه من الداخل (الإشعارات في القاعدة نفسها)؛ المراقب الخارجي يتولاه
     ];
 
-    /** يرسل إن لم يُرسل المفتاح نفسه خلال ساعة؛ يعيد هل أُرسل */
+    /**
+     * يرسل إن لم يُرسل المفتاح نفسه خلال ساعة؛ يعيد هل أُرسل. بالعلم alert_runbook_refs ينتهي النص بكتيّب المفتاح
+     * في docs/RUNBOOK.md (config/runbooks.php، E25)، والكبح بالمفتاح كما هو.
+     */
     public function notifyAdmins(string $key, string $title, string $body, string $url = self::URL): bool
     {
         if (!OpsHealth::store()->add('ops:alert:'.$key, 1, 3600)) {
             return false;
         }
+        $body .= RunbookMap::suffix(RunbookMap::for($key));
 
         try {
             $admins = User::whereHas('role', fn ($q) => $q->where('slug', 'admin'))->where('is_active', true)->pluck('id');

@@ -112,6 +112,8 @@ final class FeatureFlags
         'interactive_choices' => ['label' => 'قائمة العروض وأزرار الاختيار التفاعلية للبوت (معرّفات يولّدها الخادم، ونص البوت والقائمة رسالة واحدة)', 'capability' => 'C027', 'available' => true],
         'admin_confirm_buttons' => ['label' => 'زرّا «تأكيد» و«إلغاء» تحت معاينة المساعد الإداري (زر قديم لا يؤكد إجراءً أحدث)', 'capability' => 'C027', 'available' => true],
         'quote_flow' => ['label' => 'نموذج طلب التسعير داخل واتساب (Flow ثابت بلا نقطة نهاية؛ يحتاج معرّف الـ Flow المنشور)', 'capability' => 'C120', 'available' => true],
+        // E25: إحالة تنبيه المدراء إلى كتيّبه في docs/RUNBOOK.md (نص فقط؛ الوثائق لا تُخدم من الموقع)
+        'alert_runbook_refs' => ['label' => 'إحالة كل تنبيه تشغيل للمدراء إلى كتيّبه: « — الكتيب RB-NN» في آخر نص الإشعار، بلا بيانات عميل', 'capability' => 'C225', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

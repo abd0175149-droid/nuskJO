@@ -99,5 +99,7 @@ return [
         'interactive_choices' => env('WA_FEATURE_INTERACTIVE_CHOICES'),
         'admin_confirm_buttons' => env('WA_FEATURE_ADMIN_CONFIRM_BUTTONS'),
         'quote_flow' => env('WA_FEATURE_QUOTE_FLOW'),
+        // E25
+        'alert_runbook_refs' => env('WA_FEATURE_ALERT_RUNBOOK_REFS'),
     ],
 ];

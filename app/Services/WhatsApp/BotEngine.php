@@ -18,6 +18,7 @@ use Illuminate\Support\Sleep;
 /**
  * محرّك الوكيل: حلقة أدوات صغيرة محاطة بحواجز حتمية.
  * المزوّد معزول في callModel() — استبداله لا يمسّ شيئاً آخر.
+ * التفصيل: docs/whatsapp/bot-engine.md
  */
 class BotEngine
 {
@@ -926,7 +927,7 @@ TXT;
 
         if ($s->fail_handoff) {
             $conv->update(['needs_attention' => true, 'bot_paused_until' => now()->addHour()]);
-            WhatsAppInbox::notifyAdmins('⚠️ فشل ردّ البوت', $conv->noticeLabel() . ' — البوت موقوف ساعة، المحادثة تحتاج تدخّلاً.', '/whatsapp/inbox?conv=' . $conv->id);
+            WhatsAppInbox::notifyAdmins('⚠️ فشل ردّ البوت', $conv->noticeLabel() . ' — البوت موقوف ساعة، المحادثة تحتاج تدخّلاً.', '/whatsapp/inbox?conv=' . $conv->id, 'RB-01');
         }
 
         return ['sent' => true, 'reason' => 'fail-safe'];

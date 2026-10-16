@@ -474,7 +474,7 @@ final class MetaErrorCatalog
             return false;
         }
         WaLog::error('graph.autosuspend', ['meta_code' => $metaCode]);
-        WhatsAppInbox::notifyAdmins('⛔ إيقاف إرسال الواتساب', "ردّت ميتا بالرمز {$metaCode} (تقييد الحساب)، فأُوقف كل الإرسال تلقائياً. راجع حالة الحساب قبل إعادة التشغيل.", '/whatsapp/settings');
+        WhatsAppInbox::notifyAdmins('⛔ إيقاف إرسال الواتساب', "ردّت ميتا بالرمز {$metaCode} (تقييد الحساب)، فأُوقف كل الإرسال تلقائياً. راجع حالة الحساب قبل إعادة التشغيل.", '/whatsapp/settings', 'RB-03');
 
         return true;
     }

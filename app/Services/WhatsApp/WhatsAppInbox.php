@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * طبقة الإنبوكس: خزّن أولاً ثمّ قرّر من يردّ.
  * البوت مستهلك لهذه الطبقة لا مالكها — إطفاؤه لا يوقف مركز المحادثات.
+ * التفصيل: docs/whatsapp/inbox.md
  */
 class WhatsAppInbox
 {
@@ -204,7 +205,7 @@ class WhatsAppInbox
         \Illuminate\Support\Facades\Cache::increment($day);
 
         if (\Illuminate\Support\Facades\Cache::add('wa:noidentity:alert:' . now()->format('YmdH'), 1, now()->addHour())) {
-            self::notifyAdmins('⚠️ رسالة واتساب بلا مرسل', 'وصلت رسالة بلا رقم ولا معرّف مرسل فلم تُحفظ. التفاصيل في السجل.', '/whatsapp/inbox');
+            self::notifyAdmins('⚠️ رسالة واتساب بلا مرسل', 'وصلت رسالة بلا رقم ولا معرّف مرسل فلم تُحفظ. التفاصيل في السجل.', '/whatsapp/inbox', 'RB-04');
         }
     }
 
@@ -712,14 +713,14 @@ class WhatsAppInbox
         if (in_array($event, $bad, true) || $violation) {
             // «من أوقف؟» له جواب دائماً (WaSuspendAuto alwaysOn)، والحدث من ChannelHealth وحدها
             ChannelHealth::suspendLegacy('meta_event', $event, $event, ['field' => $field, 'event' => $event], 'meta', $field, $event);
-            self::notifyAdmins('⛔ إيقاف إرسال الواتساب', "وصل حدث «{$event}» من ميتا، فأُوقف كل الإرسال تلقائياً. راجع صحّة الحساب قبل إعادة التشغيل.");
+            self::notifyAdmins('⛔ إيقاف إرسال الواتساب', "وصل حدث «{$event}» من ميتا، فأُوقف كل الإرسال تلقائياً. راجع صحّة الحساب قبل إعادة التشغيل.", runbook: 'RB-03');
         } elseif ($event === 'ACCOUNT_OFFBOARDED') {
             // فصل الحساب عن الشريك: تنبيه فقط، والإيقاف التلقائي له قرار مالك (E09.9)
-            self::notifyAdmins('⚠️ فُصل حساب واتساب للأعمال', 'وصل حدث ACCOUNT_OFFBOARDED من ميتا. راجع ربط الحساب قبل أن يتوقف الإرسال.');
+            self::notifyAdmins('⚠️ فُصل حساب واتساب للأعمال', 'وصل حدث ACCOUNT_OFFBOARDED من ميتا. راجع ربط الحساب قبل أن يتوقف الإرسال.', runbook: 'RB-03');
         } elseif ($event === 'PARTNER_REMOVED' && $field === 'account_update' && CoexistenceSync::active()) {
             // انفصال التعايش (E39، مع أعلامه): تنبيه بلا قفل، بالنص نفسه في جدول E22
             $rule = AccountEventHandler::partnerRemoved($value);
-            self::notifyAdmins($rule['alert'][0], $rule['alert'][1], ChannelHealth::URL);
+            self::notifyAdmins($rule['alert'][0], $rule['alert'][1], ChannelHealth::URL, 'RB-18');
         }
     }
 
@@ -764,8 +765,10 @@ class WhatsAppInbox
         return $bytes <= 8192 ? $value : ['truncated' => true, 'bytes' => $bytes, 'keys' => array_slice(array_keys($value), 0, 40)];
     }
 
-    public static function notifyAdmins(string $title, string $body, string $url = '/whatsapp/inbox'): void
+    /** $runbook: معرّف الكتيّب في docs/RUNBOOK.md (E25)، يُلحق بالنص بالعلم alert_runbook_refs وحده */
+    public static function notifyAdmins(string $title, string $body, string $url = '/whatsapp/inbox', ?string $runbook = null): void
     {
+        $body .= \App\Support\Ops\RunbookMap::suffix($runbook);
         try {
             $ids = \App\Models\User::whereHas('role', fn ($q) => $q->where('slug', 'admin'))->where('is_active', true)->pluck('id');
             foreach ($ids as $id) {
