@@ -507,7 +507,7 @@ class InvoiceController extends Controller
                     ]);
                 }
                 // E40: الصندوق الصادر في المعاملة نفسها (العلم integration_outbox؛ الحفظ الثاني لا يكرره)
-                \App\Services\Integrations\IntegrationOutbox::quoteConverted(QuoteRequest::findOrFail($v['quote_request_id']), $invoice);
+                \App\Services\Integrations\IntegrationOutbox::quoteConverted((int) $v['quote_request_id'], $invoice);
             }
 
             return $invoice;

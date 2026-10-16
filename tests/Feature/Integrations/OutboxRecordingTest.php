@@ -6,6 +6,7 @@ use App\Jobs\DeliverIntegrationWebhook;
 use App\Models\Client;
 use App\Models\IntegrationOutboxRow;
 use App\Models\Invoice;
+use App\Models\Offer;
 use App\Models\QuoteRequest;
 use App\Models\User;
 use App\Models\WaConversation;
@@ -84,6 +85,35 @@ class OutboxRecordingTest extends TestCase
 
         Queue::assertPushedOn('integrations', DeliverIntegrationWebhook::class);
         Queue::assertPushed(DeliverIntegrationWebhook::class, 2);
+    }
+
+    public function test_an_offer_invoice_from_a_quote_records_the_conversion_once(): void
+    {
+        Queue::fake();
+        $this->endpoint(['events' => ['quote_request.converted']]);
+        $sales = User::factory()->withPermissions(['invoices.view', 'invoices.create'])->create();
+        $offer = Offer::factory()->ready()->create()->load('groups.options');
+        $group = $offer->groups->first();
+        $quote = QuoteRequest::factory()->create(['offer_id' => $offer->id, 'status' => 'priced', 'details' => 'نص كتبه العميل']);
+
+        $this->actingAs($sales)->post('/invoices', [
+            'mode' => 'offer', 'client_name' => 'عميل تجريبي', 'client_phone' => '16505551234',
+            'trip_date' => $offer->trip_date?->toDateString() ?? now()->addMonth()->toDateString(), 'offer_id' => $offer->id,
+            'lines' => [['pax' => 2, 'room' => 'double', 'sel' => [$group->id => $group->options->first()->id]]],
+            'quote_request_id' => $quote->id,
+        ])->assertSessionHasNoErrors();
+
+        $invoice = Invoice::sole();
+        $row = IntegrationOutboxRow::sole();
+        $this->assertSame("quote_{$quote->id}_converted_{$invoice->id}", $row->idempotency_key);
+        $this->assertSame(['request_number', 'invoice_number', 'offer_id', 'created_at'], array_keys($row->payload['data']));
+        $this->assertSame([$quote->request_number, $invoice->invoice_number, $offer->id], [$row->payload['data']['request_number'], $row->payload['data']['invoice_number'], $row->payload['data']['offer_id']]);
+        $json = json_encode($row->payload, JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('16505551234', $json);
+        $this->assertStringNotContainsString('عميل تجريبي', $json);
+
+        IntegrationOutbox::quoteConverted($quote->id, $invoice);   // حفظ ثانٍ للفاتورة نفسها
+        $this->assertSame(1, IntegrationOutboxRow::count());
     }
 
     public function test_a_failed_accounting_entry_leaves_no_outbox_row_and_no_job(): void

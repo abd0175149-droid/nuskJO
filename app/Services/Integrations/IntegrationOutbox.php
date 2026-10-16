@@ -103,10 +103,10 @@ final class IntegrationOutbox
     }
 
     /** فاتورة عرض أُنشئت من الطلب (won). ليس اعتماداً محاسبياً */
-    public static function quoteConverted(QuoteRequest $qr, Invoice $invoice): void
+    public static function quoteConverted(int $quoteRequestId, Invoice $invoice): void
     {
-        self::safely('quote_request.converted', fn () => self::record('quote_request.converted', 'quote_'.$qr->id.'_converted_'.$invoice->id, [
-            'request_number' => $qr->request_number,
+        self::safely('quote_request.converted', fn () => self::record('quote_request.converted', 'quote_'.$quoteRequestId.'_converted_'.$invoice->id, [
+            'request_number' => QuoteRequest::query()->whereKey($quoteRequestId)->value('request_number'),
             'invoice_number' => $invoice->invoice_number,
             'offer_id' => $invoice->offer_id,
             'created_at' => now()->format(DATE_ATOM),
