@@ -11,18 +11,18 @@
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             نموذج ثابت بلا نقطة نهاية يعبّئه العميل داخل واتساب، فيصل طلب التسعير مكتملاً. يُنشأ يدوياً في WhatsApp Manager
-            من الملف resources/whatsapp/flows/quote_request_v1.json، ويحتاج توثيق النشاط التجاري لدى ميتا.
+            من الملف <bdi dir="ltr" class="font-mono break-all">resources/whatsapp/flows/quote_request_v1.json</bdi>، ويحتاج توثيق النشاط التجاري لدى ميتا.
             <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/flows" target="_blank" rel="noopener noreferrer nofollow"
                class="font-bold text-gold-700 dark:text-gold-400 underline" data-test="meta-steps">خطوات ميتا</a>
         </p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div class="min-w-0">
-                <label for="wa-quote-flow-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">معرّف الـ Flow (Flow ID)</label>
+                <label for="wa-quote-flow-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">معرّف النموذج <bdi dir="ltr">(Flow ID)</bdi></label>
                 <input id="wa-quote-flow-id" type="text" inputmode="numeric" dir="ltr" maxlength="32" autocomplete="off"
                        :value="flowId ?? ''" @input="onInput" placeholder="مثل 1234567890123"
                        class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono focus:ring-2 focus:ring-gold-500 focus:outline-none dark:text-white"/>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">أرقام فقط، من صفحة الـ Flow بعد نشره. فارغ = لا نموذج.</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">أرقام فقط، من صفحة النموذج في WhatsApp Manager بعد نشره. فارغ = لا نموذج.</p>
                 <p v-if="errors.wa_quote_flow_id" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.wa_quote_flow_id }}</p>
             </div>
             <div class="min-w-0">
