@@ -266,6 +266,11 @@ Schedule::command('users:idle-report')
     ->weeklyOn(0, '08:47')
     ->withoutOverlapping();
 
+// رسائل الموظف الصوتية (E34): كنس ما بقي من ملفات التحويل المؤقتة (عملية قُتلت قبل حذفها) كل ساعة
+Schedule::command('whatsapp:voice-tmp-sweep')
+    ->hourlyAt(35)
+    ->withoutOverlapping(10);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

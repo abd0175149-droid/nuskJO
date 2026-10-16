@@ -51,6 +51,8 @@ RUN apk add --no-cache \
     ttf-freefont \
     font-noto \
     font-noto-arabic \
+    # ── رسائل الموظف الصوتية (E34): تحويل تسجيل المتصفح إلى ogg/opus أحادي. الحزمة تحمل ffprobe ومرمّز libopus ──
+    ffmpeg \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo_sqlite \

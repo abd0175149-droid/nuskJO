@@ -65,6 +65,8 @@ final class Csp
             'style-src' => ["'self'", "'unsafe-inline'"],
             'font-src' => ["'self'", 'data:'],
             'img-src' => ["'self'", 'data:', 'blob:'],
+            // معاينة الرسالة الصوتية قبل إرسالها من blob، ومشغّل المرفق من مسار E14 (E34)
+            'media-src' => ["'self'", 'blob:'],
             'connect-src' => $connect,
             'worker-src' => ["'self'", 'blob:'],
             'manifest-src' => ["'self'"],
