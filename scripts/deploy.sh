@@ -84,4 +84,10 @@ log "sha=$SHA container health=${status:-unknown}"
 docker image prune -f --filter dangling=true >/dev/null
 
 [[ "${status:-}" == "healthy" ]] || { log "sha=$SHA NOT healthy after deploy"; exit 1; }
+
+# 7) اختبار الدخان (E26.8): /up والبرامج وتوليد بطاقة وصلاحيات المرفقات والترويسات. الفشل لا يوقف الحاوية
+if ! bash scripts/smoke.sh; then
+    log "sha=$SHA smoke FAILED; container left running (rollback: docs/RELEASE.md)"
+    exit 1
+fi
 log "sha=$SHA deployed"

@@ -21,9 +21,9 @@ use Symfony\Component\Process\Process;
  */
 class OfferCardService
 {
-    /** أبعاد البطاقة: A4 بدقّة 150 نقطة/البوصة */
-    private const WIDTH = 1240;
-    private const HEIGHT = 1754;
+    /** أبعاد البطاقة: A4 بدقّة 150 نقطة/البوصة (عامة لاختبار الدخان ops:smoke-card) */
+    public const WIDTH = 1240;
+    public const HEIGHT = 1754;
 
     private const DISK = 'public';
     private const DIR = 'offer-cards';
@@ -228,6 +228,21 @@ class OfferCardService
         $args[] = 'file://' . str_replace('\\', '/', $htmlPath);
 
         return $args;
+    }
+
+    /**
+     * يصيّر HTML جاهزاً إلى PNG في المسار المعطى بالطريق نفسه (كروميوم والعزل)، بلا قرص ولا عرض.
+     * لاختبار الدخان ops:smoke-card (E26.8)؛ ملف HTML المؤقت في sys_get_temp_dir() ويُحذف دائماً.
+     */
+    public static function renderHtml(string $html, string $pngPath): void
+    {
+        $htmlPath = sys_get_temp_dir().'/card-smoke-'.bin2hex(random_bytes(6)).'.html';
+        file_put_contents($htmlPath, $html);
+        try {
+            self::shoot($htmlPath, $pngPath);
+        } finally {
+            @unlink($htmlPath);
+        }
     }
 
     /** يشغّل كروميوم بلا واجهة لالتقاط البطاقة */

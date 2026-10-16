@@ -15,6 +15,17 @@ services:
     restart: unless-stopped
     # يتسع لـ stopwaitsecs=130 لعامل الطابور: وظيفة رد جارية تكتمل بدل أن تُقتل عند كل نشر
     stop_grace_period: 140s
+    # تقوية الحاوية (E26.8). no-new-privileges: supervisord وphp-fpm وnginx يُسقطون الصلاحيات من root ولا يرفعونها،
+    # وكروميوم يعمل بـ --no-sandbox. الحدود في /opt/nuskJO/.env (تعويض compose) بعد قياس scripts/security/measure-memory.sh
+    # وops:smoke-card: الذاكرة ضعف القمة ولا تقل عن 2g، وpids يعدّ الخيوط (كروميوم وحده عشرات، و20 عامل php-fpm والطوابير وReverb).
+    # 0 يرفع الحد في الطوارئ. مؤجل عمداً: read_only وcap_drop [ALL]، لأن الإقلاع ينفّذ chown وconfig:cache بـ root
+    # وsupervisord يبدأ بـ root؛ تغيير ذلك مشروع مستقل يمس قالب كل المشاريع
+    security_opt:
+      - "no-new-privileges:true"
+    mem_limit: ${NUSKJO_MEM_LIMIT:-3g}
+    memswap_limit: ${NUSKJO_MEM_LIMIT:-3g}
+    pids_limit: ${NUSKJO_PIDS_LIMIT:-1024}
+    cpus: ${NUSKJO_CPUS:-2.0}
     ports:
       # NUSKJO_BIND_ADDRESS=127.0.0.1 (في /opt/nuskJO/.env لتعويض compose) يقصر المنفذ على المضيف بعد تحويل قاعدة النفق
       # إلى http://127.0.0.1:4020 (docs/RELEASE.md «ربط المنفذ»). بلا قيمة: كل الواجهات كما اليوم
@@ -53,6 +64,11 @@ services:
       - AUDIT_PAGE=${AUDIT_PAGE:-false}
       # E13: مدة الاحتفاظ بالمحادثات (0 = لا تقليم) حتى يقرّرها المالك في /opt/nuskJO/.env
       - WA_RETENTION_DAYS=${WA_RETENTION_DAYS:-0}
+      # E26: سياسة أمن المحتوى (report افتراضياً: تقارير بلا حجب؛ enforce بعد أسبوع نظيف؛ off للطوارئ)،
+      # وصلاحيات storage (legacy حتى يُتحقق من ضم nginx إلى مجموعة www-data، ثم strict: 750/640)
+      - CSP_MODE=${CSP_MODE:-report}
+      - CSP_CONNECT_EXTRA=${CSP_CONNECT_EXTRA:-}
+      - NUSKJO_STORAGE_PERMS=${NUSKJO_STORAGE_PERMS:-legacy}
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database

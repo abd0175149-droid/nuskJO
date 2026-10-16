@@ -71,7 +71,7 @@ return [
             'formatter' => Monolog\Formatter\JsonFormatter::class,
             'level' => env('WA_LOG_LEVEL', 'info'),
             'days' => env('WA_LOG_DAYS', 30),
-            'permission' => 0664,
+            'permission' => 0640,   // E26: لا قراءة لغير www-data ومجموعتها
             'tap' => [App\Logging\RedactSecrets::class],
         ],
 
@@ -80,7 +80,7 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
-            'permission' => 0664,   // يكتب www-data حتى لو أنشأ root الملف أولاً
+            'permission' => 0640,   // E26: www-data يكتب ومجموعته تقرأ؛ artisan دائماً بـ -u www-data كي لا يملك root الملف
             'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05/E06)
         ],
 
@@ -90,7 +90,7 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
-            'permission' => 0664,   // يكتب www-data حتى لو أنشأ root الملف أولاً
+            'permission' => 0640,   // E26: www-data يكتب ومجموعته تقرأ؛ artisan دائماً بـ -u www-data كي لا يملك root الملف
             'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05/E06)
         ],
 

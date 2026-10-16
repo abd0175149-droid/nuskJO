@@ -98,7 +98,8 @@ class SettingController extends Controller
     public function uploadBrandAsset(Request $request)
     {
         $request->validate([
-            'asset' => 'required|image|mimes:png,jpg,jpeg,webp,svg|max:5120',
+            // بلا svg (E26): قاعدة image ترفضه أصلاً، وحذفه هنا يمنع فتحه يوماً بـ allow_svg بالخطأ
+            'asset' => 'required|image|mimes:png,jpg,jpeg,webp|max:5120',
             'type' => 'required|in:logo,hero,letterhead',
         ]);
 
