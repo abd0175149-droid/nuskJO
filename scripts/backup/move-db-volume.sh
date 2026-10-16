@@ -7,7 +7,7 @@
 #
 # الشرط: docker-compose.yml في --compose-dir هو الجديد (حجم على database/data وDB_DATABASE)، والصورة مبنية منه.
 # لا يحذف شيئاً: الحجم القديم يبقى كما هو (30 يوماً على الأقل، وحذفه بقرار المالك).
-# الترتيب المقترح: Demo، ثم Tawasul بعد يوم بلا مشاكل، ثم nuskJO. ونسخة قبل كل خطوة (يأخذها السكربت).
+# نسخة قبل النقل (يأخذها السكربت).
 # shellcheck disable=SC2016,SC2001  # كود PHP بين علامتي اقتباس مفردة عن قصد
 set -euo pipefail
 umask 077
@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$DIR" && -n "$OLD" && -n "$NEW" ]] || { sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
-# lib.sh بعد المعاملات: BASE وCFG تتبع --project (Demo وTawasul لهما مجلداتهما)
+# lib.sh بعد المعاملات: BASE وCFG تتبع --project
 export PROJECT="${PROJECT:-nuskjo}"
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 . "$HERE/lib.sh"

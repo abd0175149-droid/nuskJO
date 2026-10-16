@@ -311,7 +311,7 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 
 إثبات سر التطبيق (`WA_APPSECRET_PROOF`):
 1. تأكد أن سر التطبيق المحفوظ هو سر التطبيق المرتبط بالرمز (App Dashboard › Settings › Basic).
-2. `WA_APPSECRET_PROOF=true` على Demo، ثم بعد 48 ساعة على Tawasul، ثم على الإنتاج. بعد كل خطوة: رسالة نصية وبطاقة عرض ورسالة صوتية.
+2. `WA_APPSECRET_PROOF=true` في `.env.production` لنسك ثم `docker compose up -d` (بلا بناء). مباشرة بعده: رسالة نصية وبطاقة عرض ورسالة صوتية، و`whatsapp:doctor` يُظهر رفض إثبات = 0. عند أي رفض: `WA_APPSECRET_PROOF=false` فوراً ثم `up -d`.
 3. سبعة أيام متتالية على الإنتاج: النداءات = بإثبات، وصفر رفض (`whatsapp:doctor` أو سطر البطاقة «جاهز لتفعيل Require App Secret»). تُسجَّل النتيجة في CHANGELOG، وهي شرط بدء E26. لا يُفعَّل «Require App Secret» في لوحة ميتا قبلها.
 - **التراجع:** `meta_error_v2` إلى off من الإعدادات فوراً. `WA_APPSECRET_PROOF=false` ثم `docker compose up -d` بلا بناء. الأعمدة إضافية بلا ضرر.
 
