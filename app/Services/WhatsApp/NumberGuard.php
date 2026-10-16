@@ -76,15 +76,19 @@ final class NumberGuard
         return $out;
     }
 
+    /** بلا لغة هدف: الإنجليزية والعربية وحدهما، فكلمات لغة تتصادم مع كلمات أخرى («on» التركية عشرة) */
+    private const DEFAULT_LANGS = ['en', 'ar'];
+
     /**
-     * كلمات أرقام مكتوبة بالحروف في النص، بلغة الهدف وحدها إن عُرفت (وإلا كل اللغات).
+     * كلمات أرقام مكتوبة بالحروف في النص، بلغة الهدف وحدها إن عُرفت (والخادم يمررها دائماً)، وإلا الإنجليزية والعربية.
      *
      * @return list<string>
      */
     public static function spelledWords(string $text, ?string $lang = null): array
     {
         $found = [];
-        foreach ($lang !== null && isset(self::WORDS[$lang]) ? [$lang => self::WORDS[$lang]] : self::WORDS as $code => $words) {
+        $langs = $lang !== null && isset(self::WORDS[$lang]) ? [$lang] : self::DEFAULT_LANGS;
+        foreach (array_intersect_key(self::WORDS, array_flip($langs)) as $code => $words) {
             // العربية: حرف عطف أو جر و«ال» قبل الكلمة (والخمسة، بخمسين)
             $prefix = $code === 'ar' ? '(?:[وفبلك]?(?:ال)?)' : '';
             if (preg_match_all('/(?<![\p{L}\p{M}\p{N}])'.$prefix.'('.implode('|', array_map(fn ($w) => preg_quote($w, '/'), $words)).')(?![\p{L}\p{M}\p{N}])/iu', $text, $m)) {

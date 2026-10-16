@@ -40,7 +40,8 @@ final class ThreadPins
      */
     public static function saveNote(WaConversation $c, mixed $note, User $u): void
     {
-        $clean = TextNormalizer::untrustedName(is_string($note) ? $note : '', 2000) ?? '';
+        // السطر الجديد مسافة قبل التنقية (untrustedName يحذف محارف التحكم فيلصق الكلمتين)
+        $clean = TextNormalizer::untrustedName(is_string($note) ? (preg_replace('/[\r\n\t\x{2028}\x{2029}]+/u', ' ', $note) ?? '') : '', 2000) ?? '';
         if ($clean === '') {
             throw ValidationException::withMessages(['note' => 'اكتب الملاحظة أولاً']);
         }
