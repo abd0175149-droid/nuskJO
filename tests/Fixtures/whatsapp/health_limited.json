@@ -1,0 +1,23 @@
+{
+  "health_status": {
+    "can_send_message": "LIMITED",
+    "entities": [
+      {
+        "entity_type": "PHONE_NUMBER",
+        "id": "106540352242922",
+        "can_send_message": "LIMITED",
+        "additional_info": [
+          "Your phone number has reached its 250 business-initiated messaging limit."
+        ]
+      },
+      {
+        "entity_type": "WABA",
+        "id": "102290129340398",
+        "can_send_message": "AVAILABLE"
+      }
+    ]
+  },
+  "quality_rating": "YELLOW",
+  "verified_name": "Test Travel",
+  "id": "106540352242922"
+}

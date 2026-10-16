@@ -1,0 +1,19 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "time": 1760430800,
+      "changes": [
+        {
+          "value": {
+            "display_phone_number": "15550783881",
+            "event": "PIN_RESET_REQUEST",
+            "requester": "1234567890"
+          },
+          "field": "security"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "time": 1760430300,
+      "changes": [
+        {
+          "value": {
+            "event": "ACCOUNT_RESTRICTION",
+            "restriction_info": [
+              {
+                "restriction_type": "RESTRICTED_BIZ_INITIATED_MESSAGING",
+                "expiration": 1761035000
+              },
+              {
+                "restriction_type": "RESTRICTED_ADD_PHONE_NUMBER_ACTION",
+                "expiration": 1760948600
+              }
+            ]
+          },
+          "field": "account_update"
+        }
+      ]
+    }
+  ]
+}
