@@ -23,4 +23,15 @@ return [
     'token_critical_days' => 3,
     // بتوقيت عمّان
     'credentials_check_at' => '08:00',
+
+    // صمت الوارد (E37، العلم inbound_silence_alert): ساعات الدوام المنظّمة للحساب (القيمة الحرة company_hours لا تصلح).
+    // الأيام بترقيم Carbon: 0 الأحد … 6 السبت؛ الافتراضي السبت إلى الخميس
+    'business_hours' => [
+        'days' => [6, 0, 1, 2, 3, 4],
+        'from' => '09:00',
+        'to' => '21:00',
+        'timezone' => 'Asia/Amman',
+    ],
+    // لا حدث من ميتا منذ هذه المدة في وقت الدوام، والساعة نفسها فيها حركة خلال 14 يوماً: تنبيه مرة كل 6 ساعات
+    'inbound_silence_minutes' => (int) env('OPS_INBOUND_SILENCE_MINUTES', 180),
 ];

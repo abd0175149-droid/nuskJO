@@ -79,6 +79,7 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
                         مهام فاشلة خلال 24 ساعة: <span class="font-bold">{{ ops.failed_24h ?? '؟' }}</span>
                         <template v-if="!ops.enabled"> · فحص /up مطفأ (OPS_HEALTH_CHECKS)</template>
+                        <span class="block mt-1" data-test="last-inbound">{{ lastInboundText }}</span>
                     </p>
 
                     <!-- رمز ميتا -->
@@ -734,6 +735,13 @@ const opsComponents = computed(() => {
         { code: 'backlog', label: 'الطابور', ok: !codes.includes('backlog') },
         ...((props.ops?.warnings || []).includes('media_backlog') ? [{ code: 'media_backlog', label: 'تأخر أرشفة المرفقات', ok: false }] : []),
     ];
+});
+
+// صمت الوارد (E37): دقائق منذ آخر حدث وصل من ميتا (ويبهوك أو رسالة واردة)
+const lastInboundText = computed(() => {
+    const minutes = props.ops?.last_inbound_minutes;
+    if (minutes === null || minutes === undefined) return 'لم يصل من ميتا أي حدث بعد';
+    return minutes < 1 ? 'آخر حدث من ميتا قبل أقل من دقيقة' : `آخر حدث من ميتا قبل ${minutes} دقيقة`;
 });
 
 const ageText = (seconds) => {

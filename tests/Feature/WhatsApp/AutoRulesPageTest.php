@@ -257,6 +257,20 @@ class AutoRulesPageTest extends TestCase
         $this->assertSame(0, $res->json('total'));
     }
 
+    public function test_the_simulation_limit_has_its_own_counter(): void
+    {
+        $this->rule();
+        // «جرّب» خمس مرات لا تستهلك حصة المحاكاة (4 في الدقيقة): لكل مسار عدّاده
+        for ($i = 0; $i < 5; $i++) {
+            $this->actingAs($this->manager)->postJson('/api/whatsapp/auto-rules/test', ['text' => 'وين موقعكم'])->assertOk();
+        }
+        for ($i = 0; $i < 4; $i++) {
+            $this->actingAs($this->manager)->postJson('/api/whatsapp/auto-rules/simulate')->assertOk();
+        }
+
+        $this->actingAs($this->manager)->postJson('/api/whatsapp/auto-rules/simulate')->assertStatus(429);
+    }
+
     public function test_the_migration_grants_the_permission_to_the_admin_role(): void
     {
         $admin = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'مدير']);

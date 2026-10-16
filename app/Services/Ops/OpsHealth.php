@@ -88,8 +88,9 @@ final class OpsHealth
 
     /**
      * أعمار النبضات بالثواني (null: لا نبضة) وعدد الوظائف الفاشلة في 24 ساعة، لبطاقة الإعدادات وops:status.
+     * last_inbound_minutes (E37): دقائق منذ آخر حدث من ميتا، للعرض فقط؛ لا يدخل codes ولا /up.
      *
-     * @return array{enabled: bool, codes: list<string>, schedule_age: ?int, queues: array<string, ?int>, failed_24h: ?int, warnings: list<string>}
+     * @return array{enabled: bool, codes: list<string>, schedule_age: ?int, queues: array<string, ?int>, failed_24h: ?int, warnings: list<string>, last_inbound_minutes: ?int}
      */
     public function snapshot(): array
     {
@@ -117,6 +118,7 @@ final class OpsHealth
             'queues' => collect(self::queues())->mapWithKeys(fn ($q) => [$q => $age(self::beatKey($q))])->all(),
             'failed_24h' => $failed,
             'warnings' => $this->warnings($now),
+            'last_inbound_minutes' => InboundSilence::minutesSinceLast(),
         ];
     }
 

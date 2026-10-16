@@ -48,7 +48,7 @@
                   class="shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-40">جرّب</button>
         </form>
         <div v-if="testResult" class="space-y-2 text-sm" data-test="test-result">
-          <p class="text-xs text-gray-500 dark:text-gray-400">بعد التطبيع: <bdi dir="auto" class="font-mono">{{ testResult.normalized || '—' }}</bdi> · {{ testResult.words }} كلمة</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">بعد التطبيع: <bdi dir="auto" class="font-bold">{{ testResult.normalized || '—' }}</bdi> · {{ testResult.words }} كلمة</p>
           <div v-if="testResult.match" class="rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20 p-3 space-y-1">
             <p class="font-bold text-teal-800 dark:text-teal-200">⚡ تطابق: {{ testResult.match.name }}<span v-if="!testResult.match.is_active" class="font-normal"> (موقوفة)</span></p>
             <p dir="rtl" class="whitespace-pre-line [unicode-bidi:plaintext]">{{ testResult.match.reply_ar || '— لا رد الآن (متغير فارغ أو نص مرفوض)' }}</p>

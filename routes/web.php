@@ -211,10 +211,10 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::put('whatsapp/auto-rules/{rule}', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'update'])->name('whatsapp.auto-rules.update')->middleware('perm:whatsapp.auto_rules');
     Route::delete('whatsapp/auto-rules/{rule}', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'destroy'])->name('whatsapp.auto-rules.destroy')->middleware('perm:whatsapp.auto_rules');
     Route::post('whatsapp/auto-rules/{rule}/toggle', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'toggle'])->name('whatsapp.auto-rules.toggle')->middleware('perm:whatsapp.auto_rules');
-    Route::post('api/whatsapp/auto-rules/test', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'test'])->middleware(['perm:whatsapp.auto_rules', 'throttle:30,1']);
-    Route::post('api/whatsapp/auto-rules/simulate', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'simulate'])->middleware(['perm:whatsapp.auto_rules', 'throttle:4,1']);
-    Route::get('api/whatsapp/conversational-automation', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'automation'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
-    Route::post('api/whatsapp/conversational-automation/sync', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'syncAutomation'])->middleware(['perm:whatsapp.settings', 'throttle:3,1']);
+    Route::post('api/whatsapp/auto-rules/test', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'test'])->middleware(['perm:whatsapp.auto_rules', 'throttle:30,1,wa-rule-test']);
+    Route::post('api/whatsapp/auto-rules/simulate', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'simulate'])->middleware(['perm:whatsapp.auto_rules', 'throttle:4,1,wa-rule-sim']);
+    Route::get('api/whatsapp/conversational-automation', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'automation'])->middleware(['perm:whatsapp.settings', 'throttle:10,1,wa-conv-read']);
+    Route::post('api/whatsapp/conversational-automation/sync', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'syncAutomation'])->middleware(['perm:whatsapp.settings', 'throttle:3,1,wa-conv-sync']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');

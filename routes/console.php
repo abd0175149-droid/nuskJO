@@ -242,6 +242,11 @@ Schedule::command('whatsapp:webhook-events-prune')
     ->hourlyAt(15)
     ->withoutOverlapping(10);
 
+// صمت الوارد في وقت الدوام (E37): قراءة فقط، والعلم inbound_silence_alert يقرر التنبيه. لا يدخل /up
+Schedule::command('whatsapp:inbound-silence')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(5);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');
