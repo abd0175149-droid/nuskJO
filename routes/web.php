@@ -159,6 +159,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::delete('api/whatsapp/conversations/{conversation}/pin', [\App\Http\Controllers\WhatsAppConversationStateController::class, 'unpin'])->middleware('perm:whatsapp.view');
     Route::post('api/whatsapp/conversations/{conversation}/mark-unread', [\App\Http\Controllers\WhatsAppConversationStateController::class, 'markUnread'])->middleware('perm:whatsapp.view');
     Route::post('api/whatsapp/conversations/{conversation}/reprocess', [\App\Http\Controllers\WhatsAppConversationStateController::class, 'reprocess'])->middleware('perm:whatsapp.settings');
+    Route::get('api/whatsapp/conversations/{conversation}/quick-replies/render', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'render'])->middleware('perm:whatsapp.reply');
     Route::get('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'routing'])->name('whatsapp.routing')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'saveRouting'])->name('whatsapp.routing.save')->middleware('perm:whatsapp.settings');
     // إعدادات البوت (E10): حفظ جزئي برمز نسخة، وإيقاف طارئ بسبب، وأسرار لا تعود للمتصفح
@@ -189,6 +190,14 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::delete('whatsapp/admin-numbers/{adminNumber}', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'destroy'])->name('whatsapp.admin-numbers.destroy')->middleware('perm:whatsapp.settings');
 
     // قاعدة معرفة بوت العملاء — معلومات مستقلة
+    // الردود الجاهزة (E17.7): الإدارة بـ whatsapp.quick_replies، والاعتماد بـ whatsapp.settings
+    Route::get('whatsapp/quick-replies', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'index'])->name('whatsapp.quick-replies')->middleware('perm:whatsapp.quick_replies');
+    Route::post('whatsapp/quick-replies', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'store'])->name('whatsapp.quick-replies.store')->middleware('perm:whatsapp.quick_replies');
+    Route::post('whatsapp/quick-replies/reorder', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'reorder'])->name('whatsapp.quick-replies.reorder')->middleware('perm:whatsapp.quick_replies');
+    Route::put('whatsapp/quick-replies/{quickReply}', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'update'])->name('whatsapp.quick-replies.update')->middleware('perm:whatsapp.quick_replies');
+    Route::delete('whatsapp/quick-replies/{quickReply}', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'destroy'])->name('whatsapp.quick-replies.destroy')->middleware('perm:whatsapp.quick_replies');
+    Route::post('whatsapp/quick-replies/{quickReply}/approve', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'approve'])->name('whatsapp.quick-replies.approve')->middleware('perm:whatsapp.settings');
+    Route::get('api/whatsapp/quick-replies', [\App\Http\Controllers\WhatsAppQuickReplyController::class, 'usable'])->middleware('perm:whatsapp.reply');
     Route::get('whatsapp/knowledge', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'index'])->name('whatsapp.knowledge')->middleware('perm:whatsapp.settings');
     Route::post('whatsapp/knowledge', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'store'])->name('whatsapp.knowledge.store')->middleware('perm:whatsapp.settings');
     Route::post('whatsapp/knowledge/reorder', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'reorder'])->name('whatsapp.knowledge.reorder')->middleware('perm:whatsapp.settings');

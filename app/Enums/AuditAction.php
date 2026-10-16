@@ -99,6 +99,10 @@ enum AuditAction: string
     case WaConvReopen = 'wa.conv_reopen';
     case WaConvSnooze = 'wa.conv_snooze';
     case WaReprocess = 'wa.reprocess';
+    case WaQuickReplyCreate = 'wa.quick_reply_create';
+    case WaQuickReplyUpdate = 'wa.quick_reply_update';
+    case WaQuickReplyDelete = 'wa.quick_reply_delete';
+    case WaQuickReplyApprove = 'wa.quick_reply_approve';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -139,7 +143,7 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -157,7 +161,8 @@ enum AuditAction: string
             self::UserCreate, self::UserUpdate, self::UserRoleChange, self::UserPasswordReset, self::UserPasswordChange,
             self::UserActivate, self::UserDeactivate, self::UserDelete, self::UserRestoreAdmin,
             self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
-            self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility => 'config',
+            self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
+            self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange => 'meta',
@@ -251,6 +256,10 @@ enum AuditAction: string
             self::WaConvReopen => 'إعادة فتح محادثة',
             self::WaConvSnooze => 'تأجيل محادثة',
             self::WaReprocess => 'إعادة معالجة رد عالق',
+            self::WaQuickReplyCreate => 'إضافة رد جاهز',
+            self::WaQuickReplyUpdate => 'تعديل رد جاهز',
+            self::WaQuickReplyDelete => 'حذف رد جاهز',
+            self::WaQuickReplyApprove => 'اعتماد رد جاهز يذكر بيانات دفع',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

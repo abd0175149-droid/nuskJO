@@ -49,6 +49,8 @@ class ConversationScopeTest extends TestCase
         'mark-unread' => ['POST', []],
         // للمدير (whatsapp.settings): داخل النطاق بلا وارد معلّق يرد 422، لا 404
         'reprocess' => ['POST', [], [], ['whatsapp.settings'], 422],
+        // ملء رد جاهز: داخل النطاق بلا معرّف الرد يرد 422 (الربط قبل التحقق)، وخارجه 404
+        'quick-replies/render' => ['GET', [], [], [], 422],
     ];
 
     protected function setUp(): void
@@ -57,7 +59,7 @@ class ConversationScopeTest extends TestCase
         $this->configureChannel();
         $this->fakeGraph();
         \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
-        config(['features.env.reprocess_button' => true]);
+        config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true]);
     }
 
     public static function routes(): array

@@ -489,6 +489,12 @@ class WhatsAppController extends Controller
 
         $data = $request->validate(['body' => 'required|string|max:4000', 'ack_warnings' => 'sometimes|boolean']);
 
+        // متغير رد جاهز لم يُملأ (E17.7): لا يصل {{…}} إلى عميل أبداً، ولو تجاوز أحد الواجهة. يعمل بلا علم
+        if ($unfilled = \App\Services\WhatsApp\QuickReplyText::unfilled($data['body'])) {
+            return response()->json(['ok' => false, 'code' => 'UNFILLED_VARIABLE',
+                'error' => 'في الرسالة متغير لم يُملأ: {{'.$unfilled[0].'}} — أكمله قبل الإرسال'], 422);
+        }
+
         // بيانات حساسة في رد الموظف (E15.9): تحذير يؤكده، لا منع. التأكيد يُدقَّق بالفاعل
         $warnings = \App\Services\WhatsApp\Outbound\OutboundPolicy::evaluate($conversation, ['text' => ['body' => $data['body']]], $data['body'], 'staff')->warnings;
         if ($warnings && !$request->boolean('ack_warnings')) {
