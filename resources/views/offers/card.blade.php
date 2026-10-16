@@ -10,6 +10,7 @@
       $showDistance هل نُظهر عمود «المسافة عن الحرم» (عمرة/حج فقط)
       $cities       مدن العرض مرتّبة (['مكة','المدينة']) أو [] لعرض بمدينة واحدة
       $roomTypes, $company, $logoUri, $heroUri, $minPrice, $fontFamily
+      $qrUri        صورة رمز QR المختار للبطاقة (data: URI) أو null (E38)
 --}}
 @php
     /* ------------------------------------------------------------------
@@ -512,6 +513,13 @@
         }
         .bar__text { font-size: 22px; line-height: 1.4; }
         .bar__email { font-size: 20px; line-height: 1.5; direction: ltr; }
+
+        /* ===== رمز QR اختياري (E38): في التذييل، أو عائماً فوق تذييل الورقة الرسمية ===== */
+        .bar__qr { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
+        .bar__qr img, .qr-float img { width: 104px; height: 104px; background: #ffffff; padding: 6px; border-radius: 8px; }
+        .bar__qr span, .qr-float span { font-size: 18px; line-height: 1.3; }
+        .poster--letterhead { position: relative; }
+        .qr-float { position: absolute; left: 44px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: #2b2b2b; }
     </style>
 </head>
 <body>
@@ -737,7 +745,7 @@
 
     {{-- ===== 4) التذييل: هواتف · عنوان · بريد =====
          يُخفى في وضع الورقة الرسمية لأنّ الورقة تحمل تذييلها الخاص --}}
-    @if (!$letterhead && (count($phones) || $has($address) || count($emails)))
+    @if (!$letterhead && (count($phones) || $has($address) || count($emails) || $has($qrUri ?? null)))
         <footer class="bar">
             @if (count($phones))
                 <div class="bar__group">
@@ -765,7 +773,21 @@
                     @endforeach
                 </div>
             @endif
+
+            @if ($has($qrUri ?? null))
+                <div class="bar__group bar__qr">
+                    <img src="{{ $qrUri }}" alt="">
+                    <span>امسح<br>للمراسلة</span>
+                </div>
+            @endif
         </footer>
+    @endif
+
+    @if ($letterhead && $has($qrUri ?? null))
+        <div class="qr-float" style="bottom: calc({{ $lhBottom }}% + 12px);">
+            <img src="{{ $qrUri }}" alt="">
+            <span>امسح للمراسلة</span>
+        </div>
     @endif
 
 </div>

@@ -18,6 +18,8 @@ final class WaLog
         'error_code', 'category', 'attempt', 'scope',
         // E20: استقبال الويبهوك (أنواع أحداث المكالمات ببصمة مقتطعة، ورقم الصف والعنصر، وأعداد المحو والإعادة)
         'events', 'item', 'event_id', 'wiped', 'deleted', 'overdue', 'processed', 'failed', 'dead',
+        // E38: رقم صف الرمز وقناة الدخول (لا الرمز ولا الرابط ولا الرسالة المعبأة)
+        'qr_link_id', 'channel',
     ];
 
     public static function info(string $event, array $context = []): void

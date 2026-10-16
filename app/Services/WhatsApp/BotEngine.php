@@ -468,6 +468,11 @@ TXT;
             $lines[] = $notes;
         }
 
+        // مصدر المحادثة (E38): رمز أو رابط أو إعلان، بنص يبنيه الكود (خلف entry_tracking)
+        if ($entry = EntryRecorder::botHint($conv)) {
+            $lines[] = $entry;
+        }
+
         return implode("\n", $lines);
     }
 

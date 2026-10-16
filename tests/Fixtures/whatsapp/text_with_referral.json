@@ -1,0 +1,49 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Sheena Nelson"
+                },
+                "wa_id": "16505551234"
+              }
+            ],
+            "messages": [
+              {
+                "from": "16505551234",
+                "id": "wamid.HBgLMTY1MDU1NTEyMzQVAgASGBQzRUIwQzRBMkQ5RjFFN0I2NUEwOAA=",
+                "timestamp": "1760425200",
+                "text": {
+                  "body": "مرحباً، أريد تفاصيل العرض [N-45]"
+                },
+                "type": "text",
+                "referral": {
+                  "source_url": "https://fb.me/2ZulEu42P",
+                  "source_id": "120208392884470555",
+                  "source_type": "ad",
+                  "headline": "عمرة رجب‮ — احجز الآن",
+                  "body": "عرض محدود من مكتبنا",
+                  "media_type": "image",
+                  "image_url": "https://scontent.xx.fbcdn.net/v/t45.1600-4/example.jpg",
+                  "ctwa_clid": "ARAkLkA8rmlFeiCktEJQ-QTwRiyYHAFDLMNDBH0CD3qpjd0HR4irJ6LEkR7JwFF4XvnO2E4Nx0-eM-GABDLOPaOdRMv-_zfUQ2a"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

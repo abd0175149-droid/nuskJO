@@ -150,6 +150,13 @@ return [
     'WhatsAppBlockController@reblock' => 'wa.block',
     'WhatsAppBusinessProfileController@sync' => 'wa.business_profile',
     'WhatsAppBusinessProfileController@photo' => 'wa.business_photo',
+    // E38: رموز QR الرسمية وبطاقة الحالة
+    'OfferShareController@storeQr' => 'wa.qr_create',
+    'OfferShareController@destroyQr' => 'wa.qr_delete',
+    'OfferShareController@toggleCardQr' => 'wa.qr_card',
+    'OfferShareController@generateStory' => 'offer.story',
+    'WhatsAppQrController@store' => 'wa.qr_create',
+    'WhatsAppQrController@destroy' => 'wa.qr_delete',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

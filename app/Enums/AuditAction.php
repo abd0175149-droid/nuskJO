@@ -111,6 +111,11 @@ enum AuditAction: string
     case WaBlockSync = 'wa.block_sync';
     case WaBusinessProfileUpdate = 'wa.business_profile';
     case WaBusinessProfilePhoto = 'wa.business_photo';
+    // E38: رموز QR الرسمية وبطاقة الحالة
+    case WaQrCreate = 'wa.qr_create';
+    case WaQrDelete = 'wa.qr_delete';
+    case WaQrCardToggle = 'wa.qr_card';
+    case OfferStoryGenerate = 'offer.story';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -153,7 +158,8 @@ enum AuditAction: string
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
             self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
-            self::WaBlock, self::WaUnblock, self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto => AuditSeverity::Warn,
+            self::WaBlock, self::WaUnblock, self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
+            self::WaQrDelete => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -173,7 +179,8 @@ enum AuditAction: string
             self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
             self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove,
-            self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto => 'config',
+            self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
+            self::WaQrCreate, self::WaQrDelete, self::WaQrCardToggle, self::OfferStoryGenerate => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
@@ -278,6 +285,10 @@ enum AuditAction: string
             self::WaBlockSync => 'مزامنة قائمة المحظورين مع ميتا',
             self::WaBusinessProfileUpdate => 'مزامنة ملف واتساب للأعمال',
             self::WaBusinessProfilePhoto => 'صورة ملف واتساب للأعمال',
+            self::WaQrCreate => 'إنشاء رمز QR ورابط قصير',
+            self::WaQrDelete => 'حذف رمز QR ورابط قصير',
+            self::WaQrCardToggle => 'رمز QR على بطاقة العرض',
+            self::OfferStoryGenerate => 'توليد بطاقة الحالة 9:16',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

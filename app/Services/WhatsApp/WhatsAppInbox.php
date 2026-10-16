@@ -204,7 +204,7 @@ class WhatsAppInbox
         }
 
         try {
-            [$conv, $after] = DB::transaction(fn () => self::storeInboundRows($in, $msg));
+            [$conv, $after, $stored] = DB::transaction(fn () => self::storeInboundRows($in, $msg));
         } catch (UniqueConstraintViolationException) {
             // نسختان من الإشعار نفسه في وقت واحد: الأخرى خزّنته
             $existing = WaMessage::where('wamid', $wamid)->first();
@@ -225,6 +225,11 @@ class WhatsAppInbox
             BlockService::inboundWhileBlocked($conv);
 
             return null;
+        }
+
+        // مصدر المحادثة (E38): رمز QR أو رابط أو إعلان، بعد الاعتماد وقبل البوت. لا يكسر الاستقبال أبداً
+        if ($stored) {
+            EntryRecorder::record($conv, $stored, $in->referral);
         }
 
         // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
@@ -266,7 +271,7 @@ class WhatsAppInbox
 
     /**
      * صفوف الوارد كلها في معاملة واحدة: المحادثة والرسالة والنافذة، أو لا شيء.
-     * @return array{0: ?WaConversation, 1: false|string} المحادثة إن استحقت المتابعة، وما يُنفَّذ بعد الاعتماد (optout | consent:yes | consent:no)
+     * @return array{0: ?WaConversation, 1: false|string, 2: ?WaMessage} المحادثة إن استحقت المتابعة، وما يُنفَّذ بعد الاعتماد (optout | consent:yes | consent:no)، والرسالة المخزّنة
      */
     private static function storeInboundRows(InboundMessage $in, array $msg): array
     {
@@ -288,7 +293,7 @@ class WhatsAppInbox
                 'body' => $in->body, 'payload' => $msg + ($in->reactionTo ? ['_reaction_to' => $in->reactionTo] : []),
             ] + $columns);
 
-            return [null, false];
+            return [null, false, null];
         }
 
         $body = $in->body;
@@ -337,7 +342,7 @@ class WhatsAppInbox
             Media\MediaConsent::record($conv, $choice);
             ReplyState::advance($conv, $message->id);
 
-            return [$conv, "consent:{$choice}"];
+            return [$conv, "consent:{$choice}", $message];
         }
 
         // إيقاف التسويق بنصّ مطابق
@@ -350,10 +355,10 @@ class WhatsAppInbox
             // إشعار النظام هو الرد: لا يجيب البوت عنها لاحقاً (المُصالِح أو مكرر من ميتا)
             ReplyState::advance($conv, $message->id);
 
-            return [$conv, 'optout'];
+            return [$conv, 'optout', $message];
         }
 
-        return [$conv, false];
+        return [$conv, false, $message];
     }
 
     /** إيجاد/إنشاء محادثة برقم وربطها بالعميل أو الموظف (الاختبارات؛ الويبهوك عبر ContactIdentity::resolve) */

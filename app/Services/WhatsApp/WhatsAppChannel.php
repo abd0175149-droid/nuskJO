@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Cache;
  * نداءات إدارة جهات الاتصال (block_users) خارج dispatch، لأنها ليست رسائل، لكنها تحترم القناة والإيقاف الطارئ
  * ونافذة ميتا. وملف الأعمال (whatsapp_business_profile) قراءة بالقفل 1، وكتابة بالقفلين 1 و2. ولا كود هنا يغيّر
  * اسم العرض أو يعيد تسجيل الرقم أو يحجز اسم مستخدم: ذلك من WhatsApp Manager وحده (NoDisplayNameApiTest).
+ * ورموز QR (message_qrdls، E38) خارج dispatch كذلك: العلم wa_qr_links والقفلان 1 و2، بلا نشر حالة آلياً أبداً.
  *
  * كل نداء Graph عبر Graph\GraphClient (الإصدار من الإعداد، ومقاطع مرمَّزة، ولا تحويلات، وappsecret_proof خلف
  * WA_APPSECRET_PROOF)، وكل خطأ ميتا يصير MetaError من الجدول الوحيد MetaErrorCatalog (E18).
@@ -920,6 +921,184 @@ class WhatsAppChannel
             'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
         self::legacyReact($err);
         MetaErrorReactor::react($err, ['source' => 'profile']);
+
+        return self::fail($err->code, $err->staffMessage, $err->metaCode) + ['action' => $err->action];
+    }
+
+    // ==================== رموز QR والروابط القصيرة (E38) ====================
+
+    /**
+     * message_qrdls ليست رسائل فلا تمر بـ dispatch، لكنها تحترم العلم wa_qr_links والقفلين 1 و2: القناة مهيّأة،
+     * ولا إيقاف طارئ (لا كتابة إلى ميتا أثناءه). لا يُسجَّل الرمز ولا الرابط ولا الرسالة المعبأة: رقم الصف ورمز الخطأ وحدهما.
+     */
+    private static function qrdlGate(): ?array
+    {
+        if (!\App\Support\FeatureFlags::on('wa_qr_links')) {
+            return self::fail('QR_DISABLED', 'رموز QR مطفأة حالياً.');
+        }
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ): لا تعديل للرموز حتى يُرفع.');
+        }
+
+        return null;
+    }
+
+    /**
+     * POST {pnid}/message_qrdls: رمز ورابط قصير برسالة معبأة. data: code وprefilled_message (كما أعادتها ميتا،
+     * وقد تختلف عن المرسلة) وdeep_link_url وqr_image_url (مؤقت غير مضمون البقاء: يُنزَّل فوراً).
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data?: array{code: string, prefilled_message: string, deep_link_url: string, qr_image_url: ?string}}
+     */
+    public static function createQrdl(string $prefilled, string $format = 'PNG', ?int $linkId = null): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+
+        return self::qrdlResult(self::qrdlCall('POST', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls'],
+            ['prefilled_message' => $prefilled, 'generate_qr_image' => self::qrFormat($format)], $linkId));
+    }
+
+    /** POST على المسار نفسه مع code: يعيد qr_image_url جديداً (بصيغة أخرى مثلاً) للرمز نفسه */
+    public static function updateQrdl(string $code, string $prefilled, string $format = 'PNG', ?int $linkId = null): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+        if (!self::validQrCode($code)) {
+            return self::fail('QR_CODE_INVALID', 'معرّف الرمز غير صالح.');
+        }
+
+        return self::qrdlResult(self::qrdlCall('POST', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls'],
+            ['code' => $code, 'prefilled_message' => $prefilled, 'generate_qr_image' => self::qrFormat($format)], $linkId));
+    }
+
+    /**
+     * DELETE {pnid}/message_qrdls/{code}. gone=true إن لم تجده ميتا أصلاً (حُذف من WhatsApp Manager مثلاً).
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, gone?: bool}
+     */
+    public static function deleteQrdl(string $code, ?int $linkId = null): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+        if (!self::validQrCode($code)) {
+            return self::fail('QR_CODE_INVALID', 'معرّف الرمز غير صالح.');
+        }
+        try {
+            $res = Graph\GraphClient::request('DELETE', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls', $code], [],
+                (string) WaBotSetting::current()->token(), 20);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.qrdl.failed', ['type' => class_basename($e), 'qr_link_id' => $linkId]);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        if ($res->status() === 404 || ((int) $res->json('error.code') === 100 && (int) $res->json('error.error_subcode') === 33)) {
+            return ['ok' => true, 'code' => null, 'error' => null, 'gone' => true];
+        }
+        if (!$res->successful()) {
+            return self::qrdlError($res, $linkId);
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'gone' => false];
+    }
+
+    /**
+     * GET {pnid}/message_qrdls بالصفحات (للمطابقة الأسبوعية وحدها). القائمة 2000 حداً أقصى.
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data?: list<array{code: string, prefilled_message: string, deep_link_url: string}>}
+     */
+    public static function listQrdls(int $maxPages = 25): array
+    {
+        if ($fail = self::qrdlGate()) {
+            return $fail;
+        }
+        $out = [];
+        $after = null;
+        for ($page = 0; $page < $maxPages; $page++) {
+            $res = self::qrdlCall('GET', [(string) WaBotSetting::current()->phoneNumberId(), 'message_qrdls'],
+                array_filter(['limit' => 100, 'after' => $after]), null);
+            if (!$res['ok']) {
+                return $res;
+            }
+            foreach ((array) data_get($res['json'], 'data', []) as $row) {
+                if (is_array($row) && is_string($row['code'] ?? null)) {
+                    $out[] = ['code' => (string) $row['code'], 'prefilled_message' => (string) ($row['prefilled_message'] ?? ''),
+                        'deep_link_url' => (string) ($row['deep_link_url'] ?? '')];
+                }
+            }
+            $after = data_get($res['json'], 'paging.next') ? data_get($res['json'], 'paging.cursors.after') : null;
+            if (!is_string($after) || $after === '') {
+                break;
+            }
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'data' => $out, 'truncated' => isset($after) && is_string($after) && $after !== ''];
+    }
+
+    private static function qrFormat(string $format): string
+    {
+        return strtoupper($format) === 'SVG' ? 'SVG' : 'PNG';
+    }
+
+    private static function validQrCode(string $code): bool
+    {
+        return preg_match('/^[A-Za-z0-9_-]{1,64}$/', $code) === 1;
+    }
+
+    /** @return array{ok: bool, code: ?string, error: ?string, json?: array} */
+    private static function qrdlCall(string $method, array $segments, array $data, ?int $linkId): array
+    {
+        try {
+            $res = Graph\GraphClient::request($method, $segments, $data, (string) WaBotSetting::current()->token(), 20);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.qrdl.failed', ['type' => class_basename($e), 'qr_link_id' => $linkId]);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        if (!$res->successful()) {
+            return self::qrdlError($res, $linkId);
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'json' => (array) ($res->json() ?? [])];
+    }
+
+    private static function qrdlResult(array $res): array
+    {
+        if (!$res['ok']) {
+            return $res;
+        }
+        $j = $res['json'];
+        $code = (string) ($j['code'] ?? '');
+        $link = (string) ($j['deep_link_url'] ?? '');
+        if (!self::validQrCode($code) || !str_starts_with($link, 'https://')) {
+            return self::fail('QR_UNCONFIRMED', 'لم تُعد ميتا رمزاً صالحاً. اقرأ القائمة قبل الإعادة.');
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'data' => [
+            'code' => $code,
+            'prefilled_message' => (string) ($j['prefilled_message'] ?? ''),
+            'deep_link_url' => mb_substr($link, 0, 191),
+            'qr_image_url' => is_string($j['qr_image_url'] ?? null) ? $j['qr_image_url'] : null,
+        ]];
+    }
+
+    private static function qrdlError(Response $res, ?int $linkId): array
+    {
+        $err = MetaError::fromGraphResponse($res);
+        WaLog::warning('wa.qrdl.failed', ['qr_link_id' => $linkId, 'meta_code' => $err->metaCode, 'error_code' => $err->code,
+            'category' => $err->category, 'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+        self::legacyReact($err);
+        MetaErrorReactor::react($err, ['source' => 'qrdl']);
 
         return self::fail($err->code, $err->staffMessage, $err->metaCode) + ['action' => $err->action];
     }

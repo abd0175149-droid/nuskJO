@@ -251,6 +251,12 @@ Schedule::command('whatsapp:blocks-check')
     ->dailyAt('04:10')
     ->withoutOverlapping(10);
 
+// رموز QR الرسمية (E38): مطابقة أسبوعية للقراءة فقط مع message_qrdls عند ميتا، بالعلم wa_qr_links وحده. لا حذف آلياً
+Schedule::command('whatsapp:qr-sync')
+    ->timezone('Asia/Amman')
+    ->weeklyOn(0, '04:25')
+    ->withoutOverlapping(10);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

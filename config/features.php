@@ -32,5 +32,9 @@ return [
         'wa_block_admin_tool' => env('WA_FEATURE_WA_BLOCK_ADMIN_TOOL'),
         'business_profile_sync' => env('WA_FEATURE_BUSINESS_PROFILE_SYNC'),
         'business_profile_photo' => env('WA_FEATURE_BUSINESS_PROFILE_PHOTO'),
+        // E38
+        'wa_qr_links' => env('WA_FEATURE_WA_QR_LINKS'),
+        'entry_tracking' => env('WA_FEATURE_ENTRY_TRACKING'),
+        'offer_story_card' => env('WA_FEATURE_OFFER_STORY_CARD'),
     ],
 ];

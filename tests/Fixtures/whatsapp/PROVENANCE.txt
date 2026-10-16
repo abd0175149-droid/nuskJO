@@ -86,3 +86,7 @@ business_profile.json         [profile] § رد GET /{pnid}/whatsapp_business_pr
                               ملاحظة: input في المرجع يُكتب «+رقم»؛ هنا بلا + لأن الحارس يطابق القائمة البيضاء حرفياً، والكود يقارن الأرقام وحدها.
                               [block]   https://developers.facebook.com/documentation/business-messaging/whatsapp/block-users/
                               [profile] https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/business-profiles
+text_with_referral.json       [messages-text] § رسالة نصية من إعلان انقر للواتساب: كائن referral بالحقول source_url وsource_id
+                              وsource_type=ad وheadline (فيه محرف اتجاه مزروع) وbody وmedia_type وimage_url وctwa_clid. القيم مصنوعة،
+                              والنص يحمل مرجع عرض [N-45]. wamid مصنوع بالرقم المسموح. E38.
+                              [messages-text] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/text/
