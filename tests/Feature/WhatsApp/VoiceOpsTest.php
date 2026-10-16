@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\WaConversation;
+use App\Models\WaMessage;
 use App\Services\WhatsApp\MediaConverter;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\Concerns\FakesVoiceConverter;
 use Tests\TestCase;
@@ -84,6 +87,28 @@ class VoiceOpsTest extends TestCase
 
         $this->assertNotNull($event);
         $this->assertSame('35 * * * *', $event->expression);
+    }
+
+    public function test_the_owner_can_delete_played_voice_notes_from_meta_like_other_files(): void
+    {
+        $this->configureChannel();
+        Http::preventStrayRequests();
+        Http::fake(['graph.facebook.com/*' => Http::response(['success' => true])]);
+        $conv = WaConversation::factory()->windowOpen()->create();
+        $voice = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'msg_type' => 'audio', 'status' => 'played',
+            'source' => 'staff', 'media_id' => '7731450912836654', 'media_path' => 'outbound/2026/10/v.ogg', 'media_status' => 'stored']);
+        WaMessage::whereKey($voice->id)->update(['updated_at' => now()->subHours(2)]);
+
+        // الافتراضي (المستندات بعد «قُرئت») لا يمس الصوت
+        config(['features.env.outbound_media_remote_delete' => true]);
+        Artisan::call('whatsapp:outbound-media-cleanup');
+        Http::assertNothingSent();
+
+        config(['whatsapp.outbound.remote_delete.types' => ['document', 'audio'], 'whatsapp.outbound.remote_delete.statuses' => ['read', 'played']]);
+        Artisan::call('whatsapp:outbound-media-cleanup');
+
+        $this->assertNotNull($voice->fresh()->media_remote_deleted_at);
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_contains($r->url(), '7731450912836654'));
     }
 
     public function test_the_temporary_folder_is_private(): void

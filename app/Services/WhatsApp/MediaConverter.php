@@ -16,7 +16,7 @@ use Symfony\Component\Process\Process;
  * صوتية بأيقونة الميكروفون. Chrome يسجّل webm/opus، وSafari mp4/AAC، وFirefox ogg/opus، والتحويل ترميز كامل دائماً
  * (قناة واحدة ومعدل ثابت حتى لملف Firefox).
  *
- * الحماية: تحويل واحد على الحاوية بقفل (الثاني 503)، ومهلة 60 ثانية، وProcess بوسائط مصفوفة لا shell، وبيئة PATH وحدها
+ * الحماية: تحويل واحد على الحاوية بقفل (الثاني 503)، ومهلة 45 ثانية (تحت كتلة nginx للمسار)، وProcess بوسائط مصفوفة لا shell، وبيئة PATH وحدها
  * (لا أسرار التطبيق في عملية ffmpeg)، وأسماء uuid يولّدها الخادم في مجلد 0700. ملف الإدخال يُحذف دائماً، والناتج يُحذف
  * إن فشل أي شيء بعده. الأخطاء في سجل الواتساب برمز الخروج وstderr مقصوصاً، ولا يصل stderr الواجهة.
  *
@@ -190,7 +190,7 @@ final class MediaConverter
 
     private static function encode(string $in, string $out, string $bitrate, int $capSeconds): void
     {
-        $r = self::run(self::encodeArguments($in, $out, $bitrate, $capSeconds), (float) config('whatsapp.voice.timeout', 60));
+        $r = self::run(self::encodeArguments($in, $out, $bitrate, $capSeconds), (float) config('whatsapp.voice.timeout', 45));
         clearstatcache(true, $out);
         if ($r['timed_out']) {
             self::logFailure('VOICE_CONVERT_TIMEOUT', $r);
@@ -208,7 +208,7 @@ final class MediaConverter
     private static function probe(string $path, string $reason): ?float
     {
         $r = self::run([self::ffprobe(), '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path],
-            (float) config('whatsapp.voice.probe_timeout', 10));
+            (float) config('whatsapp.voice.probe_timeout', 5));
         if ($r['timed_out'] || $r['exit'] !== 0) {
             self::logFailure($reason, $r);
 

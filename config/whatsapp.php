@@ -97,9 +97,10 @@ return [
         'max_voice_bytes' => 512 * 1024,
         'bitrate' => env('WA_VOICE_BITRATE', '32k'),
         'fallback_bitrate' => '24k',
-        // مهلة ffmpeg، وانتظار القفل (تحويل واحد على الحاوية) قبل رد 503 «المحوّل مشغول»
-        'timeout' => 60,
-        'probe_timeout' => 10,
+        // مهلة ffmpeg، وانتظار القفل (تحويل واحد على الحاوية) قبل رد 503 «المحوّل مشغول». المجموع (3 + 5 + 45 + 5) تحت مهلة
+        // كتلة nginx لمسار send-file (60 ثانية)؛ التحويل الفعلي لدقيقتين أقل من ثانية، فالمهلة حارس لملف مرضي لا أكثر
+        'timeout' => 45,
+        'probe_timeout' => 5,
         'lock_seconds' => 75,
         'lock_wait' => 3,
         // تفريغ صوت الموظف للزملاء (العلم staff_voice_transcript): مهلة نداء Gemini
