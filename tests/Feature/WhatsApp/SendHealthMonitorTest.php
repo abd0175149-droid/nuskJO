@@ -176,6 +176,17 @@ class SendHealthMonitorTest extends TestCase
         Queue::assertPushed(RefreshChannelHealth::class, 1);
     }
 
+    public function test_a_single_locked_account_code_still_alerts_at_once_without_a_transition(): void
+    {
+        config(['features.env.meta_error_v2' => true]);
+        $this->respond([[$this->metaError(131031), 400]]);
+
+        $this->send();
+
+        $this->assertSame('UNKNOWN', WaBotSetting::current()->fresh()->wa_health);
+        $this->assertSame(['⛔ الحساب مقيّد من ميتا'], $this->titles());
+    }
+
     public function test_the_integrity_breaker_blocks_in_lock_mode_and_never_lifts_itself(): void
     {
         config(['features.env.integrity_breaker_lock' => true]);

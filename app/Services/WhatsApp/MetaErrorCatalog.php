@@ -356,8 +356,8 @@ final class MetaErrorCatalog
         $action = $entry[2];
 
         self::rememberAccountError($metaCode);
-        // E22: صحة القناة تملك الرمز الباطل و368 وقاطع التكرار (MetaErrorReactor → SendHealthMonitor::observe)، فلا إيقاف ولا تنبيه هنا
-        if (ChannelHealth::enabled() && in_array($metaCode, [0, 190, 368, 131031, 131048], true)) {
+        // E22: صحة القناة تملك الرمز الباطل و368 (MetaErrorReactor → SendHealthMonitor::observe)، فلا إيقاف ولا تنبيه هنا
+        if (ChannelHealth::enabled() && in_array($metaCode, [0, 190, 368], true)) {
             return;
         }
 

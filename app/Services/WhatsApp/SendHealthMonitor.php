@@ -33,10 +33,13 @@ final class SendHealthMonitor
 
     private const COUNTRY_CODE = 130497;
 
-    /** رموز تملك ChannelHealth أثرها وتنبيهها: المفاعل لا ينبّه لها مرة ثانية */
+    /**
+     * رموز ينبّه لها انتقال ChannelHealth (الرمز الباطل و368): المفاعل لا ينبّه لها مرة ثانية. أما 131031 و131048 فيبقى
+     * تنبيه المفاعل لكل رمز (مرة في الساعة، كما في E18)، فالحساب المقفل لا ينتظر العتبة، والقاطع يضيف التنبيه الحرج والفحص.
+     */
     public static function owns(?int $metaCode, ?string $type = null): bool
     {
-        return in_array($metaCode, [190, self::BLOCK_CODE, ...self::BREAKER_CODES], true)
+        return in_array($metaCode, [190, self::BLOCK_CODE], true)
             || ($metaCode === 0 && in_array($type, [null, 'OAuthException'], true));
     }
 

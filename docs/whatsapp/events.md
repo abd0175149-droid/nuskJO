@@ -21,9 +21,13 @@
 | `WaMessageFailed` | messageId, conversationId, source, metaCode, category, scope, origin, staffId | origin=`send`: رفض ميتا المتزامن أو تعذّر الاتصال قبل الإرسال، وصف صار failed. origin=`webhook`: حالة failed تقدّمت فعلاً | لرفض الأقفال قبل ميتا (لا صف)، وللمهلة التي تُحسم «غير مؤكد» |
 | `WaMessageStatusChanged` | messageId, conversationId, status, metaTs, metaCode | مسار الحالة: `StatusApplier` مع `delivery_status_v2`، أو المسار القديم بدونه | لحالة لم تتقدّم |
 | `ConversationHandedOff` | conversationId, assigneeId, quoteRequestId, reason | `BotTools::escalate` وحدها. reason من `App\Enums\HandoffReason`: quote وbooking وhandoff_tool وguard_claim وrate_limit وhuman_request وerasure وbudget | لتحويل وضع العطل (E12) ولـ failSafe، فليسا تحويلاً كاملاً |
-| `ChannelHealthChanged` | from, to, source, reasonCode | الإيقاف بحدث حساب من ميتا (`WhatsAppInbox::handleAccountEvent`)، والإيقاف الآلي برمز ميتا (`MetaErrorCatalog::suspend`)، والإيقاف والاستئناف اليدويان (مفتاح الطوارئ) | لحدث يصل والقناة موقوفة أصلاً، ولوضع الاستعادة الآمن |
+| `ChannelHealthChanged` | from, to, source, reasonCode | `App\Services\WhatsApp\ChannelHealth` وحدها (E22): انتقال آلة الحالات، والمفتاح اليدوي، والإيقاف الآلي القديم والعلم `channel_health` مطفأ | لانتقال مرفوض أو للحالة نفسها، ولحدث يصل والقناة موقوفة أصلاً، ولوضع الاستعادة الآمن، ولنقل الهجرة القفل القديم إلى BLOCKED |
 
-- `ChannelHealthChanged`: الحالات اليوم `AVAILABLE` و`SUSPENDED_AUTO` و`SUSPENDED_MANUAL`. و`source` بمفردات `wa_suspended_source`: `meta_event` أو `graph_error` أو `manual`. تنقل E22 الإطلاق إلى `ChannelHealth::transition` بحالاتها.
+- `ChannelHealthChanged` (E22، `docs/whatsapp/channel-health.md`)، يُطلق مرة واحدة لكل تغيّر فعلي:
+  - **انتقال الآلة** (`ChannelHealth::transition`، العلم `channel_health`): `from` و`to` من `WaHealth`: `AVAILABLE` و`LIMITED` و`BLOCKED` و`TOKEN_INVALID` و`UNKNOWN`. و`source` من `HealthWriter`: `webhook` أو `poll` أو `send_error` أو `token_check` أو `manual`. و`reasonCode` رمز داخلي بلا نص، مثل `ban:DISABLE` و`integrity:368` و`token:190` و`manual`.
+  - **المفتاح اليدوي** (`ChannelHealth::manualSwitched`): `SUSPENDED_MANUAL` في طرف، وفي الآخر حالة الآلة (أو `AVAILABLE` والعلم مطفأ). و`source=manual`، و`reasonCode` عند الاستئناف مصدر الإيقاف السابق.
+  - **الإيقاف الآلي القديم** (العلم مطفأ، `ChannelHealth::suspendLegacy`): `AVAILABLE` إلى `SUSPENDED_AUTO`، و`source` إما `meta_event` أو `graph_error`.
+  - التدقيق `wa.health_change` لانتقال الآلة: صف مباشر من `ChannelHealth` والناقل مطفأ، ومن المستمع `AuditWhatsAppEvents` والناقل مفعّل. ويحرس `tests/Unit/Arch/ChannelHealthWritersTest.php` أن الحدث لا يُطلق من مكان آخر.
 - `WaMessageFailed.scope` من `MetaErrorCatalog`: `recipient` أو `message` أو `channel`.
 
 ## المستمعون
