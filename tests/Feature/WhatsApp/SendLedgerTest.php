@@ -140,15 +140,29 @@ class SendLedgerTest extends TestCase
         $this->assertSame(1, WaMessage::count());
     }
 
-    public function test_the_same_key_with_another_text_is_refused(): void
+    public function test_the_same_staff_key_with_another_text_is_refused(): void
+    {
+        $this->fakeGraph();
+        $conv = $this->conv();
+        $staff = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create();
+        $key = 'staff:3f1c2b9e-5d4a-4c8b-9e7f-1a2b3c4d5e6f';
+        WhatsAppChannel::sendText($conv, 'أهلاً', 'staff', $staff->id, sendKey: $key);
+
+        $other = WhatsAppChannel::sendText($conv, 'نص آخر', 'staff', $staff->id, sendKey: $key);
+
+        $this->assertSame(['IDEMPOTENCY_MISMATCH', false], [$other['code'], $other['ok']]);
+        Http::assertSentCount(1);
+    }
+
+    public function test_a_regenerated_bot_reply_for_the_same_messages_replays(): void
     {
         $this->fakeGraph();
         $conv = $this->conv();
         WhatsAppChannel::sendText($conv, 'أهلاً', 'bot', sendKey: self::KEY);
 
-        $other = WhatsAppChannel::sendText($conv, 'نص آخر', 'bot', sendKey: self::KEY);
+        $again = WhatsAppChannel::sendText($conv, 'مرحباً، كيف أخدمك؟', 'bot', sendKey: self::KEY);
 
-        $this->assertSame(['IDEMPOTENCY_MISMATCH', false], [$other['code'], $other['ok']]);
+        $this->assertSame([true, true], [$again['ok'], $again['replayed']]);
         Http::assertSentCount(1);
     }
 

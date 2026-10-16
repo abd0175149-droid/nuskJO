@@ -191,7 +191,10 @@ class BotAnalytics
     // ==================================================================
     public static function quality(): array
     {
-        $msgs = WaMessage::orderBy('id')->get(['id', 'conversation_id', 'direction', 'source', 'msg_type', 'body', 'created_at']);
+        // دفتر الإرسال (E19.9): غير المسلَّم خارج الأتمتة وزمن الرد و«بلا جواب»، ومؤشران منفصلان له أدناه
+        $ledger = \App\Support\FeatureFlags::on('send_ledger');
+        $msgs = WaMessage::when($ledger, fn ($q) => $q->excludeUndelivered())
+            ->orderBy('id')->get(['id', 'conversation_id', 'direction', 'source', 'msg_type', 'body', 'created_at']);
         $byConv = $msgs->groupBy('conversation_id');
 
         // ── قمع الحجز (يُقاس من الرسائل نفسها فيعمل على كل التاريخ)
@@ -278,6 +281,10 @@ class BotAnalytics
             ['key' => 'tools_denied', 'label' => 'استدعاءات أدوات مرفوضة', 'value' => self::toolStatusCount($usage, 'denied'), 'unit' => '', 'good' => 'low'],
             ['key' => 'tools_failed', 'label' => 'أدوات فشلت', 'value' => self::toolStatusCount($usage, 'failed'), 'unit' => '', 'good' => 'low'],
             ...self::toolBytesMetrics($usage),
+            ...($ledger ? [
+                ['key' => 'send_unknown', 'label' => 'إرسال غير مؤكد', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_UNKNOWN)->count(), 'unit' => '', 'good' => 'low'],
+                ['key' => 'send_failed', 'label' => 'فشل إرسال', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->count(), 'unit' => '', 'good' => 'low'],
+            ] : []),
         ];
 
         // ── ما يحتاج نظرك: آخر 40 موضعاً عجز فيه البوت أو حوّل أو تعطّل

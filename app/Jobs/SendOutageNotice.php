@@ -42,7 +42,9 @@ class SendOutageNotice implements ShouldQueue
             return;
         }
 
-        $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin((string) $lastIn->body)), 'system');
+        // المفتاح نفسه لإعادة الخنق المؤجلة: لا تتكرر رسالة التحويل إن نجحت الأولى متأخرة (E19)
+        $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin((string) $lastIn->body)), 'system',
+            sendKey: \App\Services\WhatsApp\SendKey::outage($conv, $lastIn->id));
         WaLog::warning('reply.outage_notice', ['conv_id' => $conv->id, 'status' => $res['ok'] ? 'sent' : 'failed', 'meta_code' => $res['meta_code'] ?? null]);
 
         if ($this->notify && Cache::add("wa:outage-notice:notify:{$conv->id}", 1, now()->addMinutes(30))) {

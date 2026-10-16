@@ -372,7 +372,8 @@ class BotTools
             $conv,
             url(Storage::disk('public')->url($path)),
             mb_substr($offer->title, 0, 200),
-            'bot'
+            'bot',
+            sendKey: SendKey::reply($conv, ReplyRun::current()?->uptoId, 'card:'.$offer->id)
         );
 
         if (!$res['ok']) {
@@ -528,7 +529,8 @@ class BotTools
         if ($conv->hasPhone() || !IdentityMode::botServesWithoutPhone()) {
             return '';
         }
-        $sent = WhatsAppChannel::sendContactRequest($conv, 'ليتابع معك موظفنا بالسعر والتفاصيل، شارك رقم هاتفك بالضغط على الزر أدناه.', 'system');
+        $sent = WhatsAppChannel::sendContactRequest($conv, 'ليتابع معك موظفنا بالسعر والتفاصيل، شارك رقم هاتفك بالضغط على الزر أدناه.', 'system',
+            sendKey: SendKey::reqcontact($conv, ReplyRun::current()?->uptoId));
 
         return $sent['ok'] ? ' وصل العميلَ الآن زرٌّ لمشاركة رقم هاتفه: اطلب منه الضغط عليه، ولا تطلب منه كتابة الرقم.' : '';
     }

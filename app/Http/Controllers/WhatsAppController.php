@@ -549,13 +549,45 @@ class WhatsAppController extends Controller
             ], 409);
         }
 
-        $res = WhatsAppChannel::sendText($conversation, $data['body'], 'staff', auth()->id());
-        if ($warnings && $res['ok']) {
+        $res = WhatsAppChannel::sendText($conversation, $data['body'], 'staff', auth()->id(), sendKey: self::staffSendKey($request));
+        if ($warnings && $res['ok'] && empty($res['replayed'])) {
             \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaPolicyOverride, 'wa_conversation', $conversation->id, null, ['reasons' => $warnings]);
         }
 
-        // مهلة ميتا (E18، حتى E19): 503 «قد تكون أُرسلت»، وسائر الفشل 422 بالفئة والإجراء
-        return response()->json($res, $res['ok'] ? 200 : (($res['code'] ?? null) === 'HTTP_TIMEOUT' ? 503 : 422));
+        return response()->json($res, self::sendStatus($res));
+    }
+
+    /**
+     * مفتاح منع التكرار لرسالة الموظف (E19): Idempotency-Key (UUID) من المنشئ، ثابت لإعادة المسودة نفسها.
+     * ملف JS قديم بلا ترويسة: مفتاح جديد ويُعدّ (يظهر في whatsapp:doctor).
+     */
+    private static function staffSendKey(Request $request): string
+    {
+        $key = \App\Services\WhatsApp\SendKey::staff((string) $request->header('Idempotency-Key', ''));
+        if ($key === null) {
+            $day = 'wa:idem:missing:'.now()->format('Ymd');
+            \Illuminate\Support\Facades\Cache::add($day, 0, now()->addDays(10));
+            \Illuminate\Support\Facades\Cache::increment($day);
+            $key = \App\Services\WhatsApp\SendKey::staff((string) \Illuminate\Support\Str::uuid());
+        }
+
+        return $key;
+    }
+
+    /**
+     * أُرسلت أو أُعيدت (replayed) 200 · غير مؤكدة من هذا الإرسال 202 · المفتاح نفسه قيد الإرسال أو غير مؤكد 409، ولنص آخر 422 ·
+     * مهلة المسار القديم 503 · سائر الفشل 422 بالفئة والإجراء
+     */
+    private static function sendStatus(array $res): int
+    {
+        return match (true) {
+            (bool) $res['ok'] => 200,
+            ($res['code'] ?? null) === 'IDEMPOTENCY_MISMATCH' => 422,
+            !empty($res['conflict']) => 409,
+            !empty($res['unknown']) && isset($res['row_id']) => 202,
+            ($res['code'] ?? null) === 'HTTP_TIMEOUT' => 503,
+            default => 422,
+        };
     }
 
     // ==================== ربط المحادثة بعميل (E11.8) ====================
@@ -635,9 +667,9 @@ class WhatsAppController extends Controller
             return response()->json(['ok' => false, 'code' => 'HAS_PHONE', 'error' => 'رقم العميل معروف — لا حاجة لطلبه.'], 422);
         }
 
-        $res = WhatsAppChannel::sendContactRequest($conversation, self::CONTACT_REQUEST_BODY, 'staff', auth()->id());
+        $res = WhatsAppChannel::sendContactRequest($conversation, self::CONTACT_REQUEST_BODY, 'staff', auth()->id(), self::staffSendKey(request()));
 
-        return response()->json($res, $res['ok'] ? 200 : 422);
+        return response()->json($res, self::sendStatus($res));
     }
 
     private const CONTACT_REQUEST_BODY = 'لنكمل خدمتك، شارك رقم هاتفك بالضغط على الزر أدناه.';

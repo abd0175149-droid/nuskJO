@@ -202,9 +202,11 @@ TXT;
             if ($drop = $run->mayDeliver($conv)) {
                 return self::dropped($conv, $s, $drop);
             }
-            $res = WhatsAppChannel::sendText($conv, $text, 'bot');
+            $res = WhatsAppChannel::sendText($conv, $text, 'bot', sendKey: SendKey::reply($conv, $run->uptoId, 'text'));
             if ($res['ok']) {
                 self::served($conv, $run);
+            } else {
+                self::unknownSend($conv, $res);
             }
 
             return ['sent' => (bool) $res['ok'], 'reason' => $res['error']];
@@ -261,7 +263,7 @@ TXT;
 
         $sent = false;
         if (Cache::add('wa:llm:outage:'.($incident ?? 'isolated').':'.$conv->id, 1, now()->addHours($incident ? 6 : 1))) {
-            $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'system');
+            $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'system', sendKey: SendKey::outage($conv, $run?->uptoId));
             $sent = (bool) $res['ok'];
             // خنق من ميتا (فئة throttle في MetaErrorCatalog): إعادة واحدة مؤجلة. وما في NEVER_RETRY لا يُعاد أبداً
             if (!$res['ok'] && MetaErrorCatalog::isThrottle($res['meta_code'] ?? null)) {
@@ -467,9 +469,12 @@ TXT;
     {
         $take = max(4, min(60, (int) $s->context_messages));
 
+        // دفتر الإرسال (E19.9): صادر لم يثبت وصوله (قيد الإرسال، فشل، غير مؤكد، محجوب) خارج السياق، فلا يظن النموذج
+        // أنه قال ما لم يصل. قد يعيد البوت صياغة معلومة في رد «غير مؤكد» وصل فعلاً، وهذا أهون من البناء على رد لم يصل
         $rows = $conv->messages()
             ->whereIn('source', ['customer', 'bot', 'staff', 'injected'])
             ->where('msg_type', '!=', 'reaction')
+            ->when(\App\Support\FeatureFlags::on('send_ledger'), fn ($q) => $q->excludeUndelivered())
             ->orderByDesc('id')->limit($take)->get()->reverse()->values();
 
         // الوارد بعد العلامة دورٌ أخير للمستخدم: لا يرى النموذج رسالة B قبل رد A فيظنها مُجابة
@@ -600,7 +605,7 @@ TXT;
 
             self::recordUsage($conv->id, $s->model, $usage, 'admin');
             $admin->forceFill(['last_used_at' => now()])->saveQuietly();
-            $res = WhatsAppChannel::sendText($conv, $text, 'bot');
+            $res = WhatsAppChannel::sendText($conv, $text, 'bot', sendKey: SendKey::admin($conv, $run->uptoId, 'text'));
             if ($res['ok']) {
                 ReplyState::advance($conv, $run->uptoId);
             }
@@ -614,12 +619,12 @@ TXT;
                     return self::adminOutage($conv, $route['provider']);
                 }
             }
-            WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system');
+            WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system', sendKey: SendKey::admin($conv, $run->uptoId, 'fail'));
 
             return ['sent' => true, 'reason' => 'admin-fail'];
         } catch (\Throwable $e) {
             WaLog::error('admin_assistant.failed', ['conv_id' => $conv->id, 'exception' => $e]);
-            WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system');
+            WhatsAppChannel::sendText($conv, 'تعذّر تنفيذ الطلب الآن بسبب خلل مؤقّت. حاول بعد قليل أو من لوحة التحكم.', 'system', sendKey: SendKey::admin($conv, $run->uptoId, 'fail'));
 
             return ['sent' => true, 'reason' => 'admin-fail'];
         }
@@ -634,7 +639,7 @@ TXT;
         }
         $since = LlmCircuitBreaker::status($provider)['opened_at'];
         $at = $since ? \Illuminate\Support\Carbon::parse($since)->timezone(config('app.timezone'))->format('H:i') : now()->format('H:i');
-        $res = WhatsAppChannel::sendText($conv, "المساعد الإداري متوقف مؤقتاً لتعطّل مزوّد الذكاء الاصطناعي منذ {$at}. استعمل لوحة التحكم، وسأعود تلقائياً عند التعافي.", 'system');
+        $res = WhatsAppChannel::sendText($conv, "المساعد الإداري متوقف مؤقتاً لتعطّل مزوّد الذكاء الاصطناعي منذ {$at}. استعمل لوحة التحكم، وسأعود تلقائياً عند التعافي.", 'system', sendKey: SendKey::admin($conv, null, 'outage'));
 
         return ['sent' => (bool) $res['ok'], 'reason' => 'llm_outage'];
     }
@@ -741,9 +746,20 @@ TXT;
         if ($run && ($drop = $run->mayDeliver($conv))) {
             return self::dropped($conv, $s, $drop);
         }
-        $res = WhatsAppChannel::sendText($conv, $text ?? HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'bot');
+        $res = WhatsAppChannel::sendText($conv, $text ?? HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'bot', sendKey: SendKey::reply($conv, $run?->uptoId, 'handoff'));
 
         return ['sent' => (bool) $res['ok'], 'reason' => $reason];
+    }
+
+    /**
+     * دفتر الإرسال (E19): رد لم يتأكد وصوله لا يُعاد آلياً أبداً، فالمحادثة لموظف بالسبب send_unknown.
+     * المفتاح المحجوز يمنع المُصالِح من تكراره، ويرفع ويبهوك ميتا الشارة إن ثبت الوصول.
+     */
+    private static function unknownSend(WaConversation $conv, array $res): void
+    {
+        if (!empty($res['unknown']) && empty($res['ok']) && ReplyState::available()) {
+            ReplyState::markUnserved($conv->fresh() ?? $conv, 'send_unknown');
+        }
     }
 
     /** الفشل الآمن: العميل لا يُترك في صمت */
@@ -754,7 +770,7 @@ TXT;
         }
 
         $msg = $s->fail_message ?: 'عذراً، حدث خلل مؤقّت. سيتواصل معك أحد موظفينا حالاً.';
-        WhatsAppChannel::sendText($conv, $msg, 'system');
+        WhatsAppChannel::sendText($conv, $msg, 'system', sendKey: SendKey::reply($conv, $run?->uptoId, 'failsafe'));
 
         if ($s->fail_handoff) {
             $conv->update(['needs_attention' => true, 'bot_paused_until' => now()->addHour()]);

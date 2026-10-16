@@ -228,6 +228,11 @@ Schedule::command('whatsapp:snooze-wake')
     ->everyFiveMinutes()
     ->withoutOverlapping(5);
 
+// دفتر الإرسال (E19.8): المعلّق أقدم من 15 دقيقة يصير «غير مؤكد» مع شارة وتنبيه. لا يعيد الإرسال، ولا يعمل إلا بالعلم send_ledger
+Schedule::command('whatsapp:reap-pending')
+    ->everyTenMinutes()
+    ->withoutOverlapping(5);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

@@ -183,7 +183,7 @@ class WhatsAppInbox
             return null;
         }
         if ($after === 'optout') {
-            WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system');
+            WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system', sendKey: SendKey::optout((string) $in->wamid));
 
             return null;
         }
@@ -334,14 +334,56 @@ class WhatsAppInbox
     }
 
     /** حالات التسليم: sent / delivered / read / failed */
+    private static ?bool $ledgerColumns = null;
+
+    private static function ledgerColumns(): bool
+    {
+        return self::$ledgerColumns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['sent_at', 'error_category']);
+    }
+
+    /**
+     * صف صادر بلا معرّف بعد (queued أو unknown) تطابقه حالة ميتا برقمه في biz_opaque_callback_data ببادئة هذه النسخة وحدها.
+     * يُقبل إن كان معرّفه فارغاً أو مساوياً. وحالة failed لا تحمل القيمة في أمثلة المرجع، فيتولاها المنظّف.
+     */
+    private static function byOpaque(array $st, string $wamid): ?WaMessage
+    {
+        $opaque = (string) data_get($st, 'biz_opaque_callback_data', '');
+        if ($opaque === '' || !preg_match('/^([a-z0-9]+):m:(\d+)$/', $opaque, $m)) {
+            return null;
+        }
+        if ($m[1] !== config('whatsapp.send.opaque_prefix', 'nj')) {
+            WaLog::info('wa.status.foreign_opaque', ['wamid' => $wamid]);
+
+            return null;
+        }
+
+        return WaMessage::where('id', (int) $m[2])->where('direction', 'out')
+            ->where(fn ($q) => $q->whereNull('wamid')->orWhere('wamid', $wamid))->first();
+    }
+
+    /** لم يبق في المحادثة صف مشكوك فيه: تُرفع شارة send_unknown وحدها، ولا يُمس أي سبب آخر */
+    private static function clearSendUnknown(int $convId): void
+    {
+        $conv = WaConversation::find($convId);
+        if (!$conv || !ReplyState::available() || !$conv->needs_attention || $conv->attention_reason !== 'send_unknown') {
+            return;
+        }
+        $pending = WaMessage::where('conversation_id', $convId)->where('direction', 'out')->whereIn('status', WaMessage::PENDING_STATES)->exists();
+        if (!$pending) {
+            $conv->forceFill(['needs_attention' => false, 'attention_reason' => null])->save();
+        }
+    }
+
     private static function handleStatus(array $st): void
     {
         $wamid = data_get($st, 'id');
         $status = data_get($st, 'status');
         if (!$wamid || !$status) return;
 
-        $m = WaMessage::where('wamid', $wamid)->first();
+        // بالمعرّف أولاً، وإلا برقم الصف في biz_opaque_callback_data (دفتر الإرسال E19): يحسم «غير مؤكد» و«قيد الإرسال»
+        $m = WaMessage::where('wamid', $wamid)->first() ?? self::byOpaque($st, (string) $wamid);
         if (!$m) return;
+        $pendingBefore = in_array($m->status, WaMessage::PENDING_STATES, true);
 
         $payload = $m->payload ?? [];
         $payload['statusHistory'][] = ['status' => $status, 'at' => now()->toIso8601String()];
@@ -364,9 +406,19 @@ class WhatsAppInbox
             : $m->status !== 'failed' && ($rank[$status] ?? 0) > ($rank[$m->status] ?? 0);
 
         $update = ['payload' => $payload];
+        if ($m->wamid === null) {
+            $update['wamid'] = $wamid;
+        }
         if ($advances) {
             $update['status'] = $status;
             $update['error_message'] = $error !== '' ? $error : $m->error_message;
+            // «غير مؤكد» ثبت وصوله: يُمحى سبب الشك وعلامة المنظّف
+            if ($pendingBefore && $status !== 'failed') {
+                $update['error_message'] = null;
+                unset($payload['_reaped']);
+                $update['payload'] = $payload;
+                $update += self::ledgerColumns() ? ['error_code' => null, 'error_category' => null, 'sent_at' => $m->sent_at ?? now()] : [];
+            }
             if ($code !== null && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_code')) {
                 $update['meta_code'] = $code;
             }
@@ -383,6 +435,9 @@ class WhatsAppInbox
             }
         }
         $m->update($update);
+        if ($pendingBefore && $advances && $status !== 'failed') {
+            self::clearSendUnknown((int) $m->conversation_id);
+        }
 
         // حالة فيها الرقم والمعرّف معاً تملأ معرّف محادثة رقمها معروف
         if ($m->direction === 'out' && filled(data_get($st, 'recipient_user_id')) && ($c = WaConversation::find($m->conversation_id))) {

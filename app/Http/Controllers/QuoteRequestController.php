@@ -168,9 +168,20 @@ class QuoteRequestController extends Controller
             $lines[] = 'للتأكيد أو أي استفسار، نحن معك هنا.';
 
             // رسالة يبنيها الكود (context=code): تحذيرات السياسة تُسجَّل ولا تطلب تأكيداً (E15.9)
-            $res = WhatsAppChannel::sendText($quoteRequest->conversation, implode("\n", $lines), 'staff', auth()->id(), 'code');
+            // المفتاح (E19): السعر والملاحظة نفسيهما خلال 10 دقائق لا يُرسلان مرتين، و«أعد الإرسال» الصريح يرسل
+            $key = \App\Services\WhatsApp\SendKey::quote($quoteRequest, $data['quoted_price_jod'], $data['quoted_note'] ?? null,
+                !empty($data['confirm_resend']) ? \Illuminate\Support\Str::random(8) : null);
+            $res = WhatsAppChannel::sendText($quoteRequest->conversation, implode("\n", $lines), 'staff', auth()->id(), 'code', $key);
             self::auditPrice($quoteRequest, $data, $res['ok']);
 
+            if (!empty($res['replayed'])) {
+                $quoteRequest->update(['status' => 'sent']);
+
+                return back()->with('success', 'أُرسل هذا السعر نفسه للعميل قبل قليل — لم يُرسل مرة ثانية.');
+            }
+            if (!empty($res['unknown'])) {
+                return back()->with('error', 'حُفظ السعر، وقد يكون أُرسل — تحقق من المحادثة قبل إعادة الإرسال.');
+            }
             if ($res['ok']) {
                 $quoteRequest->update(['status' => 'sent']);
             } else {

@@ -913,17 +913,18 @@ class WhatsAppChannel
     }
 
     /**
-     * المفتاح محجوز بصف سابق: أُرسل (يعود replayed بلا نداء)، أو قيد الإرسال، أو غير مؤكد. ونص مختلف بالمفتاح نفسه يُرفض.
-     * الصف failed لا يصطدم أصلاً لأن مفتاحه حُرّر.
+     * المفتاح محجوز بصف سابق: أُرسل (يعود replayed بلا نداء)، أو قيد الإرسال، أو غير مؤكد. الصف failed لا يصطدم لأن مفتاحه حُرّر.
+     * نص مختلف بمفتاح الموظف نفسه يُرفض (خلل في المنشئ). أما المفتاح الآلي فحالة صفه تحكم: رد النموذج المعاد توليده
+     * يختلف نصه غالباً، والعميل نال رداً لهذه الرسائل فلا يُرسل ثانٍ.
      */
     private static function replay(string $sendKey, string $hash): array
     {
         $existing = WaMessage::where('send_key', $sendKey)->first();
         if (!$existing) {
-            return self::failLocal('SEND_IN_PROGRESS', MetaError::local('SEND_IN_PROGRESS')->staffMessage) + ['status' => 'queued', 'replayed' => false];
+            return self::failLocal('SEND_IN_PROGRESS', MetaError::local('SEND_IN_PROGRESS')->staffMessage) + ['status' => 'queued', 'replayed' => false, 'conflict' => true];
         }
-        if (data_get($existing->payload, '_req_hash') !== $hash) {
-            return self::failLocal('IDEMPOTENCY_MISMATCH', 'مفتاح الإرسال مستعمل لنص آخر — اضغط «إرسال» مرة أخرى.') + ['status' => 'mismatch', 'replayed' => false];
+        if (str_starts_with($sendKey, 'staff:') && data_get($existing->payload, '_req_hash') !== $hash) {
+            return self::failLocal('IDEMPOTENCY_MISMATCH', 'مفتاح الإرسال مستعمل لنص آخر — اضغط «إرسال» مرة أخرى.') + ['status' => 'mismatch', 'replayed' => false, 'conflict' => true];
         }
         WaLog::info('wa.send.replayed', ['conv_id' => $existing->conversation_id, 'message_id' => $existing->id, 'status' => $existing->status]);
         if (in_array($existing->status, ['sent', 'delivered', 'read', 'played'], true)) {
@@ -931,11 +932,11 @@ class WhatsAppChannel
                 'status' => 'replayed', 'row_id' => $existing->id, 'replayed' => true];
         }
         if ($existing->status === WaMessage::STATUS_QUEUED) {
-            return self::failLocal('SEND_IN_PROGRESS', MetaError::local('SEND_IN_PROGRESS')->staffMessage) + ['status' => 'queued', 'row_id' => $existing->id, 'replayed' => false];
+            return self::failLocal('SEND_IN_PROGRESS', MetaError::local('SEND_IN_PROGRESS')->staffMessage) + ['status' => 'queued', 'row_id' => $existing->id, 'replayed' => false, 'conflict' => true];
         }
 
         return self::failLocal('OUTCOME_UNKNOWN', 'قد تكون الرسالة وصلت. تحقق من الخيط قبل إعادة الإرسال.')
-            + ['status' => 'unknown', 'unknown' => true, 'row_id' => $existing->id, 'replayed' => false];
+            + ['status' => 'unknown', 'unknown' => true, 'row_id' => $existing->id, 'replayed' => false, 'conflict' => true];
     }
 
     /**

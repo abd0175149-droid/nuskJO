@@ -62,7 +62,7 @@ final class MediaConsent
     {
         $counts = app(ConversationEraser::class)->eraseMedia($conv);
         AuditLog::safe(AuditAction::WaMediaPurge, 'wa_conversation', $conv->id, null, ['mode' => 'consent'] + $counts);
-        WhatsAppChannel::sendText($conv, self::REFUSED_REPLY, 'system');
+        WhatsAppChannel::sendText($conv, self::REFUSED_REPLY, 'system', sendKey: \App\Services\WhatsApp\SendKey::consent($conv, null, 'refused'));
         ReplyState::markUnserved($conv->fresh(), 'media_refused');
     }
 
@@ -78,7 +78,7 @@ final class MediaConsent
         $res = WhatsAppChannel::sendButtons($conv, self::noticeText(), [
             ['id' => self::YES, 'title' => 'موافق'],
             ['id' => self::NO, 'title' => 'احذف ملفاتي'],
-        ], 'system');
+        ], 'system', \App\Services\WhatsApp\SendKey::consent($conv, null, 'notice'));
         if ($res['ok'] ?? false) {
             $conv->forceFill(['media_notice_at' => now()])->save();
         }

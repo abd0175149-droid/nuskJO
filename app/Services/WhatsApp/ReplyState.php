@@ -22,6 +22,7 @@ final class ReplyState
         'bot_paused' => '👤 ينتظر موظفاً',
         'with_staff' => '👤 ينتظر موظفاً',
         'send_failed' => '❌ فشل الإرسال',
+        'send_unknown' => '⚠️ لم يُتأكد الإرسال',
         'job_failed' => '⚠️ خلل في البوت',
         'budget' => '⏳ تجاوز زمن الرد',
         'bot_off' => '🔕 البوت مطفأ',

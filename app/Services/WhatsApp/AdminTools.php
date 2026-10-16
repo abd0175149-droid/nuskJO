@@ -796,7 +796,7 @@ class AdminTools
         self::log($a, $conv, $tool, $action, 'preview', $preview, $payload);
 
         // المعاينة يرسلها النظام بنصها (E15.5)، فلا يصفها النموذج بغير ما سيُنفَّذ
-        $sent = WhatsAppChannel::sendText($conv, self::previewMessage($preview), 'system');
+        $sent = WhatsAppChannel::sendText($conv, self::previewMessage($preview), 'system', sendKey: SendKey::admin($conv, null, 'preview:'.substr(sha1($tool.'|'.$preview), 0, 10)));
         if ($sent['ok']) {
             return [
                 'needs_confirmation' => true,

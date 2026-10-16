@@ -62,3 +62,10 @@ error_190.json …                E18: أجسام أخطاء Graph المتزا�
   error_unknown_999999.json     رمز لا يعرفه الجدول: يصنَّف unknown/META_ERROR.
 status_failed_131026.json     [messages] § statuses (failed) بشكل status_failed_131047.json مع code=131026 (Message undeliverable). E18.
 value_errors_130429.json      [messages] § value.errors على مستوى الحمولة (130429 Rate limit hit) بلا statuses ولا messages. E18.
+status_sent_with_opaque.json  [messages] § statuses (sent) مع biz_opaque_callback_data='nj:m:1' (يعيدها ميتا كما أرسلناها،
+  status_read_with_opaque.json [messages-ref] § biz_opaque_callback_data) وconversation/pricing بشكل المرجع. الاختبار يستبدل رقم الصف. E19.
+status_failed_no_opaque.json  [messages] § statuses (failed) بلا biz_opaque_callback_data كما في أمثلة المرجع (131047). E19.
+send_ok.json                  [send] § رد POST /messages الناجح: contacts وmessages[0].id وmessage_status=accepted. E19.
+send_ok_no_wamid.json         [send] رد 200 بلا messages: قبول بلا معرّف (يُحفظ «غير مؤكد»). مصنوع للاختبار. E19.
+error_130429.json             [errors] § 130429 Rate limit hit (خنق، إعادة 4^X). E19.
+error_131000.json             [errors] § 131000 Something went wrong (عابر، إعادة واحدة). E19.
