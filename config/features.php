@@ -45,5 +45,10 @@ return [
         'invoice_whatsapp_send' => env('WA_FEATURE_INVOICE_WHATSAPP_SEND'),
         'offer_card_by_media_id' => env('WA_FEATURE_OFFER_CARD_BY_MEDIA_ID'),
         'outbound_media_remote_delete' => env('WA_FEATURE_OUTBOUND_MEDIA_REMOTE_DELETE'),
+        // E27: العامل الثاني والتحقق المعزّز وأرقام الإدارة وتقرير الخمول
+        'staff_mfa' => env('WA_FEATURE_STAFF_MFA'),
+        'step_up' => env('WA_FEATURE_STEP_UP'),
+        'admin_number_mfa' => env('WA_FEATURE_ADMIN_NUMBER_MFA'),
+        'idle_report' => env('WA_FEATURE_IDLE_REPORT'),
     ],
 ];

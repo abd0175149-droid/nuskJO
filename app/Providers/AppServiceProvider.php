@@ -58,6 +58,7 @@ class AppServiceProvider extends ServiceProvider
         $this->defineLoginRateLimit();
         $this->defineCspReportRateLimit();
         $this->defineFileSendRateLimit();
+        $this->defineMfaRateLimit();
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
@@ -185,6 +186,29 @@ class AppServiceProvider extends ServiceProvider
             return [
                 \Illuminate\Cache\RateLimiting\Limit::perMinute(10)->by('wa-files:m:'.$by)->response($tooMany),
                 \Illuminate\Cache\RateLimiting\Limit::perHour(60)->by('wa-files:h:'.$by)->response($tooMany),
+            ];
+        });
+    }
+
+    /**
+     * حد رموز التحقق (E27): التحدّي وتأكيد الهوية وتأكيد التسجيل، 5 في الدقيقة لكل مستخدم و20 لكل عنوان.
+     * العشرة الخاطئة خلال 15 دقيقة تُخرج المستخدم (MfaAttempts). المخزن cache.limiter (file، لا SQLite).
+     */
+    private function defineMfaRateLimit(): void
+    {
+        \Illuminate\Support\Facades\RateLimiter::for('mfa', function (\Illuminate\Http\Request $request) {
+            $limited = function () use ($request) {
+                $message = 'محاولات كثيرة، انتظر دقيقة ثم أعد المحاولة.';
+                if ($request->expectsJson() && !$request->header('X-Inertia')) {
+                    return response()->json(['code' => 'MFA_THROTTLED', 'message' => $message, 'errors' => ['code' => [$message]]], 429);
+                }
+
+                return back()->withErrors(['code' => $message, 'recovery_code' => $message, 'password' => $message]);
+            };
+
+            return [
+                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('security.mfa.per_minute', 5))->by('mfa:u:'.($request->user()?->id ?? 0))->response($limited),
+                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('security.mfa.per_ip_per_minute', 20))->by('mfa:ip:'.$request->ip())->response($limited),
             ];
         });
     }

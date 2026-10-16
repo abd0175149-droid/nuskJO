@@ -188,10 +188,13 @@
 
             <!-- Page Content -->
             <main class="flex-1 p-3 sm:p-6 overflow-x-hidden" :class="isDark ? 'bg-gray-900' : 'bg-gray-50'">
+                <MfaBanner />
                 <slot />
             </main>
             <!-- نافذة التأكيد الموحّدة (useConfirm، E16.9): مثيل واحد للصفحة -->
             <ConfirmDialog />
+            <!-- تأكيد الهوية قبل فعل حساس (E27) -->
+            <StepUpModal />
         </div>
     </div>
 </template>
@@ -203,6 +206,8 @@ import { syncPushToken, currentPushToken, forgetPushToken } from '../../firebase
 import { clearStoredDrafts } from '@/composables/useDrafts';
 import PushToggle from './PushToggle.vue';
 import ConfirmDialog from '../ConfirmDialog.vue';
+import MfaBanner from '../Security/MfaBanner.vue';
+import StepUpModal from '../Security/StepUpModal.vue';
 import axios from 'axios';
 
 const page = usePage();

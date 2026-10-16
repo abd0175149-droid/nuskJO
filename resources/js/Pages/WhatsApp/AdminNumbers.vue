@@ -38,6 +38,11 @@
                             <button type="button" @click="remove(n)" :aria-label="'حذف ' + n.name" title="حذف" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
                         </div>
                     </div>
+                    <!-- E27: شرط التحقق بخطوتين لمستخدم الرقم، والمساعد موقوف ما دام لم يفعّله -->
+                    <p v-if="n.require_mfa || n.mfa_blocked" class="flex flex-wrap gap-1.5 text-xs">
+                        <span v-if="n.require_mfa" class="px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">🔐 يشترط تحققاً بخطوتين<template v-if="!modes.mfaRequired"> (غير مفروض بعد)</template></span>
+                        <span v-if="n.mfa_blocked" class="px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">المستخدم المرتبط بلا تحقق بخطوتين — المساعد موقوف</span>
+                    </p>
                     <p v-if="n.client_match" class="text-xs p-2 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">⚠️ هذا الرقم مسجّل أيضاً للعميل «{{ n.client_match }}». سيُخدم كإدارة لا كعميل.</p>
                     <div v-for="(keys, group) in groupedOf(n.permissions)" :key="group" class="space-y-1">
                         <p class="text-[11px] font-bold text-gray-400">{{ group }}</p>
@@ -122,6 +127,15 @@
                             <span class="text-sm text-gray-700 dark:text-gray-300">فعّال — أوقفه فوراً إن فُقد الهاتف</span>
                         </label>
                     </div>
+                    <div class="md:col-span-2">
+                        <label for="an-mfa" class="flex items-start gap-2 cursor-pointer">
+                            <input id="an-mfa" type="checkbox" :checked="mfaLocked || form.require_mfa" @change="form.require_mfa = $event.target.checked" :disabled="mfaLocked" class="mt-0.5 w-4 h-4 rounded text-gold-500 shrink-0 disabled:opacity-60"/>
+                            <span class="text-sm text-gray-700 dark:text-gray-300">يشترط تحققاً بخطوتين لمستخدمه المرتبط — يتوقف المساعد لهذا الرقم حتى يفعّله
+                                <span class="block text-xs text-gray-400">{{ mfaHint }}</span>
+                            </span>
+                        </label>
+                        <p v-if="form.errors.user_id" class="mt-1 text-xs text-red-500">{{ form.errors.user_id }}</p>
+                    </div>
                 </div>
 
                 <div class="space-y-3">
@@ -178,12 +192,23 @@ const props = defineProps({
     botPhone: { type: String, default: null },
     botReady: { type: Boolean, default: true },
     toolLabels: { type: Object, default: () => ({ tools: {}, actions: {} }) },
-    modes: { type: Object, default: () => ({ readonly: false, rbacEnforced: false }) },
+    modes: { type: Object, default: () => ({ readonly: false, rbacEnforced: false, mfaRequired: false }) },
+    isAdmin: { type: Boolean, default: false },
 });
 
 const showForm = ref(false);
 const editing = ref(null);
-const form = useForm({ phone: '', name: '', user_id: null, permissions: [], is_active: true, notes: '' });
+const form = useForm({ phone: '', name: '', user_id: null, permissions: [], is_active: true, notes: '', require_mfa: false });
+
+// E27: رقم فيه أدوات تعديل يشترط العامل الثاني لمستخدمه حين يُفرض العلم؛ لا يطفئه إلا المدير
+const hasWrites = computed(() => form.permissions.some((k) => props.catalog[k]?.write));
+const mfaLocked = computed(() => props.modes.mfaRequired && hasWrites.value && !props.isAdmin);
+const mfaHint = computed(() => {
+    if (!props.modes.mfaRequired) return 'يُحفظ الآن ويُفرض حين يُفعَّل شرط التحقق لأرقام الإدارة.';
+    if (hasWrites.value) return props.isAdmin ? 'إلزامي للرقم الذي يعدّل؛ إطفاؤه قرار المدير ويُسجَّل.' : 'إلزامي للرقم الذي يعدّل، ويحتاج حساب صاحبه.';
+    return 'اختياري لرقم التقارير وحدها.';
+});
+
 const { confirm } = useConfirm();
 // لقطة الحقول عند الفتح: ما يختلف عنها تعديل غير محفوظ
 const baseline = ref('');
@@ -210,6 +235,8 @@ const openForm = (n = null) => {
     form.permissions = n ? [...n.permissions] : [];
     form.is_active = n ? n.is_active : true;
     form.notes = n?.notes || '';
+    // رقم جديد والشرط مفروض: مفعّل افتراضياً (يطفئه المدير لرقم التقارير)
+    form.require_mfa = n ? !!n.require_mfa : !!props.modes.mfaRequired;
     baseline.value = JSON.stringify(form.data());
     showForm.value = true;
 };
@@ -221,6 +248,7 @@ const preset = (p) => {
 
 const save = () => {
     const opts = { preserveScroll: true, onSuccess: () => { showForm.value = false; } };
+    form.transform((data) => ({ ...data, require_mfa: mfaLocked.value || data.require_mfa }));
     if (editing.value) form.put('/whatsapp/admin-numbers/' + editing.value.id, opts);
     else form.post('/whatsapp/admin-numbers', opts);
 };

@@ -22,13 +22,14 @@ class WaAdminNumber extends Model
     protected $table = 'wa_admin_numbers';
 
     protected $fillable = [
-        'phone', 'name', 'user_id', 'permissions', 'is_active', 'notes', 'last_used_at', 'created_by',
+        'phone', 'name', 'user_id', 'permissions', 'is_active', 'notes', 'last_used_at', 'created_by', 'require_mfa',
     ];
 
     protected $casts = [
         'permissions' => 'array',
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
+        'require_mfa' => 'boolean',
     ];
 
     /**
@@ -69,6 +70,39 @@ class WaAdminNumber extends Model
         } catch (\Throwable $e) {
             return null;   // قبل تشغيل الهجرة — لا أرقام إدارة بعد
         }
+    }
+
+    /**
+     * رقم الإدارة لرقم محادثة مع سبب حجبه (E27): blocked='mfa' إن كان الرقم يشترط العامل الثاني ومستخدمه المرتبط
+     * لم يفعّله، والعلم admin_number_mfa مفعّل. forPhone باقية كما هي (الرقم الذي عُطّل مستخدمه يُعامَل كعميل).
+     *
+     * @return array{number: ?self, blocked: ?string}
+     */
+    public static function resolveForPhone(?string $phone): array
+    {
+        $number = self::forPhone($phone);
+        if ($number && $number->mfaBlocked()) {
+            return ['number' => $number, 'blocked' => 'mfa'];
+        }
+
+        return ['number' => $number, 'blocked' => null];
+    }
+
+    /** يشترط العامل الثاني ومستخدمه بلا عامل (أو بلا مستخدم)؟ لا حجب والعلم مطفأ */
+    public function mfaBlocked(): bool
+    {
+        if (!$this->require_mfa || !rescue(fn () => \App\Support\FeatureFlags::on('admin_number_mfa'), false, false)) {
+            return false;
+        }
+        $user = $this->user_id ? $this->user : null;
+
+        return !$user || !$user->hasSecondFactor();
+    }
+
+    /** فيه صلاحية تعديل (AdminTools::CATALOG بقيمة write)؟ */
+    public function hasWritePermissions(): bool
+    {
+        return (bool) array_filter($this->permissions ?? [], fn ($p) => AdminTools::CATALOG[$p]['write'] ?? false);
     }
 
     public function allows(string $permission): bool

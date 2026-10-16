@@ -1,5 +1,5 @@
 import { createApp, h } from 'vue';
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, router } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ZiggyVue } from 'ziggy-js';
 import axios from 'axios';
@@ -16,6 +16,7 @@ import '@fontsource/inter/700.css';
 import '../css/app.css';
 import './echo';
 import { installHistoryGuard } from './utils/historyGuard';
+import { installStepUpInterceptor, installStepUpVisits } from './composables/useStepUp';
 
 // Axios global setup: CSRF token + credentials
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
@@ -27,6 +28,14 @@ if (csrfToken) {
 
 // قبل Inertia: صفحات تدير خطواتها في history تعترض الرجوع قبله (utils/historyGuard.js)
 installHistoryGuard();
+
+// العامل الثاني والتحقق المعزّز (E27): 423 تفتح نافذة التأكيد ثم يُعاد الطلب، وجلسة لم تجتز التحدّي أو صاحب
+// صلاحية حساسة لم يسجّل بعد يُحوَّل إلى صفحته
+installStepUpInterceptor(axios, {
+    onMfaRequired: () => window.location.assign('/two-factor/challenge'),
+    onEnrollRequired: () => window.location.assign('/profile/security'),
+});
+installStepUpVisits(router);
 
 createInertiaApp({
     title: (title) => title ? `${title} - NUSUK` : 'NUSUK',

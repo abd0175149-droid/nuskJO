@@ -33,6 +33,18 @@ enum AuditAction: string
     case AuthzDenied = 'authz.denied';
     case AuthzWouldDeny = 'authz.would_deny';
     case AuthzUnmapped = 'authz.unmapped';
+    // العامل الثاني والتحقق المعزّز (E27): لا سر ولا رمز في changes أبداً
+    case AuthMfaEnrolled = 'auth.mfa_enrolled';
+    case AuthMfaDisabled = 'auth.mfa_disabled';
+    case AuthMfaPassed = 'auth.mfa_passed';
+    case AuthMfaFailed = 'auth.mfa_failed';
+    case AuthMfaRecoveryUsed = 'auth.mfa_recovery_used';
+    case AuthMfaCodesRegenerated = 'auth.mfa_codes_regenerated';
+    case AuthMfaReset = 'auth.mfa_reset';
+    case AuthMfaLockout = 'auth.mfa_lockout';
+    case AuthMfaBypassed = 'auth.mfa_bypassed';
+    case AuthStepUp = 'auth.step_up';
+    case AuthStepUpFailed = 'auth.step_up_failed';
 
     // ===== المستخدمون والأدوار والإعدادات =====
     case UserCreate = 'user.create';
@@ -129,6 +141,7 @@ enum AuditAction: string
     case WaFileSent = 'wa.file_sent';
     case WaInvoiceSent = 'wa.invoice_sent';
     case WaMediaRemoteDelete = 'wa.media_remote_delete';
+    case WaAdminMfaBlocked = 'wa.admin_mfa_blocked';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -178,6 +191,8 @@ enum AuditAction: string
             self::WaHealthChange => AuditSeverity::Warn,
             self::WaLlmTermsConfirm => AuditSeverity::Warn,
             self::WaConversationExport, self::WaSearchIndexRepair => AuditSeverity::Warn,
+            self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed,
+            self::WaAdminMfaBlocked => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -190,11 +205,14 @@ enum AuditAction: string
             self::Reverse, self::PeriodClose, self::PeriodOpen, self::YearClose, self::LineRelocate,
             self::OfferPriceChange, self::QuotePrice, self::ExchangeRateSet => 'money',
             self::AuthLogin, self::AuthLogout, self::AuthLoginFailed, self::AccessDenied,
-            self::WaConversationView, self::WaWebhookBadSignature, self::WaWebhookVerifyFailed, self::WaTranslate => 'noise',
+            self::WaConversationView, self::WaWebhookBadSignature, self::WaWebhookVerifyFailed, self::WaTranslate,
+            self::AuthMfaPassed, self::AuthMfaFailed, self::AuthStepUp, self::AuthStepUpFailed => 'noise',
             self::AuthLockout, self::AuthInactiveBlocked, self::AuthzDenied, self::AuthzWouldDeny, self::AuthzUnmapped,
             self::UserCreate, self::UserUpdate, self::UserRoleChange, self::UserPasswordReset, self::UserPasswordChange,
             self::UserActivate, self::UserDeactivate, self::UserDelete, self::UserRestoreAdmin,
-            self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
+            self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient,
+            self::AuthMfaEnrolled, self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaCodesRegenerated,
+            self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed => 'access',
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
             self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove,
             self::WaLabelCreate, self::WaLabelUpdate, self::WaLabelDelete, self::WaLlmTermsConfirm => 'config',
@@ -234,6 +252,17 @@ enum AuditAction: string
             self::AuthzDenied => 'رفض صلاحية',
             self::AuthzWouldDeny => 'رفض صلاحية (تسجيل فقط)',
             self::AuthzUnmapped => 'مسار بلا صلاحية',
+            self::AuthMfaEnrolled => 'تفعيل التحقق بخطوتين',
+            self::AuthMfaDisabled => 'تعطيل التحقق بخطوتين',
+            self::AuthMfaPassed => 'اجتياز التحقق بخطوتين',
+            self::AuthMfaFailed => 'رمز تحقق خاطئ',
+            self::AuthMfaRecoveryUsed => 'استعمال رمز استرداد',
+            self::AuthMfaCodesRegenerated => 'تجديد رموز الاسترداد',
+            self::AuthMfaReset => 'إعادة تعيين التحقق بخطوتين',
+            self::AuthMfaLockout => 'قفل التحقق بخطوتين (محاولات كثيرة)',
+            self::AuthMfaBypassed => 'دخول بلا تحدٍّ (منفذ الطوارئ مفعّل)',
+            self::AuthStepUp => 'تأكيد الهوية قبل فعل حساس',
+            self::AuthStepUpFailed => 'فشل تأكيد الهوية',
             self::UserCreate => 'إنشاء مستخدم',
             self::UserUpdate => 'تعديل مستخدم',
             self::UserRoleChange => 'تغيير دور مستخدم',
@@ -320,6 +349,7 @@ enum AuditAction: string
             self::WaFileSent => 'إرسال ملف لعميل على واتساب',
             self::WaInvoiceSent => 'إرسال فاتورة PDF على واتساب',
             self::WaMediaRemoteDelete => 'حذف ملفات مرسلة من خوادم واتساب',
+            self::WaAdminMfaBlocked => 'المساعد الإداري موقوف لرقم مستخدمه بلا تحقق بخطوتين',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -352,7 +382,9 @@ enum AuditAction: string
             // E30: البحث عبر المحادثات اطّلاع على بيانات العملاء (صف بالعيّنات لكل موظف)، وإصلاح الفهرس نادر
             self::WaMessageSearch, self::WaSearchIndexRepair,
             // كل ملف خرج لعميل (قد يحمل رقم جواز) وكل فاتورة على واتساب (E32)
-            self::WaFileSent, self::WaInvoiceSent], true);
+            self::WaFileSent, self::WaInvoiceSent,
+            // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
+            self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked], true);
     }
 
     public function isNoise(): bool

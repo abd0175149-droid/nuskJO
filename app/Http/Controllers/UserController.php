@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\NotificationService;
 use App\Services\Security\AdminInvariant;
+use App\Services\Security\Mfa;
 use App\Services\Security\RoleAssignmentGuard;
 use App\Services\Security\SessionRevoker;
+use App\Services\Security\TwoFactor;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use Illuminate\Http\Request;
@@ -22,7 +25,8 @@ class UserController extends Controller
     {
         abort_unless(auth()->user()->can('users.view'), 403);
 
-        $query = User::with('role')->latest();
+        // صلاحيات الدور محمّلة مرة: requires_mfa يقرؤها لكل صف
+        $query = User::with('role.permissions:id,slug')->latest();
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -37,15 +41,85 @@ class UserController extends Controller
             $query->where('role_id', $request->role_id);
         }
 
-        $users = $query->paginate(15)->withQueryString();
+        // E27: الخاملون (آخر نشاط قبل 60 يوماً، أو لا نشاط منذ الإنشاء)، ومن يتطلب التحقق بخطوتين ولم يفعّله
+        $filter = $request->input('filter');
+        $idleBefore = now()->subDays((int) config('security.idle.user_days', 60));
+        if ($filter === 'idle') {
+            $query->where('is_active', true)->where(fn ($q) => $q->where('last_seen_at', '<', $idleBefore)
+                ->orWhere(fn ($w) => $w->whereNull('last_seen_at')->where('created_at', '<', $idleBefore)));
+        }
+        if ($filter === 'mfa_missing') {
+            $ids = (clone $query)->whereNull('two_factor_confirmed_at')->where('is_active', true)->get()
+                ->filter(fn (User $u) => $u->requiresMfa())->pluck('id');
+            $query->whereIn('id', $ids);
+        }
+
+        // حقول محسوبة فقط (لا أعمدة العامل الثاني)، وآخر عنوان دخول لمن يملك تعديل المستخدمين وحده
+        $canSeeIp = auth()->user()->can('users.update');
+        $users = $query->paginate(15)->withQueryString()->through(fn (User $u) => [
+            'id' => $u->id,
+            'name' => $u->name,
+            'email' => $u->email,
+            'phone' => $u->phone,
+            'role_id' => $u->role_id,
+            'role' => $u->role ? ['id' => $u->role->id, 'name' => $u->role->name] : null,
+            'is_active' => (bool) $u->is_active,
+            'has_mfa' => $u->hasTwoFactor(),
+            'requires_mfa' => $u->requiresMfa(),
+            'last_login' => $u->last_login_at?->locale('ar')->diffForHumans(),
+            'last_login_at' => $u->last_login_at?->timezone('Asia/Amman')->format('Y-m-d H:i'),
+            'last_seen' => $u->last_seen_at?->locale('ar')->diffForHumans(),
+            'idle' => (bool) $u->is_active && ($u->last_seen_at ?? $u->created_at)?->lt($idleBefore),
+            'last_login_ip' => $canSeeIp ? $u->last_login_ip : null,
+        ]);
         $roles = Role::select('id', 'name')->get();
 
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => $roles,
             'assignableRoles' => RoleAssignmentGuard::assignableRoles(auth()->user()),
-            'filters' => $request->only(['search', 'role_id']),
+            'filters' => $request->only(['search', 'role_id', 'filter']),
+            'mfa' => ['enforcement' => strtolower((string) config('security.mfa.enforce', 'off')), 'enrollment_open' => Mfa::enrollmentOpen()],
         ]);
+    }
+
+    /**
+     * إعادة تعيين التحقق بخطوتين لموظف فقد هاتفه (E27): المدير وحده، بسبب، ويُخرَج الموظف من كل أجهزته.
+     * لا لحساب المدير نفسه (من صفحة الأمان)، ولا لآخر مدير نشط بعامل ثانٍ (أمر الطوارئ security:mfa-reset وحده).
+     */
+    public function resetTwoFactor(Request $request, User $user)
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+        $data = $request->validate(['reason' => 'required|string|min:10|max:200'], [
+            'reason.required' => 'اكتب سبب إعادة التعيين.', 'reason.min' => 'اكتب السبب (10 أحرف على الأقل).',
+        ]);
+
+        if ($user->id === auth()->id()) {
+            abort(403, 'عطّل تحققك بنفسك من صفحة «الأمان»');
+        }
+        if (!$user->hasTwoFactor()) {
+            return back()->with('error', "لا تحقق بخطوتين مفعّل لحساب {$user->name}");
+        }
+        if (TwoFactor::isLastAdminWithFactor($user)) {
+            return back()->with('error', 'هذا آخر مدير نشط بتحقق بخطوتين — إعادة تعيينه بأمر الطوارئ من الخادم وحده');
+        }
+
+        DB::transaction(function () use ($user, $data) {
+            TwoFactor::clear($user);
+            AuditLog::log(\App\Enums\AuditAction::AuthMfaReset, 'User', $user->id, $user->name, ['reason' => $data['reason'], 'by' => 'admin']);
+        });
+        SessionRevoker::revoke($user);
+
+        rescue(function () use ($user) {
+            NotificationService::send($user->id, '🔐 أُعيد تعيين التحقق بخطوتين', 'أعاد المدير تعيين التحقق بخطوتين لحسابك — سجّله من جديد من صفحة «الأمان» بعد الدخول.', [
+                'type' => 'security', 'icon' => '🔐', 'action_url' => '/profile/security',
+            ]);
+            NotificationService::notifyAdmins('🔐 إعادة تعيين تحقق موظف', auth()->user()->name." أعاد تعيين التحقق بخطوتين لحساب {$user->name}.", [
+                'type' => 'security', 'icon' => '🔐', 'action_url' => '/users',
+            ]);
+        }, null, false);
+
+        return back()->with('success', "أُعيد تعيين التحقق بخطوتين لحساب {$user->name}، وخرج من كل أجهزته");
     }
 
     public function store(StoreUserRequest $request)
@@ -151,7 +225,7 @@ class UserController extends Controller
         abort_unless(auth()->user()->isAdmin(), 403);
 
         $request->validate([
-            'password' => ['required', 'string', \Illuminate\Validation\Rules\Password::min(8), 'confirmed'],
+            'password' => ['required', 'string', \App\Support\PasswordPolicy::rule(), 'confirmed'],
         ]);
 
         DB::transaction(function () use ($user, $request) {

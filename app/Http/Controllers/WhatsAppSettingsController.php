@@ -173,6 +173,8 @@ class WhatsAppSettingsController extends Controller
 
         $s = WaBotSetting::current();
         if (!$on) {
+            // الاستئناف تحقق معزّز (E27، بالعلم step_up)؛ الإيقاف نفسه حماية لا تُعاق
+            \App\Services\Security\StepUp::ensure($request);
             if (trim((string) ($data['confirm_text'] ?? '')) !== 'استئناف') {
                 throw ValidationException::withMessages(['confirm_text' => 'اكتب «استئناف» للتأكيد']);
             }
@@ -281,6 +283,10 @@ class WhatsAppSettingsController extends Controller
         $data = $request->validate(['state' => 'required|in:on,off,default', 'reason' => 'required|string|min:5|max:300']);
         if (!FeatureFlags::available($flag)) {
             throw ValidationException::withMessages(['state' => 'هذه الميزة لم تُشحن بعد، فلا تُفعَّل']);
+        }
+        // أعلام الحماية (E27): إطفاؤها يُضعف حماية كل الحسابات، فلا يبدّلها إلا المدير
+        if ((FeatureFlags::definitions()[$flag]['admin_only'] ?? false) && !$request->user()->can('admin')) {
+            return response()->json(['message' => 'هذا العلم يبدّله المدير وحده'], 403);
         }
         if (FeatureFlags::state($flag)['source'] === 'env') {
             return response()->json(['message' => 'العلم مفروض من البيئة — يُغيَّر في .env.production'], 409);

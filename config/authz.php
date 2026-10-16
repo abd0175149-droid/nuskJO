@@ -33,5 +33,9 @@ return [
         'attendance.check-in', 'attendance.check-out', 'attendance.status',
         'hr.my-attendance', 'hr.my-requests', 'hr.my-payslip',
         'payslip',                                     // قسيمة الموظف نفسه أو payroll.view (PayrollController)
+        // E27: تحدّي العامل الثاني وتأكيد الهوية وصفحة الأمان، كلها على حساب المستخدم نفسه
+        'two-factor.challenge', 'two-factor.verify', 'security.confirm', 'security.confirm.store',
+        'profile.security', 'profile.two-factor.enable', 'profile.two-factor.confirm',
+        'profile.two-factor.recovery-codes', 'profile.two-factor.disable',
     ],
 ];

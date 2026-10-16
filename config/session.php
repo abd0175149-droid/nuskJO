@@ -169,7 +169,9 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // E27: صريح. بلا قيمة: Secure حين يبدأ APP_URL بـ https (الإنتاج خلف Cloudflare)، ولا للتطوير المحلي على http
+    // والاختبارات. SESSION_SECURE_COOKIE=false يعطّله صراحة (وصول مباشر بـ http للطوارئ فقط).
+    'secure' => env('SESSION_SECURE_COOKIE', str_starts_with((string) env('APP_URL', ''), 'https://') ? true : null),
 
     /*
     |--------------------------------------------------------------------------
