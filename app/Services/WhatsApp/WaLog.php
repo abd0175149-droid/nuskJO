@@ -32,6 +32,8 @@ final class WaLog
         'from', 'to', 'writer', 'effect', 'severity',
         // E34: الرسائل الصوتية (المدة، ورمز خروج ffmpeg وstderr مقصوصاً بلا مسار المجلد المؤقت)
         'seconds', 'exit', 'stderr',
+        // E39: بصمة مقتطعة لمعرّف المكالمة (لا رقم المتصل ولا SDP)، ووضع التعايش، ورقم دفعة السجل السابق
+        'call', 'mode', 'chunk',
     ];
 
     public static function info(string $event, array $context = []): void

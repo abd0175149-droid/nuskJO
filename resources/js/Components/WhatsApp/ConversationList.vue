@@ -71,6 +71,8 @@ const props = defineProps({
   // البحث في نص الرسائل (E30): العلم والصلاحية من الخادم
   messageSearch: Boolean,
   canBlock: Boolean,
+  // E39: فلتر «مكالمات فائتة» مع العلم calls_webhook
+  missedCalls: Boolean,
 });
 const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'update:label', 'open', 'loadMore', 'jump']);
 const searching = ref(false);
@@ -91,7 +93,8 @@ const FOLLOWUP_FILTERS = [
   { key: 'closed', label: '🗂️ مغلقة' },
 ];
 // E31: تبويب المحظورين لمن يملك whatsapp.block (الخادم يفرضه)
-const filters = computed(() => [...BASE_FILTERS, ...(props.followup ? FOLLOWUP_FILTERS : []), ...(props.canBlock ? [{ key: 'blocked', label: '⛔ المحظورون' }] : [])]);
+const filters = computed(() => [...BASE_FILTERS, ...(props.missedCalls ? [{ key: 'missed_call', label: '📞 مكالمات فائتة' }] : []),
+  ...(props.followup ? FOLLOWUP_FILTERS : []), ...(props.canBlock ? [{ key: 'blocked', label: '⛔ المحظورون' }] : [])]);
 
 // البحث بتأخير 400ms
 const searchText = ref(props.search);

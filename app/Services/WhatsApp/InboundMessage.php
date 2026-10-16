@@ -51,9 +51,13 @@ final class InboundMessage
         if (in_array($type, self::AS_UNSUPPORTED, true)) {
             [$type, $unsupportedType] = ['unsupported', $type];
         }
+        // رد العميل على طلب إذن الاتصال (E39، العلم calls_webhook): نوع مستقل لا يصل البوت. بدون العلم يبقى interactive
+        if ($type === 'interactive' && data_get($msg, 'interactive.type') === 'call_permission_reply' && CallEventHandler::enabled()) {
+            $type = 'call_permission';
+        }
         $from = data_get($msg, 'from');
         $userId = data_get($msg, 'from_user_id');
-        [$body, $buttonId] = $type === 'unsupported' ? [self::unsupported($unsupportedType), null] : self::body($msg, $type);
+        [$body, $buttonId] = $type === 'unsupported' ? [self::unsupportedBody($msg, $unsupportedType), null] : self::body($msg, $type);
         $mediaNode = in_array($type, self::MEDIA, true) ? (array) data_get($msg, $type, []) : [];
         $shared = $type === 'contacts' ? self::sharedContact($msg) : [null, null];
 
@@ -90,6 +94,25 @@ final class InboundMessage
         );
     }
 
+    /**
+     * صدى رسالة أرسلها الموظف من تطبيق الأعمال على الهاتف (E39، الحقل smb_message_echoes): العميل الطرف الآخر في to
+     * (رقم، أو معرّف BSUID لمن يراسل باسم مستخدم)، وfrom رقمنا. النص بالمستخرج نفسه لكل الأنواع. fromPhone وfromUserId
+     * هنا هوية العميل، فتطابق محادثته عبر ContactIdentity كالوارد.
+     */
+    public static function fromEcho(array $echo, string $phoneNumberId): self
+    {
+        $to = data_get($echo, 'to');
+        $userId = data_get($echo, 'to_user_id') ?? data_get($echo, 'recipient_user_id');
+        if (is_string($to) && preg_match(self::BSUID, $to)) {
+            $userId ??= $to;
+            $to = null;
+        }
+        $echo['from'] = $to;
+        $echo['from_user_id'] = $userId;
+
+        return self::fromWebhook($echo, null, $phoneNumberId);
+    }
+
     public function isSystem(): bool
     {
         return $this->type === 'system';
@@ -108,6 +131,7 @@ final class InboundMessage
         return match ($type) {
             'text' => [(string) data_get($msg, 'text.body', ''), null],
             'interactive' => self::interactive($msg),
+            'call_permission' => [self::callPermission($msg), null],
             'button' => [(string) data_get($msg, 'button.text', ''), self::str(data_get($msg, 'button.payload'), 256)],
             'image' => ['📷 صورة'.$caption('image'), null],
             'video' => ['🎬 مقطع فيديو'.$caption('video'), null],
@@ -140,6 +164,21 @@ final class InboundMessage
         return ['[interactive]', null];
     }
 
+    /** «وافق العميل على أن نتصل به حتى …» بتوقيت عمّان، أو الرفض */
+    private static function callPermission(array $msg): string
+    {
+        $reply = (array) data_get($msg, 'interactive.call_permission_reply', []);
+        if (strtolower((string) ($reply['response'] ?? '')) !== 'accept') {
+            return '📞 رفض العميل طلب الاتصال';
+        }
+        $exp = $reply['expiration_timestamp'] ?? null;
+        $until = is_numeric($exp) && (int) $exp > 0
+            ? ' حتى '.\Illuminate\Support\Carbon::createFromTimestamp((int) $exp)->setTimezone((string) config('whatsapp.calls.timezone', 'Asia/Amman'))->format('Y-m-d H:i')
+            : '';
+
+        return '📞 وافق العميل على أن نتصل به'.$until;
+    }
+
     private static function location(array $msg): string
     {
         $loc = (array) data_get($msg, 'location', []);
@@ -169,6 +208,16 @@ final class InboundMessage
      * نص عربي بحسب unsupported.type (E33): لا يرد عليه البوت، ويصل الموظف بشارة «رسالة غير مدعومة».
      * النوع المجهول يُعرض بمحارف لاتينية آمنة وحدها.
      */
+    /** نص غير المدعوم (E33)، و131060 مع أعلام التعايش (E39): أول رسالة من عميل جديد لا يصل نصها إلا في تطبيق الأعمال */
+    private static function unsupportedBody(array $msg, ?string $kind): string
+    {
+        if ((int) data_get($msg, 'errors.0.code') === 131060 && CoexistenceSync::active()) {
+            return '⚠️ رسالة لم يصل نصها — افتح المحادثة في تطبيق الأعمال على هاتف الوكالة';
+        }
+
+        return self::unsupported($kind);
+    }
+
     public static function unsupported(?string $kind): string
     {
         return match ($kind) {

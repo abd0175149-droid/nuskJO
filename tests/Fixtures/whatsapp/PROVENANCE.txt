@@ -133,3 +133,24 @@ contacts.json                 [messages] § contacts: بطاقة بالاسم (S
                               نفسه 16505553333 بـ phone وwa_id. E33.
 error_131009_context.json     [errors] § 131009 بشكل أجسام E18، وerror_data.details مصنوع يذكر context وmessage_id. الرمز
                               والتفاصيل الفعلية لاقتباس غير صالح تُسجَّل في تجربة قبل التفعيل ويُضبط الشرط عليها. E33.
+E39 (المكالمات والتعايش، جاهزية مشروطة). مكتوبة من المراجع لا من أداة Test ولا من الإنتاج، بأرقام الأمثلة وحدها:
+                              [calling]     https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/user-initiated-calls
+                              [permissions] https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/user-call-permissions
+calls_connect_user.json       [calling] § webhook connect: مكالمة من العميل (USER_INITIATED) مع session بعرض SDP مختصر مصنوع
+                              (127.0.0.1)، ومعرّف wacid مصنوع. الاختبار يستبدل timestamp بوقت قريب.
+calls_terminate_failed.json   [calling] § webhook terminate بحالة FAILED بلا start_time ولا duration (لم يُرد): فائتة.
+calls_terminate_completed.json [calling] § webhook terminate بحالة COMPLETED مع start_time وend_time وduration=135.
+call_permission_reply_accept.json [permissions] § رد العميل في حقل messages: interactive.type=call_permission_reply
+                              وresponse=accept وexpiration_timestamp وresponse_source. wamid مصنوع لا يرمّز رقماً.
+                              [echoes]   https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/smb_message_echoes
+                              [coex]     https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users
+smb_message_echoes_image.json [echoes] § صدى صورة أرسلها الموظف من تطبيق الأعمال (mime_type وsha256 وid مصنوعة).
+smb_message_echoes_edit.json  [echoes] § صدى تعديل (type=edit) يشير إلى wamid.FIXTURE.echo.1 في smb_message_echoes.json، والنص الجديد
+                              رسالة كاملة في edit.message. الشكل مكتوب من المرجع بتقريب: المعالج يقبل original_message_id أو message_id أو context.id.
+smb_message_echoes_revoke.json [echoes] § صدى حذف (type=revoke) للرسالة نفسها.
+smb_message_echoes_bsuid.json [echoes] + [bsuid] § صدى لعميل باسم مستخدم: المعرّف في to_user_id بلا رقم. حالة to=BSUID يصنعها
+                              الاختبار وقت التشغيل (الحارس يعدّ to حقل رقم).
+account_update_partner_removed.json [coex] § account_update بحدث PARTNER_REMOVED وdisconnection_info.reason=PRIMARY_INACTIVITY.
+history_batch.json            [coex] § حقل history: دفعة واحدة (phase 0، chunk_order 1، progress 100) بخيطين وثلاث رسائل وhistory_context.
+                              الخيط الثاني بالرقم 16505553333 من القائمة البيضاء. النصوص مصنوعة.
+smb_app_state_sync.json       [coex] § حقل smb_app_state_sync: جهتا اتصال (add وremove) بأسماء الأمثلة وأرقام القائمة البيضاء.

@@ -69,6 +69,15 @@ final class WebhookFields
             'البوت قد يتعارض مع ردود الهاتف. راجع ربط الرقم في WhatsApp Manager قبل أي رد آلي.');
     }
 
+    /** حقل تعايش يعالجه E39 (الأعلام coexistence_*): العدّاد والسطر وحدهما، فالتنبيه من معالجه بحسب الوضع */
+    public static function seen(string $field): int
+    {
+        $count = self::bump($field);
+        WaLog::info('webhook.coexistence', ['field' => $field, 'count' => $count]);
+
+        return $count;
+    }
+
     /** @return array<string, int> الحقول غير المعالجة اليوم وأمس بأعدادها */
     public static function counts(): array
     {

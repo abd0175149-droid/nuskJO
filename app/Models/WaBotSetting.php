@@ -33,6 +33,9 @@ class WaBotSetting extends Model
         // E22: صحة القناة كآلة حالات (يكتبها ChannelHealth وحده عبر SettingsWriter)
         'wa_health', 'wa_health_reason', 'wa_health_source', 'wa_health_until', 'wa_health_checked_at', 'wa_health_changed_at',
         'wa_health_unblock_suggested', 'wa_health_meta',
+        // E39: المكالمات والتعايش (مساراتها في بطاقتيهما، وكلها عبر SettingsWriter)
+        'calls_answer_mode', 'calls_auto_reject', 'calls_followup_text', 'calls_followup_text_en', 'calling_snapshot',
+        'echo_pause_minutes', 'coexistence_holder_user_id',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
@@ -75,6 +78,11 @@ class WaBotSetting extends Model
         'wa_health_changed_at' => 'datetime',
         'wa_health_unblock_suggested' => 'boolean',
         'wa_health_meta' => 'array',
+        // E39
+        'calling_snapshot' => 'array',
+        'calls_auto_reject' => 'boolean',
+        'echo_pause_minutes' => 'integer',
+        'coexistence_holder_user_id' => 'integer',
     ];
 
     protected static function booted(): void

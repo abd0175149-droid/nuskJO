@@ -38,7 +38,7 @@ final class WebhookIntake
         $sha = hash('sha256', $raw);
         $inserted = WaWebhookEvent::query()->insertOrIgnore([
             'body_sha256' => $sha,
-            'raw_body' => Crypt::encryptString($raw),
+            'raw_body' => Crypt::encryptString(self::redactForStorage($raw)),
             'status' => $status,
             'attempts' => 0,
             'received_at' => now(),
@@ -47,6 +47,43 @@ final class WebhookIntake
         $event = WaWebhookEvent::where('body_sha256', $sha)->firstOrFail();
 
         return [$event, $inserted === 0 && in_array($event->status, self::SETTLED, true)];
+    }
+
+    /**
+     * ما لا نحتاجه في أي معالجة لا يُحفظ ولو مؤقتاً (E39): value.calls[*].session، أي عرض SDP بعناوين IP.
+     * التوقيع والبصمة على الجسم الخام قبل التنقية، فإعادة ميتا تطابق صفها. جسم بلا هذا الحقل يُحفظ كما هو بايتاً ببايت،
+     * والمعطوب (ليس JSON) كما هو للتشخيص ولا يُعاد أبداً.
+     */
+    public static function redactForStorage(string $raw): string
+    {
+        if (!str_contains($raw, '"calls"')) {
+            return $raw;
+        }
+        try {
+            $payload = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return $raw;
+        }
+        if (!is_array($payload)) {
+            return $raw;
+        }
+
+        $changed = false;
+        foreach ((array) ($payload['entry'] ?? []) as $e => $entry) {
+            foreach ((array) data_get($entry, 'changes', []) as $c => $change) {
+                if (data_get($change, 'field') !== 'calls') {
+                    continue;
+                }
+                foreach ((array) data_get($change, 'value.calls', []) as $i => $call) {
+                    if (is_array($call) && array_key_exists('session', $call)) {
+                        unset($payload['entry'][$e]['changes'][$c]['value']['calls'][$i]['session']);
+                        $changed = true;
+                    }
+                }
+            }
+        }
+
+        return $changed ? (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $raw;
     }
 
     /**

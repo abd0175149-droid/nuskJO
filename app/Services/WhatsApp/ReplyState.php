@@ -41,7 +41,13 @@ final class ReplyState
         'channel_blocked' => '⛔ القناة محجوبة',
         // E33: تعديل أو استطلاع أو نوع لا تعرضه منصة ميتا
         'unsupported' => '🧩 رسالة غير مدعومة',
+        // E39: مكالمة فائتة، وموافقة العميل على أن نتصل به
+        'missed_call' => '📞 مكالمة فائتة',
+        'call_permission' => '📞 وافق على الاتصال',
     ];
+
+    /** أنواع واردة ليست طلباً ينتظر رداً: التفاعل، وحدث المكالمة ورد إذن الاتصال (E39) */
+    public const NOT_PENDING_TYPES = ['reaction', 'call', 'call_permission'];
 
     private static ?bool $available = null;
 
@@ -58,11 +64,11 @@ final class ReplyState
 
     public static function pendingQuery(WaConversation $conv): HasMany
     {
-        // تحديث الهوية (source=system) والتفاعل ليسا طلباً ينتظر رداً
+        // تحديث الهوية وحدث المكالمة (source=system) والتفاعل ورد إذن الاتصال ليست طلباً ينتظر رداً
         return $conv->messages()
             ->where('direction', 'in')
             ->where('source', '!=', 'system')
-            ->where('msg_type', '!=', 'reaction')
+            ->whereNotIn('msg_type', self::NOT_PENDING_TYPES)
             ->where('id', '>', self::mark($conv));
     }
 

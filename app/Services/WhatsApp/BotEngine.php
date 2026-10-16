@@ -538,9 +538,10 @@ TXT;
         // دفتر الإرسال (E19.9): صادر لم يثبت وصوله (قيد الإرسال، فشل، غير مؤكد، محجوب) خارج السياق، فلا يظن النموذج
         // أنه قال ما لم يصل. قد يعيد البوت صياغة معلومة في رد «غير مؤكد» وصل فعلاً، وهذا أهون من البناء على رد لم يصل
         $rows = $conv->messages()
-            // rule (E37): يرى النموذج ما قالته القاعدة فلا يكرره
-            ->whereIn('source', ['customer', 'bot', 'staff', 'injected', 'rule'])
-            ->where('msg_type', '!=', 'reaction')
+            // rule (E37): يرى النموذج ما قالته القاعدة فلا يكرره. staff_phone (E39): ما كتبه الموظف من هاتف الوكالة
+            ->whereIn('source', ['customer', 'bot', 'staff', 'injected', 'rule', 'staff_phone'])
+            // رد إذن الاتصال وعلامة الحذف من الهاتف ليسا كلاماً (E39)
+            ->whereNotIn('msg_type', ['reaction', 'call_permission', 'revoke'])
             ->when(\App\Support\FeatureFlags::on('send_ledger'), fn ($q) => $q->excludeUndelivered())
             ->orderByDesc('id')->limit($take)->get()->reverse()->values();
 
@@ -790,7 +791,7 @@ TXT;
         return $conv->messages()
             ->where('direction', 'in')->where('id', '>', $after)
             ->where('source', 'customer')
-            ->where('msg_type', '!=', 'reaction')
+            ->whereNotIn('msg_type', ReplyState::NOT_PENDING_TYPES)
             ->orderBy('id')->limit(10)->get();
     }
 

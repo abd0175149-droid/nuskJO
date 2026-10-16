@@ -45,10 +45,14 @@ final class ConversationEraser
             // E29: التصنيفات على المحادثة والتثبيت داخل الخيط (قائمة wa_labels نفسها عامة بلا بيانات شخصية فلا تُمس)
             'labels' => Schema::hasTable('wa_conversation_labels') ? DB::table('wa_conversation_labels')->whereIn('conversation_id', $ids)->count() : 0,
             'thread_pins' => Schema::hasTable('wa_thread_pins') ? DB::table('wa_thread_pins')->whereIn('conversation_id', $ids)->count() : 0,
+            // E39: سجل المكالمات (أوقات ومدد بلا صوت ولا رقم)
+            'calls' => Schema::hasTable('wa_calls') ? DB::table('wa_calls')->whereIn('conversation_id', $ids)->count() : 0,
         ];
         $media = $mode === 'forget' ? $this->recentMediaIds($ids) : [];
         $counts['media_meta'] = count($media);
         $counts['webhook_bodies'] = $mode === 'forget' ? count($this->webhookBodies($ids, $canonical)) : 0;
+        // E39: خيوط العميل في سجل التعايش السابق المحفوظ بانتظار القرار (C012)
+        $counts['history_threads'] = $mode === 'forget' ? \App\Services\WhatsApp\HistoryHold::forget($this->needles($ids, $canonical), false) : 0;
         // الحظر الرسمي (E31) يبقى مجرّداً بلا رقم ولا سبب
         $counts['blocks_stripped'] = $mode === 'forget' ? $this->blocksQuery($ids, $canonical)->count() : 0;
 
@@ -83,6 +87,7 @@ final class ConversationEraser
         // E29: الترجمات داخل payload ذهبت مع الرسائل
         $done['labels'] = $this->deleteInBatches('wa_conversation_labels', fn ($q) => $q->whereIn('conversation_id', $ids));
         $done['thread_pins'] = $this->deleteInBatches('wa_thread_pins', fn ($q) => $q->whereIn('conversation_id', $ids));
+        $done['calls'] = Schema::hasTable('wa_calls') ? $this->deleteInBatches('wa_calls', fn ($q) => $q->whereIn('conversation_id', $ids)) : 0;
         $quoteNumbers = DB::table('quote_requests')->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote())->pluck('request_number')->filter()->all();
         $done['quotes'] = $this->deleteInBatches('quote_requests', fn ($q) => $q->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote()));
         $done['quotes_kept_invoiced'] = DB::table('quote_requests')->whereIn('conversation_id', $ids)->count();
@@ -106,6 +111,10 @@ final class ConversationEraser
             }
         }
 
+        // 12ب. سجل التعايش السابق المحفوظ مشفّراً (E39، C012): تُحذف خيوط العميل من كل دفعة، والباقي كما هو
+        $done['history_threads'] = $plan->mode === 'forget'
+            ? \App\Services\WhatsApp\HistoryHold::forget($this->needles($ids, $plan->canonicalPhone)) : 0;
+
         // 13. الحظر الرسمي (E31، forget وحده): يبقى قائماً ضد الاحتيال، مجرّداً ببصمة بدل الرقم والمعرّف وبلا نص السبب
         $done['blocks_stripped'] = $plan->mode === 'forget' && Schema::hasTable('wa_blocks')
             ? \App\Services\WhatsApp\BlockService::stripForErasure($ids, $plan->canonicalPhone, $this->userIds($ids)) : 0;
@@ -126,9 +135,7 @@ final class ConversationEraser
         if (!Schema::hasTable('wa_webhook_events')) {
             return [];
         }
-        $needles = array_values(array_filter(array_merge([$canonical],
-            Schema::hasColumn('wa_conversations', 'wa_user_id') ? DB::table('wa_conversations')->whereIn('id', $ids)->pluck('wa_user_id')->all() : []),
-            fn ($v) => is_string($v) && strlen($v) >= 5));
+        $needles = $this->needles($ids, $canonical);
         if ($needles === []) {
             return [];
         }
@@ -151,6 +158,14 @@ final class ConversationEraser
         });
 
         return $out;
+    }
+
+    /** رقم المحادثة الكامل ومعرّفاتها (BSUID): ما يُبحث عنه في الأجسام المشفّرة المحفوظة (E20، وE39) */
+    private function needles(array $ids, ?string $canonical): array
+    {
+        return array_values(array_filter(array_merge([$canonical],
+            Schema::hasColumn('wa_conversations', 'wa_user_id') ? DB::table('wa_conversations')->whereIn('id', $ids)->pluck('wa_user_id')->all() : []),
+            fn ($v) => is_string($v) && strlen($v) >= 5));
     }
 
     /** صفوف الحظر (E31) للمحادثات أو الرقم أو المعرّف، قبل تجريدها */

@@ -165,6 +165,11 @@ enum AuditAction: string
     case WaCardChange = 'wa.card_change';
     // E23: إرسال تجريبي لرقم إدارة معلَّم (نص ثابت من الكود، بالمصدر test)
     case WaTestSend = 'wa.test_send';
+    // E39: نص المتابعة بعد المكالمة وطريقة الرد، وتطبيق إعدادات الاتصال عند ميتا (الأمر)، وحامل جهاز التعايش، وإهمال السجل السابق
+    case WaCallsFollowupUpdate = 'wa.calls_followup';
+    case WaCallingSettingsApply = 'wa.calling_apply';
+    case WaCoexistenceHolderSet = 'wa.coexistence_holder';
+    case WaHistoryDiscard = 'wa.history_discard';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -236,6 +241,7 @@ enum AuditAction: string
             self::IntegrationEndpointCreate, self::IntegrationEndpointDelete, self::IntegrationEndpointRotate, self::IntegrationEndpointToggle,
             self::IntegrationEndpointAutoPaused, self::McpTokenCreate, self::McpTokenRevoke => AuditSeverity::Warn,
             self::WaMsgCorrect => AuditSeverity::Warn,
+            self::WaCallsFollowupUpdate, self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -265,6 +271,9 @@ enum AuditAction: string
             self::WaQrCreate, self::WaQrDelete, self::WaQrCardToggle, self::OfferStoryGenerate => 'config',
             self::WaPlaceChange, self::WaCardChange => 'config',
             self::WaReactionSend => 'noise',
+            self::WaCallsFollowupUpdate, self::WaCallingSettingsApply => 'config',
+            self::WaCoexistenceHolderSet => 'access',
+            self::WaHistoryDiscard => 'system',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
@@ -420,6 +429,10 @@ enum AuditAction: string
             self::WaPlaceChange => 'تعديل موقع معتمد للدبوس',
             self::WaCardChange => 'تعديل بطاقة اتصال معتمدة',
             self::WaTestSend => 'إرسال تجريبي لرقم إدارة',
+            self::WaCallsFollowupUpdate => 'إعدادات المكالمات ونص المتابعة بعد الفائتة',
+            self::WaCallingSettingsApply => 'تطبيق إعدادات الاتصال عند ميتا',
+            self::WaCoexistenceHolderSet => 'تعيين حامل جهاز التعايش',
+            self::WaHistoryDiscard => 'إهمال سجل التعايش السابق المحفوظ',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -474,7 +487,9 @@ enum AuditAction: string
             // E33: التصحيح دليل عند نزاع على سعر
             self::WaMsgCorrect,
             // E23: كل رسالة تجريبية خرجت إلى رقم حقيقي
-            self::WaTestSend], true);
+            self::WaTestSend,
+            // E39: تفعيل الاتصال عند ميتا، ومن يحمل هاتف الوكالة (يرى كل المحادثات)، ومحو السجل السابق: لا تراجع عنها
+            self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard], true);
     }
 
     public function isNoise(): bool

@@ -222,6 +222,10 @@ return [
     'WhatsAppSharedItemsController@storeCard' => 'wa.card_change',
     'WhatsAppSharedItemsController@updateCard' => 'wa.card_change',
     'WhatsAppSharedItemsController@destroyCard' => 'wa.card_change',
+    // E39: بطاقتا المكالمات والتعايش (تطبيق إعدادات الاتصال عند ميتا من الأمر وحده: wa.calling_apply)
+    'WhatsAppCallingController@refresh' => 'none: قراءة إعدادات الاتصال من ميتا؛ تُحفظ آخر قراءة للعرض وحده',
+    'WhatsAppCallingController@update' => 'wa.calls_followup',
+    'WhatsAppCoexistenceController@update' => 'wa.coexistence_holder',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

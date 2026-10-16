@@ -6,7 +6,7 @@
 
 ## 1. ما ترسله ميتا
 
-- **الحقول:** الحقول التي اشتركنا فيها من App Dashboard › WhatsApp › Configuration › Webhook fields. وهي `messages`، وحقول الحساب: `account_update` و`account_alerts` و`phone_number_quality_update` و`security` و`business_capability_update` وما شابهها، و`user_preferences` (E21). ولا نشترك في `calls` ولا `smb_message_echoes`.
+- **الحقول:** الحقول التي اشتركنا فيها من App Dashboard › WhatsApp › Configuration › Webhook fields. وهي `messages`، وحقول الحساب: `account_update` و`account_alerts` و`phone_number_quality_update` و`security` و`business_capability_update` وما شابهها، و`user_preferences` (E21). ولا نشترك في `calls` ولا حقول التعايش إلا بقرار مكتوب من المالك (E39: `docs/whatsapp/calls.md` و`docs/whatsapp/coexistence.md`).
 - **البنية:** تبدأ الحمولة بـ `entry[]`.
   - `entry.id` معرّف حساب الأعمال (WABA).
   - `changes[].field` اسم الحقل.
@@ -63,6 +63,8 @@
 | المرفوض بالسياج | لا جسم أبداً: الهاش والسبب وأسماء الحقول وأعدادها فقط |
 | الأثر الوصفي (الهاش والحالة والأعداد وأسماء أصناف الأخطاء) | «14» يوماً |
 | الرسائل نفسها | في `wa_messages` وفق `/privacy` |
+| عرض SDP في حقل `calls` (`value.calls[*].session`) | لا يُحفظ أبداً: يُحذف قبل التشفير، والبصمة على الجسم الخام (E39) |
+| سجل التعايش السابق (`history`) مع العلم `coexistence_history_hold` | مشفّراً في `wa_history_chunks` حتى `WA_COEX_HISTORY_HOLD_DAYS` يوماً، ثم يُمحى كل ساعة (E39) |
 
 - لا مسار يعرض الجسم، ولا يُسلسل (`$hidden`)، ولا يُطبع في أي أمر أو سجل.
 - `whatsapp:forget` يحذف كل صف في جسمه رقم العميل أو معرّفه.
@@ -83,8 +85,9 @@
 ## 7. الحقول المجهولة والحالات الخاصة
 
 - **أي حقل خارج ما نعالجه:** يُسجَّل باسمه وعدده فقط، بلا أي جزء من القيمة. له عدّاد يومي يظهر في بطاقة «استقبال الويبهوك»، وإشعار واحد في اليوم لكل حقل جديد.
-- **`calls`:** يُسجَّل نوع الحدث وبصمة مقتطعة لمعرّف المكالمة فقط، بلا SDP ولا أرقام. لا شيء يُخزَّن ولا يُرد.
-- **التعايش** (`smb_message_echoes` و`history` و`smb_app_state_sync`): تعني أن أحداً فعّل تطبيق الأعمال على رقمنا. يُرسل تنبيه فوري (مرة في الساعة)، ولا تُمرَّر للبوت أبداً.
+- **`calls`:** بلا العلم `calls_webhook` يُسجَّل نوع الحدث وبصمة مقتطعة لمعرّف المكالمة فقط، بلا SDP ولا أرقام، ولا شيء يُخزَّن. ومعه (E39) سجل `wa_calls` ورسالة نظام في الخيط والفائتة إلى «تدخّل»، لرقمنا وحده (`metadata.phone_number_id`). لا رد للبوت في الحالين (`docs/whatsapp/calls.md`).
+- **`account_settings_update`:** حقل مجهول بلا `calls_webhook`. ومعه صف معلوماتي في سجل أحداث ميتا وآخر قراءة لإعدادات الاتصال.
+- **التعايش** (`smb_message_echoes` و`history` و`smb_app_state_sync`): تعني أن أحداً فعّل تطبيق الأعمال على رقمنا. بلا أعلام E39 يُرسل تنبيه فوري (مرة في الساعة). ومعها: الحارس المبكر يوقف البوت بلا تخزين، والمعالجة الكاملة تحفظ الصدى رسالة موظف من الهاتف، والسجل السابق وجهات الاتصال بأعدادها وحدها (`docs/whatsapp/coexistence.md`). لا تُمرَّر للبوت أبداً.
 - **`user_id_update`:** ليس حقلاً قابلاً للاشتراك حسب وثيقة BSUID الحالية، وتغيّر المعرّف يصل رسالة نظام ضمن `messages`. إن وصل يُطبَّق على هوية المحادثة كما بنته E11، وهو غير متوقع.
 - **حمولة الحقل المجهول** لا تُسقط بقية الحمولة، وتُحسب «معالجة».
 
@@ -122,3 +125,4 @@
 - [ ] كتلة nginx: `client_max_body_size 4m` و`fastcgi_read_timeout 60s` أكبر من `set_time_limit` في المتحكم («55» ثانية)، و`keepalive_timeout 100s`.
 - [ ] الأرقام في هذه الوثيقة تطابق `config/whatsapp.php` (يحرسها الاختبار).
 - [ ] حالة تسليم جديدة من ميتا تمر بـ `DeliveryStatus` قبل أن تُكتب، وحدث جديد في `app/Events/WhatsApp` بمعرّفات فقط.
+- [ ] حقل لا نحتاجه في أي معالجة (مثل SDP في `calls`) يُحذف في `WebhookIntake::redactForStorage` قبل الحفظ.

@@ -73,6 +73,9 @@ class WhatsAppSettingsController extends Controller
             'securityScan' => rescue(fn () => \App\Services\Ops\SecurityScan::summary(), null, false),
             // E22: صحة القناة كآلة حالات (بلا رمز ولا معرّفات كيانات ولا حمولة خام)
             'channelHealth' => rescue(fn () => ChannelHealth::available() ? ChannelHealth::panel() : null, null, false),
+            // E39: بطاقتا المكالمات والتعايش، خلف أعلامهما (مطفأة = لا بطاقة)
+            'calling' => rescue(fn () => \App\Services\WhatsApp\CallEventHandler::enabled() ? \App\Services\WhatsApp\CallingSettings::panel() : null, null, false),
+            'coexistence' => rescue(fn () => \App\Services\WhatsApp\CoexistenceSync::active() ? \App\Services\WhatsApp\CoexistenceSync::panel() : null, null, false),
             // E18: آخر خطأ قناة من ميتا، وفئات اليوم، ونسبة إثبات سر التطبيق خلال 7 أيام
             'metaErrors' => [
                 'last' => WaBotSetting::current()->wa_last_error,

@@ -140,6 +140,30 @@ final class RuleTextGuard
         return $text === '' || mb_strlen($text) > WaAutoRule::MAX_REPLY ? null : $text;
     }
 
+    /**
+     * قالب نص آلي آخر بالحارس والمتغيرات نفسيهما (E39: المتابعة بعد المكالمة الفائتة): النص النهائي، أو null إن رفضه
+     * الحارس أو بقي متغير فارغاً الآن. لا سجل هنا: المستدعي يسجّل بسببه.
+     */
+    public static function fill(string $template): ?string
+    {
+        if (trim($template) === '' || self::errors($template) !== []) {
+            return null;
+        }
+        $company = CompanyInfo::all();
+        $missing = false;
+        $text = preg_replace_callback('/\{\s*([^{}]*?)\s*\}/u', function ($m) use ($company, &$missing) {
+            $value = trim((string) ($company[self::VARIABLES[$m[1]] ?? ''] ?? ''));
+            if ($value === '') {
+                $missing = true;
+            }
+
+            return $value;
+        }, $template) ?? '';
+        $text = trim($text);
+
+        return $missing || $text === '' ? null : $text;
+    }
+
     private static function logOnce(WaAutoRule $rule, string $event): void
     {
         try {

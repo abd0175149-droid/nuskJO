@@ -71,6 +71,12 @@ final class SendKey
         return self::make('consent', $conv->id, $upto ?? self::upto($conv), $kind);
     }
 
+    /** المتابعة النصية بعد المكالمة الفائتة (E39): واحدة لكل مكالمة، فإعادة ميتا للانتهاء لا تكررها */
+    public static function call(string $waCallId): string
+    {
+        return self::make('call', $waCallId);
+    }
+
     /**
      * سعر طلب التسعير: السعر والملاحظة نفسيهما خلال 10 دقائق لا يُرسلان مرتين. $nonce لـ «أعد الإرسال» الصريح.
      */

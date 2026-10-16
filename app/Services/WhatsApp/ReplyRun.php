@@ -109,9 +109,10 @@ final class ReplyRun
             return 'stale_gone';
         }
 
-        // تفاعل الموظف (E33) إقرار لا رد: لا يُسقط رد البوت
+        // تفاعل الموظف (E33) إقرار لا رد: لا يُسقط رد البوت. وstaff_phone (E39): رسالة من تطبيق الأعمال على الهاتف
+        // (صدى التعايش) استلامٌ كرد الموظف من الصندوق
         $staffReplied = WaMessage::where('conversation_id', $conv->id)
-            ->where('source', 'staff')->where('status', '!=', 'failed')->where('msg_type', '!=', 'reaction')
+            ->whereIn('source', ['staff', 'staff_phone'])->where('status', '!=', 'failed')->where('msg_type', '!=', 'reaction')
             ->where('id', '>', $this->startMaxMsgId)->exists();
         if ($staffReplied) {
             return 'stale_takeover';

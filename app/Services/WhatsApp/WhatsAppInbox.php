@@ -68,12 +68,31 @@ class WhatsAppInbox
             return;
         }
         if ($field === 'calls') {
-            WebhookFields::calls($value);
+            // E39 (العلم calls_webhook): سجل المكالمة والفائتة. بدونه نوع الحدث وعدده فقط (E20). لا رد للبوت في الحالين
+            if (CallEventHandler::enabled()) {
+                CallEventHandler::handle($value, $ownId, $result);
+            } else {
+                WebhookFields::calls($value);
+            }
+
+            return;
+        }
+        // إعدادات الاتصال عند ميتا (E39، العلم calls_webhook): آخر قراءة للبطاقة. بدونه حقل مجهول كما في E20
+        if ($field === 'account_settings_update' && CallEventHandler::enabled()) {
+            CallingSettings::fromWebhook($value, $entryId, $entryTime, $ownId);
 
             return;
         }
         if (in_array($field, WebhookFields::COEXISTENCE, true)) {
-            WebhookFields::coexistence($field);
+            // E39: الأصداء بالحارس أو المعالجة الكاملة (EchoHandler)، والسجل السابق وجهات الاتصال (CoexistenceSync).
+            // بلا أعلامها سلوك E20: تنبيه فوري، ولا تصل للبوت أبداً
+            if ($field === 'smb_message_echoes' && EchoHandler::active()) {
+                EchoHandler::handle($value, $ownId, $result);
+            } elseif ($field !== 'smb_message_echoes' && CoexistenceSync::active()) {
+                CoexistenceSync::handle($field, $value, $entryId, $entryTime, $ownId);
+            } else {
+                WebhookFields::coexistence($field);
+            }
 
             return;
         }
@@ -263,6 +282,20 @@ class WhatsAppInbox
         if ($after === 'consent:yes') {
             return null;
         }
+        // رد العميل على طلب إذن الاتصال (E39): لا يصل البوت. الموافقة «تدخّل» بسببها وإشعار، والرفض للسجل وحده
+        if ($after === 'call_permission:accept') {
+            ReplyState::markUnserved($conv, 'call_permission');
+
+            return null;
+        }
+        if ($after === 'call_permission:reject') {
+            // لا وارد آخر ينتظر: العلامة تتقدّم فلا يعدّه المُصالِح ولا «العالقة» ولا قواعد النص
+            if (ReplyState::newestPending($conv) === null) {
+                ReplyState::advance($conv, $stored->id);
+            }
+
+            return null;
+        }
         if ($after === 'optout') {
             WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system', sendKey: SendKey::optout((string) $in->wamid));
 
@@ -362,6 +395,11 @@ class WhatsAppInbox
         $conv->refresh();
         if ($blocked) {
             ReplyState::advance($conv, $message->id);
+        }
+
+        // إذن الاتصال (E39، العلم calls_webhook): القرار بعد الاعتماد
+        if ($type === 'call_permission') {
+            return [$conv, strtolower((string) data_get($msg, 'interactive.call_permission_reply.response')) === 'accept' ? 'call_permission:accept' : 'call_permission:reject', $message];
         }
 
         // زرّا إشعار حفظ الملفات (E14): اختيار مسجّل لا يصل للبوت، والحذف بعد الاعتماد
@@ -657,6 +695,10 @@ class WhatsAppInbox
         } elseif ($event === 'ACCOUNT_OFFBOARDED') {
             // فصل الحساب عن الشريك: تنبيه فقط، والإيقاف التلقائي له قرار مالك (E09.9)
             self::notifyAdmins('⚠️ فُصل حساب واتساب للأعمال', 'وصل حدث ACCOUNT_OFFBOARDED من ميتا. راجع ربط الحساب قبل أن يتوقف الإرسال.');
+        } elseif ($event === 'PARTNER_REMOVED' && $field === 'account_update' && CoexistenceSync::active()) {
+            // انفصال التعايش (E39، مع أعلامه): تنبيه بلا قفل، بالنص نفسه في جدول E22
+            $rule = AccountEventHandler::partnerRemoved($value);
+            self::notifyAdmins($rule['alert'][0], $rule['alert'][1], ChannelHealth::URL);
         }
     }
 

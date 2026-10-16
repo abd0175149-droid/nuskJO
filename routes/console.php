@@ -307,6 +307,10 @@ Schedule::command('integrations:prune')
     ->timezone('Asia/Amman')
     ->dailyAt('04:20')
     ->withoutOverlapping();
+// سجل التعايش السابق المحفوظ مشفّراً (E39، C012): يُمحى ما مضت مدته كل ساعة. لا شيء يُحفظ والعلم coexistence_history_hold مطفأ
+Schedule::command('whatsapp:coexistence-history --prune')
+    ->hourlyAt(35)
+    ->withoutOverlapping(10);
 
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {

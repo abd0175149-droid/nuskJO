@@ -56,6 +56,17 @@ final class ContactIdentity
         return self::resolveIdentity($in->fromPhone, $in->fromUserId, $in->profileName, $in->username, $in->phoneNumberId);
     }
 
+    /** محادثة قائمة بالمعرّف ثم بالرقم الكامل، بلا إنشاء ولا تعديل (حارس التعايش، E39) */
+    public static function find(?string $from, ?string $userId): ?WaConversation
+    {
+        if (filled($userId) && ($conv = WaConversation::where('wa_user_id', mb_substr((string) $userId, 0, 160))->where('status', '!=', 'merged')->first())) {
+            return $conv;
+        }
+        $phone = self::phoneFrom($from);
+
+        return $phone ? WaConversation::where('phone', $phone)->where('status', '!=', 'merged')->first() : null;
+    }
+
     /** (MessageReplayer والاختبارات؛ الويبهوك عبر resolve) */
     public static function resolveIdentity(?string $from, ?string $userId, ?string $name = null, ?string $username = null, ?string $pnid = null): WaConversation
     {

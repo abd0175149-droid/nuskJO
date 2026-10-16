@@ -81,5 +81,11 @@ return [
         'channel_selftest' => env('WA_FEATURE_CHANNEL_SELFTEST'),
         'wa_test_send' => env('WA_FEATURE_WA_TEST_SEND'),
         'ops_status_page' => env('WA_FEATURE_OPS_STATUS_PAGE'),
+        // E39: المكالمات والتعايش (كلها مطفأة حتى قرار المالك)
+        'calls_webhook' => env('WA_FEATURE_CALLS_WEBHOOK'),
+        'calls_followup' => env('WA_FEATURE_CALLS_FOLLOWUP'),
+        'coexistence_guard' => env('WA_FEATURE_COEXISTENCE_GUARD'),
+        'coexistence_echoes' => env('WA_FEATURE_COEXISTENCE_ECHOES'),
+        'coexistence_history_hold' => env('WA_FEATURE_COEXISTENCE_HISTORY_HOLD'),
     ],
 ];

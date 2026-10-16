@@ -94,6 +94,12 @@ final class FeatureFlags
         'channel_selftest' => ['label' => '«اختبار الاتصال» في الإعدادات: قراءات ميتا الرسمية وارتداد موقّع عبر رابط الويبهوك العام', 'capability' => 'C218', 'available' => true],
         'wa_test_send' => ['label' => '«إرسال تجريبي» لأرقام الإدارة المعلَّمة وحدها، بنافذة مفتوحة وحد 10 في الساعة', 'capability' => 'C217', 'available' => true],
         'ops_status_page' => ['label' => 'صفحة «حالة النظام» للقراءة (القاعدة والقرص والطوابير والنبضات والنسخ وصحة واتساب) بالصلاحية ops.view', 'capability' => 'C220', 'available' => true],
+        // E39: المكالمات والتعايش، جاهزية مشروطة. لا يُفعَّل أي منها قبل قرار المالك المكتوب في CHANGELOG
+        'calls_webhook' => ['label' => 'المكالمات: سجل المكالمة ورسالة في الخيط والفائتة إلى «تدخّل» وإذن الاتصال (بقرار المالك المكتوب)', 'capability' => 'C046', 'available' => true],
+        'calls_followup' => ['label' => 'رسالة نصية بعد المكالمة الفائتة بنص يعتمده المالك (داخل النافذة، مرة كل 6 ساعات)', 'capability' => 'C046', 'available' => true],
+        'coexistence_guard' => ['label' => 'حارس التعايش: أي رسالة من تطبيق الأعمال على الهاتف توقف البوت في محادثتها فوراً، بلا تخزين', 'capability' => 'C011', 'available' => true],
+        'coexistence_echoes' => ['label' => 'التعايش: رسائل هاتف الوكالة تُحفظ في الصندوق وتوقف البوت (بقرار المالك المكتوب)', 'capability' => 'C011', 'available' => true],
+        'coexistence_history_hold' => ['label' => 'حفظ سجل المحادثات السابق (history) مشفّراً بانتظار قرار الاستيراد، ثم يُمحى بعد مدته', 'capability' => 'C012', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

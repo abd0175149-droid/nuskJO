@@ -1,0 +1,33 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "time": 1760425800,
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "message_echoes": [
+              {
+                "from": "15550783881",
+                "to_user_id": "US.13491208655302741918",
+                "id": "wamid.FIXTURE.echo.bsuid",
+                "timestamp": "1760425780",
+                "type": "text",
+                "text": {
+                  "body": "Reply to a username-only customer, typed on the phone."
+                }
+              }
+            ]
+          },
+          "field": "smb_message_echoes"
+        }
+      ]
+    }
+  ]
+}

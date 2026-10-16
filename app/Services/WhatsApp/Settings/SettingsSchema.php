@@ -94,6 +94,24 @@ final class SettingsSchema
         'conversational_automation' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'الأوامر والأسئلة المقترحة في واتساب'],
         // E22: حالة القناة عند ميتا (AVAILABLE وLIMITED وBLOCKED وTOKEN_INVALID وUNKNOWN)، يكتبها ChannelHealth وحده
         'wa_health' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'حالة قناة الإرسال'],
+
+        // E39: المكالمات (خلف calls_webhook وcalls_followup). تُحفظ من بطاقة «📞 المكالمات» بمسارها: حارس النص وتدقيق خاص
+        'calls_answer_mode' => ['type' => 'enum', 'values' => 'call_answer_modes', 'default' => 'none', 'patchable' => false, 'group' => 'calls', 'ui' => 'custom',
+            'label' => 'طريقة الرد على المكالمات', 'help' => 'none: لا طريقة رد (كل مكالمة تفوت) · webrtc أو sip: ملحمة مستقلة بقرار'],
+        'calls_auto_reject' => ['type' => 'bool', 'default' => false, 'patchable' => false, 'group' => 'calls', 'ui' => 'custom',
+            'label' => 'رفض المكالمة فوراً ما دامت لا طريقة رد'],
+        // null = النص المقترح (CallFollowup::DEFAULT_TEXT) حتى يعتمد المالك نصاً
+        'calls_followup_text' => ['type' => 'text', 'max' => 600, 'nullable' => true, 'default' => null, 'patchable' => false, 'group' => 'calls', 'ui' => 'custom',
+            'label' => 'نص المتابعة بعد المكالمة الفائتة'],
+        'calls_followup_text_en' => ['type' => 'text', 'max' => 600, 'nullable' => true, 'default' => null, 'patchable' => false, 'group' => 'calls', 'ui' => 'custom',
+            'label' => 'نص المتابعة بالإنجليزية (اختياري)'],
+        // آخر قراءة لإعدادات الاتصال من ميتا: زر «قراءة من ميتا» أو ويبهوك account_settings_update، بلا رفع النسخة
+        'calling_snapshot' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'إعدادات الاتصال عند ميتا'],
+        // E39: التعايش. يُضبطان من بطاقة «📱 التعايش» بمسارها (الحامل يملك whatsapp.view_all، ويُدقَّق التغيير)
+        'echo_pause_minutes' => ['type' => 'int', 'min' => 1, 'max' => 1440, 'nullable' => true, 'default' => null, 'patchable' => false, 'group' => 'coexistence', 'ui' => 'custom',
+            'label' => 'إيقاف البوت بعد رسالة من هاتف الوكالة (دقائق)', 'help' => 'فارغ = مدة الإيقاف بعد رد موظف'],
+        'coexistence_holder_user_id' => ['type' => 'int', 'min' => 1, 'max' => 2147483647, 'nullable' => true, 'default' => null, 'patchable' => false, 'group' => 'coexistence', 'ui' => 'custom',
+            'label' => 'حامل جهاز التعايش'],
     ];
 
     /** أعمدة يكتبها الكاتب نفسه مع فعلها (تدوير سر، إيقاف، علم)، لا حقول إعدادات تُعرض أو تُحفظ من الصفحة */
@@ -187,6 +205,7 @@ final class SettingsSchema
             'breaker_modes' => ['off', 'shadow', 'on'],
             'read_receipt_modes' => \App\Services\WhatsApp\ReadReceipts::MODES,
             'auto_rule_modes' => \App\Services\WhatsApp\AutoRuleEngine::MODES,
+            'call_answer_modes' => \App\Services\WhatsApp\CallEventHandler::ANSWER_MODES,
             default => [],
         };
     }

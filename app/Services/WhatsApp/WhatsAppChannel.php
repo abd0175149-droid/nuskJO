@@ -2251,6 +2251,94 @@ class WhatsAppChannel
         ]);
     }
 
+    // ==================== إعدادات الاتصال ورفض المكالمة (E39) ====================
+
+    /** الحقول المقروءة من إعدادات الاتصال (بلا SIP ولا أي سر) */
+    public const CALLING_FIELDS = ['status', 'call_icon_visibility', 'call_hours', 'callback_permission_status'];
+
+    /**
+     * GET {pnid}/settings: إعدادات الاتصال عند ميتا (calling) للقراءة. القفل 1 وحده: القراءة مسموحة أثناء الإيقاف.
+     *
+     * @return array{ok: bool, code: ?string, error: ?string, data?: array<string, mixed>}
+     */
+    public static function getCallingSettings(): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        $res = self::callingCall('GET', [(string) $s->phoneNumberId(), 'settings'], [], 'settings');
+        if (!$res['ok']) {
+            return $res;
+        }
+        $calling = (array) data_get($res['json'], 'calling', []);
+
+        return $res + ['data' => array_intersect_key($calling, array_flip(self::CALLING_FIELDS))];
+    }
+
+    /**
+     * POST {pnid}/settings بالجسم {calling: {...}}: قرار نادر متعمد (تفعيل الاتصال على رقم المبيعات). من الأمر
+     * whatsapp:calling-settings وحده بتأكيد، لا من الواجهة. القفلان 1 و2: لا كتابة لميتا أثناء الإيقاف الطارئ.
+     */
+    public static function applyCallingSettings(array $calling): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ): لا يُكتب شيء لميتا حتى يُرفع.');
+        }
+        $res = self::callingCall('POST', [(string) $s->phoneNumberId(), 'settings'], ['calling' => $calling], 'settings');
+        if ($res['ok'] && data_get($res['json'], 'success') === false) {
+            return self::fail('CALLING_UNCONFIRMED', 'لم تؤكد ميتا حفظ الإعدادات. اقرأها من جديد قبل الإعادة.');
+        }
+
+        return $res;
+    }
+
+    /**
+     * رفض مكالمة واردة ترن الآن (C045، الرفض الآلي حين لا طريقة رد): POST {pnid}/calls بالفعل reject.
+     * لا رسالة ولا SDP. يحترم الإيقاف الطارئ: لا شيء يُكتب لميتا أثناءه.
+     */
+    public static function rejectCall(string $callId): array
+    {
+        $s = WaBotSetting::current();
+        if (!$s->channelReady()) {
+            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة.');
+        }
+        if ($s->sendingSuspended()) {
+            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).');
+        }
+
+        return self::callingCall('POST', [(string) $s->phoneNumberId(), 'calls'],
+            ['messaging_product' => 'whatsapp', 'call_id' => $callId, 'action' => 'reject'], 'calls');
+    }
+
+    /** @return array{ok: bool, code: ?string, error: ?string, json?: array} */
+    private static function callingCall(string $method, array $segments, array $data, string $field): array
+    {
+        try {
+            $res = Graph\GraphClient::request($method, $segments, $data, (string) WaBotSetting::current()->token(), 15);
+        } catch (\InvalidArgumentException) {
+            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
+        } catch (\Throwable $e) {
+            WaLog::warning('wa.calling.failed', ['type' => class_basename($e), 'field' => $field]);
+
+            return self::fail('HTTP_ERROR', 'تعذّر الاتصال بميتا (مهلة أو شبكة).');
+        }
+        if (!$res->successful()) {
+            $err = MetaError::fromGraphResponse($res);
+            WaLog::warning('wa.calling.failed', ['field' => $field, 'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category,
+                'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+            MetaErrorReactor::react($err, ['source' => 'calling']);
+
+            return self::fail($err->code, $err->staffMessage, $err->metaCode);
+        }
+
+        return ['ok' => true, 'code' => null, 'error' => null, 'json' => (array) ($res->json() ?? [])];
+    }
+
     /** قفل محلي قبل ميتا (بلا صف): النص كما هو، ومع meta_error_v2 فئته وإجراؤه من الجدول */
     private static function voiceRefused(WaConversation $conv, string $source): array
     {
