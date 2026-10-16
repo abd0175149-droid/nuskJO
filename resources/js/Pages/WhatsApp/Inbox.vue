@@ -14,7 +14,7 @@
         <ConversationList :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-1"
                           :visible="s.view === 'list'" :items="s.list" :active-id="s.activeId" :has-more="s.listHasMore" :loading-more="s.loadingMore"
                           :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
-                          :can-block="canBlock" :missed-calls="!!flags.calls" @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
+                          :can-block="canBlock" :missed-calls="calls" @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
                           @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"
                           :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"
                           :message-search="messageSearch" @jump="(h) => inbox.openFromSearch(h.conversation_id, h.message_id)"/>
@@ -39,7 +39,7 @@
                     @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"
                     :media-policy="mediaPolicy" :recipient="inbox.recipient.value" :outbox="inbox.outboxItems.value"
                     @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"
-                    :can-block="canBlock" @block="blockOpen = true" @unblock="inbox.unblock(prompt)"/>
+                    :can-block="canBlock" @block="blockOpen = true" @unblock="inbox.unblock(prompt)" :calls="calls"/>
       </div>
     </div>
 
@@ -105,6 +105,8 @@ const props = defineProps({
   mediaPolicy: { type: Object, default: null },
   // E31: الحظر الرسمي (whatsapp.block والعلم wa_block)
   canBlock: Boolean,
+  // E39: فلتر المكالمات الفائتة وزر المعاودة من هاتف الوكالة
+  calls: Boolean,
   // E28: البث اللحظي (العلم inbox_realtime)
   realtime: { type: Object, default: () => ({ inbox: false }) },
 });

@@ -75,9 +75,9 @@ class WhatsAppController extends Controller
                 'wa_labels' => \App\Services\WhatsApp\LabelService::enabled(),
                 'thread_pins' => \App\Services\WhatsApp\ThreadPins::enabled(),
                 'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
-                // E39: فقاعة المكالمة وفلتر «مكالمات فائتة» وزر «اتصل من هاتف الوكالة»
-                'calls' => \App\Services\WhatsApp\CallEventHandler::enabled(),
             ],
+            // E39: فلتر «مكالمات فائتة» وزر «اتصل من هاتف الوكالة» مع العلم calls_webhook
+            'calls' => \App\Services\WhatsApp\CallEventHandler::enabled(),
             'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
             // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص
             'messageSearch' => \App\Services\WhatsApp\Search\MessageSearch::enabledFor(auth()->user()),

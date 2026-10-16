@@ -68,10 +68,10 @@ class CallsInboxPayloadTest extends TestCase
     public function test_the_inbox_page_gets_the_calls_flag_and_the_coexistence_badge(): void
     {
         $this->actingAs($this->admin)->get('/whatsapp/inbox')->assertOk()
-            ->assertInertia(fn ($page) => $page->where('flags.calls', true)->where('status.coexistence', true));
+            ->assertInertia(fn ($page) => $page->where('calls', true)->where('status.coexistence', true));
 
         config(['features.env.calls_webhook' => false, 'features.env.coexistence_echoes' => false]);
         $this->actingAs($this->admin)->get('/whatsapp/inbox')->assertOk()
-            ->assertInertia(fn ($page) => $page->where('flags.calls', false)->where('status.coexistence', false));
+            ->assertInertia(fn ($page) => $page->where('calls', false)->where('status.coexistence', false));
     }
 }
