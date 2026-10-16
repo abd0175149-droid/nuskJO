@@ -219,6 +219,10 @@ Schedule::command('whatsapp:media-prune')
 Schedule::command('whatsapp:media-sweep')
     ->hourly()
     ->withoutOverlapping();
+// الردود العالقة (E17): قائمة لبطاقة المدير، وتنبيه مرة في الساعة إن بقيت عالقة 15 دقيقة
+Schedule::command('whatsapp:stuck-replies --notify')
+    ->everyTenMinutes()
+    ->withoutOverlapping(10);
 // المحادثات المؤجلة (E17) تعود «تدخّلاً» في موعدها
 Schedule::command('whatsapp:snooze-wake')
     ->everyFiveMinutes()

@@ -98,6 +98,7 @@ enum AuditAction: string
     case WaConvClose = 'wa.conv_close';
     case WaConvReopen = 'wa.conv_reopen';
     case WaConvSnooze = 'wa.conv_snooze';
+    case WaReprocess = 'wa.reprocess';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -138,7 +139,7 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload, self::WaPolicyOverride => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -249,6 +250,7 @@ enum AuditAction: string
             self::WaConvClose => 'إغلاق محادثة',
             self::WaConvReopen => 'إعادة فتح محادثة',
             self::WaConvSnooze => 'تأجيل محادثة',
+            self::WaReprocess => 'إعادة معالجة رد عالق',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

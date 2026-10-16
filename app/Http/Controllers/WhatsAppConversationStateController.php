@@ -3,12 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AuditAction;
+use App\Jobs\ProcessWhatsAppReply;
 use App\Models\AuditLog;
+use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaConversationPin;
 use App\Services\WhatsApp\InboxFollowup;
+use App\Services\WhatsApp\ReplyState;
+use App\Services\WhatsApp\StuckReplies;
+use App\Support\FeatureFlags;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -133,6 +139,61 @@ class WhatsAppConversationStateController extends Controller
         ])->save();
 
         return $this->state($conversation);
+    }
+
+    /**
+     * «🔁 إعادة معالجة» لرد عالق (E17.5) لمن يملك whatsapp.settings: ما يقابل force-kill في OpenWA بلا قتل.
+     * لا يُحرَّر قفل أحدث من مهلة الوظيفة أبداً، والرمز الأحدث يُبطل أي وظيفة منتظرة، وكل إعادة تُدقَّق.
+     */
+    public function reprocess(WaConversation $conversation)
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+        if (!FeatureFlags::on('reprocess_button')) {
+            return response()->json(['error' => 'زر إعادة المعالجة غير مفعّل'], 403);
+        }
+
+        $key = 'wa:reprocess:'.$conversation->id;
+        Cache::add($key, 0, now()->addMinutes(10));
+        if (Cache::increment($key) > 3) {
+            return response()->json(['error' => 'ثلاث محاولات في 10 دقائق — انتظر قليلاً أو رد يدوياً'], 429);
+        }
+
+        $s = WaBotSetting::current();
+        $fail = match (true) {
+            !$conversation->isWindowOpen() => 'نافذة الرد مغلقة — لا يمكن الرد على العميل حتى يكتب من جديد',
+            !$s->botReady() || !$conversation->botActive() => 'البوت موقوف لهذه المحادثة — فعّله أو رد يدوياً',
+            !ReplyState::hasPending($conversation) => 'لا رسالة معلّقة',
+            // بوابة الحداثة (E07): وظيفة كهذه تنتهي «متأخرة» بلا رد
+            ReplyState::isStale($conversation, $s) => 'الرسالة أقدم من '.ReplyState::maxAgeMinutes($s).' دقيقة؛ البوت لن يرد عليها آلياً — رد يدوياً',
+            default => null,
+        };
+        if ($fail !== null) {
+            return response()->json(['error' => $fail], 422);
+        }
+
+        $running = (int) Cache::get(ProcessWhatsAppReply::runningKey($conversation->id), 0);
+        $age = StuckReplies::lockAge($conversation->id);
+        if (($running && time() - $running < ProcessWhatsAppReply::RUNNING_SECONDS) || ($age !== null && $age <= ProcessWhatsAppReply::TIMEOUT)) {
+            return response()->json(['error' => 'معالجة جارية الآن — انتظر دقيقة'], 409);
+        }
+
+        $diagnosis = StuckReplies::diagnose($conversation);
+        $released = false;
+        if ($age !== null) {
+            // قفل أقدم من المهلة: عامل قُتل وتركه، ولا وظيفة حيّة تمسكه
+            Cache::lock(StuckReplies::lockName($conversation->id))->forceRelease();
+            $released = true;
+        }
+        foreach (ReplyState::pendingQuery($conversation)->pluck('id') as $id) {
+            Cache::forget("wa:recon:{$conversation->id}:{$id}");
+        }
+        ProcessWhatsAppReply::schedule($conversation->id);
+
+        AuditLog::safe(AuditAction::WaReprocess, 'wa_conversation', $conversation->id, null, [
+            'lock_released' => $released, 'diagnosis' => $diagnosis['state'], 'waiting_min' => $diagnosis['waiting_min'],
+        ]);
+
+        return response()->json(['ok' => true, 'lock_released' => $released, 'message' => 'أُعيدت الجدولة — يصل الرد خلال دقيقة إن نجح']);
     }
 
     private function state(WaConversation $c)

@@ -29,7 +29,8 @@ class HandoffGuard
     {
         foreach ($usedTools as $entry) {
             [$status, $name] = str_contains($entry, ':') ? explode(':', $entry, 2) : ['ok', $entry];
-            if ($status === 'ok' && in_array($name, self::escalatingTools(), true)) {
+            // dup: طلب مسجّل مسبقاً، والمحادثة حُوّلت معه (E17.8)
+            if (in_array($status, ['ok', 'dup'], true) && in_array($name, self::escalatingTools(), true)) {
                 return true;
             }
         }

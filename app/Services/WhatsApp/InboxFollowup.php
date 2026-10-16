@@ -91,6 +91,10 @@ final class InboxFollowup
             'closed' => $q->where('wa_conversations.status', 'closed'),
             'snoozed' => $q->where('snoozed_until', '>', now()),
             'pinned' => $q->whereIn('wa_conversations.id', self::pinnedIds($me)),
+            // فلاتر البطاقات (E17.6) بشروط InboxSummary نفسها
+            'window_closing' => InboxSummary::windowClosing($q),
+            'failed_today' => InboxSummary::failedToday($q),
+            'stuck' => $me->can('whatsapp.settings') ? $q->whereIn('wa_conversations.id', StuckReplies::cachedIds()) : $q->whereRaw('1 = 0'),
             default => $q,
         };
     }

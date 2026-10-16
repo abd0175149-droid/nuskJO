@@ -24,6 +24,8 @@ final class FeatureFlags
         'outbound_policy_enforce' => ['label' => 'حجب الرسائل الآلية التي تحوي بيانات حساسة أو داخلية (بدل التسجيل)', 'capability' => 'C175', 'available' => true],
         'admin_rbac_enforce' => ['label' => 'فرض صلاحيات المستخدم المرتبط على أرقام الإدارة (بدل التسجيل)', 'capability' => 'C172', 'available' => true],
         'inbox_followup' => ['label' => 'متابعة الصندوق: الإغلاق والتأجيل والتثبيت و«غير مقروء» والبطاقات', 'capability' => 'C126', 'available' => true],
+        'quote_dedupe' => ['label' => 'منع تكرار طلبات التسعير والحجز (المكرر يعيد رقم الطلب نفسه بلا إشعار ثانٍ)', 'capability' => 'C122', 'available' => true],
+        'reprocess_button' => ['label' => 'زر «إعادة معالجة» للردود العالقة (للمدير)', 'capability' => 'C060', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

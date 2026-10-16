@@ -479,8 +479,7 @@ class BotTools
     /** ★ طلب تسعير → إشعار الموظف + تحويل المحادثة */
     private static function requestQuote(array $in, WaConversation $conv): array
     {
-        $qr = QuoteRequest::create([
-            'request_number' => QuoteRequest::nextNumber(),
+        ['qr' => $qr, 'duplicate' => $dup] = QuoteRequestGuard::createOrReuse($conv, 'quote', [
             'conversation_id' => $conv->id,
             'client_id' => $conv->client_id,
             // عميل بلا رقم: نص فارغ (العمود NOT NULL)، والهوية من conversation_id
@@ -498,6 +497,9 @@ class BotTools
             'details' => mb_substr((string) ($in['details'] ?? ''), 0, 2000),
             'status' => 'new',
         ]);
+        if ($dup) {
+            return self::duplicateResult($qr);
+        }
 
         self::auditQuote($qr, $conv);
         self::escalate($conv, $qr, '💰 طلب تسعير جديد');
@@ -541,8 +543,7 @@ class BotTools
 
         $selection = self::bookingSelection($offer, $in);
 
-        $qr = QuoteRequest::create([
-            'request_number' => QuoteRequest::nextNumber(),
+        ['qr' => $qr, 'duplicate' => $dup] = QuoteRequestGuard::createOrReuse($conv, 'booking', [
             'conversation_id' => $conv->id,
             'client_id' => $conv->client_id,
             'offer_id' => $offer->id,
@@ -561,6 +562,9 @@ class BotTools
             'offer_selection' => $selection,
             'status' => 'new',
         ]);
+        if ($dup) {
+            return self::duplicateResult($qr) + ['offer' => $offer->title];
+        }
 
         self::auditQuote($qr, $conv);
         self::escalate($conv, $qr, '🧾 طلب تأكيد حجز');
@@ -634,6 +638,23 @@ class BotTools
         }
 
         return implode(' — ', $parts);
+    }
+
+    /**
+     * طلب مسجّل مسبقاً (E17.8): لا إنشاء ولا تحويل ولا إشعار ثانٍ. التحويل حدث مع الطلب الأول، ورسالة التأكيد
+     * لا تُسقط (escalated في التشغيل نفسه).
+     */
+    private static function duplicateResult(QuoteRequest $qr): array
+    {
+        if ($run = ReplyRun::current()) {
+            $run->escalated = true;
+        }
+
+        return [
+            'request_number' => $qr->request_number,
+            'duplicate' => true,
+            'note' => 'الطلب مسجّل مسبقاً بهذا الرقم. أبلغ العميل أنه وصل وسيتواصل معه موظف، ولا تنشئ طلباً جديداً.',
+        ];
     }
 
     /** النوع والعرض والمحادثة فقط: اسم العميل ورقمه وتفاصيل طلبه في الطلب نفسه لا في السجل */

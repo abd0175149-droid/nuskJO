@@ -123,6 +123,7 @@ return [
     'WhatsAppConversationStateController@pin' => 'none: حالة شخصية (تثبيت في صندوق الموظف نفسه)',
     'WhatsAppConversationStateController@unpin' => 'none: حالة شخصية (تثبيت في صندوق الموظف نفسه)',
     'WhatsAppConversationStateController@markUnread' => 'none: حالة داخلية (عدّاد غير مقروء، بلا نداء لميتا)',
+    'WhatsAppConversationStateController@reprocess' => 'wa.reprocess',
     'WhatsAppController@testKey' => 'none: فحص مفتاح للقراءة',
     'WhatsAppController@metaCheck' => 'none: فحص ميتا للقراءة',
     'WhatsAppKnowledgeController@store' => 'create',

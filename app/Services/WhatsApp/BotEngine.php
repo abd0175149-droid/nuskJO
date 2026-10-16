@@ -353,7 +353,8 @@ TXT;
             foreach ($r['tool_calls'] as $tc) {
                 // الاسم المعلن ثم الإذن ثم التطبيع والتحقق ثم التنفيذ ثم السقف؛ التحويل يُحسب من ok وحده
                 $res = Tools\ToolInvoker::run((string) $tc['name'], (array) ($tc['input'] ?? []), $conv->fresh(), $declared, $admin);
-                $usage['tools'][] = $res['status'].':'.$tc['name'];
+                // طلب مكرر (E17.8) يُعدّ «dup» للقياس، ويبقى تحويلاً في حكم HandoffGuard
+                $usage['tools'][] = ($res['status'] === 'ok' && ($res['output']['duplicate'] ?? false) === true ? 'dup' : $res['status']).':'.$tc['name'];
                 $usage['tool_bytes'] += $res['bytes'];
                 $results[] = ['id' => $tc['id'], 'name' => $tc['name'], 'output' => $res['output']];
             }

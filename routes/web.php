@@ -129,6 +129,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     // ===== بوت الواتساب =====
     Route::get('whatsapp/inbox', [\App\Http\Controllers\WhatsAppController::class, 'inbox'])->name('whatsapp.inbox')->middleware('perm:whatsapp.view');
     Route::get('api/whatsapp/conversations', [\App\Http\Controllers\WhatsAppController::class, 'conversations'])->middleware('perm:whatsapp.view');
+    Route::get('api/whatsapp/inbox-summary', [\App\Http\Controllers\WhatsAppController::class, 'inboxSummary'])->middleware('perm:whatsapp.view');
     Route::get('api/whatsapp/conversations/{conversation}/messages', [\App\Http\Controllers\WhatsAppController::class, 'messages'])->middleware('perm:whatsapp.view');
     Route::post('api/whatsapp/conversations/{conversation}/send', [\App\Http\Controllers\WhatsAppController::class, 'send'])->middleware('perm:whatsapp.reply');
     Route::post('api/whatsapp/conversations/{conversation}/request-contact', [\App\Http\Controllers\WhatsAppController::class, 'requestContact'])->middleware('perm:whatsapp.reply');
@@ -157,6 +158,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::post('api/whatsapp/conversations/{conversation}/pin', [\App\Http\Controllers\WhatsAppConversationStateController::class, 'pin'])->middleware('perm:whatsapp.view');
     Route::delete('api/whatsapp/conversations/{conversation}/pin', [\App\Http\Controllers\WhatsAppConversationStateController::class, 'unpin'])->middleware('perm:whatsapp.view');
     Route::post('api/whatsapp/conversations/{conversation}/mark-unread', [\App\Http\Controllers\WhatsAppConversationStateController::class, 'markUnread'])->middleware('perm:whatsapp.view');
+    Route::post('api/whatsapp/conversations/{conversation}/reprocess', [\App\Http\Controllers\WhatsAppConversationStateController::class, 'reprocess'])->middleware('perm:whatsapp.settings');
     Route::get('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'routing'])->name('whatsapp.routing')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'saveRouting'])->name('whatsapp.routing.save')->middleware('perm:whatsapp.settings');
     // إعدادات البوت (E10): حفظ جزئي برمز نسخة، وإيقاف طارئ بسبب، وأسرار لا تعود للمتصفح

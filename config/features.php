@@ -18,6 +18,8 @@ return [
         'inbox_v2' => env('WA_FEATURE_INBOX_V2'),
         'admin_rbac_enforce' => env('WA_FEATURE_ADMIN_RBAC_ENFORCE'),
         'inbox_followup' => env('WA_FEATURE_INBOX_FOLLOWUP'),
+        'quote_dedupe' => env('WA_FEATURE_QUOTE_DEDUPE'),
+        'reprocess_button' => env('WA_FEATURE_REPROCESS_BUTTON'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
     ],
 ];

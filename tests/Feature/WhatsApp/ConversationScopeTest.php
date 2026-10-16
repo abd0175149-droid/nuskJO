@@ -47,6 +47,8 @@ class ConversationScopeTest extends TestCase
         'snooze' => ['POST', ['minutes' => 60]],
         'pin' => ['POST', []],
         'mark-unread' => ['POST', []],
+        // للمدير (whatsapp.settings): داخل النطاق بلا وارد معلّق يرد 422، لا 404
+        'reprocess' => ['POST', [], [], ['whatsapp.settings'], 422],
     ];
 
     protected function setUp(): void
@@ -55,6 +57,7 @@ class ConversationScopeTest extends TestCase
         $this->configureChannel();
         $this->fakeGraph();
         \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
+        config(['features.env.reprocess_button' => true]);
     }
 
     public static function routes(): array

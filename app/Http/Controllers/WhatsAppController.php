@@ -55,6 +55,9 @@ class WhatsAppController extends Controller
             'canMedia' => auth()->user()->can('whatsapp.media'),
             // متابعة الصندوق (E17): الإغلاق والتأجيل والتثبيت و«غير مقروء»
             'followup' => \App\Services\WhatsApp\InboxFollowup::enabled(),
+            // بطاقات أعلى الصندوق (E17.6): أعداد فقط، وتتحدّث من /api/whatsapp/inbox-summary
+            'summary' => \App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxSummary::for(auth()->user()) : null,
+            'canReprocess' => auth()->user()->can('whatsapp.settings') && \App\Support\FeatureFlags::on('reprocess_button'),
             'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
@@ -65,6 +68,14 @@ class WhatsAppController extends Controller
                     ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()->all()
                 : [],
         ]);
+    }
+
+    /** بطاقات أعلى الصندوق (E17.6): أعداد محصورة بالنطاق ومخزّنة 60 ثانية، بلا أسماء ولا أرقام ولا نصوص */
+    public function inboxSummary()
+    {
+        abort_unless(auth()->user()->can('whatsapp.view'), 403);
+
+        return response()->json(\App\Services\WhatsApp\InboxSummary::for(auth()->user()));
     }
 
     /** JSON — لتحديث القائمة دورياً */
