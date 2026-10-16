@@ -29,6 +29,10 @@ use Illuminate\Support\Facades\Cache;
  *
  * كل نداء Graph عبر Graph\GraphClient (الإصدار من الإعداد، ومقاطع مرمَّزة، ولا تحويلات، وappsecret_proof خلف
  * WA_APPSECRET_PROOF)، وكل خطأ ميتا يصير MetaError من الجدول الوحيد MetaErrorCatalog (E18).
+ *
+ * المغلف الموحّد (E32): كل صادر يمر عبر send() ثم dispatch()، والدوال sendText وsendImage أغلفة رقيقة فوقه.
+ * ممنوع نداء /messages خارج dispatch (NoDirectGraphMessagesTest)، والملف يُرفع بـ uploadMedia بعد preflight()
+ * فلا يبقى ملف يتيم عند ميتا لمحادثة مغلقة أو موقوفة.
  */
 class WhatsAppChannel
 {
@@ -449,21 +453,17 @@ class WhatsAppChannel
     }
 
     /**
-     * إرسال رسالة نصية.
+     * إرسال رسالة نصية (غلاف رقيق فوق send()، E32).
      * @return array{ok:bool, error:?string, code:?string, message_id:?string}
      */
     public static function sendText(WaConversation $conv, string $text, string $source = 'bot', ?int $staffId = null, string $context = 'reply', ?string $sendKey = null): array
     {
-        return self::dispatch($conv, [
-            'messaging_product' => 'whatsapp',
-            'recipient_type' => 'individual',
-            'type' => 'text',
-            'text' => ['preview_url' => false, 'body' => mb_substr($text, 0, 4096)],
-        ], $text, 'text', $source, $staffId, $context, $sendKey);
+        return self::send($conv, Outbound\OutboundMessage::text($text), $source, $staffId, ['context' => $context, 'send_key' => $sendKey]);
     }
 
     /**
-     * إرسال صورة عبر رابط عام (بطاقة عرض مثلاً) مع تعليق اختياري.
+     * إرسال صورة عبر رابط عام (بطاقة عرض مثلاً) مع تعليق اختياري. غلاف رقيق فوق send() لمسار الرابط القديم (E32):
+     * الوثائق لا تُرسل برابط أبداً، وبطاقة العرض بالمعرّف خلف العلم offer_card_by_media_id.
      *
      * ميتا هي من تجلب الرابط، فيجب أن يكون HTTPS ومتاحاً بلا مصادقة —
      * وهذا ينطبق على /storage لأنّ storage:link يُنشأ عند إقلاع الحاوية.
@@ -482,17 +482,9 @@ class WhatsAppChannel
             return self::failLocal('BAD_MEDIA_URL', 'رابط الصورة يجب أن يكون HTTPS ليقبله واتساب.');
         }
 
-        $image = ['link' => $url];
-        if ($caption !== null && trim($caption) !== '') {
-            $image['caption'] = mb_substr($caption, 0, 1024);
-        }
-
-        return self::dispatch($conv, [
-            'messaging_product' => 'whatsapp',
-            'recipient_type' => 'individual',
-            'type' => 'image',
-            'image' => $image,
-        ], $caption ?: '📷 صورة', 'image', $source, $staffId, sendKey: $sendKey);
+        // نص الصف كما كان (التعليق نفسه)، لا صيغة المغلف الجديدة
+        return self::send($conv, Outbound\OutboundMessage::image(caption: $caption, link: $url), $source, $staffId,
+            ['send_key' => $sendKey, 'display' => $caption ?: '📷 صورة']);
     }
 
     /**
@@ -726,6 +718,235 @@ class WhatsAppChannel
             'fbtrace_id' => $err->fbtraceId, 'message' => $err->staffMessage];
     }
 
+    // ==================== المغلف الموحّد والملفات (E32) ====================
+
+    /**
+     * المغلف الموحّد: كل صادر بنوعه الرسمي (نص أو صورة أو مستند أو فيديو، وما تسجّله E33/E34) يمر هنا ثم dispatch()
+     * بأقفاله كلها والسياسة والدفتر. الاقتباس يُقبل من المحادثة نفسها وحدها، وأعمدة media_* تُكتب للصادر.
+     *
+     * @param  array{context?: string, send_key?: ?string, media?: ?array, display?: string, row?: ?WaMessage}  $opts
+     *   media: {mime, sha256, size, filename, path} للنسخة الخاصة على wa_media · row: صف محجوز بـ reserve() يُكمَل هو نفسه
+     * @return array{ok: bool, error: ?string, code: ?string, message_id: ?string}
+     */
+    public static function send(WaConversation $conv, Outbound\OutboundMessage $m, string $source = 'staff', ?int $staffId = null, array $opts = []): array
+    {
+        if ($fail = $m->validate()) {
+            if (isset($opts['row'])) {
+                self::failReserved($opts['row'], $fail);
+            }
+
+            return self::failLocal($fail['code'], $fail['error']);
+        }
+        $reply = self::quotable($conv, $m->replyToWamid);
+
+        return self::dispatch($conv, $m->payload($reply), $opts['display'] ?? $m->displayBody(), $m->type, $source, $staffId,
+            $opts['context'] ?? 'reply', $opts['send_key'] ?? null, self::envelopeColumns($m, $opts['media'] ?? null, $reply), $opts['row'] ?? null);
+    }
+
+    /**
+     * الأقفال 0–4 كما في dispatch (الموظف، والقناة، والإيقاف الطارئ، والنافذة، والوجهة) بلا إرسال: قبل أي رفع إلى ميتا،
+     * وقبل حجز صف ملف، وفي الوظيفة المؤجلة قبل الرفع ثم قبل الإرسال. null: مسموح.
+     */
+    public static function preflight(WaConversation $conv, string $source = 'staff', ?int $staffId = null): ?array
+    {
+        return self::gate($conv, WaBotSetting::current(), $source, $staffId)[0];
+    }
+
+    /**
+     * حجز صف queued لملف يُرفع لاحقاً في الطابور (E32.7): الأقفال كلها، ثم الصف بالمفتاح والنسخة الخاصة قبل أي رفع.
+     * المفتاح نفسه مرة ثانية لا يحجز ثانياً: replay يعيد حالة الصف الأول (قيد الإرسال، أو أُرسل، أو غير مؤكد).
+     * رد الموظف يوقف البوت فوراً، فلا يرد البوت على العميل والملف في الطريق.
+     *
+     * @param  array{send_key?: ?string, media?: ?array, display?: string, payload?: array}  $opts
+     */
+    public static function reserve(WaConversation $conv, Outbound\OutboundMessage $m, string $source, ?int $staffId, array $opts = []): array
+    {
+        if ($fail = $m->validate(deferred: true)) {
+            return self::failLocal($fail['code'], $fail['error']);
+        }
+        if (!$m->isMedia() || !\Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['attempts', 'media_path'])) {
+            return self::failLocal(self::ERR_UNSUPPORTED, 'الإرسال المؤجل للملفات وحدها.');
+        }
+        $s = WaBotSetting::current();
+        [$fail] = self::gate($conv, $s, $source, $staffId);
+        if ($fail !== null) {
+            return $fail;
+        }
+
+        $reply = self::quotable($conv, $m->replyToWamid);
+        $display = $opts['display'] ?? $m->displayBody();
+        $columns = self::envelopeColumns($m, $opts['media'] ?? null, $reply);
+        $sendKey = $opts['send_key'] ?? null;
+        $hash = self::reqHash($conv, $m->type, $display, $columns);
+        try {
+            $row = WaMessage::create($columns + [
+                'conversation_id' => $conv->id, 'direction' => 'out', 'source' => $source, 'msg_type' => $m->type, 'body' => $display,
+                // التعليق لتعيد الوظيفة بناء الرسالة نفسها؛ يحل محله في الإرسال الحمولة الرسمية كاملة
+                'payload' => ['_req_hash' => $hash, '_deferred' => 'media', '_caption' => $m->caption] + ($opts['payload'] ?? []),
+                'status' => WaMessage::STATUS_QUEUED, 'staff_id' => $staffId, 'phone_number_id' => $s->phoneNumberId(),
+                'send_key' => $sendKey !== null ? mb_substr($sendKey, 0, 64) : null, 'attempts' => 0,
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            return self::replay((string) $sendKey, $hash);
+        }
+        WaLog::info('wa.send.reserved', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $m->type]);
+        if ($source === 'staff') {
+            $conv->update(['bot_paused_until' => now()->addMinutes(max(1, (int) $s->pause_minutes))]);
+        }
+
+        return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => null, 'meta_code' => null,
+            'status' => WaMessage::STATUS_QUEUED, 'row_id' => $row->id, 'replayed' => false];
+    }
+
+    /**
+     * رفع ملف إلى ميتا (E32.5): POST {pnid}/media متعدد الأجزاء من مورد مفتوح (لا نص في الذاكرة، memory_limit=256M)
+     * بعد preflight. المعرّف يعيش عند ميتا 30 يوماً. لا إعادة آلية: رفع ملف كبير بعد مهلة قد يكرره.
+     * السجل: المحادثة والحجم والنوع ورمز ميتا وfbtrace_id، بلا اسم الملف.
+     *
+     * @return array{ok: bool, media_id: ?string, code: ?string, error: ?string, meta_code?: ?int, fbtrace_id?: ?string}
+     */
+    public static function uploadMedia(WaConversation $conv, string $path, string $mime, string $filename, string $source = 'staff', ?int $staffId = null): array
+    {
+        if ($fail = self::preflight($conv, $source, $staffId)) {
+            return $fail + ['media_id' => null];
+        }
+        $s = WaBotSetting::current();
+        clearstatcache(true, $path);
+        $size = is_file($path) ? (int) filesize($path) : 0;
+        if ($size <= 0) {
+            return self::failLocal('MEDIA_FILE_MISSING', MetaError::local('MEDIA_FILE_MISSING')->staffMessage) + ['media_id' => null];
+        }
+        $log = ['conv_id' => $conv->id, 'source' => $source, 'bytes' => $size, 'mime' => $mime];
+        $started = microtime(true);
+        try {
+            $res = Graph\GraphClient::upload([(string) $s->phoneNumberId(), 'media'], $path, $mime, $filename,
+                ['messaging_product' => 'whatsapp', 'type' => $mime], (string) $s->token(), self::uploadTimeout($size));
+        } catch (\InvalidArgumentException $e) {
+            $code = $e->getMessage() === 'MEDIA_FILE_UNREADABLE' ? 'MEDIA_FILE_MISSING' : self::ERR_CONFIG;
+            WaLog::error($code === self::ERR_CONFIG ? 'graph.config.invalid' : 'wa.media.file_unreadable', ['reason' => $e->getMessage()]);
+            $err = MetaError::local($code);
+
+            return self::failWith($err, $code, $err->staffMessage) + ['media_id' => null];
+        } catch (\Throwable $e) {
+            $err = MetaError::network(MetaError::networkKind($e));
+            WaLog::warning('wa.media.upload_failed', $log + ['error_code' => $err->code, 'category' => $err->category, 'exception' => $e]);
+            MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'source' => 'media_upload']);
+
+            return self::failWith($err, $err->code, $err->code === 'HTTP_CONNECT_FAILED'
+                ? 'تعذّر الاتصال بميتا لرفع الملف، ولم يُرسل.' : 'انقطع رفع الملف إلى ميتا قبل اكتماله، ولم يُرسل.') + ['media_id' => null];
+        }
+
+        $id = $res->json('id');
+        if (!$res->successful() || !is_string($id) || $id === '') {
+            $err = MetaError::fromGraphResponse($res);
+            [$code, $shown] = self::shown($err);
+            WaLog::warning('wa.media.upload_failed', $log + ['meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category,
+                'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+            self::legacyReact($err);
+            MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'source' => 'media_upload']);
+
+            return self::failWith($err, $code, $shown) + ['media_id' => null, 'fbtrace_id' => $err->fbtraceId];
+        }
+        WaLog::info('wa.media.uploaded', $log + ['ms' => (int) round((microtime(true) - $started) * 1000)]);
+
+        return ['ok' => true, 'media_id' => mb_substr($id, 0, 128), 'code' => null, 'error' => null];
+    }
+
+    /** مهلة الرفع: 30 ثانية + ثانية لكل 256KB، بحد يبقي وظيفة الطابور (120 ثانية) فوق الرفع ونداء الإرسال معاً */
+    public static function uploadTimeout(int $bytes): int
+    {
+        return (int) min((int) config('whatsapp.outbound.upload_timeout_max', 85), 30 + intdiv(max(0, $bytes), 262144));
+    }
+
+    /**
+     * حسم صف محجوز لم يُرسل (E32): قفل، أو ملف مرفوض أو مفقود، أو فشل الرفع، أو تأخر الطابور. failed والمفتاح محرَّر
+     * لإعادة مشروعة، بشرط أن يبقى queued ولم تبدأ محاولة إرسال (attempts=0)، فلا يكتب فوق ما حسمه غيره.
+     */
+    public static function failReserved(WaMessage $row, array $fail): bool
+    {
+        $code = mb_substr((string) ($fail['code'] ?? 'MEDIA_SEND_FAILED'), 0, 32);
+        $metaCode = isset($fail['meta_code']) && is_numeric($fail['meta_code']) ? (int) $fail['meta_code'] : null;
+        $meaning = MetaErrorCatalog::forStored($metaCode, $code, $fail['category'] ?? null);
+        $current = WaMessage::find($row->id);
+        if (!$current || $current->status !== WaMessage::STATUS_QUEUED || (int) $current->attempts !== 0) {
+            return false;
+        }
+        $key = $current->send_key;
+        $payload = ['_meta_error' => array_filter(['code' => $code, 'meta_code' => $metaCode])] + ($key ? ['_released_key' => $key] : [])
+            + (array) ($current->payload ?? []);
+        $update = [
+            'status' => WaMessage::STATUS_FAILED, 'send_key' => null, 'meta_code' => $metaCode, 'error_code' => $code,
+            'error_message' => mb_substr((string) ($fail['error'] ?? MetaError::local($code)->staffMessage), 0, 500),
+            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        ];
+        if (!empty($fail['fbtrace_id'])) {
+            $update['fbtrace_id'] = mb_substr((string) $fail['fbtrace_id'], 0, 64);
+        }
+        self::$hasCategory ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'error_category');
+        if (self::$hasCategory) {
+            $update['error_category'] = $meaning['category'] ?? null;
+        }
+        $moved = WaMessage::whereKey($row->id)->where('status', WaMessage::STATUS_QUEUED)->where('attempts', 0)->update($update);
+        if ($moved > 0) {
+            WaLog::warning('wa.send_failed', ['conv_id' => $row->conversation_id, 'message_id' => $row->id, 'source' => $row->source, 'type' => $row->msg_type,
+                'meta_code' => $metaCode, 'error_code' => $code, 'category' => $meaning['category'] ?? null, 'attempt' => 0, 'status' => 'failed']);
+        }
+
+        return $moved > 0;
+    }
+
+    /** الاقتباس من المحادثة نفسها وحدها: wamid من محادثة أخرى أو مجهول يُسقط بسطر سجل، فلا يقتبس أحد رسالة غيره */
+    private static function quotable(WaConversation $conv, ?string $wamid): ?string
+    {
+        if ($wamid === null || $wamid === '') {
+            return null;
+        }
+        if (WaMessage::where('conversation_id', $conv->id)->where('wamid', $wamid)->exists()) {
+            return $wamid;
+        }
+        WaLog::notice('wa.reply_to.dropped', ['conv_id' => $conv->id]);
+
+        return null;
+    }
+
+    private static ?bool $hasEnvelopeColumns = null;
+
+    /**
+     * أعمدة الصادر من المغلف (أعمدة E11 وE14): الاقتباس، ومعرّف ميتا، والنسخة الخاصة على wa_media (المسار والبصمة والحجم
+     * والنوع والاسم) بحالة stored، فيعرضها عارض E14 لمن يملك الرؤية ويقلّمها media-prune ويحذفها forget.
+     */
+    private static function envelopeColumns(Outbound\OutboundMessage $m, ?array $media, ?string $reply): array
+    {
+        self::$hasEnvelopeColumns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages',
+            ['reply_to_wamid', 'media_id', 'media_path', 'media_status', 'media_archived_at']);
+        if (!self::$hasEnvelopeColumns) {
+            return [];
+        }
+        $out = $reply !== null ? ['reply_to_wamid' => $reply] : [];
+        if (!$m->isMedia()) {
+            return $out;
+        }
+        $media = (array) $media;
+        $path = isset($media['path']) && $media['path'] !== '' ? (string) $media['path'] : null;
+
+        return $out + array_filter([
+            'media_id' => $m->mediaId,
+            'media_mime' => $media['mime'] ?? null,
+            'media_sha256' => $media['sha256'] ?? null,
+            'media_size' => isset($media['size']) ? (int) $media['size'] : null,
+            'media_filename' => isset($media['filename']) ? mb_substr((string) $media['filename'], 0, 255) : $m->filename,
+            'media_path' => $path,
+            'media_status' => $path !== null ? 'stored' : null,
+            'media_archived_at' => $path !== null ? now() : null,
+        ], fn ($v) => $v !== null);
+    }
+
+    /** بصمة الطلب لمفتاح الموظف (E19): المحادثة والنوع والنص، وبصمة الملف للوسائط (النص وحده لا يميّز ملفين) */
+    private static function reqHash(WaConversation $conv, string $msgType, string $displayBody, array $columns = []): string
+    {
+        return hash('sha256', $conv->id.'|'.$msgType.'|'.$displayBody.(isset($columns['media_sha256']) ? '|'.$columns['media_sha256'] : ''));
+    }
+
     // ==================== المحرّك ====================
 
     /** @return array{to: string}|array{recipient: string}|null */
@@ -741,6 +962,10 @@ class WhatsAppChannel
         return null;
     }
 
+    /**
+     * @param  array  $columns  أعمدة المغلف (E32): الاقتباس وmedia_* للصادر
+     * @param  WaMessage|null  $reserved  صف حجزه reserve() (ملف مؤجل): يُكمَل هو نفسه بالمفتاح نفسه بدل صف جديد
+     */
     private static function dispatch(
         WaConversation $conv,
         array $payload,
@@ -749,13 +974,19 @@ class WhatsAppChannel
         string $source,
         ?int $staffId = null,
         string $context = 'reply',
-        ?string $sendKey = null
+        ?string $sendKey = null,
+        array $columns = [],
+        ?WaMessage $reserved = null
     ): array {
         $s = WaBotSetting::current();
 
         // ── الأقفال 0–4 (الموظف، القناة، الإيقاف، النافذة، الوجهة). تُعاد كلها قبل كل إعادة في الدفتر
         [$fail, $target] = self::gate($conv, $s, $source, $staffId);
         if ($fail !== null) {
+            if ($reserved !== null) {
+                self::failReserved($reserved, $fail);
+            }
+
             return $fail;
         }
         $payload = ['messaging_product' => 'whatsapp'] + $target + $payload;
@@ -767,14 +998,18 @@ class WhatsAppChannel
             $enforce = $source !== 'staff' && Outbound\OutboundPolicy::enforced();
             WaLog::warning('wa.policy', ['conv_id' => $conv->id, 'source' => $source, 'policy_reason' => implode(',', $decision->reasons ?: $decision->warnings)]);
             if ($enforce && $decision->blocks()) {
-                return self::blockByPolicy($conv, $decision, $payload, $displayBody, $msgType, $source, $staffId, $s->phoneNumberId());
+                if ($reserved !== null) {
+                    self::failReserved($reserved, ['code' => 'POLICY_BLOCKED', 'error' => 'حُجبت الرسالة قبل الإرسال بسياسة المحتوى الصادر.']);
+                }
+
+                return self::blockByPolicy($conv, $decision, $payload, $displayBody, $msgType, $source, $staffId, $s->phoneNumberId(), $reserved ? [] : $columns);
             }
             $stored['_policy'] = ['mode' => $enforce ? 'enforce' : 'log', 'context' => $context] + $decision->toArray();
         }
 
-        // ── دفتر الإرسال (E19، العلم send_ledger): صف queued قبل النداء، ثم حسمه
-        if (self::ledgerOn()) {
-            return self::ledger($conv, $s, $payload, $stored, $displayBody, $msgType, $source, $staffId, $sendKey);
+        // ── دفتر الإرسال (E19، العلم send_ledger): صف queued قبل النداء، ثم حسمه. الملف المحجوز (E32) يمر به دائماً
+        if (self::ledgerOn() || $reserved !== null) {
+            return self::ledger($conv, $s, $payload, $stored, $displayBody, $msgType, $source, $staffId, $sendKey, $columns, $reserved);
         }
 
         // إشعار القراءة عند رد الموظف (E35): أعلى وارد لحظة الإرسال، فلا يُعلَّم مقروءاً ما يصل أثناء النداء
@@ -787,7 +1022,7 @@ class WhatsAppChannel
 
             return self::failWith($err, self::ERR_CONFIG, $err->staffMessage);
         } catch (\Throwable $e) {
-            return self::networkFailure($e, $conv, $displayBody, $msgType, $source, $staffId, $stored, $s->phoneNumberId());
+            return self::networkFailure($e, $conv, $displayBody, $msgType, $source, $staffId, $stored, $s->phoneNumberId(), $columns);
         }
 
         $json = $res->json() ?? [];
@@ -797,7 +1032,7 @@ class WhatsAppChannel
             $err = MetaError::fromGraphResponse($res);
             [$code, $shown] = self::shown($err);
             $row = self::store($conv, null, $displayBody, $msgType, $source, 'failed', $shown, $staffId, $stored + ['_meta_error' => $err->forPayload()],
-                $err->metaCode, $err->fbtraceId, $err->code, $s->phoneNumberId(), $err->category);
+                $err->metaCode, $err->fbtraceId, $err->code, $s->phoneNumberId(), $err->category, $columns);
             self::emitFailed($row, $err, $source, $staffId);
             WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source, 'type' => $msgType,
                 'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category, 'fbtrace_id' => $err->fbtraceId,
@@ -811,7 +1046,7 @@ class WhatsAppChannel
         // 200 بلا معرّف رسالة: قبلتها ميتا ولا دليل على الإرسال، فلا تُعرض «أُرسلت» (E12.8)
         $wamid = data_get($json, 'messages.0.id');
         $status = is_string($wamid) && $wamid !== '' ? 'sent' : WaMessage::STATUS_UNKNOWN;
-        $row = self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $stored, phoneNumberId: $s->phoneNumberId());
+        $row = self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $stored, phoneNumberId: $s->phoneNumberId(), columns: $columns);
         if ($status === WaMessage::STATUS_UNKNOWN) {
             WaLog::warning('wa.send.unknown', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType]);
         } else {
@@ -910,19 +1145,34 @@ class WhatsAppChannel
      * لا إعادة أبداً بعد مهلة الطلب ولا بعد 5xx بلا JSON: ربما قبلتها ميتا.
      */
     private static function ledger(WaConversation $conv, WaBotSetting $s, array $payload, array $stored, string $displayBody,
-        string $msgType, string $source, ?int $staffId, ?string $sendKey): array
+        string $msgType, string $source, ?int $staffId, ?string $sendKey, array $columns = [], ?WaMessage $reserved = null): array
     {
-        $hash = hash('sha256', $conv->id.'|'.$msgType.'|'.$displayBody);
+        $hash = self::reqHash($conv, $msgType, $displayBody, $columns);
         $run = ReplyRun::current();
-        try {
-            $row = WaMessage::create([
-                'conversation_id' => $conv->id, 'direction' => 'out', 'source' => $source, 'msg_type' => $msgType,
-                'body' => $displayBody, 'payload' => $stored + ['_req_hash' => $hash], 'status' => WaMessage::STATUS_QUEUED,
-                'staff_id' => $staffId, 'phone_number_id' => $s->phoneNumberId(), 'send_key' => $sendKey !== null ? mb_substr($sendKey, 0, 64) : null,
-                'answers_in_id' => $source !== 'staff' && $run?->uptoId ? $run->uptoId : null, 'attempts' => 0,
+        if ($reserved !== null) {
+            // ملف محجوز (E32): يُطالَب به ذرياً (queued ولم تبدأ محاولة)، فلا يرسله تشغيلان ولا يكتب فوق ما حسمه المنظّف
+            $row = $reserved;
+            $keep = array_diff_key(array_filter((array) ($reserved->payload ?? []), fn ($k) => str_starts_with((string) $k, '_'), ARRAY_FILTER_USE_KEY), ['_caption' => 1]);
+            $claimed = WaMessage::whereKey($row->id)->where('status', WaMessage::STATUS_QUEUED)->where('attempts', 0)->update($columns + [
+                'payload' => json_encode($stored + $keep, JSON_UNESCAPED_UNICODE), 'body' => $displayBody, 'attempts' => 1,
             ]);
-        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
-            return self::replay((string) $sendKey, $hash);
+            if ($claimed === 0) {
+                WaLog::warning('wa.send.reserved_lost', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $msgType]);
+
+                return self::failLocal('SEND_IN_PROGRESS', MetaError::local('SEND_IN_PROGRESS')->staffMessage)
+                    + ['status' => 'queued', 'row_id' => $row->id, 'replayed' => false, 'conflict' => true];
+            }
+        } else {
+            try {
+                $row = WaMessage::create($columns + [
+                    'conversation_id' => $conv->id, 'direction' => 'out', 'source' => $source, 'msg_type' => $msgType,
+                    'body' => $displayBody, 'payload' => $stored + ['_req_hash' => $hash], 'status' => WaMessage::STATUS_QUEUED,
+                    'staff_id' => $staffId, 'phone_number_id' => $s->phoneNumberId(), 'send_key' => $sendKey !== null ? mb_substr($sendKey, 0, 64) : null,
+                    'answers_in_id' => $source !== 'staff' && $run?->uptoId ? $run->uptoId : null, 'attempts' => 0,
+                ]);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+                return self::replay((string) $sendKey, $hash);
+            }
         }
         WaLog::info('wa.send.queued', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $msgType]);
         $payload['biz_opaque_callback_data'] = self::opaque($row->id);
@@ -1117,7 +1367,7 @@ class WhatsAppChannel
      * رسالة الموظف تترك أثراً دائماً (E12)، ومع meta_error_v2 كل رسالة: تعذّر الاتصال => failed (لم تُرسل)،
      * والمهلة => unknown «غير مؤكد» (قد تكون وصلت، فلا يعيدها أحد دون أن يرى ذلك).
      */
-    private static function networkFailure(\Throwable $e, WaConversation $conv, string $displayBody, string $msgType, string $source, ?int $staffId, array $stored, ?string $phoneNumberId): array
+    private static function networkFailure(\Throwable $e, WaConversation $conv, string $displayBody, string $msgType, string $source, ?int $staffId, array $stored, ?string $phoneNumberId, array $columns = []): array
     {
         WaLog::error('send.connection_failed', ['conv_id' => $conv->id, 'type' => class_basename($e)]);
         $ref = \App\Support\ErrorRef::log($e, 'wa.send.connection_failed', ['conv_id' => $conv->id]);
@@ -1129,7 +1379,7 @@ class WhatsAppChannel
             $status = !$v2 || $err->code !== 'HTTP_CONNECT_FAILED' ? WaMessage::STATUS_UNKNOWN : 'failed';
             $text = $v2 ? "{$err->staffMessage} رقم المرجع: {$ref}" : "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}";
             $row = self::store($conv, null, $displayBody, $msgType, $source, $status, $text, $staffId, $stored + ['_meta_error' => $err->forPayload()],
-                errorCode: $err->code, phoneNumberId: $phoneNumberId, category: $err->category);
+                errorCode: $err->code, phoneNumberId: $phoneNumberId, category: $err->category, columns: $columns);
             if ($status === 'failed') {
                 self::emitFailed($row, $err, $source, $staffId);
             }
@@ -1148,14 +1398,15 @@ class WhatsAppChannel
      * والمحادثة «تحتاج تدخّلاً» لموظف. المتصل لا يرسل بديلاً (BotEngine لا يستدعي failSafe لفشل الإرسال).
      */
     private static function blockByPolicy(WaConversation $conv, Outbound\Decision $decision, array $payload, string $displayBody,
-        string $msgType, string $source, ?int $staffId, ?string $phoneNumberId): array
+        string $msgType, string $source, ?int $staffId, ?string $phoneNumberId, array $columns = []): array
     {
         $label = Outbound\OutboundPolicy::describe($decision->reasons);
         $hash = hash('sha256', implode("\n", Outbound\OutboundPolicy::texts($payload, $displayBody)));
         self::store($conv, null, "[حُجبت رسالة آلية: {$label}]", $msgType, $source, 'blocked',
             "حُجبت قبل الإرسال بسياسة المحتوى الصادر ({$label})، ولم تصل العميل.", $staffId,
             ['_policy' => ['mode' => 'enforce', 'reasons' => $decision->reasons, 'sha256' => $hash]],
-            errorCode: $decision->errorCode(), phoneNumberId: $phoneNumberId, category: MetaErrorCatalog::byCode($decision->errorCode())['category'] ?? null);
+            errorCode: $decision->errorCode(), phoneNumberId: $phoneNumberId, category: MetaErrorCatalog::byCode($decision->errorCode())['category'] ?? null,
+            columns: $columns);
         ReplyState::markUnserved($conv, 'policy_block');
 
         return self::failLocal('POLICY_BLOCKED', 'حُجبت الرسالة قبل الإرسال بسياسة المحتوى الصادر.');
@@ -1197,7 +1448,8 @@ class WhatsAppChannel
     private static function store(
         WaConversation $conv, ?string $wamid, string $body, string $msgType,
         string $source, string $status, ?string $error, ?int $staffId, array $payload,
-        ?int $metaCode = null, ?string $fbtraceId = null, ?string $errorCode = null, ?string $phoneNumberId = null, ?string $category = null
+        ?int $metaCode = null, ?string $fbtraceId = null, ?string $errorCode = null, ?string $phoneNumberId = null, ?string $category = null,
+        array $columns = []
     ): ?WaMessage {
         // بين النشر والهجرة 2026_10_14_000006 (و000012) لا أعمدة بعد، والرسالة تُحفظ رغم ذلك
         self::$hasMetaColumns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['meta_code', 'fbtrace_id']);
@@ -1213,7 +1465,8 @@ class WhatsAppChannel
             $meta['error_category'] = $category;
         }
 
-        return WaMessage::create($meta + [
+        // أعمدة المغلف (E32): الاقتباس والنسخة الخاصة للملف
+        return WaMessage::create($meta + $columns + [
             'conversation_id' => $conv->id,
             'wamid' => $wamid,
             'direction' => 'out',

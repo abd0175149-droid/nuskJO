@@ -34,7 +34,9 @@
                     :detached="s.detached" :loading-newer="s.loadingNewer" :pending-new="s.pendingNew" :pending-more="s.pendingMore"
                     :filtered="s.filtered" :filters="s.threadFilters" :can-filter="messageSearch" :can-export="canExport"
                     @load-newer="inbox.loadNewer" @back-to-latest="inbox.backToLatest" @set-filters="inbox.setThreadFilters"
-                    @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"/>
+                    @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"
+                    :media-policy="mediaPolicy" :recipient="inbox.recipient.value" :outbox="inbox.outboxItems.value"
+                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"/>
       </div>
     </div>
 
@@ -92,6 +94,8 @@ const props = defineProps({
   // E30: البحث في الرسائل وفلاتر الخيط، وتصدير المحادثة (الخادم يعيد الفحص)
   messageSearch: Boolean,
   canExport: Boolean,
+  // E32: إرسال الملفات (الأنواع والحدود والعلم)
+  mediaPolicy: { type: Object, default: null },
 });
 
 const threadView = ref(null);

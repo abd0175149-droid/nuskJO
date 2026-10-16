@@ -101,6 +101,10 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
 
     // API: تفاصيل فاتورة
     Route::get('api/invoices/{invoice}/details', [\App\Http\Controllers\InvoiceController::class, 'details'])->middleware('perm:invoices.view');
+    // فاتورة PDF وإرسالها على واتساب (E32): العلم invoice_whatsapp_send والصلاحيتان في المتحكم، والإرسال بحد wa-files
+    Route::get('invoices/{invoice}/pdf', [\App\Http\Controllers\InvoiceController::class, 'pdf'])->name('invoices.pdf')->middleware('perm:invoices.view');
+    Route::get('api/invoices/{invoice}/whatsapp-targets', [\App\Http\Controllers\InvoiceWhatsAppController::class, 'targets'])->middleware('perm:invoices.view');
+    Route::post('api/invoices/{invoice}/send-whatsapp', [\App\Http\Controllers\InvoiceWhatsAppController::class, 'send'])->middleware(['perm:invoices.view', 'throttle:wa-files']);
 
     // API: FCM Tokens
     Route::post('api/fcm-token', [\App\Http\Controllers\FcmTokenController::class, 'store']);
@@ -238,6 +242,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::post('api/whatsapp/auto-rules/simulate', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'simulate'])->middleware(['perm:whatsapp.auto_rules', 'throttle:4,1,wa-rule-sim']);
     Route::get('api/whatsapp/conversational-automation', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'automation'])->middleware(['perm:whatsapp.settings', 'throttle:10,1,wa-conv-read']);
     Route::post('api/whatsapp/conversational-automation/sync', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'syncAutomation'])->middleware(['perm:whatsapp.settings', 'throttle:3,1,wa-conv-sync']);
+    // ملف من الصندوق (E32): الربط المقيّد وحد wa-files، والرفع إلى ميتا مؤجل في الطابور. لكتلة nginx الخاصة بالمسار حدها (20m)
+    Route::post('api/whatsapp/conversations/{conversation}/send-file', [\App\Http\Controllers\WhatsAppFileController::class, 'store'])->middleware(['perm:whatsapp.reply', 'throttle:wa-files']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');

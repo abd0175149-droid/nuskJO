@@ -40,5 +40,10 @@ return [
         'auto_rules' => env('WA_FEATURE_AUTO_RULES'),
         'conversational_components' => env('WA_FEATURE_CONVERSATIONAL_COMPONENTS'),
         'inbound_silence_alert' => env('WA_FEATURE_INBOUND_SILENCE_ALERT'),
+        // E32
+        'staff_file_send' => env('WA_FEATURE_STAFF_FILE_SEND'),
+        'invoice_whatsapp_send' => env('WA_FEATURE_INVOICE_WHATSAPP_SEND'),
+        'offer_card_by_media_id' => env('WA_FEATURE_OFFER_CARD_BY_MEDIA_ID'),
+        'outbound_media_remote_delete' => env('WA_FEATURE_OUTBOUND_MEDIA_REMOTE_DELETE'),
     ],
 ];

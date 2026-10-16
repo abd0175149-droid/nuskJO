@@ -59,6 +59,35 @@ class InvoiceController extends Controller
             'prefill' => $request->quote ? $this->quotePrefill((int) $request->quote) : null,
             'openOffer' => $request->integer('offer_new') ?: null,
             'offerMode' => $request->boolean('offer_mode'),
+            // فاتورة PDF وإرسالها على واتساب (E32): العلم، والمدير يعاين PDF قبل التفعيل
+            'invoicePdf' => \App\Support\FeatureFlags::on('invoice_whatsapp_send') || auth()->user()->isAdmin(),
+            'invoiceWhatsapp' => \App\Support\FeatureFlags::on('invoice_whatsapp_send') && auth()->user()->can('whatsapp.reply'),
+            // الحالات القابلة للإرسال بقرار المالك (INVOICE_WHATSAPP_STATUSES، المعتمدة وحدها افتراضياً)
+            'invoiceSendStatuses' => (array) config('whatsapp.outbound.invoice_send_statuses', ['approved']),
+        ]);
+    }
+
+    /**
+     * فاتورة PDF للمراجعة قبل الإرسال (E32.8): القالب المستقل بلا تكلفة ولا ربح ولا وكيل. خلف العلم invoice_whatsapp_send،
+     * والمدير يعاينها قبل التفعيل (قرار شكلها للمالك). مرفق بلا تخزين في المتصفح.
+     */
+    public function pdf(Invoice $invoice)
+    {
+        abort_unless(auth()->user()->can('invoices.view'), 403);
+        abort_unless(\App\Support\FeatureFlags::on('invoice_whatsapp_send') || auth()->user()->isAdmin(), 404);
+
+        try {
+            $pdf = \App\Services\Invoices\InvoicePdfService::render($invoice);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('invoice.pdf.failed', ['invoice_id' => $invoice->id, 'type' => class_basename($e), 'message' => mb_substr($e->getMessage(), 0, 200)]);
+
+            return response('تعذّر توليد PDF الفاتورة — أبلغ المدير.', 503)->header('Content-Type', 'text/plain; charset=UTF-8');
+        }
+
+        return \App\Services\WhatsApp\Media\MediaArchiver::disk()->download($pdf['path'], \App\Services\Invoices\InvoicePdfService::filename($invoice), [
+            'Content-Type' => 'application/pdf',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 

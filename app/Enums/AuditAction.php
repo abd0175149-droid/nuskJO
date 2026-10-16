@@ -125,6 +125,10 @@ enum AuditAction: string
     case WaAutoRuleToggle = 'wa.auto_rule_toggle';
     case WaAutoRuleReorder = 'wa.auto_rule_reorder';
     case WaConvAutomationSync = 'wa.conv_automation_sync';
+    // الملفات الصادرة (E32): كل ملف خرج لعميل (بلا اسمه)، والفاتورة على واتساب في سجل الفاتورة، والحذف من خوادم ميتا
+    case WaFileSent = 'wa.file_sent';
+    case WaInvoiceSent = 'wa.invoice_sent';
+    case WaMediaRemoteDelete = 'wa.media_remote_delete';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -201,7 +205,7 @@ enum AuditAction: string
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
             self::WaOptoutMeta, self::WaOptinMeta, self::WaHealthChange => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
-            self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay, self::WaSearchIndexRepair => 'system',
+            self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay, self::WaSearchIndexRepair, self::WaMediaRemoteDelete => 'system',
             default => 'whatsapp',
         };
     }
@@ -313,6 +317,9 @@ enum AuditAction: string
             self::WaAutoRuleToggle => 'تفعيل قاعدة رد حتمية أو إيقافها',
             self::WaAutoRuleReorder => 'ترتيب قواعد الرد الحتمية',
             self::WaConvAutomationSync => 'مزامنة الأوامر والأسئلة المقترحة مع واتساب',
+            self::WaFileSent => 'إرسال ملف لعميل على واتساب',
+            self::WaInvoiceSent => 'إرسال فاتورة PDF على واتساب',
+            self::WaMediaRemoteDelete => 'حذف ملفات مرسلة من خوادم واتساب',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -343,7 +350,9 @@ enum AuditAction: string
             // إعادة إشعار بعينه بيد مطوّر (نادرة، وقد تتجاوز الميزانية): أثرها دائم
             self::WaWebhookReplay,
             // E30: البحث عبر المحادثات اطّلاع على بيانات العملاء (صف بالعيّنات لكل موظف)، وإصلاح الفهرس نادر
-            self::WaMessageSearch, self::WaSearchIndexRepair], true);
+            self::WaMessageSearch, self::WaSearchIndexRepair,
+            // كل ملف خرج لعميل (قد يحمل رقم جواز) وكل فاتورة على واتساب (E32)
+            self::WaFileSent, self::WaInvoiceSent], true);
     }
 
     public function isNoise(): bool

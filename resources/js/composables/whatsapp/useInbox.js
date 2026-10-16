@@ -6,6 +6,7 @@ import { computed, reactive, ref } from 'vue';
 import axios from 'axios';
 import { useDrafts } from '@/composables/useDrafts';
 import { createSendKeys } from '@/composables/whatsapp/useSendKey.js';
+import { createOutbox } from './useOutbox.js';
 import { appendPage, cursorOf, mergeFirstPage } from './useConversationList.js';
 import { applyUpdates, lastId, mergeNewer, mergeOlder, needsReload } from './useThread.js';
 
@@ -79,7 +80,19 @@ export function useInbox(props, thread) {
     const cannotReachPhoneless = computed(() => !!s.thread?.phoneless && mode.value === 'store');
     const canRequestPhone = computed(() => props.canReply && !!s.thread?.phoneless && !!s.thread?.window_open && mode.value !== 'store');
 
-    const params = () => ({ filter: s.filter, search: s.search || undefined, topic: s.topic || undefined, label: s.label || undefined });
+    // ملفات الموظف (E32): فقاعات متفائلة بمفتاح لكل محاولة، والرفع إلى ميتا في طابور الخادم
+    const outbox = createOutbox({
+        post: (id, form, key, onUploadProgress) => axios.post(threadUrl(id, 'send-file'), form,
+            { headers: { ...api.headers, 'Idempotency-Key': key }, onUploadProgress }),
+    });
+    const outboxItems = computed(() => outbox.forConversation(s.activeId));
+    // المستلم في حوار التأكيد: الاسم وآخر 4 أرقام ورمز العميل، بلا رقم كامل
+    const recipient = computed(() => {
+        const digits = String(s.thread?.phone || '').replace(/\D/g, '');
+        return { name: s.thread?.name || '', last4: digits ? digits.slice(-4) : null, clientCode: s.thread?.client_code || null };
+    });
+
+        const params = () => ({ filter: s.filter, search: s.search || undefined, topic: s.topic || undefined, label: s.label || undefined });
 
     /** الصفحة الأولى؛ تُدمج مع ما حُمّل بعدها. يعيد false عند الفشل (بعد فشلين متتاليين شريط «تعذّر التحديث») */
     async function load({ reset = false } = {}) {
@@ -298,6 +311,7 @@ export function useInbox(props, thread) {
             applyUpdates(s.messages, data.updates);
             const { messages, fresh } = mergeNewer(s.messages, data.messages);
             s.messages = messages;
+            outbox.reconcile(id, messages);
             s.thread = { ...s.thread, ...data.conversation };
             syncedAt = data.synced_at;
             if (fresh.length && !atBottom) s.newBelow += fresh.length;
@@ -408,6 +422,27 @@ export function useInbox(props, thread) {
         } finally {
             s.sending = false;
         }
+    }
+
+    /**
+     * ملف من المنشئ بعد حوار التأكيد (E32): المحادثة هي التي اختير لها الملف (لا activeId بعد await)، والخادم يطابقها
+     * بـ confirm_conversation_id. confirmFn لتحذير السياسة في التعليق أو الاسم (409).
+     */
+    async function sendFile(payload, confirmFn) {
+        const id = payload?.conversationId ?? s.activeId;
+        if (!id || !payload?.file) return;
+        s.sendError = '';
+        const res = await outbox.send(id, payload, confirmFn);
+        if (!res.ok && !res.network) {
+            if (res.status === 404 && s.activeId === id) return closeOutOfScope();
+            if (s.activeId === id) s.sendError = res.error;
+        }
+        if (s.activeId === id) poll();
+    }
+
+    async function retryFile(item, confirmFn) {
+        await outbox.retry(item, confirmFn);
+        if (s.activeId === item.convId) poll();
     }
 
     /** إجراء على المحادثة المفتوحة؛ 404 تعني أنها خرجت من النطاق */
@@ -564,6 +599,7 @@ export function useInbox(props, thread) {
 
     return {
         s, draft, cannotReachPhoneless, canRequestPhone, copyToDraft,
+        outboxItems, recipient, sendFile, retryFile, dismissFile: outbox.dismiss,
         load, loadMore, open, poll, loadOlder, jumpToNew, reachedBottom, send,
         toggleBot, resolve, setTopic, assignTo, requestPhone, onLinked, unlinkClient,
         openFromList, back, onPopState, openFromUrl,

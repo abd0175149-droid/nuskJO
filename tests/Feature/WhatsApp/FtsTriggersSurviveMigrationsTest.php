@@ -55,7 +55,14 @@ class FtsTriggersSurviveMigrationsTest extends TestCase
             if (strcmp(basename($file), self::FTS_MIGRATION) <= 0) {
                 continue;
             }
-            $code = (string) file_get_contents($file);
+            // الكود بلا تعليقات: هجرة تشرح لماذا تتجنب dropColumn لا تُحسب عليها
+            $code = '';
+            foreach (token_get_all((string) file_get_contents($file)) as $token) {
+                if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+                $code .= is_array($token) ? $token[1] : $token;
+            }
             if (str_contains($code, "'wa_messages'") && preg_match('/->change\(|renameColumn|dropColumn|->foreign\(|dropForeign|dropPrimary|->primary\(/', $code)
                 && !str_contains($code, 'FtsSchema::repair')) {
                 $offenders[] = basename($file);

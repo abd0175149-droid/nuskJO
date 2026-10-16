@@ -51,6 +51,11 @@ final class FeatureFlags
         'auto_rules' => ['label' => 'الردود الحتمية: نص ثابت معتمد لأسئلة متكررة قبل النموذج (الظل أولاً)', 'capability' => 'C117', 'available' => true],
         'conversational_components' => ['label' => 'مزامنة الأوامر والأسئلة المقترحة (ice breakers) مع واتساب', 'capability' => 'C117', 'available' => true],
         'inbound_silence_alert' => ['label' => 'تنبيه المدراء عند صمت الوارد من واتساب في وقت الدوام', 'capability' => 'C121', 'available' => true],
+        // E32: الملفات الصادرة. المرفقات قبل الفاتورة، والحذف من ميتا بقرار المالك وحده
+        'staff_file_send' => ['label' => 'إرسال الصور وPDF والفيديو من صندوق المحادثات (بتأكيد المستلم)', 'capability' => 'C020', 'available' => true],
+        'invoice_whatsapp_send' => ['label' => 'فاتورة PDF للتنزيل وإرسالها للعميل على واتساب (المعتمدة وحدها)', 'capability' => 'C016', 'available' => true],
+        'offer_card_by_media_id' => ['label' => 'بطاقة العرض تُرفع وتُرسل بالمعرّف بدل الرابط العام', 'capability' => 'C015', 'available' => true],
+        'outbound_media_remote_delete' => ['label' => 'حذف الملفات المرسلة من خوادم واتساب بعد قراءتها', 'capability' => 'C020', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

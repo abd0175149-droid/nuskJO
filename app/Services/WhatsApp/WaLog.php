@@ -24,6 +24,8 @@ final class WaLog
         'audit_id', 'engine',
         // E37: رقم قاعدة الرد الحتمية (بلا نص العميل)
         'rule',
+        // E32: الملفات الصادرة (النوع المكتشف، وأول 12 حرفاً من البصمة؛ لا اسم ملف أبداً)
+        'mime', 'sha12',
     ];
 
     public static function info(string $event, array $context = []): void

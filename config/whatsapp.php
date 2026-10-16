@@ -50,6 +50,40 @@ return [
         'typing' => (bool) env('WA_TYPING_INDICATOR', true),
     ],
 
+    // الملفات الصادرة (E32): مرفقات الصندوق (staff_file_send)، وفاتورة PDF (invoice_whatsapp_send)، وبطاقة العرض بالمعرّف
+    // (offer_card_by_media_id)، والحذف من خوادم ميتا (outbound_media_remote_delete). الحدود بقرار المالك
+    'outbound' => [
+        // حد المستند بالميغابايت (ميتا تقبل 100MB). 16 افتراضياً لحماية الخادم المشترك والنفق، ولا يتجاوز 19: كتلة nginx
+        // لمسار الإرسال 20m، ورفعه فوقها يتطلب تعديلها أيضاً (docs/RELEASE.md «الملفات من الصندوق وفاتورة PDF»)
+        'max_document_mb' => max(1, min(19, (int) env('WA_OUTBOUND_MAX_DOCUMENT_MB', 16))),
+        // docx وxlsx وpptx وtxt بقرار المالك (مطفأة). الصيغ القديمة doc وxls وppt مرفوضة دائماً (الماكرو)
+        'office_docs' => (bool) env('WA_OUTBOUND_OFFICE_DOCS', false),
+        // الفيديو MP4/3GP بترميز H.264؛ يُخرج من القائمة بلا نشر إن ظهرت مشاكل عند العملاء
+        'video' => (bool) env('WA_OUTBOUND_VIDEO', true),
+        // الرفع إلى ميتا مؤجل دائماً في طابور مستقل يسبق أرشفة الوارد عند العامل نفسه (laravel-media)
+        'queue' => 'wa-media-out',
+        // مهلة الرفع: 30 ثانية + ثانية لكل 256KB حتى هذا الحد، فيبقى الرفع والإرسال (25) تحت مهلة الوظيفة (120)
+        'upload_timeout_max' => 85,
+        // ملف بقي في الطابور أكثر من هذا لا يُرسل (لا يصل العميلَ ملف بعد ساعات من ضغط الموظف)، وأقل من منظّف الدفتر (15)
+        'queue_max_minutes' => max(1, min(14, (int) env('WA_OUTBOUND_QUEUE_MAX_MINUTES', 10))),
+        // بطاقة العرض بالمعرّف: يُعاد استعماله 25 يوماً (ميتا تحفظ المرفوع 30)
+        'card_id_days' => 25,
+        // الحذف من خوادم ميتا بعد التسليم (whatsapp:outbound-media-cleanup، كل ساعة): الأنواع والحالات بقرار المالك
+        'remote_delete' => [
+            'types' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_OUTBOUND_REMOTE_DELETE_TYPES', 'document'))))),
+            'statuses' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_OUTBOUND_REMOTE_DELETE_STATUSES', 'read'))))),
+            'min_age_minutes' => 60,
+            'batch' => 50,
+        ],
+        // فاتورة PDF: نسخة مخزّنة مؤقتاً على wa_media تحت invoices/ تُكنس بعد هذه المدة (المرسلة لها نسختها في outbound/)
+        'invoice_cache_days' => 7,
+        // شكل الفاتورة بقرار المالك: ورق الشركة الرسمي (card_letterhead_path) خلفية كاملة، والرقم الضريبي (مطفأ)
+        'invoice_letterhead' => (bool) env('INVOICE_PDF_LETTERHEAD', true),
+        'invoice_show_tax' => (bool) env('INVOICE_PDF_SHOW_TAX', false),
+        // الفواتير القابلة للإرسال: المعتمدة وحدها (approved). pending بقرار المالك تُرسل بعلامة «مسودة»
+        'invoice_send_statuses' => array_values(array_filter(array_map('trim', explode(',', (string) env('INVOICE_WHATSAPP_STATUSES', 'approved'))))),
+    ],
+
     // بوابة المحتوى الصادر (E15.9): حسابات الشركة المسموح ظهورها في الرسائل الآلية (IBAN بلا مسافات، مفصولة بفواصل)
     'outbound_policy' => [
         'allow_ibans' => array_values(array_filter(array_map(fn ($i) => strtoupper(str_replace(' ', '', trim($i))), explode(',', (string) env('WA_POLICY_ALLOW_IBANS', ''))))),
@@ -72,7 +106,7 @@ return [
         // معرّف الوسائط عند ميتا يعيش 7 أيام: آخر محاولة قبلها
         'id_lifetime_minutes' => 6 * 24 * 60 + 20 * 60,
         // أقل مساحة حرة (نسبة من القرص) قبل أي تنزيل
-        'min_free_pct' => 5,
+        'min_free_pct' => (int) env('WA_MEDIA_MIN_FREE_PCT', 5),
         // النوع المكتشف بـ finfo => [الامتداد، يُعاين في الصندوق]. كل ما سواه مرفوض (SVG وHTML وx-* والأرشيفات)
         'mimes' => [
             'image/jpeg' => ['jpg', true],

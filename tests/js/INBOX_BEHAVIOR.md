@@ -55,6 +55,10 @@
 - [x] دفتر الإرسال (E19، `send_ledger`): مفتاح Idempotency-Key لكل مسودة، ثابت لإعادة النص نفسه ويتجدد بعد النجاح أو تغيّر النص؛ 202 «غير مؤكد» يبقي المسودة؛ 409 قيد الإرسال يحدّث الخيط بعد 3 ثوانٍ؛ 422 لنص آخر يجدد المفتاح. — ✅ useSendKey وuseInbox.send (sendKey.test.js)
 - [x] الفقاعة: «⏳ قيد الإرسال» و«⚠️ غير مؤكد — قد تكون وصلت»، وزر «✍️ انسخ إلى خانة الكتابة» حين يسمح الخادم (can_resend)، و«غير مؤكد» يطلب تأكيداً قبل النسخ. لا إعادة آلية. — ✅ MessageBubble + useInbox.copyToDraft (MessageBubble.test.js)
 - [x] الترجمة عند الطلب (E29، `staff_translation`): «🌐 ترجم» على الوارد القابل للترجمة ونتيجته تحت النص بإطار منقّط ووسم «ترجمة آلية»، نصاً بلا v-html؛ و«اكتب بالعربية وأترجم» يجعل «إرسال» يفتح معاينة لا ترسل حتى تتطابق الأرقام، بمفتاح Idempotency-Key لكل نص. — ✅ BubbleExtras + TranslateReplyBar + TranslateReplyPanel (BubbleExtras.test.js، TranslateReplyPanel.test.js)
+- [x] المرفقات (E32، العلم `staff_file_send`): زر 📎 لصورة JPG/PNG وPDF وفيديو MP4 بحدود الخادم (`mediaPolicy`)، ورفض فوري بالعربية؛ HEIC وWebP تُحوَّل إلى JPEG في المتصفح، والصورة الأكبر من حدها تُصغَّر مرة واحدة. — ✅ Composer + useAttachment (attachment.test.js)
+- [x] لا ملف بلا حوار تأكيد: الملف وحجمه والمستلم بالاسم وآخر 4 أرقام، ونوع الوثيقة إلزامي للمستند، وتأكيد ثانٍ للتأشيرة. المحادثة والمستلم يُثبَّتان لحظة الاختيار والخادم يطابقهما (`confirm_conversation_id`)، وEnter لا يرسل ملفاً. — ✅ SendFileConfirm + Composer (SendFileConfirm.test.js، Composer.test.js)
+- [x] فقاعة الملف المتفائلة: معاينة وشريط تقدم، ثم «في الطابور» حتى يظهر صفها في الخيط؛ انقطاع الشبكة: «إعادة المحاولة» بالمفتاح نفسه، ورفض الخادم يزيلها ويعرض السبب. — ✅ PendingBubble + useOutbox (outbox.test.js)
+- [x] لوحة إيموجي ثابتة تُدرج عند موضع المؤشر (سطح المكتب). — ✅ EmojiPicker + Composer
 
 ## الطوارئ والتوقيت
 - [x] `visibilitychange` إلى ظاهر: استطلاع فوري. — ✅ usePolling (createPoller)

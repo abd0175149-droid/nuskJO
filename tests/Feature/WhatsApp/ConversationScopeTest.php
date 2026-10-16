@@ -62,6 +62,8 @@ class ConversationScopeTest extends TestCase
         'send-translated' => ['POST', ['body' => 'Price 150 JOD', 'translation' => ['source_text' => 'السعر 150 دينار', 'target' => 'en', 'check_token' => 'x']], [], [], 422],
         // تصدير محادثة (E30): بصلاحيته وسبب مكتوب، والسياج نفسه (ConversationExportTest)
         'export' => ['GET', ['format' => 'txt', 'reason' => 'طلب اطّلاع من العميل'], [], ['whatsapp.export']],
+        // ملف من الصندوق (E32): داخل النطاق بلا Idempotency-Key يرد 422 (الربط قبل التحقق)، وخارجه 404
+        'send-file' => ['POST', [], [], [], 422],
     ];
 
     protected function setUp(): void
@@ -72,7 +74,7 @@ class ConversationScopeTest extends TestCase
         \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
         config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true,
             'features.env.wa_labels' => true, 'features.env.thread_pins' => true, 'features.env.staff_translation' => true,
-            'features.env.conversation_export' => true]);
+            'features.env.conversation_export' => true, 'features.env.staff_file_send' => true]);
     }
 
     public static function routes(): array

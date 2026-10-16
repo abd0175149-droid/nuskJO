@@ -45,6 +45,8 @@ return [
     'InvoiceController@startEdit' => 'start_edit',
     'InvoiceController@destroy' => 'delete',
     'InvoiceController@offerPreview' => 'none: معاينة حساب بلا كتابة',
+    // E32: يكتبه SendWhatsAppMediaJob بعد قبول ميتا في سجل الفاتورة (ومعه wa.file_sent)
+    'InvoiceWhatsAppController@send' => 'wa.invoice_sent',
 
     // ===== الرواتب والسلف =====
     'PayrollController@generate' => 'none: مسودة بلا أثر مالي، ومنشئها في created_by؛ اعتمادها يُدقَّق',
@@ -164,6 +166,8 @@ return [
     'WhatsAppTranslationController@translateReply' => 'wa.translate',
     'WhatsAppTranslationController@sendTranslated' => 'wa.policy_override',
     'WhatsAppSettingsController@llmTerms' => 'wa.llm_terms_confirm',
+    // E32: يكتبه SendWhatsAppMediaJob بعد قبول ميتا (والتحذير المؤكَّد wa.policy_override)
+    'WhatsAppFileController@store' => 'wa.file_sent',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

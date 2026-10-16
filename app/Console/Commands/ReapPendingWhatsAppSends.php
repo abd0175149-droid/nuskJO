@@ -37,10 +37,19 @@ class ReapPendingWhatsAppSends extends Command
         $reaped = [];
         $marked = [];
         $convs = [];
+        $unsent = [];
 
         WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_QUEUED)->where('created_at', '<', $cutoff)
-            ->select(['id', 'conversation_id', 'payload'])->chunkById(200, function ($rows) use ($dry, &$reaped, &$convs) {
+            ->select(['id', 'conversation_id', 'payload', 'attempts', 'send_key'])->chunkById(200, function ($rows) use ($dry, &$reaped, &$convs, &$unsent) {
                 foreach ($rows as $row) {
+                    // ملف مؤجل (E32) لم تبدأ محاولة إرساله: لم يخرج شيء لميتا، فهو «لم يُرسل» والمفتاح محرَّر، لا «غير مؤكد»
+                    if (isset($row->payload['_deferred']) && (int) $row->attempts === 0) {
+                        if ($dry || \App\Services\WhatsApp\WhatsAppChannel::failReserved($row, ['code' => 'MEDIA_QUEUE_STALE'])) {
+                            $unsent[] = $row->id;
+                        }
+
+                        continue;
+                    }
                     if (!$dry) {
                         $payload = (array) ($row->payload ?? []);
                         $payload['_reaped'] = now()->toIso8601String();
@@ -89,7 +98,8 @@ class ReapPendingWhatsAppSends extends Command
             }
         }
 
-        $this->line(($dry ? '[تجربة] ' : '').'غير مؤكدة الآن: '.count($reaped).' · عُلّمت: '.count($marked).' · محادثات: '.count($convs));
+        $this->line(($dry ? '[تجربة] ' : '').'غير مؤكدة الآن: '.count($reaped).' · عُلّمت: '.count($marked).' · محادثات: '.count($convs)
+            .($unsent ? ' · ملفات لم تُرسل: '.count($unsent) : ''));
         if ($dry && ($reaped || $marked)) {
             $this->line('الصفوف: '.implode(', ', [...$reaped, ...$marked]).' · المحادثات: '.implode(', ', array_keys($convs)));
         }

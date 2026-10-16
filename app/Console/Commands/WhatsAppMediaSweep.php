@@ -24,13 +24,32 @@ class WhatsAppMediaSweep extends Command
     {
         $tmp = $this->sweepTmp();
         $orphans = $this->sweepOrphans();
+        $invoices = $this->sweepInvoiceCache();
         $missing = $this->markMissing();
         $quota = $this->checkQuota();
 
-        WaLog::info('media.sweep', ['count' => $tmp + $orphans + $missing, 'reason' => "tmp={$tmp} orphans={$orphans} missing={$missing} quota={$quota}%"]);
-        $this->line("مؤقت: {$tmp} · يتيم: {$orphans} · مفقود: {$missing} · السقف: {$quota}%");
+        WaLog::info('media.sweep', ['count' => $tmp + $orphans + $invoices + $missing, 'reason' => "tmp={$tmp} orphans={$orphans} invoices={$invoices} missing={$missing} quota={$quota}%"]);
+        $this->line("مؤقت: {$tmp} · يتيم: {$orphans} · فواتير مؤقتة: {$invoices} · مفقود: {$missing} · السقف: {$quota}%");
 
         return self::SUCCESS;
+    }
+
+    /** نسخ PDF الفواتير المخزّنة مؤقتاً (E32، invoices/): تُحذف بعد مدتها؛ المرسلة لها نسختها الخاصة تحت outbound/ */
+    private function sweepInvoiceCache(): int
+    {
+        $disk = MediaArchiver::disk();
+        if (!$disk->exists(\App\Services\Invoices\InvoicePdfService::DIR)) {
+            return 0;
+        }
+        $cutoff = time() - max(1, (int) config('whatsapp.outbound.invoice_cache_days', 7)) * 86400;
+        $n = 0;
+        foreach ($disk->files(\App\Services\Invoices\InvoicePdfService::DIR) as $file) {
+            if ($disk->lastModified($file) < $cutoff && $disk->delete($file)) {
+                $n++;
+            }
+        }
+
+        return $n;
     }
 
     private function sweepTmp(): int
@@ -45,13 +64,15 @@ class WhatsAppMediaSweep extends Command
         return $n;
     }
 
-    /** لكل مجلد شهر: ملفات القرص مقابل media_path على دفعات */
+    /** لكل مجلد شهر (الوارد في الجذر، والصادر تحت outbound/ منذ E32): ملفات القرص مقابل media_path على دفعات */
     private function sweepOrphans(): int
     {
         $disk = MediaArchiver::disk();
         $n = 0;
-        foreach ($disk->directories() as $year) {
-            if (!preg_match('/^\d{4}$/', $year)) {
+        $years = array_merge($disk->directories(), $disk->exists(\App\Services\WhatsApp\Outbound\OutboundFileStore::DIR)
+            ? $disk->directories(\App\Services\WhatsApp\Outbound\OutboundFileStore::DIR) : []);
+        foreach ($years as $year) {
+            if (!preg_match('#^(?:outbound/)?\d{4}$#', $year)) {
                 continue;
             }
             foreach ($disk->directories($year) as $month) {

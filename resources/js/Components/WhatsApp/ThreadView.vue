@@ -44,7 +44,7 @@
                             :pinned="pinnedIds.has(m.id)" @translated="(t) => (m.translation = t)" @pinned="(p) => factCard?.setPinned(p)"/>
             </template>
           </MessageBubble>
-          <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">{{ filtered ? 'لا رسائل تطابق الفلتر' : 'لا رسائل' }}</p>
+          <p v-if="!messages.length && !outbox.length" class="text-center text-gray-400 text-sm py-10">{{ filtered ? 'لا رسائل تطابق الفلتر' : 'لا رسائل' }}</p>
           <!-- الوضع المنفصل (E30): ما بعد النافذة يُحمَّل بالنزول أو بالزر -->
           <div v-if="detached" class="text-center">
             <button type="button" :disabled="loadingNewer" @click="$emit('loadNewer')"
@@ -52,6 +52,8 @@
               {{ loadingNewer ? 'جارٍ تحميل الأحدث...' : '↓ رسائل أحدث' }}
             </button>
           </div>
+          <!-- ملفات الموظف في طريقها (E32): تُزال حين يظهر صفها في الخيط -->
+          <PendingBubble v-for="o in outbox" :key="o.key" :item="o" @retry="(i) => $emit('outboxRetry', i)" @dismiss="(i) => $emit('outboxDismiss', i)"/>
         </div>
         <button v-if="detached" type="button" @click="$emit('backToLatest')" data-test="back-to-latest"
                 class="absolute bottom-3 inset-x-0 mx-auto w-fit min-h-11 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
@@ -72,7 +74,8 @@
       <Composer class="shrink-0" :model-value="draft" @update:model-value="(v) => $emit('update:draft', v)" @submit="onSubmit"
                 @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
                 :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
-                :quick-replies="quickReplies" :conversation-id="thread.id"/>
+                :quick-replies="quickReplies" :conversation-id="thread.id"
+                :media-policy="mediaPolicy" :recipient="recipient" @send-file="(p) => $emit('sendFile', p)"/>
       <TranslateReplyPanel :open="translateOpen" :conversation-id="thread.id" :source-text="draft" :target="translateTarget" :targets="translateTargets"
                            @close="translateOpen = false" @sent="onTranslatedSent"/>
     </template>
@@ -98,6 +101,7 @@ import TranslateReplyPanel from './TranslateReplyPanel.vue';
 import MediaChip from './MediaChip.vue';
 import MessageBubble from './MessageBubble.vue';
 import ThreadFilters from './ThreadFilters.vue';
+import PendingBubble from './PendingBubble.vue';
 import ThreadHeader from './ThreadHeader.vue';
 import { isNearBottom, preserveOnPrepend, scrollToBottom } from '@/composables/whatsapp/useStickToBottom.js';
 
@@ -139,10 +143,14 @@ const props = defineProps({
   filters: { type: Object, default: () => ({}) },
   canFilter: Boolean,
   canExport: Boolean,
+  // E32: المرفقات وفقاعاتها المتفائلة
+  mediaPolicy: { type: Object, default: null },
+  recipient: { type: Object, default: () => ({}) },
+  outbox: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
   'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend', 'labelsChanged', 'translatedSent',
-  'loadNewer', 'backToLatest', 'setFilters', 'clearFilters', 'export']);
+  'loadNewer', 'backToLatest', 'setFilters', 'clearFilters', 'export', 'sendFile', 'outboxRetry', 'outboxDismiss']);
 
 const scroller = ref(null);
 const filtersOpen = ref(false);
