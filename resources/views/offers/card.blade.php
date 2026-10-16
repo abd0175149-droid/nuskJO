@@ -255,8 +255,9 @@
 <html dir="rtl" lang="ar">
 <head>
     <meta charset="utf-8">
-    {{-- بلا شبكة ولا ملفات أخرى: كل الصور data: والخطوط خطوط نظام والسكربت الوحيد مضمّن (يسري على المعاينة في المتصفح أيضاً) --}}
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'">
+    {{-- بلا شبكة ولا ملفات أخرى: كل الصور data: والخطوط خطوط نظام، والسكربت الوحيد بـ nonce هذا التصيير فلا ينفَّذ
+         سكربت محقون (OfferCardService::cardPolicy، E26). يسري على المعاينة في المتصفح أيضاً --}}
+    <meta http-equiv="Content-Security-Policy" content="{!! $csp ?? "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'none'" !!}">
     <title>{{ $has($offer->title ?? null) ? $offer->title : 'بطاقة العرض' }}</title>
     <style>
         /* ===== الأساس ===== */
@@ -771,7 +772,7 @@
 </div>
 
 {{-- تقليص الجدول والأقسام حتى تسَع مقاس الصفحة الثابت --}}
-<script>
+<script nonce="{{ $cspNonce ?? '' }}">
 (function () {
   var box = document.getElementById('fit');
   var inner = document.getElementById('fit-inner');

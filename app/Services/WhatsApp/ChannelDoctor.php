@@ -71,6 +71,11 @@ final class ChannelDoctor
             $add('warn', 'TRUST_ALL_PROXIES', 'TRUSTED_PROXIES=* يثق بأي مصدر لعنوان الزائر — اضبطه على 127.0.0.1 وبوابة شبكة الحاوية بعد ربط المنفذ على loopback.');
         }
 
+        // E26: CORS مغلق (config/cors.php)؛ التطبيق من أصل واحد، فمسار مفتوح أو أصل '*' يفتح ردوداً لمواقع أخرى
+        if ((array) config('cors.paths', []) !== [] || in_array('*', (array) config('cors.allowed_origins', []), true)) {
+            $add('warn', 'CORS_OPEN', 'CORS مفتوح في config/cors.php (paths أو أصل *) — التطبيق من أصل واحد، أعد paths إلى [] والأصول إلى [].');
+        }
+
         $authError = Cache::get('wa:last_auth_error_at');
         if ($authError && rescue(fn () => now()->diffInHours($authError, true) < 24, false, false)) {
             $add('error', 'META_TOKEN_REJECTED', 'رفضت ميتا رمز الوصول (190) خلال آخر 24 ساعة — حدّث الرمز من الإعدادات.');
@@ -92,6 +97,17 @@ final class ChannelDoctor
         }
 
         return $out;
+    }
+
+    /**
+     * إصدار كروميوم المسجّل عند بناء الصورة (E26.8): apk لا يثبّت إصداره، فيُكتب في /etc/chromium-version
+     * ليظهر في سجل البناء وفي whatsapp:doctor. null خارج الحاوية أو في صورة أقدم.
+     */
+    public static function chromiumVersion(string $file = '/etc/chromium-version'): ?string
+    {
+        $line = is_readable($file) ? trim((string) strtok((string) file_get_contents($file), "\n")) : '';
+
+        return $line !== '' ? mb_substr($line, 0, 120) : null;
     }
 
     /**

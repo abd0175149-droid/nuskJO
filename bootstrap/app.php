@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
+            // E26: CSP بـ nonce لكل صفحة HTML (تقارير افتراضياً، config/csp.php)
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
 
         // رقم مرجعي لكل طلب (بعد TrustProxies): الويبهوك و/up والصفحات

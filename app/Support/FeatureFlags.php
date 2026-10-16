@@ -31,6 +31,8 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E26: فوق CSP_MODE=report وحده؛ CSP_MODE=off يطفئ السياسة كلها وenforce يفرضها من البيئة
+        'csp_enforce' => ['label' => 'فرض سياسة أمن المحتوى في المتصفح (مطفأ = تقارير فقط بلا حجب)', 'capability' => 'C184', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */
