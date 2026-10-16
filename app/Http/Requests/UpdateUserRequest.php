@@ -5,7 +5,6 @@ namespace App\Http\Requests;
 use App\Services\Security\RoleAssignmentGuard;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 /** تعديل مستخدم: users.update على مستخدم يحق للمعدّل إدارته؛ وكلمة المرور هنا للمدير وحده. */
 class UpdateUserRequest extends FormRequest
@@ -28,7 +27,7 @@ class UpdateUserRequest extends FormRequest
             'role_id' => 'required|exists:roles,id',
             'phone' => 'nullable|string|max:20',
             'is_active' => 'boolean',
-            'password' => ['nullable', 'string', Password::min(8)],
+            'password' => ['nullable', 'string', \App\Support\PasswordPolicy::rule()],
         ];
     }
 }

@@ -67,6 +67,11 @@ final class ChannelDoctor
             }
         }
 
+        // E27: كوكي الجلسة بلا Secure يُرسل على http أيضاً (أول طلب قبل التحويل إلى https)
+        if (app()->isProduction() && config('session.secure') !== true) {
+            $add('warn', 'SESSION_COOKIE_NOT_SECURE', 'كوكي الجلسة غير مقيّد بـ HTTPS — اجعل APP_URL يبدأ بـ https:// أو اضبط SESSION_SECURE_COOKIE=true.');
+        }
+
         if (in_array(trim((string) config('trustedproxy.proxies', '*')), ['*', '**'], true)) {
             $add('warn', 'TRUST_ALL_PROXIES', 'TRUSTED_PROXIES=* يثق بأي مصدر لعنوان الزائر — اضبطه على 127.0.0.1 وبوابة شبكة الحاوية بعد ربط المنفذ على loopback.');
         }

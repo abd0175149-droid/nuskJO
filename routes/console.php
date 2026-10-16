@@ -242,6 +242,16 @@ Schedule::command('whatsapp:webhook-events-prune')
     ->hourlyAt(15)
     ->withoutOverlapping(10);
 
+// حسابات الموظفين (E27): آخر نشاط من جدول الجلسات كل 15 دقيقة باستعلام واحد (لا كتابة لكل طلب)، وتقرير الخمول
+// الأسبوعي للمدراء صباح الأحد (يرسل بالعلم idle_report، ولا يعطّل أحداً)
+Schedule::command('users:sync-last-seen')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(10);
+Schedule::command('users:idle-report')
+    ->timezone('Asia/Amman')
+    ->weeklyOn(0, '08:47')
+    ->withoutOverlapping();
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

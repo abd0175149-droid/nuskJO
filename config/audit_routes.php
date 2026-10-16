@@ -175,7 +175,7 @@ return [
     'LeaveController@destroy' => 'none: طلب معلّق',
     'AttendanceController@checkIn' => 'none: سجل حضور بصاحبه',
     'AttendanceController@checkOut' => 'none: سجل حضور بصاحبه',
-    'AttendanceController@manualEdit' => 'none: سجل حضور؛ يتبع E27',
+    'AttendanceController@manualEdit' => 'update',
     'AttendanceLocationController@store' => 'none: مواقع الحضور',
     'AttendanceLocationController@update' => 'none: مواقع الحضور',
     'AttendanceLocationController@destroy' => 'none: مواقع الحضور',

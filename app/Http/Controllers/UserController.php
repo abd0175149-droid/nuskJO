@@ -225,7 +225,7 @@ class UserController extends Controller
         abort_unless(auth()->user()->isAdmin(), 403);
 
         $request->validate([
-            'password' => ['required', 'string', \Illuminate\Validation\Rules\Password::min(8), 'confirmed'],
+            'password' => ['required', 'string', \App\Support\PasswordPolicy::rule(), 'confirmed'],
         ]);
 
         DB::transaction(function () use ($user, $request) {
