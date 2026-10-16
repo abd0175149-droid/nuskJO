@@ -77,8 +77,22 @@ class WhatsAppInbox
 
             return;
         }
+        // إعدادات الاتصال عند ميتا (E39، العلم calls_webhook): آخر قراءة للبطاقة. بدونه حقل مجهول كما في E20
+        if ($field === 'account_settings_update' && CallEventHandler::enabled()) {
+            CallingSettings::fromWebhook($value, $entryId, $entryTime, $ownId);
+
+            return;
+        }
         if (in_array($field, WebhookFields::COEXISTENCE, true)) {
-            WebhookFields::coexistence($field);
+            // E39: الأصداء بالحارس أو المعالجة الكاملة (EchoHandler)، والسجل السابق وجهات الاتصال (CoexistenceSync).
+            // بلا أعلامها سلوك E20: تنبيه فوري، ولا تصل للبوت أبداً
+            if ($field === 'smb_message_echoes' && EchoHandler::active()) {
+                EchoHandler::handle($value, $ownId, $result);
+            } elseif ($field !== 'smb_message_echoes' && CoexistenceSync::active()) {
+                CoexistenceSync::handle($field, $value, $entryId, $entryTime, $ownId);
+            } else {
+                WebhookFields::coexistence($field);
+            }
 
             return;
         }
@@ -672,6 +686,10 @@ class WhatsAppInbox
         } elseif ($event === 'ACCOUNT_OFFBOARDED') {
             // فصل الحساب عن الشريك: تنبيه فقط، والإيقاف التلقائي له قرار مالك (E09.9)
             self::notifyAdmins('⚠️ فُصل حساب واتساب للأعمال', 'وصل حدث ACCOUNT_OFFBOARDED من ميتا. راجع ربط الحساب قبل أن يتوقف الإرسال.');
+        } elseif ($event === 'PARTNER_REMOVED' && $field === 'account_update' && CoexistenceSync::active()) {
+            // انفصال التعايش (E39، مع أعلامه): تنبيه بلا قفل، بالنص نفسه في جدول E22
+            $rule = AccountEventHandler::partnerRemoved($value);
+            self::notifyAdmins($rule['alert'][0], $rule['alert'][1], ChannelHealth::URL);
         }
     }
 

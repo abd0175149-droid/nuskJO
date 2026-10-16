@@ -269,6 +269,12 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/qr-links', [\App\Http\Controllers\WhatsAppQrController::class, 'store'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
     Route::delete('api/whatsapp/qr-links/{link}', [\App\Http\Controllers\WhatsAppQrController::class, 'destroy'])->whereNumber('link')->middleware('perm:whatsapp.settings');
     Route::get('whatsapp/qr-links/{link}/{format}', [\App\Http\Controllers\WhatsAppQrController::class, 'download'])->whereNumber('link')->where('format', 'png|svg')->middleware('perm:whatsapp.settings');
+    // المكالمات والتعايش (E39): بطاقتا الإعدادات لصاحب whatsapp.settings خلف أعلامهما. لا مسار يكتب إعدادات الاتصال عند ميتا
+    Route::get('api/whatsapp/calling', [\App\Http\Controllers\WhatsAppCallingController::class, 'show'])->middleware('perm:whatsapp.settings');
+    Route::post('api/whatsapp/calling/refresh', [\App\Http\Controllers\WhatsAppCallingController::class, 'refresh'])->middleware(['perm:whatsapp.settings', 'throttle:6,1,wa-calling-read']);
+    Route::put('api/whatsapp/calling/settings', [\App\Http\Controllers\WhatsAppCallingController::class, 'update'])->middleware(['perm:whatsapp.settings', 'throttle:20,1,wa-calling-save']);
+    Route::get('api/whatsapp/coexistence', [\App\Http\Controllers\WhatsAppCoexistenceController::class, 'show'])->middleware('perm:whatsapp.settings');
+    Route::put('api/whatsapp/coexistence/settings', [\App\Http\Controllers\WhatsAppCoexistenceController::class, 'update'])->middleware(['perm:whatsapp.settings', 'throttle:20,1,wa-coex-save']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');

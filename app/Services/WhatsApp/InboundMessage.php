@@ -84,6 +84,25 @@ final class InboundMessage
         );
     }
 
+    /**
+     * صدى رسالة أرسلها الموظف من تطبيق الأعمال على الهاتف (E39، الحقل smb_message_echoes): العميل الطرف الآخر في to
+     * (رقم، أو معرّف BSUID لمن يراسل باسم مستخدم)، وfrom رقمنا. النص بالمستخرج نفسه لكل الأنواع. fromPhone وfromUserId
+     * هنا هوية العميل، فتطابق محادثته عبر ContactIdentity كالوارد.
+     */
+    public static function fromEcho(array $echo, string $phoneNumberId): self
+    {
+        $to = data_get($echo, 'to');
+        $userId = data_get($echo, 'to_user_id') ?? data_get($echo, 'recipient_user_id');
+        if (is_string($to) && preg_match(self::BSUID, $to)) {
+            $userId ??= $to;
+            $to = null;
+        }
+        $echo['from'] = $to;
+        $echo['from_user_id'] = $userId;
+
+        return self::fromWebhook($echo, null, $phoneNumberId);
+    }
+
     public function isSystem(): bool
     {
         return $this->type === 'system';

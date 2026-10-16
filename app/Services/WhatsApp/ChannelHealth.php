@@ -67,7 +67,9 @@ final class ChannelHealth
 
     /** مفاتيح wa_health_meta المعروضة (لا معرّفات كيانات ولا رموز) */
     private const META_KEYS = ['quality_rating', 'tier', 'last_poll', 'possible_solution', 'country_restricted', 'waba_match',
-        'restriction_types', 'violation_type', 'token_while_blocked', 'unblock_why', 'unblock_at', 'last_reason'];
+        'restriction_types', 'violation_type', 'token_while_blocked', 'unblock_why', 'unblock_at', 'last_reason',
+        // E39: آخر حالة لربط التعايش (removed بسببه أو linked) لشارة البطاقة
+        'coexistence'];
 
     private static ?bool $available = null;
 

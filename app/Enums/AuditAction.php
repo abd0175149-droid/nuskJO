@@ -157,6 +157,11 @@ enum AuditAction: string
     // E22: رفع حجب القناة يدوياً بسبب، وتأكيد الاطلاع على اقتراح الرفع
     case WaHealthUnblock = 'wa.health_unblock';
     case WaHealthAck = 'wa.health_ack';
+    // E39: نص المتابعة بعد المكالمة وطريقة الرد، وتطبيق إعدادات الاتصال عند ميتا (الأمر)، وحامل جهاز التعايش، وإهمال السجل السابق
+    case WaCallsFollowupUpdate = 'wa.calls_followup';
+    case WaCallingSettingsApply = 'wa.calling_apply';
+    case WaCoexistenceHolderSet = 'wa.coexistence_holder';
+    case WaHistoryDiscard = 'wa.history_discard';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -212,6 +217,7 @@ enum AuditAction: string
             self::WaAdminMfaBlocked => AuditSeverity::Warn,
             self::WaBlock, self::WaUnblock, self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
             self::WaQrDelete => AuditSeverity::Warn,
+            self::WaCallsFollowupUpdate, self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -239,6 +245,9 @@ enum AuditAction: string
             self::WaConvAutomationSync => 'config',
             self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
             self::WaQrCreate, self::WaQrDelete, self::WaQrCardToggle, self::OfferStoryGenerate => 'config',
+            self::WaCallsFollowupUpdate, self::WaCallingSettingsApply => 'config',
+            self::WaCoexistenceHolderSet => 'access',
+            self::WaHistoryDiscard => 'system',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
@@ -383,6 +392,10 @@ enum AuditAction: string
             self::OfferStoryGenerate => 'توليد بطاقة الحالة 9:16',
             self::WaHealthUnblock => 'رفع حجب القناة يدوياً',
             self::WaHealthAck => 'الاطلاع على اقتراح رفع الحجب',
+            self::WaCallsFollowupUpdate => 'إعدادات المكالمات ونص المتابعة بعد الفائتة',
+            self::WaCallingSettingsApply => 'تطبيق إعدادات الاتصال عند ميتا',
+            self::WaCoexistenceHolderSet => 'تعيين حامل جهاز التعايش',
+            self::WaHistoryDiscard => 'إهمال سجل التعايش السابق المحفوظ',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -420,7 +433,9 @@ enum AuditAction: string
             // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
             self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked,
             // E22: انتقال صحة القناة (بديل صف الإيقاف التلقائي) وحدث الحساب الحرج: «من حجب الإرسال؟» له جواب دائماً
-            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock], true);
+            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock,
+            // E39: تفعيل الاتصال عند ميتا، ومن يحمل هاتف الوكالة (يرى كل المحادثات)، ومحو السجل السابق: لا تراجع عنها
+            self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard], true);
     }
 
     public function isNoise(): bool

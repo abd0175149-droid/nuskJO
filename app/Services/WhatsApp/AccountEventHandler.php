@@ -112,6 +112,28 @@ final class AccountEventHandler
     }
 
     /**
+     * E39: انفصال التعايش (disconnection_info بالسبب PRIMARY_INACTIVITY نحو 14 يوماً أو COMPANION_INACTIVITY نحو 30)،
+     * أو إزالة شريك من الحساب. تحذير وإشعار للمدراء وشارة في «صحة القناة»، بلا قفل: القفل الآلي لأحداث المخالفة وحدها.
+     */
+    public static function partnerRemoved(array $value): array
+    {
+        $reason = strtoupper((string) (self::text(data_get($value, 'disconnection_info.reason') ?? data_get($value, 'disconnection_info.disconnection_reason'), 40) ?? ''));
+        $why = match ($reason) {
+            'PRIMARY_INACTIVITY' => 'خمول الهاتف الأساسي نحو 14 يوماً',
+            'COMPANION_INACTIVITY' => 'خمول الجهاز المرافق نحو 30 يوماً',
+            default => null,
+        };
+        if ($why === null && !is_array(data_get($value, 'disconnection_info'))) {
+            return ['severity' => 'warn', 'effect' => 'alert', 'code' => 'partner:REMOVED',
+                'alert' => ['⚠️ أُزيل شريك من حساب واتساب للأعمال', 'وصل حدث PARTNER_REMOVED من ميتا. راجع الشركاء في Business Settings.']];
+        }
+
+        return ['severity' => 'warn', 'effect' => 'alert', 'code' => 'coexistence:'.($reason !== '' ? $reason : 'REMOVED'),
+            'alert' => ['📱 انفصل ربط التعايش', 'انفصل ربط التعايش ('.($why ?? 'السبب غير محدد').') — افتح تطبيق واتساب أعمال على الهاتف وأعد الربط.'],
+            'meta' => ['coexistence' => ['state' => 'removed', 'reason' => $reason !== '' ? $reason : null, 'at' => now()->toIso8601String()]]];
+    }
+
+    /**
      * أثر فشل (قاعدة مشغولة، أو تعذّر الطابور): handled_at يبقى فارغاً، ويعيده الفحص التالي (RefreshChannelHealth).
      * آخر 24 ساعة و20 صفاً على الأكثر، بقواعد التصنيف الحالية وحمولة الصف نفسه.
      */
@@ -188,6 +210,11 @@ final class AccountEventHandler
                     return $alertPoll('critical', 'account:OFFBOARDED', '⚠️ فُصل حساب واتساب للأعمال', 'وصل حدث ACCOUNT_OFFBOARDED من ميتا. راجع ربط الحساب قبل أن يتوقف الإرسال.');
                 case 'ACCOUNT_RECONNECTED':
                     return $alertPoll('warn', 'account:RECONNECTED', '⚠️ أُعيد ربط حساب واتساب للأعمال', 'وصل حدث ACCOUNT_RECONNECTED من ميتا؛ يُفحص الحساب الآن.');
+                case 'PARTNER_REMOVED':
+                    return self::partnerRemoved($value);
+                case 'PARTNER_ADDED':
+                    // E39: ربط جديد (منه إعادة ربط التعايش) يمسح شارة الانفصال، بلا تنبيه
+                    return $none + ['meta' => ['coexistence' => ['state' => 'linked', 'at' => now()->toIso8601String()]]];
                 default:
                     return $none;
             }

@@ -1,0 +1,36 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "time": 1760425800,
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "message_echoes": [
+              {
+                "from": "15550783881",
+                "to": "16505551234",
+                "id": "wamid.FIXTURE.echo.image",
+                "timestamp": "1760425760",
+                "type": "image",
+                "image": {
+                  "caption": "تأكيد الحجز",
+                  "mime_type": "image/jpeg",
+                  "sha256": "Yx5mO0Kq3l8Wf0b8nRyVdIuS1Wm5x1zq0d1dZy1r8nE=",
+                  "id": "1104480873777231"
+                }
+              }
+            ]
+          },
+          "field": "smb_message_echoes"
+        }
+      ]
+    }
+  ]
+}

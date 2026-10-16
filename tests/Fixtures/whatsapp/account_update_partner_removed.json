@@ -1,0 +1,20 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "time": 1760425800,
+      "changes": [
+        {
+          "value": {
+            "event": "PARTNER_REMOVED",
+            "disconnection_info": {
+              "reason": "PRIMARY_INACTIVITY"
+            }
+          },
+          "field": "account_update"
+        }
+      ]
+    }
+  ]
+}
