@@ -5,7 +5,16 @@
                     :can-link-client="canLinkClient" :can-toggle-bot="canToggleBot" :can-assign="canAssign" show-back
                     :followup="followup" :can-reply="canReply" :can-reprocess="canReprocess" @action="(n, p) => $emit('action', n, p)"
                     @back="$emit('back')" @link="$emit('link')" @unlink="$emit('unlink')" @resolve="$emit('resolve')"
-                    @toggle-bot="$emit('toggleBot')" @set-topic="(k, a) => $emit('setTopic', k, a)" @assign="(el) => $emit('assign', el)"/>
+                    @toggle-bot="$emit('toggleBot')" @set-topic="(k, a) => $emit('setTopic', k, a)" @assign="(el) => $emit('assign', el)"
+                    :can-filter="canFilter" :filters-open="filtersOpen || filtered" :can-export="canExport"
+                    @toggle-filters="filtersOpen = !filtersOpen" @export="$emit('export')"/>
+
+      <!-- فلاتر الخيط وشريط «عرض مفلتر» (E30) -->
+      <ThreadFilters v-if="canFilter && (filtersOpen || filtered)" :filters="filters" @apply="(f) => $emit('setFilters', f)" @clear="$emit('clearFilters')"/>
+      <div v-if="filtered" role="status" class="flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 text-[11px] bg-gold-50 dark:bg-gold-900/20 text-gold-800 dark:text-gold-300 shrink-0">
+        <span>عرض مفلتر — لا تظهر كل الرسائل</span>
+        <button type="button" @click="$emit('clearFilters')" class="min-h-8 px-2 rounded-lg font-bold hover:bg-gold-100 dark:hover:bg-gold-900/40">إلغاء</button>
+      </div>
 
       <div class="relative flex-1 min-h-0 flex flex-col">
         <div ref="scroller" @scroll.passive="onScroll" class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 bg-gray-50 dark:bg-gray-950/40" aria-live="polite">
@@ -15,14 +24,25 @@
               {{ loadingOlder ? 'جارٍ تحميل الأقدم...' : '↑ رسائل أقدم' }}
             </button>
           </div>
-          <MessageBubble v-for="m in messages" :key="m.id" :m="m" @resend="(msg) => $emit('resend', msg)">
+          <MessageBubble v-for="m in messages" :key="m.id" :m="m" :flash="flashId === m.id" @resend="(msg) => $emit('resend', msg)">
             <template v-if="m.media" #media>
               <MediaChip :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
             </template>
           </MessageBubble>
-          <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>
+          <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">{{ filtered ? 'لا رسائل تطابق الفلتر' : 'لا رسائل' }}</p>
+          <!-- الوضع المنفصل (E30): ما بعد النافذة يُحمَّل بالنزول أو بالزر -->
+          <div v-if="detached" class="text-center">
+            <button type="button" :disabled="loadingNewer" @click="$emit('loadNewer')"
+                    class="px-3 py-1 rounded-lg text-[11px] text-gray-500 dark:text-gray-400 hover:text-gold-700 dark:hover:text-gold-400 disabled:opacity-60">
+              {{ loadingNewer ? 'جارٍ تحميل الأحدث...' : '↓ رسائل أحدث' }}
+            </button>
+          </div>
         </div>
-        <button v-if="newBelow" type="button" @click="$emit('jumpToNew')"
+        <button v-if="detached" type="button" @click="$emit('backToLatest')" data-test="back-to-latest"
+                class="absolute bottom-3 inset-x-0 mx-auto w-fit min-h-11 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
+          ⬇ العودة إلى الأحدث<template v-if="pendingNew"> ({{ pendingNew }}{{ pendingMore ? '+' : '' }} جديدة)</template>
+        </button>
+        <button v-else-if="newBelow" type="button" @click="$emit('jumpToNew')"
                 class="absolute bottom-3 inset-x-0 mx-auto w-fit min-h-11 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
           رسائل جديدة ({{ newBelow }}) ↓
         </button>
@@ -49,10 +69,11 @@
 </template>
 
 <script setup>
-import { nextTick, ref } from 'vue';
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import Composer from './Composer.vue';
 import MediaChip from './MediaChip.vue';
 import MessageBubble from './MessageBubble.vue';
+import ThreadFilters from './ThreadFilters.vue';
 import ThreadHeader from './ThreadHeader.vue';
 import { isNearBottom, preserveOnPrepend, scrollToBottom } from '@/composables/whatsapp/useStickToBottom.js';
 
@@ -80,23 +101,51 @@ const props = defineProps({
   followup: Boolean,
   canReprocess: Boolean,
   quickReplies: Boolean,
+  // E30: نافذة حول رسالة لم تلحق بالأحدث، وفلاتر الخيط، والتصدير
+  detached: Boolean,
+  loadingNewer: Boolean,
+  pendingNew: { type: Number, default: 0 },
+  pendingMore: Boolean,
+  filtered: Boolean,
+  filters: { type: Object, default: () => ({}) },
+  canFilter: Boolean,
+  canExport: Boolean,
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
-  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend']);
+  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend',
+  'loadNewer', 'backToLatest', 'setFilters', 'clearFilters', 'export']);
 
 const scroller = ref(null);
+const filtersOpen = ref(false);
+const flashId = ref(null);
+let flashTimer = null;
+watch(() => props.thread?.id, () => { filtersOpen.value = false; });
+onBeforeUnmount(() => clearTimeout(flashTimer));
 
 const onScroll = () => {
   const el = scroller.value;
   if (!el) return;
   if (el.scrollTop < 80 && props.hasMore && !props.loadingOlder) emit('loadOlder');
   if (props.newBelow && isNearBottom(el)) emit('reachedBottom');
+  // الوضع المنفصل: النزول إلى آخر النافذة يحمّل ما بعدها (لا يقفز إلى الأحدث)
+  if (props.detached && !props.loadingNewer && isNearBottom(el, 80)) emit('loadNewer');
 };
+
+/** يوسّط رسالة القفز ويبرزها 3 ثوانٍ (E30) */
+async function scrollToMessage(id) {
+  await nextTick();
+  const el = scroller.value?.querySelector(`[data-msg-id="${Number(id)}"]`);
+  el?.scrollIntoView?.({ block: 'center' });
+  flashId.value = Number(id);
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { flashId.value = null; }, 3000);
+}
 
 // للمنسّق: الاستطلاع يسأل قبل الإلحاق، والفتح ينزل للأسفل، والأقدم يحفظ موضع القراءة
 defineExpose({
   nearBottom: () => isNearBottom(scroller.value),
   toBottom: async () => { await nextTick(); scrollToBottom(scroller.value); },
   keepOnPrepend: (mutate) => preserveOnPrepend(scroller.value, mutate, nextTick),
+  scrollToMessage,
 });
 </script>

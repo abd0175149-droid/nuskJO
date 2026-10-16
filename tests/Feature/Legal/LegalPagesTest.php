@@ -28,6 +28,9 @@ class LegalPagesTest extends TestCase
             ->assertSee('12 شهراً، ثم تُجمَّع')
             ->assertSee('حتى 6 أشهر')
             ->assertSee('خلال 30 يوماً بعد التحقّق من هويتك')
-            ->assertSee('unless attached to an invoice');
+            ->assertSee('unless attached to an invoice')
+            // E30: البحث والتصدير
+            ->assertSee('يقتصر البحث في المحادثات وتصديرها على الموظفين المخوّلين')
+            ->assertSee('every export is logged');
     }
 }

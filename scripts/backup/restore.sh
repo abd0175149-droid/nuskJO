@@ -230,6 +230,9 @@ done
 [[ "$status" == "healthy" ]] || die "الحاوية ليست healthy بعد الإقلاع ($status). راجع: docker logs $CONTAINER"
 docker exec -i -u www-data "$CONTAINER" php artisan backup:verify --live --expect=- < "$CAND/manifest.json" \
     || die "القاعدة الحية بعد الإقلاع أقل من النسخة"
+# فهرس البحث في الرسائل (E30): الاستعادة قد تخلّ بتطابقه مع الرسائل، فيُفحص ويُصلح. فشله لا يوقف الاستعادة (البحث يعود إلى LIKE)
+docker exec -u www-data "$CONTAINER" php artisan whatsapp:fts-check --repair \
+    || log "⚠️ فهرس البحث لم يُصلح: شغّل whatsapp:fts-check --repair يدوياً"
 
 trap cleanup EXIT
 cat >&2 <<EOF

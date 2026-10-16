@@ -1,10 +1,10 @@
 <template>
-  <div class="flex" :class="m.is_system ? 'justify-center' : (m.direction === 'in' ? 'justify-start' : 'justify-end')">
+  <div class="flex" :data-msg-id="m.id" :class="m.is_system ? 'justify-center' : (m.direction === 'in' ? 'justify-start' : 'justify-end')">
     <!-- تحديث هوية من واتساب (E11): ليس رسالة من العميل -->
-    <div v-if="m.is_system" dir="auto" class="max-w-[85%] rounded-full px-3 py-1 text-[11px] text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-800 [unicode-bidi:plaintext]">
+    <div v-if="m.is_system" dir="auto" class="max-w-[85%] rounded-full px-3 py-1 text-[11px] text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-800 [unicode-bidi:plaintext]" :class="flash ? FLASH : ''">
       {{ m.body }} <span dir="ltr" class="opacity-60">· {{ m.at }}</span>
     </div>
-    <div v-else class="max-w-[85%] sm:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm" :class="tone">
+    <div v-else class="max-w-[85%] sm:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-shadow" :class="[tone, flash ? FLASH : '']">
       <p v-if="m.sender" dir="auto" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
       <!-- الاقتباس (E11، ويكمله E33) -->
       <slot name="quote">
@@ -50,8 +50,13 @@
 import { computed } from 'vue';
 import WaText from './WaText.vue';
 
-const props = defineProps({ m: { type: Object, required: true } });
+const props = defineProps({
+  m: { type: Object, required: true },
+  // الرسالة التي قفز إليها الموظف من البحث (E30): حلقة ذهبية ثوانيَ
+  flash: Boolean,
+});
 defineEmits(['resend']);
+const FLASH = 'ring-2 ring-gold-400 ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-950';
 
 const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' };
 

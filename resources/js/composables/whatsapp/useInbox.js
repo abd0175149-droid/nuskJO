@@ -1,6 +1,7 @@
 // حالة صندوق المحادثات ونداءاته (E16): القائمة بصفحات، والخيط بمؤشراته، والإجراءات، والتنقل على الجوال.
 // منقول من Inbox.vue القديم بسلوكه (tests/js/INBOX_BEHAVIOR.md): السياج 403/404، وseq يُهمل الردود المتأخرة،
 // والاستطلاع بـ after/since، و«رسائل جديدة ↓»، والمسودة لكل محادثة، وتحذير السياسة 409 (E15).
+// E30: القفز إلى رسالة (around) ووضع «منفصل عن الأحدث» لا يسحبه الاستطلاع، وفلاتر الخيط، وحارس ترتيب لطلبات القائمة.
 import { computed, reactive, ref } from 'vue';
 import axios from 'axios';
 import { useDrafts } from '@/composables/useDrafts';
@@ -49,11 +50,24 @@ export function useInbox(props, thread) {
         view: 'list',
         // بطاقات أعلى الصندوق (E17): أعداد فقط
         summary: props.summary || null,
+        // E30: نافذة حول رسالة قديمة لم تلحق بالأحدث، وما وصل بعدها، وفلاتر الخيط
+        detached: false,
+        anchorId: null,
+        loadingNewer: false,
+        pendingNew: 0,
+        pendingMore: false,
+        filtered: false,
+        threadFilters: {},
     });
     let failures = 0;
     let syncedAt = null;
     let seq = 0;
     let inflight = null;
+    // طلبات القائمة: رد أقدم لا يغلب رداً أحدث (الاستطلاع والبحث بالاسم يتسابقان)، وصفحة «المزيد» لفلتر قديم تُهمل
+    let listSeq = 0;
+    let listGen = 0;
+    // أحدث رسالة معروفة والخيط منفصل: الاستطلاع يعدّ ما بعدها ولا يلحقه بالنافذة
+    let latestKnown = null;
 
     const drafts = useDrafts();
     // مفتاح منع التكرار لكل مسودة (E19): ثابت لإعادة المحاولة بالنص نفسه
@@ -67,8 +81,12 @@ export function useInbox(props, thread) {
 
     /** الصفحة الأولى؛ تُدمج مع ما حُمّل بعدها. يعيد false عند الفشل (بعد فشلين متتاليين شريط «تعذّر التحديث») */
     async function load({ reset = false } = {}) {
+        const mine = ++listSeq;
+        if (reset) listGen++;
         try {
             const { data } = await axios.get('/api/whatsapp/conversations', { ...api, params: params() });
+            // طلب أحدث بدأ بعد هذا: ردّه هو المعتمد
+            if (mine !== listSeq) return true;
             const page = data.conversations || [];
             if (reset) {
                 s.list = page;
@@ -92,8 +110,10 @@ export function useInbox(props, thread) {
     async function loadMore() {
         if (s.loadingMore || !s.listHasMore) return;
         s.loadingMore = true;
+        const gen = listGen;
         try {
             const { data } = await axios.get('/api/whatsapp/conversations', { ...api, params: { ...params(), cursor: cursorOf(s.list) } });
+            if (gen !== listGen) return;
             s.list = appendPage(s.list, data.conversations || []);
             s.listHasMore = !!data.has_more;
         } catch {
@@ -105,8 +125,17 @@ export function useInbox(props, thread) {
 
     function resetThread() {
         seq++;
-        Object.assign(s, { activeId: null, thread: null, messages: [], notes: [], hasMore: false, loadingOlder: false, newBelow: 0 });
+        Object.assign(s, { activeId: null, thread: null, messages: [], notes: [], hasMore: false, loadingOlder: false, newBelow: 0, threadFilters: {} });
+        leaveDetached();
         syncedAt = null;
+    }
+
+    /** فلاتر الخيط (E30) معاملاتٍ للخادم، بلا الفارغ */
+    const filterParams = () => Object.fromEntries(Object.entries(s.threadFilters || {}).filter(([, v]) => v));
+
+    function leaveDetached() {
+        Object.assign(s, { detached: false, anchorId: null, loadingNewer: false, pendingNew: 0, pendingMore: false });
+        latestKnown = null;
     }
 
     /**
@@ -151,14 +180,16 @@ export function useInbox(props, thread) {
 
     async function open(id, { read = true } = {}) {
         const mine = ++seq;
+        if (id !== s.activeId) s.threadFilters = {};
         s.activeId = id;
         s.view = 'thread';
         s.sendError = '';
         s.notice = '';
+        leaveDetached();
         try {
-            const { data } = await axios.get(threadUrl(id, 'messages'), api);
+            const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: filterParams() });
             if (mine !== seq) return;
-            Object.assign(s, { thread: data.conversation, messages: data.messages || [], notes: data.notes || [], hasMore: !!data.has_more, newBelow: 0 });
+            Object.assign(s, { thread: data.conversation, messages: data.messages || [], notes: data.notes || [], hasMore: !!data.has_more, newBelow: 0, filtered: !!data.filtered });
             syncedAt = data.synced_at;
             await thread()?.toBottom();
             if (read) markRead(id);
@@ -174,14 +205,91 @@ export function useInbox(props, thread) {
         }
     }
 
+    /**
+     * القفز إلى رسالة (E30): نافذة حولها (50 قبلها و49 بعدها)، تُرسم ثم تُوسَّط وتُبرز. إن بقي بعدها ما لم يُحمَّل
+     * فالخيط «منفصل عن الأحدث»: الاستطلاع لا يلحق الجديد ولا يطبّق gap فلا يُسحب الموظف بعيداً عنها (C143).
+     */
+    async function openAround(id, msgId) {
+        const mine = ++seq;
+        if (id !== s.activeId) s.threadFilters = {};
+        s.activeId = id;
+        s.view = 'thread';
+        s.sendError = '';
+        s.notice = '';
+        leaveDetached();
+        try {
+            const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { around: msgId, ...filterParams() } });
+            if (mine !== seq) return;
+            Object.assign(s, {
+                thread: data.conversation, messages: data.messages || [], notes: data.notes || [], hasMore: !!data.has_more_before,
+                newBelow: 0, filtered: !!data.filtered, detached: !!data.detached, anchorId: data.anchor_id ?? msgId,
+            });
+            latestKnown = data.latest_id ?? lastId(s.messages);
+            syncedAt = data.synced_at;
+            await thread()?.scrollToMessage?.(msgId);
+            load();
+        } catch (e) {
+            if (mine !== seq) return;
+            if (gone(e)) return closeOutOfScope();
+            resetThread();
+            s.notice = 'تعذّر فتح الرسالة، حاول مرة أخرى.';
+        }
+    }
+
+    /** الوضع المنفصل: النزول بصفحات بعد آخر رسالة معروضة حتى الأحدث، فيعود الخيط حياً */
+    async function loadNewer() {
+        const id = s.activeId;
+        if (!id || !s.detached || s.loadingNewer) return;
+        const mine = seq;
+        s.loadingNewer = true;
+        try {
+            const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { after: lastId(s.messages), limit: 100, ...filterParams() } });
+            if (mine !== seq) return;
+            s.messages = mergeNewer(s.messages, data.messages).messages;
+            if (!data.has_more_after) leaveDetached();
+        } catch (e) {
+            if (mine === seq && gone(e)) closeOutOfScope();
+        } finally {
+            if (mine === seq) s.loadingNewer = false;
+        }
+    }
+
+    /** «⬇ العودة إلى الأحدث»: يُعاد فتح المحادثة من آخرها */
+    const backToLatest = () => (s.activeId ? open(s.activeId, { read: true }) : undefined);
+
+    /** فلاتر الخيط (E30): المصدر والنوع والفترة. تُطبَّق بإعادة التحميل من الأحدث */
+    function setThreadFilters(filters) {
+        s.threadFilters = Object.fromEntries(Object.entries(filters || {}).filter(([, v]) => v));
+        if (s.activeId) return open(s.activeId, { read: false });
+    }
+    const clearThreadFilters = () => setThreadFilters({});
+
     const viewing = () => document.visibilityState === 'visible' && document.hasFocus();
+
+    /** الوضع المنفصل: حالات الصادر في النافذة تتحدّث، والجديد يُعدّ فقط (زر «العودة إلى الأحدث») */
+    async function pollDetached(id, mine) {
+        const { data } = await axios.get(threadUrl(id, 'messages'), {
+            ...api, params: { after: latestKnown || lastId(s.messages), since: syncedAt || undefined, limit: 100, ...filterParams() },
+        });
+        if (mine !== seq || !s.detached) return;
+        applyUpdates(s.messages, data.updates);
+        s.thread = { ...s.thread, ...data.conversation };
+        syncedAt = data.synced_at;
+        const fresh = data.messages || [];
+        if (fresh.length) {
+            latestKnown = fresh[fresh.length - 1].id;
+            s.pendingNew += fresh.length;
+        }
+        if (data.has_more_after) s.pendingMore = true;
+    }
 
     async function pollOnce() {
         const id = s.activeId;
         if (!id || !s.thread) return;
         const mine = seq;
         try {
-            const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { after: lastId(s.messages), since: syncedAt || undefined } });
+            if (s.detached) return await pollDetached(id, mine);
+            const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { after: lastId(s.messages), since: syncedAt || undefined, ...filterParams() } });
             if (mine !== seq) return;
             if (needsReload(data)) return open(id, { read: false });
             const atBottom = thread()?.nearBottom() ?? true;
@@ -214,7 +322,7 @@ export function useInbox(props, thread) {
         const mine = seq;
         s.loadingOlder = true;
         try {
-            const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { before } });
+            const { data } = await axios.get(threadUrl(id, 'messages'), { ...api, params: { before, ...filterParams() } });
             if (mine !== seq) return;
             await (thread()?.keepOnPrepend(() => {
                 s.messages = mergeOlder(s.messages, data.messages);
@@ -267,7 +375,11 @@ export function useInbox(props, thread) {
             }
             sendKeys.done(id);
             drafts.clear(id);
-            if (s.activeId === id) {
+            if (s.activeId === id && (s.detached || s.filtered)) {
+                // بعد الإرسال من عرض مفلتر أو نافذة قديمة: يُلغى الفلتر ويعود الخيط إلى الأحدث فتظهر الرسالة (E30)
+                s.threadFilters = {};
+                await open(id, { read: false });
+            } else if (s.activeId === id) {
                 await poll();
                 s.newBelow = 0;
                 await thread()?.toBottom();
@@ -396,6 +508,11 @@ export function useInbox(props, thread) {
         setUrl(id, narrow() && s.view === 'list');
         open(id);
     }
+    /** نتيجة بحث (E30): المحادثة حول الرسالة، والخطوة في history على الجوال كفتحها من القائمة */
+    function openFromSearch(id, msgId) {
+        setUrl(id, narrow() && s.view === 'list');
+        openAround(id, msgId);
+    }
     function back() {
         if (window.history.state?.inboxPushed) window.history.back();
         else { s.view = 'list'; setUrl(null, false); }
@@ -419,7 +536,15 @@ export function useInbox(props, thread) {
      */
     function openFromUrl() {
         const id = urlConv();
-        if (id) open(id);
+        const msg = Number(new URLSearchParams(window.location.search).get('msg')) || null;
+        if (id && msg) {
+            // ?conv=&msg= (E30): قفز إلى الرسالة، ويُزال msg من الرابط فلا يتكرر القفز عند التحديث
+            const url = new URL(window.location.href);
+            url.searchParams.delete('msg');
+            const target = url.pathname + url.search + url.hash;
+            window.history.replaceState(withPageUrl(window.history.state, target), '', target);
+            openAround(id, msg);
+        } else if (id) open(id);
     }
 
     /**
@@ -439,6 +564,7 @@ export function useInbox(props, thread) {
         load, loadMore, open, poll, loadOlder, jumpToNew, reachedBottom, send,
         toggleBot, resolve, setTopic, assignTo, requestPhone, onLinked, unlinkClient,
         openFromList, back, onPopState, openFromUrl,
+        openAround, openFromSearch, loadNewer, backToLatest, setThreadFilters, clearThreadFilters,
         refilter: () => load({ reset: true }),
         followAction, loadSummary,
         tick: async () => { const ok = await load(); await poll(); loadSummary(); if (!ok) throw new Error('list refresh failed'); },
