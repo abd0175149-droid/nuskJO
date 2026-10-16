@@ -205,6 +205,20 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::put('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'update'])->name('whatsapp.knowledge.update')->middleware('perm:whatsapp.settings');
     Route::delete('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'destroy'])->name('whatsapp.knowledge.destroy')->middleware('perm:whatsapp.settings');
 
+    // الحظر الرسمي (E31): whatsapp.block (للمدير) والعلم wa_block. الحظر وفكه من الصندوق عبر الربط المقيّد بالنطاق
+    Route::post('api/whatsapp/conversations/{conversation}/block', [\App\Http\Controllers\WhatsAppBlockController::class, 'block'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::delete('api/whatsapp/conversations/{conversation}/block', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblockConversation'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::get('whatsapp/blocks', [\App\Http\Controllers\WhatsAppBlockController::class, 'index'])->name('whatsapp.blocks')->middleware('perm:whatsapp.block');
+    Route::post('api/whatsapp/blocks/sync', [\App\Http\Controllers\WhatsAppBlockController::class, 'sync'])->middleware(['perm:whatsapp.block', 'throttle:3,10']);
+    Route::post('api/whatsapp/blocks/untracked/register', [\App\Http\Controllers\WhatsAppBlockController::class, 'registerUntracked'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::post('api/whatsapp/blocks/untracked/unblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblockUntracked'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::post('api/whatsapp/blocks/{block}/unblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblock'])->whereNumber('block')->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    Route::post('api/whatsapp/blocks/{block}/reblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'reblock'])->whereNumber('block')->middleware(['perm:whatsapp.block', 'throttle:10,1']);
+    // ملف واتساب للأعمال (E31): whatsapp.settings، والمزامنة والصورة خلف علميهما. لا مسار يغيّر اسم العرض
+    Route::get('api/whatsapp/business-profile', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'show'])->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
+    Route::post('api/whatsapp/business-profile/sync', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'sync'])->middleware(['perm:whatsapp.settings', 'throttle:5,10']);
+    Route::post('api/whatsapp/business-profile/photo', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'photo'])->middleware(['perm:whatsapp.settings', 'throttle:5,10']);
+
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');
     Route::resource('offers', \App\Http\Controllers\OfferController::class)->only(['index', 'create', 'store', 'show', 'update', 'destroy'])

@@ -38,6 +38,8 @@ class HandleInertiaRequests extends Middleware
             // مزايا خلف أعلام: القائمة تُخفي ما لم يُفعَّل بعد
             'features' => [
                 'audit_page' => (bool) config('audit.page'),
+                // E31: رابط «المحظورون» لمن يملك whatsapp.block والعلم مفعّل (القراءة لهؤلاء وحدهم)
+                'wa_block' => $user?->can('whatsapp.block') ? rescue(fn () => \App\Support\FeatureFlags::on('wa_block'), false, false) : false,
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);

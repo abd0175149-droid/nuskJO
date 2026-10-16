@@ -26,5 +26,11 @@ return [
         'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
+        // E31
+        'wa_block' => env('WA_FEATURE_WA_BLOCK'),
+        'wa_block_bsuid' => env('WA_FEATURE_WA_BLOCK_BSUID'),
+        'wa_block_admin_tool' => env('WA_FEATURE_WA_BLOCK_ADMIN_TOOL'),
+        'business_profile_sync' => env('WA_FEATURE_BUSINESS_PROFILE_SYNC'),
+        'business_profile_photo' => env('WA_FEATURE_BUSINESS_PROFILE_PHOTO'),
     ],
 ];

@@ -20,6 +20,8 @@ class Permission extends Model
         'users.create', 'users.update', 'users.delete', 'roles.manage',
         'settings.update', 'accounting.manage', 'accounting.close', 'whatsapp.settings',
         'backups.run', 'backups.restore_ack',
+        // E31: الحظر الرسمي للمدير وحده
+        'whatsapp.block',
     ];
 
     public function roles(): BelongsToMany

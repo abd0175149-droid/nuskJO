@@ -140,6 +140,16 @@ return [
     'WhatsAppAdminNumberController@update' => 'update',
     'WhatsAppAdminNumberController@destroy' => 'delete',
     'WhatsAppWebhookController@receive' => 'wa.webhook_bad_sig',
+    // E31: الحظر الرسمي وملف الأعمال
+    'WhatsAppBlockController@block' => 'wa.block',
+    'WhatsAppBlockController@unblockConversation' => 'wa.unblock',
+    'WhatsAppBlockController@sync' => 'wa.block_sync',
+    'WhatsAppBlockController@registerUntracked' => 'wa.block',
+    'WhatsAppBlockController@unblockUntracked' => 'wa.unblock',
+    'WhatsAppBlockController@unblock' => 'wa.unblock',
+    'WhatsAppBlockController@reblock' => 'wa.block',
+    'WhatsAppBusinessProfileController@sync' => 'wa.business_profile',
+    'WhatsAppBusinessProfileController@photo' => 'wa.business_photo',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

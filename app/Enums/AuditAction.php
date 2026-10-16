@@ -104,6 +104,13 @@ enum AuditAction: string
     case WaQuickReplyDelete = 'wa.quick_reply_delete';
     case WaQuickReplyApprove = 'wa.quick_reply_approve';
     case WaLastErrorCleared = 'wa.last_error_clear';
+    // E31: الحظر الرسمي وملف الأعمال
+    case WaBlock = 'wa.block';
+    case WaUnblock = 'wa.unblock';
+    case WaBlockFailed = 'wa.block_failed';
+    case WaBlockSync = 'wa.block_sync';
+    case WaBusinessProfileUpdate = 'wa.business_profile';
+    case WaBusinessProfilePhoto = 'wa.business_photo';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -145,7 +152,8 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
+            self::WaBlock, self::WaUnblock, self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -164,7 +172,8 @@ enum AuditAction: string
             self::UserActivate, self::UserDeactivate, self::UserDelete, self::UserRestoreAdmin,
             self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
-            self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove => 'config',
+            self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove,
+            self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
@@ -263,6 +272,12 @@ enum AuditAction: string
             self::WaQuickReplyDelete => 'حذف رد جاهز',
             self::WaQuickReplyApprove => 'اعتماد رد جاهز يذكر بيانات دفع',
             self::WaLastErrorCleared => 'تصفير آخر خطأ من ميتا («تمّ الحل»)',
+            self::WaBlock => 'حظر جهة اتصال واتساب',
+            self::WaUnblock => 'فك حظر جهة اتصال واتساب',
+            self::WaBlockFailed => 'رفضت ميتا الحظر',
+            self::WaBlockSync => 'مزامنة قائمة المحظورين مع ميتا',
+            self::WaBusinessProfileUpdate => 'مزامنة ملف واتساب للأعمال',
+            self::WaBusinessProfilePhoto => 'صورة ملف واتساب للأعمال',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

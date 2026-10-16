@@ -1,0 +1,29 @@
+{
+  "messaging_product": "whatsapp",
+  "block_users": {
+    "added_users": [],
+    "failed_users": [
+      {
+        "input": "16505551234",
+        "errors": [
+          {
+            "message": "Re-engagement message",
+            "code": 131047,
+            "error_data": {
+              "details": "Message failed to send because more than 24 hours have passed since the customer last replied to this number."
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "error": {
+    "message": "(#139100) Failed to block/unblock users",
+    "type": "OAuthException",
+    "code": 139100,
+    "error_data": {
+      "details": "Failed to block some users, see the block_users response list for details"
+    },
+    "fbtrace_id": "AbCdEf139100"
+  }
+}

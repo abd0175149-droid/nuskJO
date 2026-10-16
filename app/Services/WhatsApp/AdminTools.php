@@ -57,6 +57,8 @@ class AdminTools
         'tools.view' => ['group' => 'إدارة الأدوات', 'label' => 'عرض أدوات بوت العملاء', 'desc' => 'أيّ الأدوات مفعّلة لبوت العملاء الآن.', 'write' => false],
         'tools.toggle' => ['group' => 'إدارة الأدوات', 'label' => 'تفعيل أو إيقاف أداة', 'desc' => 'يشغّل أو يوقف أداة لبوت العملاء (مثل إرسال البطاقات).', 'write' => true],
         'bot.toggle' => ['group' => 'إدارة الأدوات', 'label' => 'تشغيل أو إيقاف بوت العملاء', 'desc' => 'يوقف ردود البوت على كل العملاء أو يعيدها.', 'write' => true],
+        // E31: خلف العلم wa_block_admin_tool، وبشرط أن يملك المستخدم المرتبط whatsapp.block. فك الحظر من لوحة التحكم وحدها
+        'contacts.block' => ['group' => 'جهات الاتصال', 'label' => 'حظر رقم مزعج', 'desc' => 'يحظر رقماً راسلنا خلال 24 ساعة، بعد معاينة وتأكيد. فك الحظر من لوحة التحكم فقط.', 'write' => true],
     ];
 
     /**
@@ -78,6 +80,7 @@ class AdminTools
         'tools.view' => 'whatsapp.settings',
         'tools.toggle' => 'whatsapp.settings',
         'bot.toggle' => 'whatsapp.settings',
+        'contacts.block' => 'whatsapp.block',
     ];
 
     /**
@@ -191,6 +194,23 @@ class AdminTools
                 'off' => ['perm' => 'bot.toggle', 'write' => true, 'label' => 'إيقاف'],
             ],
         ],
+        // E31.7: لا تُعلن ولا تُنفَّذ والعلم مطفأ (flag). المطابقة بالرقم الكامل الموحّد وحده، ولا أداة لفك الحظر هنا عمداً
+        'block_contact' => [
+            'label' => 'حظر رقم مزعج', 'handler' => 'blockContact', 'flag' => 'wa_block_admin_tool',
+            'description' => 'حظر رقم عميل مزعج أو محتال على واتساب. يحتاج الرقم كاملاً بمفتاح الدولة والسبب. يرسل النظام معاينة أولاً، '
+                .'ولا يُنفَّذ إلا بعد ردّ الموظف بكلمة «تأكيد» (confirm=true بعدها فقط).',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => '{actions}'],
+                'phone' => ['type' => 'string', 'description' => 'رقم العميل كاملاً بمفتاح الدولة', 'maxLength' => 20],
+                'reason_code' => ['type' => 'string', 'enum' => ['spam', 'abuse', 'fraud', 'other']],
+                'reason' => ['type' => 'string', 'description' => 'تفاصيل السبب من 10 إلى 300 حرف، بلا بيانات شخصية', 'maxLength' => 300],
+                'confirm' => ['type' => 'boolean', 'description' => 'true فقط بعد أن يردّ الموظف بكلمة «تأكيد»'],
+            ],
+            'required' => ['action', 'phone', 'reason_code', 'reason'],
+            'rules' => ['action' => 'required|string', 'phone' => 'required|string|max:20', 'reason_code' => 'required|string|in:spam,abuse,fraud,other',
+                'reason' => 'required|string|max:300', 'confirm' => 'nullable|boolean'],
+            'actions' => ['block' => ['perm' => 'contacts.block', 'write' => true, 'label' => 'حظر']],
+        ],
     ];
 
     /** سقف نتيجة أداة إدارية (E15.7) */
@@ -275,6 +295,11 @@ class AdminTools
      */
     public static function gate(WaAdminNumber $a, string $name, string $action): array
     {
+        // أداة خلف علم مطفأ (E31): كأنها غير موجودة
+        if (isset(self::TOOLS[$name]['flag']) && !FeatureFlags::on(self::TOOLS[$name]['flag'])) {
+            return ['allowed' => false, 'reason' => 'الأداة غير مفعّلة', 'would_deny' => null,
+                'note' => 'أخبر الموظف أنّ هذا غير متاح من واتساب، وأنّه متاح من لوحة التحكم.'];
+        }
         $needed = self::permissionFor($name, $action);
         if ($needed === null || !$a->allowsAny((array) $needed)) {
             return ['allowed' => false, 'reason' => 'غير مسموح لهذا الرقم', 'would_deny' => null,
@@ -368,6 +393,9 @@ class AdminTools
     {
         $out = [];
         foreach (self::TOOLS as $name => $t) {
+            if (isset($t['flag']) && !FeatureFlags::on($t['flag'])) {
+                continue;
+            }
             $allowed = array_keys(array_filter($t['actions'], fn ($act, $key) => self::gate($a, $name, $key === '_' ? '' : $key)['allowed'], ARRAY_FILTER_USE_BOTH));
             if ($allowed === []) {
                 continue;
@@ -773,6 +801,62 @@ class AdminTools
             $action === 'on' ? 'تشغيل بوت العملاء (يعود للردّ على كل العملاء).' : 'إيقاف بوت العملاء (لا يردّ على أي عميل حتى يُعاد تشغيله).');
     }
 
+    // ==================== حظر رقم مزعج (E31.7) ====================
+
+    /**
+     * المعاينة ثم «تأكيد» كبقية الكتابات، وما يُنفَّذ هو المحفوظ عند المعاينة. والصلاحية مرتان: صلاحية الرقم
+     * (contacts.block عبر gate)، ثم التقاطع مع can() دائماً، لا بانتظار admin_rbac_enforce: مستخدم مرتبط فعّال يملك
+     * whatsapp.block. المطابقة بالرقم الكامل الموحّد وحده (لا آخر 9 أرقام)، والمحفوظ رقم المحادثة لا رقم الهاتف.
+     */
+    private static function blockContact(array $in, WaConversation $conv, WaAdminNumber $a): array
+    {
+        if (!empty($in['confirm'])) {
+            return self::commit('block_contact', $conv, $a);
+        }
+        if ($deny = self::blockerDenied($a)) {
+            self::log($a, $conv, 'block_contact', 'block', 'denied', $deny, ['reason_code' => $in['reason_code'] ?? null]);
+
+            return ['error' => 'غير مسموح', 'note' => 'أخبر الموظف أنّ حسابه في النظام لا يملك صلاحية الحظر، وأنّ المدير يمنحها من لوحة التحكم.'];
+        }
+
+        $canonical = PhoneNormalizer::canonical((string) ($in['phone'] ?? ''));
+        if (strlen($canonical) < 8) {
+            return ['error' => 'رقم غير صالح', 'note' => 'اطلب الرقم كاملاً بمفتاح الدولة.'];
+        }
+        $target = WaConversation::where('phone', $canonical)->where('status', '!=', 'merged')->whereNull('erased_at')->orderByDesc('id')->first();
+        if (!$target) {
+            return ['error' => 'لا توجد محادثة لهذا الرقم', 'note' => 'تأكد من الرقم كاملاً. الحظر لمن راسلنا خلال 24 ساعة وحده.'];
+        }
+        $code = (string) ($in['reason_code'] ?? '');
+        $reason = (string) TextNormalizer::untrustedName((string) ($in['reason'] ?? ''), 2000);
+        if (!isset(BlockService::REASONS[$code]) || mb_strlen($reason) < BlockService::REASON_MIN || mb_strlen($reason) > BlockService::REASON_MAX) {
+            return ['error' => 'السبب ناقص', 'note' => 'اطلب منه سبب الحظر (إزعاج أو إساءة أو احتيال أو أخرى) وتفاصيل من 10 إلى 300 حرف بلا بيانات شخصية.'];
+        }
+        $refusal = match (true) {
+            (bool) $target->is_admin_chat || WaAdminNumber::forPhone($target->phone) !== null => 'هذا رقم إدارة، فلا يُحظر.',
+            (bool) $target->user_id => 'هذا الرقم لموظف في الشركة، فلا يُحظر.',
+            $target->isBlocked() => 'هذا الرقم محظور أصلاً.',
+            !$target->isWindowOpen() => 'لم يراسلنا هذا الرقم خلال 24 ساعة، وميتا لا تسمح بحظره الآن.',
+            default => null,
+        };
+        if ($refusal !== null) {
+            return ['error' => $refusal, 'note' => 'أخبر الموظف بالسبب كما هو.'];
+        }
+
+        $preview = 'سأحظر: '.$target->noticeLabel().' (…'.substr($canonical, -4).') — آخر رسالة منه '.$target->last_inbound_at?->diffForHumans()
+            .'، السبب: '.BlockService::reasonLabel($code).'.';
+
+        return self::stage($conv, $a, 'block_contact', 'block', ['conversation_id' => $target->id, 'reason_code' => $code, 'reason' => $reason], $preview);
+    }
+
+    /** null: المستخدم المرتبط فعّال ويملك whatsapp.block */
+    private static function blockerDenied(WaAdminNumber $a): ?string
+    {
+        $user = $a->user_id ? $a->user()->first() : null;
+
+        return $user && $user->is_active && $user->can('whatsapp.block') ? null : 'المستخدم المرتبط لا يملك صلاحية الحظر (whatsapp.block)';
+    }
+
     // ==================== المعاينة والتأكيد ====================
 
     private static function pendingKey(WaConversation $conv): string
@@ -853,9 +937,15 @@ class AdminTools
         }
 
         Cache::forget(self::pendingKey($conv));
-        // التعديل وصف تدقيقه معاً، منسوبين إلى رقم الإدارة وموظفه لا إلى البوت
-        $result = AuditActor::as('admin_number', (string) $a->id, fn () => DB::transaction(fn () => self::apply($p, $a)), $a->user_id);
-        self::log($a, $conv, $tool, $p['action'], 'done', $result['summary'], $result['input'] ?? $p['payload']);
+        // التعديل وصف تدقيقه معاً، منسوبين إلى رقم الإدارة وموظفه لا إلى البوت. الحظر (E31) ينادي ميتا، فلا معاملة
+        // تلف نداء HTTP: BlockService يكتب صفوفه في معاملته بعد قبول ميتا
+        $run = fn () => self::apply($p, $a);
+        $result = AuditActor::as('admin_number', (string) $a->id, $tool === 'block_contact' ? $run : fn () => DB::transaction($run), $a->user_id);
+        $failed = (bool) ($result['failed'] ?? false);
+        self::log($a, $conv, $tool, $p['action'], $failed ? 'error' : 'done', $result['summary'], $result['input'] ?? $p['payload']);
+        if ($failed) {
+            return ['error' => 'لم يُنفَّذ', 'result' => $result['summary'], 'note' => 'أبلغ الموظف بالسبب كما هو في جملة قصيرة.'];
+        }
 
         return ['done' => true, 'result' => $result['summary'], 'note' => 'أبلغ الموظف بالنتيجة في جملة قصيرة.'];
     }
@@ -902,6 +992,19 @@ class AdminTools
                     ['tool' => $d['tool'], 'enabled' => (bool) $d['enabled']]);
 
                 return ['summary' => ($d['enabled'] ? 'فُعّلت' : 'أُوقفت').' أداة «'.BotTools::labels()[$d['tool']].'» لبوت العملاء.'];
+
+            case 'block_contact:block':
+                // الصلاحيتان من جديد لحظة التنفيذ، والرفض المسبق كله في BlockService
+                if ($deny = self::blockerDenied($a)) {
+                    return ['summary' => 'لم يُحظر: '.$deny, 'failed' => true];
+                }
+                $target = WaConversation::find($d['conversation_id']);
+                $r = $target ? BlockService::block($target, $a->user()->first(), $d['reason_code'], $d['reason'], 'admin_number', $a)
+                    : ['ok' => false, 'error' => 'المحادثة لم تعد موجودة.'];
+
+                return $r['ok']
+                    ? ['summary' => 'حُظر الرقم (…'.BlockService::confirmToken($target).') — السبب: '.BlockService::reasonLabel($d['reason_code']).'. فك الحظر من لوحة التحكم وحدها.']
+                    : ['summary' => 'لم يُحظر: '.$r['error'], 'failed' => true];
 
             case 'set_customer_bot:on':
             case 'set_customer_bot:off':

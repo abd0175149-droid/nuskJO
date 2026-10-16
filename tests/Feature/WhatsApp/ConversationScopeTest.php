@@ -51,6 +51,8 @@ class ConversationScopeTest extends TestCase
         'reprocess' => ['POST', [], [], ['whatsapp.settings'], 422],
         // ملء رد جاهز: داخل النطاق بلا معرّف الرد يرد 422 (الربط قبل التحقق)، وخارجه 404
         'quick-replies/render' => ['GET', [], [], [], 422],
+        // الحظر الرسمي (E31، whatsapp.block): داخل النطاق بتأكيد لا يطابق 422 بلا نداء، وخارجه 404. الفك بالمسار نفسه (BlockRoutesTest)
+        'block' => ['POST', ['reason_code' => 'spam', 'reason' => 'رسائل مزعجة متكررة من هذا الرقم', 'confirm' => 'لا'], [], ['whatsapp.block'], 422],
     ];
 
     protected function setUp(): void
@@ -59,7 +61,7 @@ class ConversationScopeTest extends TestCase
         $this->configureChannel();
         $this->fakeGraph();
         \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
-        config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true]);
+        config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true, 'features.env.wa_block' => true]);
     }
 
     public static function routes(): array

@@ -90,7 +90,7 @@ class ToolRegistryTest extends TestCase
                 }
             }
         }
-        $this->assertSame(['manage_knowledge' => ['add', 'update', 'delete'], 'manage_bot_tools' => ['enable', 'disable'], 'set_customer_bot' => ['on', 'off']], AdminTools::writes());
+        $this->assertSame(['manage_knowledge' => ['add', 'update', 'delete'], 'manage_bot_tools' => ['enable', 'disable'], 'set_customer_bot' => ['on', 'off'], 'block_contact' => ['block']], AdminTools::writes());
     }
 
     public function test_no_bot_tool_accepts_an_identity_field_and_schema_limits_match_the_rules(): void

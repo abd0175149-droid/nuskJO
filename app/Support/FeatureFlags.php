@@ -31,6 +31,12 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E31: الحظر الرسمي وملف الأعمال
+        'wa_block' => ['label' => 'الحظر الرسمي من الصندوق وصفحة «المحظورون» (للمدير بصلاحية whatsapp.block)', 'capability' => 'C038', 'available' => true],
+        'wa_block_bsuid' => ['label' => 'حظر عميل بلا رقم بمعرّفه (BSUID) — بعد التحقق من قبول ميتا له', 'capability' => 'C038', 'available' => true],
+        'wa_block_admin_tool' => ['label' => 'أداة «حظر رقم مزعج» في المساعد الإداري (معاينة ثم «تأكيد»)', 'capability' => 'C111', 'available' => true],
+        'business_profile_sync' => ['label' => 'مزامنة ملف واتساب للأعمال مع بيانات الشركة (بتأكيد)', 'capability' => 'C039', 'available' => true],
+        'business_profile_photo' => ['label' => 'رفع صورة ملف واتساب للأعمال (يحتاج App ID)', 'capability' => 'C039', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

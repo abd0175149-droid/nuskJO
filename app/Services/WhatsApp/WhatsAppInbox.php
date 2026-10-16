@@ -220,6 +220,13 @@ class WhatsAppInbox
             ErasureRequests::receive($conv);
         }
 
+        // وارد من محظور (E31): لا يُفترض رسمياً. مخزَّن كي لا يضيع، ولا يصل البوت، والحظر يصير mismatch في صفحة المزامنة
+        if ($conv->isBlocked()) {
+            BlockService::inboundWhileBlocked($conv);
+
+            return null;
+        }
+
         // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
         if ($after === 'consent:no') {
             Media\MediaConsent::refused($conv);
@@ -316,9 +323,14 @@ class WhatsAppInbox
                 'last_message_at' => $metaAt,
                 'last_message_preview' => mb_substr(trim((string) $body), 0, 160),
             ]);
-        // أي وارد (لا التفاعل ولا رسالة النظام، فهما يعودان قبل هنا) يعيد فتح المغلقة ويمسح التأجيل (E17)
-        WaConversation::whereKey($conv->id)->update(['unread_count' => DB::raw('unread_count + 1'), 'status' => 'open'] + InboxFollowup::reopenColumns());
+        // أي وارد (لا التفاعل ولا رسالة النظام، فهما يعودان قبل هنا) يعيد فتح المغلقة ويمسح التأجيل (E17).
+        // ومن محظور (E31) لا يزيد غير المقروء، والعلامة تتقدّم فلا يجيب عنه البوت ولا المُصالِح لاحقاً
+        $blocked = $conv->isBlocked();
+        WaConversation::whereKey($conv->id)->update(($blocked ? [] : ['unread_count' => DB::raw('unread_count + 1')]) + ['status' => 'open'] + InboxFollowup::reopenColumns());
         $conv->refresh();
+        if ($blocked) {
+            ReplyState::advance($conv, $message->id);
+        }
 
         // زرّا إشعار حفظ الملفات (E14): اختيار مسجّل لا يصل للبوت، والحذف بعد الاعتماد
         if ($choice = Media\MediaConsent::choice($buttonId)) {

@@ -16,6 +16,8 @@ Artisan::command('whatsapp:window-reminders', function () {
     \App\Models\WaConversation::where('needs_attention', true)
         ->where('last_inbound_at', '>', now()->subDay())
         ->where('last_inbound_at', '<=', now()->subHours(21))   // يبقى 3 ساعات أو أقل
+        // لا تذكير برد على محظور (E31)
+        ->when(\App\Services\WhatsApp\BlockService::available(), fn ($q) => $q->whereNull('blocked_at'))
         ->get()
         ->each(function ($c) use (&$sent) {
             // تذكير واحد لكل رسالة واردة — رسالة جديدة من العميل تفتح نافذة جديدة
@@ -240,6 +242,13 @@ Schedule::command('whatsapp:replay-webhooks')
     ->withoutOverlapping(5);
 Schedule::command('whatsapp:webhook-events-prune')
     ->hourlyAt(15)
+    ->withoutOverlapping(10);
+
+// الحظر الرسمي (E31): مقارنة قرائية يومية مع قائمة الحظر عند ميتا، بالعلم wa_block وحده. لا تغيّر أي حظر عند ميتا،
+// وتُشعر المدراء إن ظهر حظر لم تجده ميتا أو حظر عندها بلا سجل عندنا
+Schedule::command('whatsapp:blocks-check')
+    ->timezone('Asia/Amman')
+    ->dailyAt('04:10')
     ->withoutOverlapping(10);
 
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)

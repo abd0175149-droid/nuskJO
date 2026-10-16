@@ -75,3 +75,14 @@ batch_mixed.json              [messages] § change واحد فيه حالتان 
 calls_event.json              [calling] § حقل calls (connect) بشكل وثيقة المكالمات، وsdp مختصر مصنوع. لا نشترك فيه: يُسجَّل نوع الحدث فقط. E20.
 smb_message_echoes.json       [coexistence] § حقل smb_message_echoes (message_echoes) بشكل وثيقة التعايش. يُنبّه ولا يصل للبوت. E20.
 unknown_field.json            حقل مصنوع brand_new_field بجانب change رسائل عادي: الحقل المجهول لا يُسقط الرسالة. E20.
+block_users_ok.json           [block] § رد POST /{pnid}/block_users الناجح: block_users.added_users[{input, wa_id}]. E31.
+block_users_removed.json      [block] § رد DELETE /{pnid}/block_users (فك الحظر): block_users.removed_users بالشكل نفسه. E31.
+block_users_partial.json      [block] § فشل جزئي: error.code=139100 مع block_users.failed_users[].errors[] (131047 لمن لم يراسلنا
+                              خلال 24 ساعة). fbtrace_id مصنوع. E31.
+block_users_list.json         [block] § رد GET /{pnid}/block_users: data[{messaging_product, wa_id}] وpaging.cursors وnext
+                              (رابط next مستبدل بمضيف example.invalid). E31.
+business_profile.json         [profile] § رد GET /{pnid}/whatsapp_business_profile: data[0] بالحقول about وaddress وdescription
+                              وemail وprofile_picture_url وwebsites وvertical. القيم مصنوعة (example.com). E31.
+                              ملاحظة: input في المرجع يُكتب «+رقم»؛ هنا بلا + لأن الحارس يطابق القائمة البيضاء حرفياً، والكود يقارن الأرقام وحدها.
+                              [block]   https://developers.facebook.com/documentation/business-messaging/whatsapp/block-users/
+                              [profile] https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/business-profiles
