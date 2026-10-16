@@ -23,7 +23,8 @@ class ConversationRouteCoverageTest extends TestCase
                 continue;
             }
             $action = trim(Str::after($route->uri(), '{conversation}'), '/') ?: '(show)';
-            $found[$action] = $route->methods();
+            // مسار واحد بطريقتين (POST وDELETE على snooze مثلاً) يجمع طرقه
+            $found[$action] = array_merge($found[$action] ?? [], $route->methods());
         }
 
         $this->assertEqualsCanonicalizing(array_keys(ConversationScopeTest::ROUTES), array_keys($found),

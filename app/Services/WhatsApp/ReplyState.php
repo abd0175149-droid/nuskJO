@@ -35,6 +35,7 @@ final class ReplyState
         'data_erasure' => '🗑️ طلب حذف بيانات',
         'media_refused' => '🗂️ رفض حفظ الملفات',
         'policy_block' => '🛡️ حُجبت رسالة آلية',
+        'snooze_due' => '⏰ موعد متابعة',
     ];
 
     private static ?bool $available = null;

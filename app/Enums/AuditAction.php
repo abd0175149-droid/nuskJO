@@ -95,6 +95,9 @@ enum AuditAction: string
     case WaMediaPurge = 'wa.media_purge';
     case WaMediaConsent = 'wa.media_consent';
     case WaPolicyOverride = 'wa.policy_override';
+    case WaConvClose = 'wa.conv_close';
+    case WaConvReopen = 'wa.conv_reopen';
+    case WaConvSnooze = 'wa.conv_snooze';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -243,6 +246,9 @@ enum AuditAction: string
             self::WaMediaPurge => 'حذف مرفقات عميل',
             self::WaMediaConsent => 'اختيار العميل حفظ ملفاته',
             self::WaPolicyOverride => 'إرسال رغم تحذير بيانات حساسة',
+            self::WaConvClose => 'إغلاق محادثة',
+            self::WaConvReopen => 'إعادة فتح محادثة',
+            self::WaConvSnooze => 'تأجيل محادثة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

@@ -219,6 +219,10 @@ Schedule::command('whatsapp:media-prune')
 Schedule::command('whatsapp:media-sweep')
     ->hourly()
     ->withoutOverlapping();
+// المحادثات المؤجلة (E17) تعود «تدخّلاً» في موعدها
+Schedule::command('whatsapp:snooze-wake')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5);
 
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {

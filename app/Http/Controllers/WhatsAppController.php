@@ -53,6 +53,8 @@ class WhatsAppController extends Controller
             'canLinkClient' => auth()->user()->can('whatsapp.link_client') && auth()->user()->can('clients.view'),
             // مرفقات العملاء (E14): أزرار العرض والتنزيل، والخادم يفرضها بنفسه
             'canMedia' => auth()->user()->can('whatsapp.media'),
+            // متابعة الصندوق (E17): الإغلاق والتأجيل والتثبيت و«غير مقروء»
+            'followup' => \App\Services\WhatsApp\InboxFollowup::enabled(),
             'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
@@ -94,17 +96,26 @@ class WhatsAppController extends Controller
     private function conversationPage(Request $request): array
     {
         $cursor = $request->validate(['cursor' => ['nullable', 'string', 'regex:/^\d{1,10}:\d{1,12}$/']])['cursor'] ?? null;
+
+        // المثبّتة (E17، 5 على الأكثر) أعلى الصفحة الأولى وخارج الترقيم، فيبقى المؤشر على (last_message_at, id) صحيحاً
+        $pinned = \App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::pinnedIds(auth()->user()) : [];
+        $apart = $pinned && $request->get('filter', 'all') !== 'pinned';
+        $top = $apart && !$cursor
+            ? $this->conversationQuery($request)->whereIn('wa_conversations.id', $pinned)->orderByDesc('last_message_at')->orderByDesc('wa_conversations.id')->get()
+            : collect();
+
         $rows = $this->conversationQuery($request)
+            ->when($apart, fn ($q) => $q->whereNotIn('wa_conversations.id', $pinned))
             ->when($cursor, function ($q, $c) {
                 [$ts, $id] = array_map('intval', explode(':', $c));
                 if ($ts === 0) {
                     // آخر صف بلا last_message_at: ما بعده بلا وقت وبمعرّف أصغر
-                    return $q->whereNull('last_message_at')->where('id', '<', $id);
+                    return $q->whereNull('last_message_at')->where('wa_conversations.id', '<', $id);
                 }
                 $at = \Illuminate\Support\Carbon::createFromTimestamp($ts)->setTimezone(config('app.timezone'))->format('Y-m-d H:i:s');
 
                 return $q->where(fn ($w) => $w->where('last_message_at', '<', $at)
-                    ->orWhere(fn ($e) => $e->where('last_message_at', $at)->where('id', '<', $id))
+                    ->orWhere(fn ($e) => $e->where('last_message_at', $at)->where('wa_conversations.id', '<', $id))
                     ->orWhereNull('last_message_at'));
             })
             ->orderByDesc('last_message_at')->orderByDesc('id')
@@ -116,7 +127,7 @@ class WhatsAppController extends Controller
         $last = $rows->last();
 
         return [
-            'items' => $this->presentConversations($rows),
+            'items' => $this->presentConversations($top->concat($rows), $pinned),
             'has_more' => $more,
             'next_cursor' => $more && $last ? ((int) $last->last_message_at?->timestamp).':'.$last->id : null,
         ];
@@ -133,7 +144,7 @@ class WhatsAppController extends Controller
             // نوع آخر رسالة لأيقونة القائمة (E16): استعلام فرعي على الفهرس [conversation_id, id]
             ->selectSub(fn ($q) => $q->from('wa_messages')->select('msg_type')
                 ->whereColumn('wa_messages.conversation_id', 'wa_conversations.id')->orderByDesc('id')->limit(1), 'last_type')
-            ->with(['client:id,name,code', 'assignee:id,name'])
+            ->with(array_merge(['client:id,name,code', 'assignee:id,name'], \App\Services\WhatsApp\InboxFollowup::enabled() ? ['markedUnreadBy:id,name'] : []))
             // السياج: محادثات الإدارة، ثم الاختصاص والتوكيل (الشروط أدناه تضيّق ولا توسّع)
             ->visibleTo($me)
             // محادثة دُمجت في أخرى (E11): رسائلها انتقلت، فلا تظهر
@@ -155,11 +166,14 @@ class WhatsAppController extends Controller
             ->when($filter === 'unread', fn ($q) => $q->where('unread_count', '>', 0))
             ->when($filter === 'attention', fn ($q) => $q->where('needs_attention', true))
             ->when($filter === 'bot', fn ($q) => $q->where('bot_enabled', true))
-            ->when($filter === 'human', fn ($q) => $q->where('bot_enabled', false));
+            ->when($filter === 'human', fn ($q) => $q->where('bot_enabled', false))
+            // الإغلاق والتأجيل والتثبيت (E17): «الكل» لا يُظهر المغلقة والمؤجلة إلا ما يحتاج تدخّلاً
+            ->when(\App\Services\WhatsApp\InboxFollowup::enabled(), fn ($q) => \App\Services\WhatsApp\InboxFollowup::applyFilter($q, $filter, $me));
     }
 
-    private function presentConversations($rows): array
+    private function presentConversations($rows, array $pinned = []): array
     {
+        $followup = \App\Services\WhatsApp\InboxFollowup::enabled();
         // محادثات أرقام الإدارة تُعلَّم في الصندوق — يخدمها المساعد الإداري لا بوت العملاء
         $adminPhones = rescue(fn () => \App\Models\WaAdminNumber::where('is_active', true)->pluck('phone')->flip()->all(), [], false);
 
@@ -192,7 +206,7 @@ class WhatsAppController extends Controller
             'assignee' => $c->assignee?->name,
             'assigned_to' => $c->assigned_to,
             'topics' => TopicRouter::topicsOf($c),
-        ])->all();
+        ] + ($followup ? \App\Services\WhatsApp\InboxFollowup::state($c, in_array($c->id, $pinned, true)) : []))->all();
     }
 
     /**
@@ -313,7 +327,10 @@ class WhatsAppController extends Controller
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
-            ],
+            ] + (\App\Services\WhatsApp\InboxFollowup::enabled() ? \App\Services\WhatsApp\InboxFollowup::state(
+                $conversation,
+                \App\Models\WaConversationPin::where('user_id', auth()->id())->where('conversation_id', $conversation->id)->exists(),
+            ) : []),
             'notes' => $first ? $conversation->notes()->orderByDesc('id')->limit(10)->pluck('note') : null,
         ], fn ($value) => $value !== null));
     }
@@ -448,7 +465,8 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.reply'), 403);
 
-        $conversation->update(['unread_count' => 0]);
+        // الفتح الصريح يمحو «غير مقروء» الداخلي (E17) أيضاً
+        $conversation->forceFill(['unread_count' => 0] + (\App\Services\WhatsApp\InboxFollowup::available() ? ['marked_unread_at' => null, 'marked_unread_by' => null] : []))->save();
 
         return response()->json(['ok' => true]);
     }

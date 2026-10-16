@@ -714,6 +714,7 @@ class WhatsAppChannel
         if ($source === 'staff') {
             $update['bot_paused_until'] = now()->addMinutes(max(1, (int) $s->pause_minutes));
             $update['unread_count'] = 0;
+            $update += InboxFollowup::available() ? ['marked_unread_at' => null, 'marked_unread_by' => null] : [];
             $update['needs_attention'] = false;
             if (ReplyState::available()) {
                 $update['attention_reason'] = null;

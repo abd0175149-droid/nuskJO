@@ -23,6 +23,8 @@ class WaConversation extends Model
         'phone_number_id', 'referral', 'client_link', 'client_linked_by', 'client_linked_at', 'merged_into_id',
         // E14: إشعار حفظ الملفات واختيار العميل (granted | refused)
         'media_consent', 'media_consent_at', 'media_notice_at',
+        // E17: الإغلاق والتأجيل و«غير مقروء» الداخلي (حالة عندنا وحدنا، بلا أي نداء لميتا)
+        'closed_at', 'closed_by', 'snoozed_until', 'snoozed_by', 'marked_unread_at', 'marked_unread_by',
     ];
 
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
@@ -39,6 +41,9 @@ class WaConversation extends Model
         'erased_at' => 'datetime',
         'media_consent_at' => 'datetime',
         'media_notice_at' => 'datetime',
+        'closed_at' => 'datetime',
+        'snoozed_until' => 'datetime',
+        'marked_unread_at' => 'datetime',
     ];
 
     /**
@@ -54,6 +59,8 @@ class WaConversation extends Model
     public function notes(): HasMany { return $this->hasMany(WaCustomerNote::class, 'conversation_id'); }
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
     public function assignee(): BelongsTo { return $this->belongsTo(User::class, 'assigned_to'); }
+    public function pins(): HasMany { return $this->hasMany(WaConversationPin::class, 'conversation_id'); }
+    public function markedUnreadBy(): BelongsTo { return $this->belongsTo(User::class, 'marked_unread_by'); }
 
     /** الرقم معروف (عميل باسم مستخدم قد يراسلنا بلا رقم) */
     public function hasPhone(): bool

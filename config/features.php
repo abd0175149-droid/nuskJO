@@ -17,6 +17,7 @@ return [
         'admin_readonly' => env('WA_FEATURE_ADMIN_READONLY'),
         'inbox_v2' => env('WA_FEATURE_INBOX_V2'),
         'admin_rbac_enforce' => env('WA_FEATURE_ADMIN_RBAC_ENFORCE'),
+        'inbox_followup' => env('WA_FEATURE_INBOX_FOLLOWUP'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
     ],
 ];

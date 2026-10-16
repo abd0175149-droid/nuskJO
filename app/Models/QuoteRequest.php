@@ -18,6 +18,8 @@ class QuoteRequest extends Model
         'quoted_price_jod', 'quoted_note', 'quoted_by', 'quoted_at', 'assigned_to',
         // اختيار العميل من حمولة البوت: {sel: {group_id: option_id}, room, pax}
         'offer_selection', 'invoice_id',
+        // منع التكرار (E17): الوارد المصدر ومفتاح فريد مع المحادثة
+        'source_msg_id', 'dedupe_key',
     ];
 
     protected $casts = [

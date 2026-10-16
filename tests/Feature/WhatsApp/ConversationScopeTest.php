@@ -25,7 +25,8 @@ class ConversationScopeTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * كل مسار فيه {conversation}: [الطريقة، الحمولة، وحالة المحادثة التي ينجح عليها إن لزمت].
+     * كل مسار فيه {conversation}: [الطريقة، الحمولة، وحالة المحادثة التي ينجح عليها إن لزمت،
+     * وصلاحيات إضافية فوق INBOX_PERMISSIONS، وحالة النجاح المتوقعة داخل النطاق إن لم تكن 200].
      * ConversationRouteCoverageTest يفشل إن غاب عنها مسار.
      */
     public const ROUTES = [
@@ -40,6 +41,12 @@ class ConversationScopeTest extends TestCase
         'request-contact' => ['POST', [], ['phone' => null, 'wa_phone' => null, 'wa_user_id' => 'US.13491208655302741918']],
         // الربط (POST) بحمولة عميل حقيقي يغطيه LinkClientTest؛ هنا فك الربط على المسار نفسه
         'link-client' => ['DELETE', []],
+        // متابعة الصندوق (E17): DELETE على snooze وpin بالربط نفسه (ConversationStateTest)
+        'close' => ['POST', []],
+        'reopen' => ['POST', []],
+        'snooze' => ['POST', ['minutes' => 60]],
+        'pin' => ['POST', []],
+        'mark-unread' => ['POST', []],
     ];
 
     protected function setUp(): void
@@ -65,10 +72,15 @@ class ConversationScopeTest extends TestCase
         return $this->actingAs($user)->json($method, "/api/whatsapp/conversations/{$id}/{$route}", $payload);
     }
 
+    private static function permissionsFor(string $route): array
+    {
+        return [...self::INBOX_PERMISSIONS, ...(self::ROUTES[$route][3] ?? [])];
+    }
+
     #[DataProvider('routes')]
     public function test_conversation_outside_scope_is_not_found_and_left_untouched(string $route): void
     {
-        $specialist = $this->staffWith('umrah-desk', self::INBOX_PERMISSIONS, ['umrah']);
+        $specialist = $this->staffWith('umrah-desk', self::permissionsFor($route), ['umrah']);
         $conversation = $this->conversationTagged([], ['unread_count' => 4, 'needs_attention' => true]);
         $before = $this->conversationState($conversation);
 
@@ -82,7 +94,7 @@ class ConversationScopeTest extends TestCase
     #[DataProvider('routes')]
     public function test_staff_without_a_topic_cannot_reach_a_tagged_conversation(string $route): void
     {
-        $plain = $this->staffWith('desk', self::INBOX_PERMISSIONS);
+        $plain = $this->staffWith('desk', self::permissionsFor($route));
         $conversation = $this->conversationTagged(['umrah']);
         $before = $this->conversationState($conversation);
 
@@ -95,17 +107,17 @@ class ConversationScopeTest extends TestCase
     #[DataProvider('routes')]
     public function test_topic_specialist_reaches_a_conversation_with_their_topic(string $route): void
     {
-        $specialist = $this->staffWith('umrah-desk', self::INBOX_PERMISSIONS, ['umrah']);
+        $specialist = $this->staffWith('umrah-desk', self::permissionsFor($route), ['umrah']);
 
-        $this->hit($specialist, $this->conversationTagged(['umrah'], self::ROUTES[$route][2] ?? []), $route)->assertOk();
+        $this->hit($specialist, $this->conversationTagged(['umrah'], self::ROUTES[$route][2] ?? []), $route)->assertStatus(self::ROUTES[$route][4] ?? 200);
     }
 
     #[DataProvider('routes')]
     public function test_assignee_reaches_an_untagged_conversation(string $route): void
     {
-        $assignee = $this->staffWith('desk', self::INBOX_PERMISSIONS);
+        $assignee = $this->staffWith('desk', self::permissionsFor($route));
 
-        $this->hit($assignee, $this->conversationTagged([], ['assigned_to' => $assignee->id] + (self::ROUTES[$route][2] ?? [])), $route)->assertOk();
+        $this->hit($assignee, $this->conversationTagged([], ['assigned_to' => $assignee->id] + (self::ROUTES[$route][2] ?? [])), $route)->assertStatus(self::ROUTES[$route][4] ?? 200);
     }
 
     public function test_view_all_reaches_any_conversation_but_unknown_ids_are_still_not_found(): void

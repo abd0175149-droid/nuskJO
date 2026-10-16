@@ -255,7 +255,8 @@ class WhatsAppInbox
                 'last_message_at' => $metaAt,
                 'last_message_preview' => mb_substr(trim((string) $body), 0, 160),
             ]);
-        WaConversation::whereKey($conv->id)->update(['unread_count' => DB::raw('unread_count + 1'), 'status' => 'open']);
+        // أي وارد (لا التفاعل ولا رسالة النظام، فهما يعودان قبل هنا) يعيد فتح المغلقة ويمسح التأجيل (E17)
+        WaConversation::whereKey($conv->id)->update(['unread_count' => DB::raw('unread_count + 1'), 'status' => 'open'] + InboxFollowup::reopenColumns());
         $conv->refresh();
 
         // زرّا إشعار حفظ الملفات (E14): اختيار مسجّل لا يصل للبوت، والحذف بعد الاعتماد
