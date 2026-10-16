@@ -206,6 +206,17 @@ return [
     'IntegrationController@redrive' => 'integ.delivery_redrive',
     'IntegrationController@createToken' => 'mcp.token_create',
     'IntegrationController@revokeToken' => 'mcp.token_revoke',
+    // E33: التصحيح المقتبس والتفاعل والبطاقة لعميل، وإدارة المواقع والبطاقات المعتمدة
+    'WhatsAppRichMessageController@correct' => 'wa.msg_correct',
+    'WhatsAppRichMessageController@react' => 'wa.reaction_send',
+    'WhatsAppRichMessageController@sendLocation' => 'none: رسالة صادرة كالرد من موقع معتمد، وwa_messages.staff_id يحفظ المرسل وpayload._meta.place_id الموقع',
+    'WhatsAppRichMessageController@sendContact' => 'wa.share_card',
+    'WhatsAppSharedItemsController@storePlace' => 'wa.place_change',
+    'WhatsAppSharedItemsController@updatePlace' => 'wa.place_change',
+    'WhatsAppSharedItemsController@destroyPlace' => 'wa.place_change',
+    'WhatsAppSharedItemsController@storeCard' => 'wa.card_change',
+    'WhatsAppSharedItemsController@updateCard' => 'wa.card_change',
+    'WhatsAppSharedItemsController@destroyCard' => 'wa.card_change',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

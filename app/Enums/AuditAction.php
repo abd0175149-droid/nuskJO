@@ -157,6 +157,12 @@ enum AuditAction: string
     // E22: رفع حجب القناة يدوياً بسبب، وتأكيد الاطلاع على اقتراح الرفع
     case WaHealthUnblock = 'wa.health_unblock';
     case WaHealthAck = 'wa.health_ack';
+    // E33: رسالة التصحيح المقتبسة (الأصل لا يتغيّر)، وتفاعل الموظف، وإرسال بطاقة اتصال، وإدارة المواقع والبطاقات المعتمدة
+    case WaMsgCorrect = 'wa.msg_correct';
+    case WaReactionSend = 'wa.reaction_send';
+    case WaShareCard = 'wa.share_card';
+    case WaPlaceChange = 'wa.place_change';
+    case WaCardChange = 'wa.card_change';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -227,6 +233,7 @@ enum AuditAction: string
             self::WaQrDelete => AuditSeverity::Warn,
             self::IntegrationEndpointCreate, self::IntegrationEndpointDelete, self::IntegrationEndpointRotate, self::IntegrationEndpointToggle,
             self::IntegrationEndpointAutoPaused, self::McpTokenCreate, self::McpTokenRevoke => AuditSeverity::Warn,
+            self::WaMsgCorrect => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -254,6 +261,8 @@ enum AuditAction: string
             self::WaConvAutomationSync => 'config',
             self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
             self::WaQrCreate, self::WaQrDelete, self::WaQrCardToggle, self::OfferStoryGenerate => 'config',
+            self::WaPlaceChange, self::WaCardChange => 'config',
+            self::WaReactionSend => 'noise',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
@@ -403,6 +412,11 @@ enum AuditAction: string
             self::OfferStoryGenerate => 'توليد بطاقة الحالة 9:16',
             self::WaHealthUnblock => 'رفع حجب القناة يدوياً',
             self::WaHealthAck => 'الاطلاع على اقتراح رفع الحجب',
+            self::WaMsgCorrect => 'إرسال تصحيح مقتبس لرسالة سابقة',
+            self::WaReactionSend => 'تفاعل موظف على رسالة عميل',
+            self::WaShareCard => 'إرسال بطاقة اتصال معتمدة لعميل',
+            self::WaPlaceChange => 'تعديل موقع معتمد للدبوس',
+            self::WaCardChange => 'تعديل بطاقة اتصال معتمدة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -453,7 +467,9 @@ enum AuditAction: string
             // E22: انتقال صحة القناة (بديل صف الإيقاف التلقائي) وحدث الحساب الحرج: «من حجب الإرسال؟» له جواب دائماً
             self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock,
             // E40: كل قراءة عبر MCP (بيانات تخرج لعميل ذكاء)، وإصدار رموزه وإبطالها، والإيقاف الآلي لوجهة
-            self::McpToolCall, self::McpTokenCreate, self::McpTokenRevoke, self::IntegrationEndpointAutoPaused], true);
+            self::McpToolCall, self::McpTokenCreate, self::McpTokenRevoke, self::IntegrationEndpointAutoPaused,
+            // E33: التصحيح دليل عند نزاع على سعر
+            self::WaMsgCorrect], true);
     }
 
     public function isNoise(): bool

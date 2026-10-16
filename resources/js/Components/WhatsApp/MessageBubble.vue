@@ -4,7 +4,12 @@
     <div v-if="m.is_system" dir="auto" class="max-w-[85%] rounded-full px-3 py-1 text-[11px] text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-800 [unicode-bidi:plaintext]" :class="flash ? FLASH : ''">
       {{ m.body }} <span dir="ltr" class="opacity-60">· {{ m.at }}</span>
     </div>
-    <div v-else class="max-w-[85%] sm:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-shadow" :class="[tone, flash ? FLASH : '']">
+    <div v-else class="group relative max-w-[85%] sm:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-shadow" :class="[tone, flash ? FLASH : '']"
+         v-on="actionable ? press.handlers : {}" :data-actionable="actionable ? '' : null">
+      <!-- إجراءات الرسالة (E33): ⋯ بالمرور أو التركيز من عرض sm فما فوق، وضغط مطوّل 500ms على الجوال -->
+      <button v-if="actionable" type="button" data-test="message-actions" aria-label="إجراءات الرسالة" title="رد أو تفاعل أو تصحيح"
+              @click="$emit('actions', m)"
+              class="absolute -top-2 end-1 hidden sm:flex items-center justify-center w-7 h-7 rounded-full text-xs bg-white text-gray-700 dark:bg-gray-800 dark:text-gray-100 shadow border border-black/10 dark:border-white/10 opacity-0 group-hover:opacity-100 focus:opacity-100">⋯</button>
       <p v-if="m.sender" dir="auto" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
       <!-- الاقتباس (E11، ويكمله E33) -->
       <slot name="quote">
@@ -57,15 +62,19 @@
 import { computed } from 'vue';
 import DeliveryTicks from './DeliveryTicks.vue';
 import WaText from './WaText.vue';
+import { useLongPress } from '@/composables/whatsapp/useLongPress.js';
 
 // flash (E30): الرسالة التي قفز إليها الموظف من البحث، حلقة ذهبية ثوانيَ
 // readUpto (E35): أعلى وارد أُبلغت ميتا بقراءته في هذه المحادثة
+// actionable (E33): للموظف الذي يملك الرد ولرسالة لها إجراء (رد أو تفاعل أو تصحيح)
 const props = defineProps({
   m: { type: Object, required: true },
   flash: Boolean,
   readUpto: { type: Number, default: null },
+  actionable: Boolean,
 });
-defineEmits(['resend']);
+const emit = defineEmits(['resend', 'actions']);
+const press = useLongPress(() => emit('actions', props.m));
 const FLASH = 'ring-2 ring-gold-400 ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-950';
 
 // rule (E37): رد قاعدة حتمية بنص ثابت معتمد
@@ -94,6 +103,8 @@ const chip = computed(() => ({
 // الوارد أبيض، والبوت أخضر، والنظام رمادي، والموظف ذهبي، والمحجوبة حمراء (E15)
 const tone = computed(() => {
   const m = props.m;
+  // رسالة لا تدعمها منصة ميتا (E33): كهرمانية، فقد وصلت لموظف
+  if (m.direction === 'in' && m.type === 'unsupported') return 'bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-100 border border-amber-300 dark:border-amber-700 rounded-ss-sm';
   if (m.direction === 'in') return 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-ss-sm';
   if (m.status === 'blocked') return 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-se-sm';
   if (m.source === 'bot') return 'bg-emerald-600 text-white rounded-se-sm';

@@ -254,6 +254,7 @@ class WaBotSetting extends Model
         }
         $cfg = $this->tools_config ?? [];
 
-        return !array_key_exists($key, $cfg) || (bool) $cfg[$key];
+        // مفتاح غائب: حالة الأداة الافتراضية (مفعّلة، إلا ما شُحن مطفأً في E33)
+        return array_key_exists($key, $cfg) ? (bool) $cfg[$key] : \App\Services\WhatsApp\BotTools::defaultEnabled($key);
     }
 }

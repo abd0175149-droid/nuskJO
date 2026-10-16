@@ -37,14 +37,23 @@ final class InboundMessage
         public readonly ?string $sharedOrigin,
         public readonly string $phoneNumberId,
         public readonly int $timestamp,
+        /** E33: إيموجي التفاعل ('' عند الإزالة، فميتا تحذف الحقل) */
+        public readonly ?string $reactionEmoji = null,
     ) {}
+
+    /** E33: تعديل وحذف أرقام Coexistence، إن وصلا صريحين، يُعاملان كغير مدعوم ولا يمسّان الرسالة الأصلية */
+    private const AS_UNSUPPORTED = ['edit', 'revoke'];
 
     public static function fromWebhook(array $msg, ?array $contact, string $phoneNumberId): self
     {
         $type = (string) (data_get($msg, 'type') ?: 'text');
+        $unsupportedType = $type === 'unsupported' ? self::str(data_get($msg, 'unsupported.type'), 30) : null;
+        if (in_array($type, self::AS_UNSUPPORTED, true)) {
+            [$type, $unsupportedType] = ['unsupported', $type];
+        }
         $from = data_get($msg, 'from');
         $userId = data_get($msg, 'from_user_id');
-        [$body, $buttonId] = self::body($msg, $type);
+        [$body, $buttonId] = $type === 'unsupported' ? [self::unsupported($unsupportedType), null] : self::body($msg, $type);
         $mediaNode = in_array($type, self::MEDIA, true) ? (array) data_get($msg, $type, []) : [];
         $shared = $type === 'contacts' ? self::sharedContact($msg) : [null, null];
 
@@ -72,11 +81,12 @@ final class InboundMessage
                     ? PhoneNormalizer::digits((string) (data_get($msg, 'system.wa_id') ?? data_get($msg, 'system.new_wa_id'))) : null,
                 'newUserId' => is_string(data_get($msg, 'system.user_id')) && preg_match(self::BSUID, data_get($msg, 'system.user_id')) ? data_get($msg, 'system.user_id') : null,
             ] : null,
-            unsupportedType: $type === 'unsupported' ? self::str(data_get($msg, 'unsupported.type'), 30) : null,
+            unsupportedType: $unsupportedType,
             sharedPhone: $shared[0],
             sharedOrigin: $shared[1],
             phoneNumberId: $phoneNumberId,
             timestamp: (int) data_get($msg, 'timestamp', 0),
+            reactionEmoji: $type === 'reaction' ? (filled(data_get($msg, 'reaction.emoji')) ? mb_substr((string) data_get($msg, 'reaction.emoji'), 0, 16) : '') : null,
         );
     }
 
@@ -110,7 +120,6 @@ final class InboundMessage
             'order' => ['🛒 طلب من الكتالوج: '.count((array) data_get($msg, 'order.product_items', [])).' أصناف'
                 .(filled(data_get($msg, 'order.text')) ? ' — '.data_get($msg, 'order.text') : ''), null],
             'reaction' => [filled(data_get($msg, 'reaction.emoji')) ? (string) data_get($msg, 'reaction.emoji') : '↩️ أزال التفاعل', null],
-            'unsupported' => ['⚠️ رسالة غير مدعومة'.(is_string(data_get($msg, 'unsupported.type')) ? ' ('.mb_substr(data_get($msg, 'unsupported.type'), 0, 30).')' : ''), null],
             'system' => [self::system($msg), null],
             default => self::unknown($msg, $type),
         };
@@ -142,15 +151,33 @@ final class InboundMessage
         return trim('📍 '.($place !== '' ? $place.' ' : '').$link);
     }
 
+    /**
+     * بطاقة جهة اتصال بالاسم وحده (E33، C007): رقم الطرف الثالث لا يصل إلى مزوّد النموذج ولا معاينة المحادثة ولا إشعار
+     * الجوال. الأرقام في payload وحدها، ولمن يملك whatsapp.reply.
+     */
     private static function contacts(array $msg): string
     {
         $lines = [];
         foreach ((array) data_get($msg, 'contacts', []) as $card) {
-            $phone = data_get($card, 'phones.0.phone') ?? data_get($card, 'phones.0.wa_id');
-            $lines[] = '👤 جهة اتصال: '.(TextNormalizer::untrustedName(data_get($card, 'name.formatted_name'), 120) ?? '—').($phone ? ' — '.$phone : '');
+            $lines[] = '👤 بطاقة جهة اتصال: '.(TextNormalizer::untrustedName(data_get($card, 'name.formatted_name'), 120) ?? '—');
         }
 
-        return $lines ? implode("\n", $lines) : '👤 جهة اتصال';
+        return $lines ? implode("\n", $lines) : '👤 بطاقة جهة اتصال';
+    }
+
+    /**
+     * نص عربي بحسب unsupported.type (E33): لا يرد عليه البوت، ويصل الموظف بشارة «رسالة غير مدعومة».
+     * النوع المجهول يُعرض بمحارف لاتينية آمنة وحدها.
+     */
+    public static function unsupported(?string $kind): string
+    {
+        return match ($kind) {
+            'edit' => '✏️ عدّل العميل رسالة سابقة، ولا يظهر النص الجديد في منصة ميتا — راجع المحادثة واطلب منه إعادة كتابتها',
+            'revoke' => '🗑️ حذف العميل رسالة سابقة من جهازه، ويبقى نصها الأصلي هنا',
+            'poll_creation', 'poll_update' => '📊 أرسل العميل استطلاعاً لا تعرضه منصة ميتا',
+            'media_placeholder' => '⏳ وسائط لم يكتمل إرسالها من جهاز العميل',
+            default => '⚠️ رسالة لا تدعمها منصة ميتا'.(($safe = preg_replace('/[^a-z0-9_]/', '', strtolower((string) $kind))) ? " ({$safe})" : ''),
+        };
     }
 
     /**

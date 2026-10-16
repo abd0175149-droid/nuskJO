@@ -71,5 +71,10 @@ return [
         // E40: الصندوق الصادر وخادم MCP
         'integration_outbox' => env('WA_FEATURE_INTEGRATION_OUTBOX'),
         'mcp_server' => env('WA_FEATURE_MCP_SERVER'),
+        // E33: الاقتباس والتصحيح، وتفاعل الموظف، ومعاينة الرابط، والموقع والبطاقات
+        'wa_reply_quote' => env('WA_FEATURE_WA_REPLY_QUOTE'),
+        'wa_staff_reactions' => env('WA_FEATURE_WA_STAFF_REACTIONS'),
+        'wa_link_preview' => env('WA_FEATURE_WA_LINK_PREVIEW'),
+        'wa_share_cards' => env('WA_FEATURE_WA_SHARE_CARDS'),
     ],
 ];

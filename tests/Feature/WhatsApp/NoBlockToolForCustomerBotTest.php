@@ -5,13 +5,17 @@ namespace Tests\Feature\WhatsApp;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Services\WhatsApp\BotTools;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
  * بوت العملاء لا يملك أي أداة حظر أبداً (E31.7)، أياً كان tools_config: الحظر قرار الشركة من الصندوق أو المساعد الإداري.
+ * القاعدة لازمة: أدوات خلف علم ميزة (E33) تقرأ الأعلام من الإعدادات.
  */
 class NoBlockToolForCustomerBotTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_no_customer_bot_tool_can_block_under_any_tools_config(): void
     {
         $this->assertSame([], array_filter(BotTools::names(), fn ($n) => str_contains($n, 'block')));

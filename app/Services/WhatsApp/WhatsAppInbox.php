@@ -242,6 +242,13 @@ class WhatsAppInbox
             return null;
         }
 
+        // رسالة لا تدعمها منصة ميتا (E33): وصلت فعلاً وفتحت النافذة، لكن البوت لا يرد على نص لا يراه؛ تصل موظفاً بسببها
+        if ($in->type === 'unsupported') {
+            ReplyState::markUnserved($conv, 'unsupported');
+
+            return null;
+        }
+
         // مصدر المحادثة (E38): رمز QR أو رابط أو إعلان، بعد الاعتماد وقبل البوت. لا يكسر الاستقبال أبداً
         if ($stored) {
             EntryRecorder::record($conv, $stored, $in->referral);
@@ -278,7 +285,7 @@ class WhatsAppInbox
      */
     private static function pendingDuplicate(WaMessage $m): ?int
     {
-        $pending = $m->direction === 'in' && $m->msg_type !== 'reaction' && ReplyState::available()
+        $pending = $m->direction === 'in' && !in_array($m->msg_type, ['reaction', 'unsupported'], true) && ReplyState::available()
             && $m->id > (int) WaConversation::whereKey($m->conversation_id)->value('bot_answered_in_id');
 
         return $pending ? (int) $m->conversation_id : null;
@@ -308,6 +315,8 @@ class WhatsAppInbox
                 'body' => $in->body, 'payload' => $msg + ($in->reactionTo ? ['_reaction_to' => $in->reactionTo] : []),
             ] + $columns);
             EventBus::emit(new WaMessageStored($reaction->id, $conv->id, 'reaction'));
+            // E33: شارة على الرسالة الأصلية بمقارنة طابع ميتا (لا تغيّر النافذة ولا العدّاد ولا المعاينة)، وإلا يبقى يتيماً
+            ReactionProjector::applyInbound($conv, $in, $reaction->id);
 
             return [null, false, null];
         }

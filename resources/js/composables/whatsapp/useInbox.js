@@ -401,11 +401,15 @@ export function useInbox(props, thread) {
         if (s.activeId === id) poll();
     }
 
-    /** confirmFn(message): Promise<boolean> لتحذير السياسة (E15.9) */
-    async function send(confirmFn) {
+    /**
+     * confirmFn(message): Promise<boolean> لتحذير السياسة (E15.9).
+     * extra (E33): reply_to_id وpreview_url مع الرد، وonSent(data) بعد إرسال ناجح (يمسح الاقتباس ويعرض سبب رفض المعاينة)
+     */
+    async function send(confirmFn, extra = {}) {
         const id = s.activeId;
         const body = drafts.get(id).trim();
         if (!id || !body || s.sending || s.sendCooldown) return;
+        const { onSent, ...fields } = extra || {};
         s.sending = true;
         s.sendError = '';
         s.sendNotice = '';
@@ -413,14 +417,14 @@ export function useInbox(props, thread) {
         try {
             let res;
             try {
-                res = await axios.post(threadUrl(id, 'send'), { body }, { headers });
+                res = await axios.post(threadUrl(id, 'send'), { body, ...fields }, { headers });
             } catch (e) {
                 if (e?.response?.status !== 409 || e.response.data?.code !== 'POLICY_WARN') throw e;
                 if (!(await confirmFn(e.response.data.error))) {
                     s.sendError = 'لم تُرسل الرسالة.';
                     return;
                 }
-                res = await axios.post(threadUrl(id, 'send'), { body, ack_warnings: true }, { headers });
+                res = await axios.post(threadUrl(id, 'send'), { body, ack_warnings: true, ...fields }, { headers });
             }
             // 202 «غير مؤكد» (دفتر الإرسال E19): المسودة والمفتاح باقيان، ولا إعادة تلقائية. الخيط يُظهر الصف ⚠️
             if (res?.data?.unknown && resilienceEnabled()) return maybeSent(id, res.data.error);
@@ -431,6 +435,7 @@ export function useInbox(props, thread) {
             }
             sendKeys.done(id);
             drafts.clear(id);
+            onSent?.(res?.data);
             if (s.activeId === id && (s.detached || s.filtered)) {
                 // بعد الإرسال من عرض مفلتر أو نافذة قديمة: يُلغى الفلتر ويعود الخيط إلى الأحدث فتظهر الرسالة (E30)
                 s.threadFilters = {};

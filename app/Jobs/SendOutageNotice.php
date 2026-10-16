@@ -34,7 +34,9 @@ class SendOutageNotice implements ShouldQueue
             return;
         }
         $lastIn = $conv->messages()->where('direction', 'in')->where('source', '!=', 'system')->where('msg_type', '!=', 'reaction')->orderByDesc('id')->first();
-        $answered = $lastIn && $conv->messages()->where('direction', 'out')->where('id', '>', $lastIn->id)->where('status', '!=', 'failed')->exists();
+        // تفاعل الموظف (E33) ليس رداً
+        $answered = $lastIn && $conv->messages()->where('direction', 'out')->where('id', '>', $lastIn->id)->where('status', '!=', 'failed')
+            ->where('msg_type', '!=', 'reaction')->exists();
         if (!$lastIn || $answered || !$conv->isWindowOpen()) {
             return;
         }

@@ -166,6 +166,24 @@ class BotTools
             'required' => ['note'],
             'rules' => ['note' => 'required|string|max:300'],
         ],
+        // E33: دبوس المكتب وبطاقة الاتصال. مطفأتان افتراضياً (default_enabled=false) وخلف العلم wa_share_cards، وكلٌّ رسالة
+        // خدمة إضافية مدفوعة. لا وسائط حرة: المكتب من wa_places والبطاقة بمفتاح من قائمة تُحسب عند بناء الإعلان
+        'send_office_location' => [
+            'label' => 'إرسال دبوس موقع المكتب', 'handler' => 'sendOfficeLocation', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'wa_share_cards',
+            'description' => 'أرسل للعميل دبوس موقع المكتب المعتمد على الخريطة. استدعِها إذا سأل عن مكان المكتب أو العنوان أو كيف يصل. '
+                .'بعدها اكتب جملة قصيرة فقط ولا تكرر العنوان.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'send_contact_card' => [
+            'label' => 'إرسال بطاقة اتصال معتمدة', 'handler' => 'sendContactCard', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'wa_share_cards',
+            'description' => 'أرسل للعميل بطاقة اتصال من القائمة المعتمدة (المكتب أو المندوب…) إذا طلب رقم جهة بعينها. '
+                .'لا تكتب أي رقم هاتف بنفسك أبداً.',
+            'properties' => ['card_key' => ['type' => 'string', 'description' => 'مفتاح البطاقة من القائمة', 'maxLength' => 20]],
+            'required' => ['card_key'],
+            'rules' => ['card_key' => 'required|string|max:20'],
+        ],
         'handoff_to_human' => [
             'label' => 'تحويل لموظف', 'handler' => 'handoff', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => true,
             'escalates' => true, 'disableable' => false,
@@ -202,17 +220,34 @@ class BotTools
         return (bool) (self::TOOLS[$name]['disableable'] ?? true);
     }
 
-    /** مفعّلة لهذا الإعداد: ما لا يُطفأ مفعّل دائماً مهما كان في tools_config */
-    public static function isEnabled(WaBotSetting $s, string $name): bool
+    /** حالتها حين يغيب مفتاحها عن tools_config: مفعّلة، إلا أداة شُحنت مطفأة (E33) */
+    public static function defaultEnabled(string $name): bool
     {
-        return isset(self::TOOLS[$name]) && (!self::disableable($name) || $s->toolEnabled($name));
+        return (bool) (self::TOOLS[$name]['default_enabled'] ?? true);
     }
 
-    /** للإعدادات: [{key, label, escalates, disableable}] */
+    /**
+     * مفعّلة لهذا الإعداد: ما لا يُطفأ مفعّل دائماً مهما كان في tools_config. أداة خلف علم ميزة (E33) لا تعمل ما دام علمها
+     * مطفأً، أياً كان tools_config.
+     */
+    public static function isEnabled(WaBotSetting $s, string $name): bool
+    {
+        if (!isset(self::TOOLS[$name])) {
+            return false;
+        }
+        if (isset(self::TOOLS[$name]['flag']) && !FeatureFlags::on(self::TOOLS[$name]['flag'])) {
+            return false;
+        }
+
+        return !self::disableable($name) || $s->toolEnabled($name);
+    }
+
+    /** للإعدادات: [{key, label, escalates, disableable, default_enabled}] */
     public static function meta(): array
     {
         return array_map(fn ($name) => ['key' => $name, 'label' => self::TOOLS[$name]['label'],
-            'escalates' => self::TOOLS[$name]['escalates'], 'disableable' => self::TOOLS[$name]['disableable']], self::names());
+            'escalates' => self::TOOLS[$name]['escalates'], 'disableable' => self::TOOLS[$name]['disableable'],
+            'default_enabled' => self::defaultEnabled($name)], self::names());
     }
 
     /** @return array<string, string> */
@@ -237,6 +272,14 @@ class BotTools
             $props = $t['properties'];
             if (isset($props['topics']['description'])) {
                 $props['topics']['description'] = str_replace('{topics}', implode(' | ', array_keys(TopicRouter::TOPICS)), $props['topics']['description']);
+            }
+            // مفاتيح البطاقات المسموحة للبوت (E33): القائمة نفسها في الإعلان وفي التنفيذ، وبلا بطاقة لا تُعلن الأداة
+            if ($name === 'send_contact_card') {
+                $keys = self::contactCardKeys();
+                if ($keys === []) {
+                    continue;
+                }
+                $props['card_key']['enum'] = $keys;
             }
             $schema = ['type' => 'object', 'properties' => $props];
             if ($t['required']) {
@@ -376,6 +419,8 @@ class BotTools
             'send_key' => SendKey::reply($conv, ReplyRun::current()?->uptoId, 'card:'.$offer->id),
             // نص الصف كما في مسار الرابط: عنوان العرض
             'display' => $title,
+            // إن اقتبس العميل البطاقة عرف الخادم العرض بعينه (E33)
+            'meta' => ['offer_id' => $offer->id],
             'media' => $stored ? ['mime' => $info['mime'], 'sha256' => $stored['sha256'], 'size' => $stored['size'],
                 'filename' => $info['name'], 'path' => $stored['path']] : null,
         ]);
@@ -449,7 +494,9 @@ class BotTools
             url(Storage::disk('public')->url($path)),
             mb_substr($offer->title, 0, 200),
             'bot',
-            sendKey: SendKey::reply($conv, ReplyRun::current()?->uptoId, 'card:'.$offer->id)
+            sendKey: SendKey::reply($conv, ReplyRun::current()?->uptoId, 'card:'.$offer->id),
+            // إن اقتبس العميل البطاقة عرف الخادم العرض بعينه (E33)
+            opts: ['meta' => ['offer_id' => $offer->id]]
         );
 
         if (!$res['ok']) {
@@ -472,6 +519,69 @@ class BotTools
             'note' => 'أُرسلت البطاقة للعميل بالفعل. لا تصف محتواها ولا تعيد سرد الأسعار — '
                 .'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
         ];
+    }
+
+    // ==================== الدبوس والبطاقة (E33) ====================
+
+    /** مكتب البوت الافتراضي وحده (فعّال ومسموح للبوت)، وإلا العنوان النصي. رسالتان مدفوعتان: الدبوس ثم نص البوت */
+    private static function sendOfficeLocation(array $in, WaConversation $conv): array
+    {
+        $place = \App\Models\WaPlace::defaultOffice();
+        if (!$place) {
+            return ['sent' => false, 'note' => 'لا يوجد دبوس معتمد؛ اذكر العنوان النصي من بيانات الشركة فقط'];
+        }
+        if (($run = ReplyRun::current()) && ($drop = $run->mayDeliver($conv))) {
+            $run->abort = $drop;
+
+            return ['sent' => false, 'note' => 'لا ترسل شيئاً آخر.'];
+        }
+        $res = WhatsAppChannel::sendLocation($conv, $place, 'bot', null,
+            ['send_key' => SendKey::reply($conv, ReplyRun::current()?->uptoId, 'place:'.$place->id)]);
+        if (!$res['ok']) {
+            WaLog::warning('bot.place.send_failed', ['conv_id' => $conv->id, 'code' => $res['code']]);
+
+            return ['sent' => false, 'note' => 'تعذّر إرسال الدبوس؛ اذكر العنوان النصي من بيانات الشركة فقط'];
+        }
+
+        return ['sent' => true, 'note' => 'أُرسل دبوس الموقع. اكتب جملة قصيرة فقط ولا تكرر العنوان'];
+    }
+
+    /** card_{id} للبطاقات الفعّالة المسموحة للبوت @return list<string> */
+    public static function contactCardKeys(): array
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('wa_contact_cards')) {
+            return [];
+        }
+
+        return \App\Models\WaContactCard::active()->botAllowed()->orderBy('sort_order')->orderBy('id')->limit(20)->pluck('id')
+            ->map(fn ($id) => 'card_'.$id)->all();
+    }
+
+    /** بطاقة من القائمة المعتمدة بمفتاحها وحده: مفتاح خارج القائمة يُرفض، والرقم لا يكتبه النموذج أبداً */
+    private static function sendContactCard(array $in, WaConversation $conv): array
+    {
+        $key = (string) ($in['card_key'] ?? '');
+        if (!in_array($key, self::contactCardKeys(), true)) {
+            return ['ok' => false, 'error' => 'بطاقة غير متاحة', 'note' => 'اعتذر بإيجاز ولا تذكر أي رقم، واعرض التحويل لموظف.'];
+        }
+        $card = \App\Models\WaContactCard::active()->botAllowed()->find((int) substr($key, 5));
+        if (!$card) {
+            return ['ok' => false, 'error' => 'بطاقة غير متاحة', 'note' => 'اعتذر بإيجاز ولا تذكر أي رقم، واعرض التحويل لموظف.'];
+        }
+        if (($run = ReplyRun::current()) && ($drop = $run->mayDeliver($conv))) {
+            $run->abort = $drop;
+
+            return ['sent' => false, 'note' => 'لا ترسل شيئاً آخر.'];
+        }
+        $res = WhatsAppChannel::sendContacts($conv, collect([$card]), 'bot', null,
+            ['send_key' => SendKey::reply($conv, ReplyRun::current()?->uptoId, 'contact:'.$card->id)]);
+        if (!$res['ok']) {
+            WaLog::warning('bot.contact.send_failed', ['conv_id' => $conv->id, 'code' => $res['code']]);
+
+            return ['sent' => false, 'note' => 'تعذّر إرسال البطاقة؛ اعرض تحويل المحادثة لموظف ولا تكتب أي رقم.'];
+        }
+
+        return ['sent' => true, 'note' => 'أُرسلت البطاقة. اكتب جملة قصيرة فقط ولا تكرر أي رقم.'];
     }
 
     private static function getBalance(array $in, WaConversation $conv): array

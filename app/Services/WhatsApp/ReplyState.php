@@ -39,6 +39,8 @@ final class ReplyState
         'snooze_due' => '⏰ موعد متابعة',
         // E22: ميتا تحجب الإرسال (لا يرد البوت ولا يُستدعى النموذج)
         'channel_blocked' => '⛔ القناة محجوبة',
+        // E33: تعديل أو استطلاع أو نوع لا تعرضه منصة ميتا
+        'unsupported' => '🧩 رسالة غير مدعومة',
     ];
 
     private static ?bool $available = null;

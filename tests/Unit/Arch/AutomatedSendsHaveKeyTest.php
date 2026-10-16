@@ -20,8 +20,8 @@ class AutomatedSendsHaveKeyTest extends TestCase
                 continue;
             }
             $code = (string) file_get_contents($file->getPathname());
-            // المغلف الموحّد send() وحجز الملف reserve() (E32) كالأغلفة القديمة
-            if (!preg_match_all('/WhatsAppChannel::(?:send(?:Text|Image|Buttons|List|ContactRequest)?|reserve)\(/', $code, $m, PREG_OFFSET_CAPTURE)) {
+            // المغلف الموحّد send() وحجز الملف reserve() (E32) كالأغلفة القديمة، والدبوس والبطاقات والتفاعل (E33)
+            if (!preg_match_all('/WhatsAppChannel::(?:send(?:Text|Image|Buttons|List|ContactRequest|Location|Contacts|Reaction)?|reserve)\(/', $code, $m, PREG_OFFSET_CAPTURE)) {
                 continue;
             }
             foreach ($m[0] as [$match, $offset]) {

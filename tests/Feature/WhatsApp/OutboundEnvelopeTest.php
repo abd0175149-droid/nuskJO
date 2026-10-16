@@ -78,7 +78,8 @@ class OutboundEnvelopeTest extends TestCase
 
     public function test_an_unregistered_type_is_unsupported_without_any_request(): void
     {
-        $result = WhatsAppChannel::send($this->conv, OutboundMessage::custom('location', ['latitude' => 31.95]), 'bot');
+        // نوع لم يسجّله أحد (location وcontacts وreaction تسجّلها E33 بمصدر معتمد)
+        $result = WhatsAppChannel::send($this->conv, OutboundMessage::custom('sticker', ['id' => '1001']), 'bot');
 
         $this->assertSame([false, WhatsAppChannel::ERR_UNSUPPORTED], [$result['ok'], $result['code']]);
         Http::assertNothingSent();
@@ -87,18 +88,19 @@ class OutboundEnvelopeTest extends TestCase
 
     public function test_a_later_epic_registers_its_type_on_the_same_envelope(): void
     {
-        OutboundMessage::registerType('location',
-            fn (OutboundMessage $m) => ['latitude' => $m->data['lat'], 'longitude' => $m->data['lng'], 'name' => $m->data['name']],
-            fn (OutboundMessage $m) => '📍 '.$m->data['name']);
+        // نوع بلا قاعدة محتوى خاصة (الموقع والبطاقات يطابقهما E33 مع الجدولين المعتمدين؛ ShareLocationTest)
+        OutboundMessage::registerType('sticker',
+            fn (OutboundMessage $m) => ['id' => $m->data['id']],
+            fn (OutboundMessage $m) => '🏷️ '.$m->data['label']);
         try {
-            $result = WhatsAppChannel::send($this->conv, OutboundMessage::custom('location', ['lat' => 31.95, 'lng' => 35.91, 'name' => 'مكتبنا']), 'bot');
+            $result = WhatsAppChannel::send($this->conv, OutboundMessage::custom('sticker', ['id' => '1001', 'label' => 'ملصق']), 'bot');
         } finally {
-            OutboundMessage::forgetType('location');
+            OutboundMessage::forgetType('sticker');
         }
 
         $this->assertTrue($result['ok']);
-        $this->assertSame(['latitude' => 31.95, 'longitude' => 35.91, 'name' => 'مكتبنا'], $this->sent()['location']);
-        $this->assertSame('📍 مكتبنا', WaMessage::sole()->body);
+        $this->assertSame(['id' => '1001'], $this->sent()['sticker']);
+        $this->assertSame('🏷️ ملصق', WaMessage::sole()->body);
     }
 
     public function test_a_long_caption_is_cut_by_characters_without_breaking_utf8(): void

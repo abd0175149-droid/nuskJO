@@ -12,7 +12,8 @@ use Tests\TestCase;
  */
 class NoGenericSendToolsTest extends TestCase
 {
-    private const ALLOWED = ['send_offer_card', 'send_office_location'];
+    // E33: دبوس المكتب وبطاقة الاتصال من الجدولين المعتمدين وحدهما (مطفأتان افتراضياً، وبلا وسائط حرة)
+    private const ALLOWED = ['send_offer_card', 'send_office_location', 'send_contact_card'];
 
     public function test_the_models_have_no_generic_send_tools(): void
     {

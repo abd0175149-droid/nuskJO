@@ -393,6 +393,11 @@
                 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 md:p-6">
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">🧰 الأدوات</h3>
                     <p class="text-xs text-gray-500 mb-4">فعّل ما تسمح للبوت باستخدامه. إلغاء أداة يمنع البوت من استعمالها نهائيًا.</p>
+                    <!-- E33: مصدر دبوس المكتب وبطاقات الاتصال (الأداتان مطفأتان حتى تُفعَّلا هنا) -->
+                    <div class="mb-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4 flex flex-wrap items-center justify-between gap-3">
+                        <p class="min-w-0 text-xs text-gray-500 dark:text-gray-400">📍 المواقع و👤 بطاقات الاتصال المعتمدة: مصدر الدبوس والبطاقة الوحيد للموظفين وللبوت، بموافقة صاحب كل رقم.</p>
+                        <a href="/whatsapp/shared-items" class="shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-gold-800 dark:text-gold-200 bg-gold-100 dark:bg-gold-900/30 hover:bg-gold-200 dark:hover:bg-gold-900/50">المواقع وبطاقات الاتصال ←</a>
+                    </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <label v-for="(label, key) in toolList" :key="key"
@@ -580,6 +585,7 @@ const SENSITIVE = ['wa_phone_number_id', 'wa_waba_id', 'provider', 'fallback_pro
 // من سجل الأدوات في الخادم (E15): ما يحوّل لموظف، وما لا يُطفأ
 const handoffTools = (props.toolMeta || []).filter((t) => t.escalates).map((t) => t.key);
 const lockedTools = (props.toolMeta || []).filter((t) => !t.disableable).map((t) => t.key);
+const defaultOn = (k) => (props.toolMeta || []).find((t) => t.key === k)?.default_enabled !== false;
 
 // القيم القابلة للحفظ من صف الإعدادات؛ الأدوات: غياب المفتاح = مفعّلة
 const editable = (s) => {
@@ -590,7 +596,8 @@ const editable = (s) => {
     out.tools = {};
     Object.keys(props.toolList || {}).forEach((k) => {
         const v = (s.tools_config || {})[k];
-        out.tools[k] = v === undefined ? true : !!v;
+        // غياب المفتاح = حالة الأداة الافتراضية (مفعّلة، إلا ما شُحن مطفأً في E33)
+        out.tools[k] = v === undefined ? defaultOn(k) : !!v;
     });
     return out;
 };

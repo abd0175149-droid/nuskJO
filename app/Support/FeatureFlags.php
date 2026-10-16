@@ -84,6 +84,11 @@ final class FeatureFlags
         // E40: الصندوق الصادر للتكاملات وخادم MCP للقراءة. admin_only: يفتحان باباً للخارج، فلا يبدّلهما إلا المدير
         'integration_outbox' => ['label' => 'إرسال أحداث مختارة (طلب تسعير، فاتورة) لأداة أتمتة بتوقيع، بلا نصوص ولا هواتف ولا تكاليف', 'capability' => 'C098', 'available' => true, 'admin_only' => true],
         'mcp_server' => ['label' => 'خادم MCP للقراءة: تقارير المالك لمساعد ذكاء اصطناعي برمز قصير العمر خلف Cloudflare Access', 'capability' => 'C102', 'available' => true, 'admin_only' => true],
+        // E33: الاقتباس والتصحيح، وتفاعل الموظف، ومعاينة الرابط، والموقع والبطاقات. عرض التفاعل الوارد ونص unsupported بلا علم
+        'wa_reply_quote' => ['label' => 'الرد المقتبس على رسالة بعينها ورسالة التصحيح المقتبسة (لا يتغيّر نص الأصل)', 'capability' => 'C004', 'available' => true],
+        'wa_staff_reactions' => ['label' => 'تفاعل الموظف بإيموجي على رسالة العميل (إقرار لا يُعدّ رداً ولا يوقف البوت)', 'capability' => 'C008', 'available' => true],
+        'wa_link_preview' => ['label' => 'معاينة الرابط في رد الموظف بخانة صريحة، للروابط العامة وحدها', 'capability' => 'C002', 'available' => true],
+        'wa_share_cards' => ['label' => 'إرسال دبوس الموقع وبطاقات الاتصال من القوائم المعتمدة', 'capability' => 'C006', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */
