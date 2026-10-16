@@ -187,6 +187,9 @@ class QuoteFlowTest extends TestCase
         $this->assertStringContainsString('2026-12-01', $qr->details, 'التاريخ ليس رقماً محذوفاً');
         $this->assertSame(['other', 1, 0, 60], [$qr->type, $qr->pax_adults, $qr->pax_children, mb_strlen($qr->route_to)]);
         $this->assertTrue($in->payload['_flow']['scrubbed']);
+        // نص البحث (E30) يُعاد من الملخص المنقّى، لا من حمولة النموذج الخام
+        $this->assertStringNotContainsStringIgnoringCase('n1234567', (string) $in->body_norm);
+        $this->assertStringContainsString('[حذف رقم]', (string) $in->body_norm);
     }
 
     public function test_a_second_reply_does_not_create_a_second_request(): void

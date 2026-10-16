@@ -166,11 +166,8 @@ final class FlowResponseHandler
             unset($payload['interactive']['nfm_reply']['response_json']);
         }
         $payload['_flow'] = $flow;
-        $update = ['payload' => json_encode($payload, JSON_UNESCAPED_UNICODE)];
-        if ($body !== null) {
-            $update['body'] = mb_substr($body, 0, 1000);
-        }
-        WaMessage::whereKey($message->id)->update($update);
+        // عبر Eloquent لا query builder: خطاف WaMessage يعيد body_norm، فلا يبقى في فهرس البحث (E30) نص الحمولة الخام
+        $message->forceFill(['payload' => $payload] + ($body !== null ? ['body' => mb_substr($body, 0, 1000)] : []))->save();
     }
 
     private static function date(mixed $v): ?string
