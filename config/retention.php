@@ -2,6 +2,7 @@
 
 use App\Models\AuditLog;
 use App\Models\Notification;
+use App\Models\WaAccountEvent;
 use App\Models\WaAdminAction;
 use App\Models\WaBotUsage;
 
@@ -43,5 +44,7 @@ return [
         Notification::class,
         WaAdminAction::class,
         WaBotUsage::class,
+        // E22: أحداث حساب ميتا المعلوماتية بعد 180 يوماً (الحرج والتحذير يبقيان)
+        WaAccountEvent::class,
     ],
 ];

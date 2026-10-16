@@ -26,6 +26,9 @@ class WaBotSetting extends Model
         // E12: قاطع المزوّد والمزوّد الاحتياطي
         'breaker_mode', 'breaker_threshold', 'breaker_window_minutes', 'breaker_open_minutes',
         'fallback_provider', 'fallback_model', 'fallback_api_key', 'fallback_api_key_rotated_at',
+        // E22: صحة القناة كآلة حالات (يكتبها ChannelHealth وحده عبر SettingsWriter)
+        'wa_health', 'wa_health_reason', 'wa_health_source', 'wa_health_until', 'wa_health_checked_at', 'wa_health_changed_at',
+        'wa_health_unblock_suggested', 'wa_health_meta',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
@@ -60,6 +63,11 @@ class WaBotSetting extends Model
         'wa_app_secret_rotated_at' => 'datetime',
         'api_key_rotated_at' => 'datetime',
         'wa_suspended_at' => 'datetime',
+        'wa_health_until' => 'datetime',
+        'wa_health_checked_at' => 'datetime',
+        'wa_health_changed_at' => 'datetime',
+        'wa_health_unblock_suggested' => 'boolean',
+        'wa_health_meta' => 'array',
     ];
 
     protected static function booted(): void

@@ -140,6 +140,8 @@ return [
     'WhatsAppAdminNumberController@update' => 'update',
     'WhatsAppAdminNumberController@destroy' => 'delete',
     'WhatsAppWebhookController@receive' => 'wa.webhook_bad_sig',
+    'WhatsAppChannelHealthController@unblock' => 'wa.health_unblock',
+    'WhatsAppChannelHealthController@acknowledge' => 'wa.health_ack',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

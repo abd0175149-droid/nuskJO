@@ -763,7 +763,9 @@ class AdminTools
             return self::commit('set_customer_bot', $conv, $a);
         }
         if ($action === 'status') {
-            return ['enabled' => (bool) $s->enabled, 'sending_suspended' => $s->sendingSuspended(), 'suspended_source' => $s->suspendSource(), 'model' => $s->model];
+            // E22: حالة القناة عند ميتا وتسميتها، بلا سبب تفصيلي
+            return ['enabled' => (bool) $s->enabled, 'sending_suspended' => $s->sendingSuspended(), 'suspended_source' => $s->suspendSource(), 'model' => $s->model,
+                'health' => ChannelHealth::current($s)->value, 'health_label' => ChannelHealth::current($s)->label()];
         }
         if ((bool) $s->enabled === ($action === 'on')) {
             return ['error' => 'لا تغيير', 'note' => 'البوت '.($s->enabled ? 'يعمل' : 'موقوف').' أصلاً.'];

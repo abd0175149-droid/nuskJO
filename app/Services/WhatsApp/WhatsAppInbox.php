@@ -4,7 +4,6 @@ namespace App\Services\WhatsApp;
 
 use App\Enums\AuditAction;
 use App\Enums\AuditSeverity;
-use App\Events\WhatsApp\ChannelHealthChanged;
 use App\Events\WhatsApp\WaMessageFailed;
 use App\Events\WhatsApp\WaMessageStatusChanged;
 use App\Events\WhatsApp\WaMessageStored;
@@ -91,7 +90,13 @@ class WhatsAppInbox
 
                 return;
             }
-            // صحّة الحساب / حالة القوالب → قفل الإرسال احتياطاً، إن كان الحدث لرقمنا أو حسابنا
+            // صحّة الحساب (E22، العلم channel_health): آلة الحالات وسجل wa_account_events بالبصمة
+            if (AccountEventHandler::handles($field) && ChannelHealth::enabled()) {
+                AccountEventHandler::handle($field, $value, $entryId, $entryTime, $settings);
+
+                return;
+            }
+            // المسار القديم: صحّة الحساب وحالة القوالب → قفل الإرسال احتياطاً، إن كان الحدث لرقمنا أو حسابنا
             self::handleAccountEvent($field, $value, $entryId, $settings, $entryTime);
 
             return;
@@ -576,7 +581,8 @@ class WhatsAppInbox
     }
 
     /**
-     * أحداث صحة الحساب: الحدث السلبي وحده يقفل الإرسال (أحداث عادية تصل عند ربط الحساب أو توثيقه تُسجَّل فقط).
+     * أحداث صحة الحساب (المسار القديم، العلم channel_health مطفأ؛ ومعه للقوالب وتفضيلات العملاء وحدها):
+     * الحدث السلبي وحده يقفل الإرسال (أحداث عادية تصل عند ربط الحساب أو توثيقه تُسجَّل فقط).
      * الويبهوك واحد للتطبيق، فحدث رقم آخر أو حساب آخر يُتجاهل حين نعرف رقمنا وحسابنا.
      * ما لم نعرفهما بعد (لم تصل رسالة لرقمنا)، يبقى الإيقاف الاحتياطي.
      * وكل حقل لنا صف تدقيق دائم بفاعل meta (E09)؛ فشل كتابته لا يقطع بقية الحمولة.
@@ -609,7 +615,7 @@ class WhatsAppInbox
 
         // إعادة ميتا للحدث نفسه (أو إعادة معالجة الحمولة بأمر الإعادة) لا تكرر الإشعار ولا الإيقاف (E20).
         // صف التدقيق يبقى لكل توصيلة (E09). ووقت entry في المفتاح: حدث مماثل حقيقي بعد أيام ليس مكرراً
-        $seen = sha1($field.'|'.$entryId.'|'.$entryTime.'|'.json_encode($value));
+        $seen = AccountEventHandler::fingerprint($field, $entryId, $entryTime, $value);
         if (!\Illuminate\Support\Facades\Cache::add('wa:acct:seen:'.$seen, 1, now()->addDays(7))) {
             WaLog::info('account.event.duplicate', ['field' => $field, 'event' => $event]);
 
@@ -619,15 +625,8 @@ class WhatsAppInbox
         $bad = ['FLAGGED', 'DOWNGRADE', 'ACCOUNT_VIOLATION', 'ACCOUNT_RESTRICTION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED'];
         $violation = data_get($value, 'violation_info') || data_get($value, 'ban_info');
         if (in_array($event, $bad, true) || $violation) {
-            if (!WaBotSetting::current()->wa_suspended) {
-                // يرفع النسخة: صفحة إعدادات فُتحت قبله لا تلغيه بحفظها (409). «من أوقف؟» له جواب دائماً (alwaysOn)،
-                // وفشل كتابة التدقيق لا يُسقط الإيقاف ولا الويبهوك (safe)
-                AuditActor::as('meta', $field, fn () => SettingsWriter::apply([
-                    'wa_suspended' => true, 'wa_suspended_at' => now(), 'wa_suspended_by' => null,
-                    'wa_suspended_source' => 'meta_event', 'wa_suspended_reason' => $event,
-                ], null, AuditAction::WaSuspendAuto, ['field' => $field, 'event' => $event], audit: 'safe', label: $event));
-                EventBus::emit(new ChannelHealthChanged(ChannelHealthChanged::AVAILABLE, ChannelHealthChanged::SUSPENDED_AUTO, 'meta_event', mb_substr($event, 0, 40)));
-            }
+            // «من أوقف؟» له جواب دائماً (WaSuspendAuto alwaysOn)، والحدث من ChannelHealth وحدها
+            ChannelHealth::suspendLegacy('meta_event', $event, $event, ['field' => $field, 'event' => $event], 'meta', $field, $event);
             self::notifyAdmins('⛔ إيقاف إرسال الواتساب', "وصل حدث «{$event}» من ميتا، فأُوقف كل الإرسال تلقائياً. راجع صحّة الحساب قبل إعادة التشغيل.");
         } elseif ($event === 'ACCOUNT_OFFBOARDED') {
             // فصل الحساب عن الشريك: تنبيه فقط، والإيقاف التلقائي له قرار مالك (E09.9)

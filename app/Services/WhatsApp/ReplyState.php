@@ -37,6 +37,8 @@ final class ReplyState
         'media_refused' => '🗂️ رفض حفظ الملفات',
         'policy_block' => '🛡️ حُجبت رسالة آلية',
         'snooze_due' => '⏰ موعد متابعة',
+        // E22: ميتا تحجب الإرسال (لا يرد البوت ولا يُستدعى النموذج)
+        'channel_blocked' => '⛔ القناة محجوبة',
     ];
 
     private static ?bool $available = null;

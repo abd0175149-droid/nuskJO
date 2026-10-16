@@ -88,4 +88,24 @@ return [
         ],
         'allow_office' => (bool) env('WA_MEDIA_ALLOW_OFFICE', false),
     ],
+
+    // صحة القناة كآلة حالات (E22، docs/whatsapp/channel-health.md). القفل من قاطع النزاهة بالعلم integrity_breaker_lock وحده
+    'health' => [
+        'breaker' => [
+            // 131031 أو 131048 بهذا العدد خلال النافذة: تنبيه حرج وفحص فوري (أو BLOCKED بالعلم)
+            'integrity_threshold' => (int) env('WA_INTEGRITY_THRESHOLD', 3),
+            'window_minutes' => (int) env('WA_INTEGRITY_WINDOW_MINUTES', 15),
+        ],
+        // فشل الإرسال المتتالي: تنبيه عند الثالث ثم كل خامس (3 و8 و13…)
+        'consecutive_alert_at' => 3,
+        'consecutive_alert_every' => 5,
+        // الرفع اليدوي يحتاج فحصاً لا يعيد BLOCKED خلال هذه المدة، وإلا يُفحص الآن (دقائق)
+        'unblock_poll_max_age_minutes' => 10,
+        // الفحص بعد حدث حساب (ثوانٍ): يجمع الأحداث المتتالية في فحص واحد
+        'poll_delay_seconds' => 15,
+        // حمولة الحدث الخام في wa_account_events
+        'event_payload_max_bytes' => 16384,
+        // الأحداث المعلوماتية تُقلَّم بعدها (الحرج والتحذير يبقيان)
+        'info_retention_days' => 180,
+    ],
 ];

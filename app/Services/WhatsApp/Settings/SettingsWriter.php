@@ -98,6 +98,39 @@ final class SettingsWriter
     }
 
     /**
+     * كتابة مشروطة (E22): التغييرات تُطبَّق إن طابق الصف القيم المتوقعة (WHERE عمود = قيمة)، فلا يكتب مصدران
+     * آليان متسابقان (ويبهوك وفحص) أحدهما فوق الآخر. بلا تدقيق هنا: المستدعي يدقّق الانتقال الحقيقي وحده.
+     * عمود لم تُنشئه هجرته بعد: لا كتابة (false)، كما لو لم يطابق.
+     *
+     * @param  array<string, mixed>  $expected  عمود => القيمة المتوقعة (null = فارغ)
+     * @param  array<string, mixed>  $changes  عمود => القيمة (تمر على تحويلات النموذج: التواريخ والمصفوفات)
+     */
+    public static function applyIf(array $expected, array $changes, bool $bumpVersion = true): bool
+    {
+        foreach (array_keys($expected) as $column) {
+            if (!self::hasColumn($column)) {
+                return false;
+            }
+        }
+        $settings = WaBotSetting::current();
+        $model = $settings->replicate()->setRawAttributes($settings->getAttributes(), true);
+        $model->forceFill($changes);
+        $raw = array_filter(array_intersect_key($model->getAttributes(), $changes), fn ($column) => self::hasColumn($column), ARRAY_FILTER_USE_KEY);
+        if ($raw === []) {
+            return false;
+        }
+        $bump = $bumpVersion && self::hasColumn('settings_version') ? ['settings_version' => DB::raw('settings_version + 1')] : [];
+
+        return DB::transaction(fn () => DB::table('wa_bot_settings')->where('id', $settings->id)
+            ->where(function ($q) use ($expected) {
+                foreach ($expected as $column => $value) {
+                    $value === null ? $q->whereNull($column) : $q->where($column, $value);
+                }
+            })
+            ->update($raw + ['updated_at' => now()] + $bump)) > 0;
+    }
+
+    /**
      * إعادة تشفير أسرار محفوظة بالمفتاح الحالي (بعد تدوير APP_KEY مع APP_PREVIOUS_KEYS). القيم نفسها، فلا ترفع
      * النسخة؛ وapply لا يصلح هنا لأن القيمة غير «متغيّرة». ما لا يُفك أصلاً يُترك ويُعاد في unreadable.
      *

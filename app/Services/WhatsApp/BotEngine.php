@@ -122,6 +122,11 @@ TXT;
 
         // أرقام الإدارة يخدمها المساعد الإداري بأدواتها المسموحة وحدها — حتى لو كان بوت العملاء موقوفاً
         if ($admin = WaAdminNumber::forPhone($conv->phone)) {
+            // حجب ميتا (E22): لا نداء للنموذج لرد لن يُرسل
+            if (ChannelHealth::blocksSending($s)) {
+                return self::skip('channel_blocked');
+            }
+
             return self::adminReply($conv, $s, $admin, $run);
         }
 
@@ -131,6 +136,8 @@ TXT;
         }
         $unserved = match (true) {
             !$s->botReady() => 'bot_off',
+            // حجب ميتا (E22): BLOCKED، أو TOKEN_INVALID بالعلم. لا توكنات لرد لن يُرسل، و«تدخّل» بسبب ظاهر
+            ChannelHealth::blocksSending($s) => 'channel_blocked',
             // عميل باسم مستخدم بلا رقم: البوت في الوضع full وحده (IdentityMode)
             !$conv->hasPhone() && !IdentityMode::botServesWithoutPhone() => 'no_phone',
             !$conv->bot_enabled => 'with_staff',

@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Cache;
  * تنبّه المدير ولا تغيّر wa_suspended أبداً (الإيقاف الآلي لأحداث الحساب وحدها). لا تخزّن رمزاً ولا رداً خاماً
  * ولا معرّفات كيانات: الحالة والتواريخ والصلاحيات الناقصة وأخطاء الكيانات كما شرحتها ميتا.
  * انقطاع الاتصال لا ينبّه إلا بعد مرتين متتاليتين.
+ * E22 (العلم channel_health): فحص القناة مرجع آلة الحالات (ChannelHealth::fromPoll)، والرمز الباطل انتقال TOKEN_INVALID،
+ * وتنبيهات الحجب والقيد والرمز تصدر من الانتقال وحده.
  */
 final class MetaHealth
 {
@@ -91,6 +93,11 @@ final class MetaHealth
             $issues['app_mismatch'] = 'warn';
         }
 
+        // E22: الرمز الباطل انتقال TOKEN_INVALID (ChannelHealth ينبّه مرة واحدة، فلا تنبيه token_invalid هنا)
+        if (isset($issues['token_invalid']) && ChannelHealth::enabled()) {
+            rescue(fn () => ChannelHealth::fromTokenCheck(), null, false);
+        }
+
         return $this->conclude($s, 'wa_credentials_status', 'credentials', $this->worst($issues), array_keys($issues), [
             'is_valid' => (bool) ($data['is_valid'] ?? false),
             'expires_at' => $expiresAt > 0 ? date(DATE_ATOM, $expiresAt) : null,
@@ -101,8 +108,25 @@ final class MetaHealth
         ], self::CREDENTIAL_ALERTS);
     }
 
-    /** @return array<string, mixed> الملخص المحفوظ في wa_channel_health */
-    public function channel(): array
+    /**
+     * @return array<string, mixed> الملخص المحفوظ في wa_channel_health. مع channel_health يمر على ChannelHealth::fromPoll
+     *                              (مرجع الحالة)، وhumanInitiated للفحص الذي بدأه إنسان (حفظ رمز جديد، «افحص الآن»، الرفع اليدوي)
+     */
+    public function channel(bool $humanInitiated = false): array
+    {
+        $summary = $this->probeChannel();
+        try {
+            ChannelHealth::recordPoll($summary);
+            ChannelHealth::fromPoll($summary, $humanInitiated);
+        } catch (\Throwable $e) {
+            WaLog::error('health.poll_apply_failed', ['type' => class_basename($e)]);
+        }
+
+        return $summary;
+    }
+
+    /** @return array<string, mixed> */
+    private function probeChannel(): array
     {
         $s = WaBotSetting::current();
         if (!$s->channelReady()) {
@@ -147,7 +171,23 @@ final class MetaHealth
             'quality_rating' => $quality,
             'verified_name' => data_get($r['json'], 'verified_name'),
             'entities' => $entities,
+            // E22: مقارنة حساب الرقم عند ميتا بمعرّفنا المضبوط أو المتعلَّم، بلا حفظ المعرّف نفسه
+            'waba_match' => $this->wabaMatch($s, (array) ($health['entities'] ?? [])),
         ], self::CHANNEL_ALERTS);
+    }
+
+    /** null: لا معرّف عندنا أو لا كيان WABA في الرد */
+    private function wabaMatch(WaBotSetting $s, array $entities): ?bool
+    {
+        $ours = WebhookFence::account($s)['id'] ?? ((string) $s->wa_waba_id !== '' ? (string) $s->wa_waba_id : null);
+        foreach ($entities as $e) {
+            $id = data_get($e, 'id');
+            if (strtoupper((string) data_get($e, 'entity_type')) === 'WABA' && is_scalar($id) && (string) $id !== '' && $ours !== null) {
+                return (string) $id === $ours;
+            }
+        }
+
+        return null;
     }
 
     /** @param array<string, string> $issues */
@@ -186,15 +226,17 @@ final class MetaHealth
     {
         $previous = self::lastKnown((array) ($s->{$column} ?? []));
         $summary = $this->save($s, $column, ['state' => $state, 'reasons' => $reasons] + $details);
+        // E22: الحجب والقيد الجزئي والرمز الباطل وعودة القناة ينبّه بها انتقال ChannelHealth مرة واحدة
+        $owned = ChannelHealth::enabled() ? ['blocked', 'limited', 'token_invalid'] : [];
 
         if (in_array($state, ['warn', 'critical'], true)) {
             foreach ($reasons as $reason) {
-                if (isset($messages[$reason])) {
+                if (isset($messages[$reason]) && !in_array($reason, $owned, true)) {
                     $this->alerts->notifyAdmins("meta:{$kind}:{$state}:{$reason}", ...$messages[$reason]);
                 }
             }
         }
-        if ($state === 'ok' && $previous === 'critical') {
+        if ($state === 'ok' && $previous === 'critical' && !($kind === 'channel' && $owned !== [])) {
             $this->alerts->notifyAdmins("meta:{$kind}:recovered", '✅ عادت قناة ميتا سليمة', $kind === 'credentials' ? 'فحص رمز ميتا سليم الآن.' : 'ميتا تسمح بالإرسال من رقمنا الآن.');
         }
 

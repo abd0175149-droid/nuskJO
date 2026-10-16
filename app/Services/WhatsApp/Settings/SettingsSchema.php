@@ -82,6 +82,8 @@ final class SettingsSchema
         'wa_channel_health' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'آخر فحص للقناة'],
         // يكتبه MetaErrorReactor مباشرة (عمود واحد خارج SettingsWriter) فلا يدخل حساب تعارض النسخة
         'wa_last_error' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'آخر خطأ من ميتا'],
+        // E22: حالة القناة عند ميتا (AVAILABLE وLIMITED وBLOCKED وTOKEN_INVALID وUNKNOWN)، يكتبها ChannelHealth وحده
+        'wa_health' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'حالة قناة الإرسال'],
     ];
 
     /** أعمدة يكتبها الكاتب نفسه مع فعلها (تدوير سر، إيقاف، علم)، لا حقول إعدادات تُعرض أو تُحفظ من الصفحة */
@@ -89,6 +91,9 @@ final class SettingsSchema
         'wa_verify_token_hash', 'wa_verify_token_rotated_at', 'wa_token_rotated_at', 'wa_app_secret_rotated_at', 'api_key_rotated_at',
         'wa_suspended_at', 'wa_suspended_by', 'wa_suspended_source', 'wa_suspended_reason', 'feature_flags',
         'fallback_api_key_rotated_at', 'wa_waba_id_source', 'wa_display_phone',
+        // E22: تفاصيل حالة القناة (السبب والمصدر والانتهاء والفحص واقتراح الرفع والملخص)
+        'wa_health_reason', 'wa_health_source', 'wa_health_until', 'wa_health_checked_at', 'wa_health_changed_at',
+        'wa_health_unblock_suggested', 'wa_health_meta',
     ];
 
     /** النصوص الطويلة: طولها وبصمتها في التدقيق لا نصها */

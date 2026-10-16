@@ -20,6 +20,8 @@ final class WaLog
         'events', 'item', 'event_id', 'wiped', 'deleted', 'overdue', 'processed', 'failed', 'dead',
         // E21: اسم صنف المستمع الذي فشل (fail-open)
         'listener',
+        // E22: انتقالات صحة القناة (الحالتان والكاتب ورمز السبب) وعدّاد الفشل المتتالي
+        'from', 'to', 'writer', 'effect', 'severity',
     ];
 
     public static function info(string $event, array $context = []): void

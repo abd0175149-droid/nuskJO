@@ -29,5 +29,8 @@ return [
         'delivery_status_v2' => env('WA_FEATURE_DELIVERY_STATUS_V2'),
         'wa_event_bus' => env('WA_FEATURE_WA_EVENT_BUS'),
         'user_preferences_optout' => env('WA_FEATURE_USER_PREFERENCES_OPTOUT'),
+        'channel_health' => env('WA_FEATURE_CHANNEL_HEALTH'),
+        'channel_health_block_on_token' => env('WA_FEATURE_CHANNEL_HEALTH_BLOCK_ON_TOKEN'),
+        'integrity_breaker_lock' => env('WA_FEATURE_INTEGRITY_BREAKER_LOCK'),
     ],
 ];

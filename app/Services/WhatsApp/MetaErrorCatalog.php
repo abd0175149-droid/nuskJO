@@ -115,6 +115,8 @@ final class MetaErrorCatalog
         'CHANNEL_NOT_CONFIGURED' => ['auth', 'channel', 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).', 'يكمل المدير الإعداد من إعدادات الواتساب.', 'none'],
         'GRAPH_CONFIG_INVALID' => ['auth', 'channel', 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.', 'يراجع المدير إعدادات الواتساب.', 'none'],
         'SENDING_SUSPENDED' => ['integrity', 'channel', 'الإرسال موقوف حالياً (قفل طارئ).', 'يرفعه المدير من إعدادات الواتساب بعد مراجعة السبب.', 'none'],
+        // E22: حجب ميتا في آلة صحة القناة (wa_health=BLOCKED)، يرفعه المدير يدوياً بعد أن ترفعه ميتا
+        'CHANNEL_BLOCKED' => ['integrity', 'channel', 'ميتا تحجب الإرسال من رقم الشركة.', 'يراجع المدير بطاقة «صحة القناة» في إعدادات الواتساب، ويرفع الحجب بعد أن ترفعه ميتا.', 'none'],
         'WINDOW_EXPIRED' => ['window', 'recipient', 'انتهت نافذة الـ24 ساعة. لا يمكن مراسلة العميل حتى يكتب لنا (لا قوالب بقرار المالك).', 'انتظر رسالة جديدة من العميل.', 'none'],
         'NO_RECIPIENT' => ['caller', 'recipient', 'العميل يراسل باسم مستخدم ورقمه غير ظاهر، والرد عليه غير مفعّل بعد.', 'أبلغ المدير.', 'none'],
         'OUT_OF_SCOPE' => ['caller', 'message', 'هذه المحادثة خارج نطاقك.', 'اطلب من المدير إسنادها إليك.', 'none'],
@@ -354,6 +356,10 @@ final class MetaErrorCatalog
         $action = $entry[2];
 
         self::rememberAccountError($metaCode);
+        // E22: صحة القناة تملك الرمز الباطل و368 وقاطع التكرار (MetaErrorReactor → SendHealthMonitor::observe)، فلا إيقاف ولا تنبيه هنا
+        if (ChannelHealth::enabled() && in_array($metaCode, [0, 190, 368, 131031, 131048], true)) {
+            return;
+        }
 
         if ($action === 'suspend' && self::autosuspends($metaCode)) {
             self::suspend($metaCode, 'graph_error');
@@ -390,21 +396,19 @@ final class MetaErrorCatalog
         return in_array($metaCode, $codes, true);
     }
 
-    /** إيقاف آلي واحد مع تدقيق آمن وتنبيه. لا رفع آلياً أبداً */
+    /**
+     * إيقاف آلي واحد مع تدقيق آمن وتنبيه (المسار القديم، العلم channel_health مطفأ). لا رفع آلياً أبداً.
+     * مع العلم يُكتب BLOCKED في آلة صحة القناة بدل wa_suspended (A10، SendHealthMonitor::observe)
+     */
     public static function suspend(int $metaCode, string $source): bool
     {
-        $settings = WaBotSetting::current();
-        if ($settings->wa_suspended) {
+        if (ChannelHealth::enabled()) {
             return false;
         }
-        \App\Support\AuditActor::as('system', 'graph:'.$metaCode, fn () => Settings\SettingsWriter::apply([
-            'wa_suspended' => true, 'wa_suspended_at' => now(), 'wa_suspended_by' => null,
-            'wa_suspended_source' => $source, 'wa_suspended_reason' => 'رمز ميتا '.$metaCode,
-        ], null, \App\Enums\AuditAction::WaSuspendAuto, ['meta_code' => $metaCode], audit: 'safe', label: 'رمز '.$metaCode));
+        if (!ChannelHealth::suspendLegacy($source, 'رمز ميتا '.$metaCode, (string) $metaCode, ['meta_code' => $metaCode], 'system', 'graph:'.$metaCode, 'رمز '.$metaCode)) {
+            return false;
+        }
         WaLog::error('graph.autosuspend', ['meta_code' => $metaCode]);
-        // E21: تغيّر فعلي في صحة القناة (E22 تنقله إلى ChannelHealth::transition)
-        EventBus::emit(new \App\Events\WhatsApp\ChannelHealthChanged(\App\Events\WhatsApp\ChannelHealthChanged::AVAILABLE,
-            \App\Events\WhatsApp\ChannelHealthChanged::SUSPENDED_AUTO, $source, (string) $metaCode));
         WhatsAppInbox::notifyAdmins('⛔ إيقاف إرسال الواتساب', "ردّت ميتا بالرمز {$metaCode} (تقييد الحساب)، فأُوقف كل الإرسال تلقائياً. راجع حالة الحساب قبل إعادة التشغيل.", '/whatsapp/settings');
 
         return true;

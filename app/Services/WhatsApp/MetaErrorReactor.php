@@ -52,13 +52,23 @@ final class MetaErrorReactor
         MetaErrorCatalog::rememberAccountError($e->metaCode);
         $last = self::touchesChannel($e) ? self::recordLastError($e, $ctx) : null;
 
+        // E22 (العلم channel_health): أثر الخطأ على حالة القناة في الوضعين، وتنبيهه من انتقالها مرة واحدة
+        $health = ChannelHealth::enabled();
+        if ($health) {
+            SendHealthMonitor::observe($e);
+        }
+
         if (!MetaErrorCatalog::v2()) {
             return;
         }
 
-        // الإيقاف: منطق E06 نفسه (368 وحده افتراضياً، A10)، وكل إيقاف تدقيق آمن وتنبيه. ولا رفع آلياً أبداً
-        if ($e->metaCode !== null && MetaErrorCatalog::autosuspends($e->metaCode)) {
+        // الإيقاف: منطق E06 نفسه (368 وحده افتراضياً، A10)، وكل إيقاف تدقيق آمن وتنبيه. ولا رفع آلياً أبداً.
+        // مع صحة القناة: BLOCKED في آلتها (observe أعلاه) بدل wa_suspended
+        if (!$health && $e->metaCode !== null && MetaErrorCatalog::autosuspends($e->metaCode)) {
             MetaErrorCatalog::suspend($e->metaCode, 'meta_event');
+        }
+        if ($health && SendHealthMonitor::owns($e->metaCode, $e->type)) {
+            return;
         }
 
         $alert = $e->alert

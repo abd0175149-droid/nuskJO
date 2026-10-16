@@ -35,6 +35,10 @@ final class FeatureFlags
         'delivery_status_v2' => ['label' => 'حالات التسليم الذرية: لا تتراجع، بوقت ميتا وتاريخ بلا تكرار، والإيصال المبكر لا يضيع، وعلامات ✓ و✓✓ في الصندوق', 'capability' => 'C050', 'available' => true],
         'wa_event_bus' => ['label' => 'ناقل الأحداث الداخلي: إشعار التحويل و«لم تصل رسالتك» وتدقيقهما من المستمعين بدل الإشعار المباشر', 'capability' => 'C087', 'available' => true],
         'user_preferences_optout' => ['label' => 'تسجيل إيقاف العميل للتسويق من إعدادات واتساب (user_preferences) في قائمة الرافضين', 'capability' => 'C087', 'available' => true],
+        // E22: صحة القناة كآلة حالات (مطفأ = الإيقاف الآلي القديم في wa_suspended كما هو)
+        'channel_health' => ['label' => 'صحة القناة كآلة حالات: أحداث ميتا بتصنيف صحيح وسجل دائم، والحجب BLOCKED بدل الإيقاف الآلي، ولا قفل على رفع الحظر ولا على قيود رسائل الشركة', 'capability' => 'C232', 'available' => true],
+        'channel_health_block_on_token' => ['label' => 'منع الإرسال وتوليد الردود عند رمز ميتا غير صالح (بدل التنبيه وحده)', 'capability' => 'C260', 'available' => true],
+        'integrity_breaker_lock' => ['label' => 'قاطع النزاهة يحجب الإرسال عند تكرار 131031 أو 131048 (بدل التنبيه والفحص)', 'capability' => 'C244', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */
