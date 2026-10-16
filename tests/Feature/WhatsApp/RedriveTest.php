@@ -134,6 +134,15 @@ class RedriveTest extends TestCase
         $this->assertSame('failed', $restricted->fresh()->status);
     }
 
+    public function test_a_test_send_is_never_redriven(): void
+    {
+        $row = $this->failedBotReply();
+        $row->forceFill(['source' => 'test'])->save();
+
+        $this->redrive($row)->assertStatus(422)->assertJsonPath('code', 'NOT_REDRIVABLE');
+        $this->assertSame('failed', $row->fresh()->status);
+    }
+
     public function test_a_closed_window_is_refused_without_any_http(): void
     {
         $row = $this->failedBotReply();

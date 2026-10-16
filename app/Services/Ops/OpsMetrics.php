@@ -72,7 +72,7 @@ final class OpsMetrics
             'queue' => $part('queue', fn () => $this->queue(), []),
             'failed_jobs' => $part('failed_jobs', fn () => $this->failedJobs(), ['1h' => null, '24h' => null]),
             'outbound_failed_1h' => $part('outbound_failed', fn () => $this->outboundFailed(), array_fill_keys(self::categories(), 0)),
-            'unknown_sends_1h' => $part('unknown_sends', fn () => WaMessage::where('direction', 'out')
+            'unknown_sends_1h' => $part('unknown_sends', fn () => WaMessage::where('direction', 'out')->where('source', '!=', OutboundCounter::TEST_SOURCE)
                 ->whereIn('status', [WaMessage::STATUS_UNKNOWN, 'unconfirmed'])->where('created_at', '>=', now()->subHour())->count()),
             'webhook_failed_24h' => $part('webhook_failed', function () {
                 $last24 = WebhookStats::summary(true)['last24'] ?? [];
@@ -137,7 +137,9 @@ final class OpsMetrics
     private function outboundFailed(): array
     {
         $out = array_fill_keys(self::categories(), 0);
+        // الإرسال التجريبي (E23) خارج الأعداد: لرقم إدارة وبحده الخاص
         $rows = WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->where('created_at', '>=', now()->subHour())
+            ->where('source', '!=', OutboundCounter::TEST_SOURCE)
             ->groupBy('error_category')->selectRaw('error_category, COUNT(*) as n')->pluck('n', 'error_category');
         foreach ($rows as $category => $n) {
             $key = isset($out[$category]) ? $category : 'unknown';

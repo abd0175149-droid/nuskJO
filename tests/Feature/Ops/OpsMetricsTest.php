@@ -55,6 +55,9 @@ class OpsMetricsTest extends TestCase
         }
         $this->out(['conversation_id' => $conv->id, 'status' => 'failed', 'error_category' => 'auth', 'created_at' => now()->subHours(2)]);
         $this->out(['conversation_id' => $conv->id, 'status' => 'unknown']);
+        // الإرسال التجريبي (E23) خارج الأعداد
+        $this->out(['conversation_id' => $conv->id, 'source' => 'test', 'status' => 'failed', 'error_category' => 'auth']);
+        $this->out(['conversation_id' => $conv->id, 'source' => 'test', 'status' => 'unknown']);
 
         $snap = (new OpsMetrics)->snapshot();
 

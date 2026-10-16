@@ -72,6 +72,7 @@ class FailuresPageTest extends TestCase
         $this->failed($other);
         WaMessage::factory()->outbound()->create(['conversation_id' => $mine->id, 'status' => 'failed', 'created_at' => now()->subDays(8)]);
         WaMessage::factory()->outbound()->create(['conversation_id' => $mine->id, 'status' => 'sent']);
+        WaMessage::factory()->outbound()->create(['conversation_id' => $mine->id, 'status' => 'failed', 'source' => 'test']);   // تجريبي (E23)
         $supervisor = $this->staffWith('supervisor', ['whatsapp.view', 'whatsapp.settings'], ['umrah']);
 
         $rows = $this->actingAs($supervisor)->getJson('/api/whatsapp/failures')->assertOk()->json('messages');

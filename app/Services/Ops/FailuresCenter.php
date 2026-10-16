@@ -35,6 +35,9 @@ final class FailuresCenter
 
     public const TZ = 'Asia/Amman';
 
+    /** مصادر تُعاد رسائلها: الرد الآلي والقاعدة والنظام والموظف. لا التجريبي (E23) ولا المبادر */
+    public const REDRIVE_SOURCES = ['bot', 'staff', 'system', 'rule'];
+
     public static function payload(User $user): array
     {
         return [
@@ -53,6 +56,8 @@ final class FailuresCenter
         $rows = WaMessage::query()
             ->where('direction', 'out')
             ->whereIn('status', [WaMessage::STATUS_FAILED, WaMessage::STATUS_UNKNOWN, 'unconfirmed'])
+            // الإرسال التجريبي (E23) لرقم إدارة، بحده وصفحته: خارج المركز
+            ->where('source', '!=', OutboundCounter::TEST_SOURCE)
             ->where('created_at', '>=', now()->subDays(self::DAYS))
             ->whereHas('conversation', fn ($q) => $q->visibleTo($user))
             ->with('conversation:id,phone,display_name,wa_profile_name,wa_username,client_id,last_inbound_at')
@@ -70,6 +75,7 @@ final class FailuresCenter
         $maybeDelivered = in_array($m->status, [WaMessage::STATUS_UNKNOWN, 'unconfirmed'], true) || !empty($payload['_reaped']);
         $windowOpen = (bool) $m->conversation?->isWindowOpen();
         $redrivable = $m->status === WaMessage::STATUS_FAILED && !$maybeDelivered && !empty($payload['_released_key'])
+            && in_array($m->source, self::REDRIVE_SOURCES, true)
             && is_string($payload['type'] ?? null) && isset($payload[$payload['type']])
             && MetaErrorCatalog::redrivable($m->meta_code !== null ? (int) $m->meta_code : null, $m->error_code, $m->error_category);
 

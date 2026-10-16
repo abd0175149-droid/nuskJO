@@ -57,7 +57,7 @@ class WhatsAppFailuresController extends Controller
         abort_unless(FeatureFlags::on('failures_redrive'), 404);
 
         $payload = (array) ($message->payload ?? []);
-        if ($message->direction !== 'out') {
+        if ($message->direction !== 'out' || !in_array($message->source, FailuresCenter::REDRIVE_SOURCES, true)) {
             return $this->refuse('NOT_REDRIVABLE', 'لا يمكن إعادة هذه الرسالة.');
         }
         if (in_array($message->status, [WaMessage::STATUS_UNKNOWN, 'unconfirmed'], true) || !empty($payload['_reaped'])) {

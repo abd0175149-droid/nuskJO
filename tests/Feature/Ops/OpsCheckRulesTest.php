@@ -159,6 +159,8 @@ class OpsCheckRulesTest extends TestCase
         foreach (['outage:1:1', 'outage:1:2', 'reply:1:3:text'] as $key) {
             WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'source' => 'system', 'send_key' => $key]);
         }
+        // الإرسال التجريبي (E23) خارج العدّاد والميزانية
+        WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'source' => 'test', 'send_key' => 'outage:1:9']);
 
         $this->check();
 

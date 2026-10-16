@@ -10,6 +10,7 @@ use App\Models\WaBotSetting;
 use App\Models\WaBotUsage;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
+use App\Services\WhatsApp\BotAnalytics;
 use App\Services\WhatsApp\PeriodAnalytics;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -175,6 +176,23 @@ class AnalyticsSqlTest extends TestCase
         $this->assertSame(1, $metrics['unanswered']['value']);
         $this->assertSame(75, $metrics['median']['value'], 'وسيط 30 و120 ثانية');
         $this->assertEquals(50, $metrics['automation']['value']);
+    }
+
+    public function test_test_sends_and_reactions_are_not_replies(): void
+    {
+        $t = now()->subHours(3);
+        $this->msg('in', 'customer', $t);
+        $this->msg('out', 'staff', $t->copy()->addSeconds(10), ['msg_type' => 'reaction', 'body' => '👍']);   // تفاعل (E33)
+        $this->msg('out', 'test', $t->copy()->addSeconds(20));                                          // تجريبي (E23)
+        $this->msg('out', 'bot', $t->copy()->addSeconds(40));
+
+        $metrics = collect(PeriodAnalytics::quality('24h')['metrics'])->keyBy('key');
+        $this->assertSame(40, $metrics['median']['value'], 'الرد الأول هو البوت بعد 40 ثانية');
+        $this->assertEquals(100, $metrics['automation']['value'], 'التفاعل والتجريبي ليسا رداً');
+
+        // النسخة القديمة (العلم مطفأ) تستبعد التجريبي أيضاً
+        $legacy = collect(BotAnalytics::quality()['metrics'])->keyBy('key');
+        $this->assertEquals(10, $legacy['median']['value'], 'القديمة تعدّ التفاعل رداً كما كانت، والتجريبي لا، والزمن موجب');
     }
 
     public function test_the_page_takes_a_period_and_validates_it(): void

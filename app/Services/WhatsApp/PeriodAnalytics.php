@@ -386,7 +386,8 @@ final class PeriodAnalytics
             $decision = (int) QuoteRequest::query()->where('created_at', '>=', $since)->whereNotNull('conversation_id')->distinct()->count('conversation_id');
             $closed = QuoteRequest::query()->where('created_at', '>=', $since)->where('status', 'won')->count();
 
-            $bySource = $base()->where('direction', 'out')->groupBy('source')->selectRaw('source, COUNT(*) as n')->pluck('n', 'source')->map(fn ($n) => (int) $n);
+            // التفاعل (E33، msg_type=reaction) ليس رداً
+            $bySource = $base()->where('direction', 'out')->where('msg_type', '!=', 'reaction')->groupBy('source')->selectRaw('source, COUNT(*) as n')->pluck('n', 'source')->map(fn ($n) => (int) $n);
             $ruleReplies = (int) ($bySource['rule'] ?? 0);
             $botReplies = (int) ($bySource['bot'] ?? 0) + $ruleReplies;
             $staffReplies = (int) ($bySource['staff'] ?? 0);
@@ -452,8 +453,8 @@ final class PeriodAnalytics
         $delivered = $ledger ? ' AND '.self::deliveredSql('x') : '';
         $rows = DB::table('wa_messages as m')
             ->leftJoin('wa_messages as n', 'n.id', '=', DB::raw("(SELECT x.id FROM wa_messages x WHERE x.conversation_id = m.conversation_id AND x.id > m.id
-                AND NOT (x.direction = 'out' AND x.source = 'system') AND x.source != 'test'{$delivered} ORDER BY x.id LIMIT 1)"))
-            ->where('m.direction', 'in')->where('m.created_at', '>=', $since)->where('m.source', '!=', 'test')
+                AND NOT (x.direction = 'out' AND x.source = 'system') AND x.source != 'test' AND x.msg_type != 'reaction'{$delivered} ORDER BY x.id LIMIT 1)"))
+            ->where('m.direction', 'in')->where('m.created_at', '>=', $since)->where('m.source', '!=', 'test')->where('m.msg_type', '!=', 'reaction')
             ->selectRaw("n.direction as nd, (strftime('%s', n.created_at) - strftime('%s', m.created_at)) as s")->get();
         $latencies = [];
         $unanswered = 0;

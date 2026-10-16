@@ -193,7 +193,8 @@ class BotAnalytics
     {
         // دفتر الإرسال (E19.9): غير المسلَّم خارج الأتمتة وزمن الرد و«بلا جواب»، ومؤشران منفصلان له أدناه
         $ledger = \App\Support\FeatureFlags::on('send_ledger');
-        $msgs = WaMessage::when($ledger, fn ($q) => $q->excludeUndelivered())
+        // الإرسال التجريبي (E23، source=test) خارج الجودة والأتمتة (E24)
+        $msgs = WaMessage::where('source', '!=', 'test')->when($ledger, fn ($q) => $q->excludeUndelivered())
             ->orderBy('id')->get(['id', 'conversation_id', 'direction', 'source', 'msg_type', 'body', 'created_at']);
         $byConv = $msgs->groupBy('conversation_id');
 
@@ -244,7 +245,8 @@ class BotAnalytics
                     if ($arr[$j]->direction === 'in') break;   // رسالة أخرى قبل الردّ
                 }
                 if ($reply) {
-                    $latencies[] = Carbon::parse($reply->created_at)->diffInSeconds(Carbon::parse($arr[$i]->created_at));
+                    // من الوارد إلى الرد (Carbon 3 يعيد فرقاً بإشارة: الاتجاه المعكوس كان يعطي زمناً سالباً)
+                    $latencies[] = (int) Carbon::parse($arr[$i]->created_at)->diffInSeconds(Carbon::parse($reply->created_at));
                 } else {
                     // بلا جواب فقط إن لم تكن آخر رسالة في المحادثة الآن
                     if ($i < $arr->count() - 1) $unanswered++;
