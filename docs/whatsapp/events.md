@@ -16,8 +16,8 @@
 
 | الحدث | الحمولة | يُطلق من | لا يُطلق |
 |---|---|---|---|
-| `WaMessageStored` | messageId, conversationId, msgType | `WhatsAppInbox::storeInboundRows` للوارد والتفاعل، و`ContactIdentity::applySystemChange` لرسالة النظام (`system`) | لتكرار wamid، ولرسالة بلا مرسل |
-| `WaMessageSent` | messageId, conversationId, source, staffId | `WhatsAppChannel` بعد كتابة wamid: الحسم إلى sent في دفتر الإرسال، أو الحفظ بعد قبول ميتا في المسار القديم | لـ «غير مؤكد» (يحسمه ويبهوك الحالة أو المنظّف) |
+| `WaMessageStored` | messageId, conversationId, msgType | `WhatsAppInbox::storeInboundRows` للوارد والتفاعل، و`ContactIdentity::applySystemChange` لرسالة النظام (`system`)، و`CallEventHandler` لحدث المكالمة في الخيط (`call`، E39) | لتكرار wamid، ولرسالة بلا مرسل، ولانتهاء مكالمة عولج من قبل |
+| `WaMessageSent` | messageId, conversationId, source, staffId | `WhatsAppChannel` بعد كتابة wamid: الحسم إلى sent في دفتر الإرسال، أو الحفظ بعد قبول ميتا في المسار القديم. و`EchoHandler` لصدى التعايش بالمصدر `staff_phone` والحامل (E39) | لـ «غير مؤكد» (يحسمه ويبهوك الحالة أو المنظّف)، ولصدى مكرر أو حارس بلا تخزين |
 | `WaMessageFailed` | messageId, conversationId, source, metaCode, category, scope, origin, staffId | origin=`send`: رفض ميتا المتزامن أو تعذّر الاتصال قبل الإرسال، وصف صار failed. origin=`webhook`: حالة failed تقدّمت فعلاً | لرفض الأقفال قبل ميتا (لا صف)، وللمهلة التي تُحسم «غير مؤكد» |
 | `WaMessageStatusChanged` | messageId, conversationId, status, metaTs, metaCode | مسار الحالة: `StatusApplier` مع `delivery_status_v2`، أو المسار القديم بدونه | لحالة لم تتقدّم |
 | `ConversationHandedOff` | conversationId, assigneeId, quoteRequestId, reason | `BotTools::escalate` وحدها. reason من `App\Enums\HandoffReason`: quote وbooking وhandoff_tool وguard_claim وrate_limit وhuman_request وerasure وbudget | لتحويل وضع العطل (E12) ولـ failSafe، فليسا تحويلاً كاملاً |
