@@ -39,7 +39,11 @@ class AppServiceProvider extends ServiceProvider
                 return array_values(array_unique($names));
             }, ['Google Gemini'], false))
                 // الترجمة عند طلب الموظف (E29): السطر يظهر ما دام العلم مفعّلاً
-                ->with('staffTranslation', rescue(fn () => \App\Support\FeatureFlags::on('staff_translation'), false, false));
+                ->with('staffTranslation', rescue(fn () => \App\Support\FeatureFlags::on('staff_translation'), false, false))
+                // التكاملات (E40): أداة الأتمتة تُذكر ما دامت وجهة نشطة والعلم مفعّل، ومساعد المدير ما دام خادم MCP مفعّلاً
+                ->with('integrationsOutbound', rescue(fn () => \App\Support\FeatureFlags::on('integration_outbox')
+                    && \App\Models\IntegrationEndpoint::query()->where('is_active', true)->exists(), false, false))
+                ->with('mcpReports', rescue(fn () => \App\Support\FeatureFlags::on('mcp_server'), false, false));
         });
 
         \App\Models\Agent::observe(\App\Observers\AgentObserver::class);

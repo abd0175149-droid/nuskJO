@@ -51,6 +51,12 @@
     <li><strong>مزوّدي خدمات السفر</strong> (شركات الطيران، الفنادق، شركات النقل، جهات التأشيرات) — بالقدر اللازم لإتمام حجزك فقط.</li>
     <li><strong>Meta (واتساب)</strong> — كونها مشغّل قناة المراسلة.</li>
     <li><strong>مزوّد خدمة الذكاء الاصطناعي</strong> (<bdi>{{ implode('، ', $aiProviders ?? ['Google Gemini']) }}</bdi>) — يُعالَج نصّ المحادثة لتوليد الردّ{{ ($staffTranslation ?? false) ? '، وترجمة الرسائل عند طلب الموظف' : '' }}، ولا يُستخدم لتدريب نماذج عامة.</li>
+    @if ($integrationsOutbound ?? false)
+    <li><strong>أدوات أتمتة داخلية نشغّلها نحن</strong> (مثل n8n) — تتلقى أرقام الطلبات والفواتير وحالاتها فقط، دون محتوى محادثاتك أو وثائقك أو رقم هاتفك.</li>
+    @endif
+    @if ($mcpReports ?? false)
+    <li><strong>مساعد ذكاء اصطناعي يستعمله مدير الشركة</strong> — لقراءة تقارير داخلية مجمّعة (المبيعات والاعتمادات والمسافرون)، دون محتوى محادثاتك أو أرقام الهواتف.</li>
+    @endif
     <li><strong>الجهات الرسمية</strong> — عند وجود إلزام قانوني.</li>
 </ul>
 
@@ -100,7 +106,7 @@
     <h3>WhatsApp</h3>
     <p>We use the WhatsApp Business Platform by Meta. An automated assistant may answer first; you may ask for a human agent at any time and the conversation is handed over. Messages transit Meta's servers and are also governed by WhatsApp's own privacy policy. Send <strong>"STOP"</strong> to opt out of our messages.</p>
     <h3>Sharing</h3>
-    <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider{{ count($aiProviders ?? []) > 1 ? 's' : '' }} ({{ implode(', ', $aiProviders ?? ['Google Gemini']) }}) solely to generate replies{{ ($staffTranslation ?? false) ? ' and to translate messages when a staff member asks' : '' }} (not used to train general models), and with authorities where legally required.</p>
+    <p>We <strong>do not sell or rent</strong> your data. We share it only as needed with travel suppliers (airlines, hotels, transport, visa providers), with Meta as the messaging channel operator, with our AI provider{{ count($aiProviders ?? []) > 1 ? 's' : '' }} ({{ implode(', ', $aiProviders ?? ['Google Gemini']) }}) solely to generate replies{{ ($staffTranslation ?? false) ? ' and to translate messages when a staff member asks' : '' }} (not used to train general models){{ ($integrationsOutbound ?? false) ? ', with internal automation tools we run ourselves (such as n8n), which receive only request and invoice numbers and their status, never your conversations, documents or phone number' : '' }}{{ ($mcpReports ?? false) ? ', with an AI assistant used by the company manager to read aggregated internal reports, without your conversations or phone numbers' : '' }}, and with authorities where legally required.</p>
     <h3>Retention</h3>
     @if ($mediaArchive ?? false)
     <p>Attachments you send (photos, documents such as a passport or a transfer receipt) are stored on our servers with access limited to the staff handling your booking, every view is logged, and they are deleted {{ $mediaDays }} days after receipt — or at once if you choose "Delete my files".</p>
