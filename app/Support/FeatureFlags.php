@@ -61,6 +61,9 @@ final class FeatureFlags
         'step_up' => ['label' => 'تأكيد الهوية قبل الأفعال الحساسة (اعتماد، إعدادات، أسرار، مستخدمون…) مرة كل ربع ساعة', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'admin_number_mfa' => ['label' => 'أرقام الإدارة التي تعدّل: حساب مرتبط إلزامي، والمساعد موقوف حتى يفعّل صاحبه التحقق بخطوتين', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'idle_report' => ['label' => 'تقرير أسبوعي للمدراء بالحسابات وأرقام الإدارة الخاملة (تنبيه بلا تعطيل)', 'capability' => 'C162', 'available' => true],
+        // E40: الصندوق الصادر للتكاملات وخادم MCP للقراءة. admin_only: يفتحان باباً للخارج، فلا يبدّلهما إلا المدير
+        'integration_outbox' => ['label' => 'إرسال أحداث مختارة (طلب تسعير، فاتورة) لأداة أتمتة بتوقيع، بلا نصوص ولا هواتف ولا تكاليف', 'capability' => 'C098', 'available' => true, 'admin_only' => true],
+        'mcp_server' => ['label' => 'خادم MCP للقراءة: تقارير المالك لمساعد ذكاء اصطناعي برمز قصير العمر خلف Cloudflare Access', 'capability' => 'C102', 'available' => true, 'admin_only' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

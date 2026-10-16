@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\AuditLog;
+use App\Models\IntegrationOutboxRow;
 use App\Models\Notification;
 use App\Models\WaAdminAction;
 use App\Models\WaBotUsage;
@@ -43,5 +44,7 @@ return [
         Notification::class,
         WaAdminAction::class,
         WaBotUsage::class,
+        // E40: سجل التسليمات الصادرة (حمولة بيضاء أصلاً): المُسلَّم بعد 30 يوماً والميت بعد 90
+        IntegrationOutboxRow::class,
     ],
 ];

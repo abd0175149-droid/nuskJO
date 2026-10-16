@@ -74,8 +74,9 @@ final class OpsHealth
                 }
             }
             // طابور الأرشيف (E14) له تحذيره الخاص ولا يُسقط /up: تنزيل متأخر لا يعطّل الرد
-            // طابورا الوسائط (أرشفة الوارد، وملفات الموظف E32) لهما تحذيرهما ولا يُسقطان /up
-            $backlog = DB::table('jobs')->whereNull('reserved_at')->whereNotIn('queue', [self::MEDIA_QUEUE, self::MEDIA_OUT_QUEUE])
+            // طابورا الوسائط (أرشفة الوارد، وملفات الموظف E32) لهما تحذيرهما ولا يُسقطان /up، وكذلك التكاملات (E40):
+            // مستقبل خارجي معطّل أو عاملها الموقوف لا يجعل الحاوية unhealthy (سطرها في البطاقة ومُصالِحها ينبّه)
+            $backlog = DB::table('jobs')->whereNull('reserved_at')->whereNotIn('queue', [self::MEDIA_QUEUE, self::MEDIA_OUT_QUEUE, (string) config('integrations.queue', 'integrations')])
                 ->where('available_at', '<=', $now - (int) config('ops.backlog_stale_seconds'))
                 ->exists();
             if ($backlog) {
