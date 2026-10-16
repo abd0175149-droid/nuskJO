@@ -39,6 +39,7 @@
                         </div>
                     </div>
                     <!-- E27: شرط التحقق بخطوتين لمستخدم الرقم، والمساعد موقوف ما دام لم يفعّله -->
+                    <p v-if="n.test_recipient" class="text-xs"><span data-test="test-recipient-badge" class="px-2 py-0.5 rounded-full font-bold bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">🧪 يستقبل الرسائل التجريبية</span></p>
                     <p v-if="n.require_mfa || n.mfa_blocked" class="flex flex-wrap gap-1.5 text-xs">
                         <span v-if="n.require_mfa" class="px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">🔐 يشترط تحققاً بخطوتين<template v-if="!modes.mfaRequired"> (غير مفروض بعد)</template></span>
                         <span v-if="n.mfa_blocked" class="px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">المستخدم المرتبط بلا تحقق بخطوتين — المساعد موقوف</span>
@@ -136,6 +137,15 @@
                         </label>
                         <p v-if="form.errors.user_id" class="mt-1 text-xs text-red-500">{{ form.errors.user_id }}</p>
                     </div>
+                    <!-- E23: المستلمون الوحيدون للإرسال التجريبي من الإعدادات (قرار المالك أي الأرقام) -->
+                    <div class="md:col-span-2">
+                        <label for="an-test" class="flex items-start gap-2 cursor-pointer">
+                            <input id="an-test" v-model="form.test_recipient" type="checkbox" class="mt-0.5 w-4 h-4 rounded text-gold-500 shrink-0"/>
+                            <span class="text-sm text-gray-700 dark:text-gray-300">يستقبل الرسائل التجريبية
+                                <span class="block text-xs text-gray-400">«إرسال تجريبي» في الإعدادات يصل إلى هذه الأرقام وحدها، بنافذة مفتوحة ونصوص ثابتة.<template v-if="!testSendEnabled"> الميزة مطفأة الآن (wa_test_send).</template></span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="space-y-3">
@@ -194,11 +204,12 @@ const props = defineProps({
     toolLabels: { type: Object, default: () => ({ tools: {}, actions: {} }) },
     modes: { type: Object, default: () => ({ readonly: false, rbacEnforced: false, mfaRequired: false }) },
     isAdmin: { type: Boolean, default: false },
+    testSendEnabled: { type: Boolean, default: false },
 });
 
 const showForm = ref(false);
 const editing = ref(null);
-const form = useForm({ phone: '', name: '', user_id: null, permissions: [], is_active: true, notes: '', require_mfa: false });
+const form = useForm({ phone: '', name: '', user_id: null, permissions: [], is_active: true, notes: '', require_mfa: false, test_recipient: false });
 
 // E27: رقم فيه أدوات تعديل يشترط العامل الثاني لمستخدمه حين يُفرض العلم؛ لا يطفئه إلا المدير
 const hasWrites = computed(() => form.permissions.some((k) => props.catalog[k]?.write));
@@ -235,6 +246,7 @@ const openForm = (n = null) => {
     form.permissions = n ? [...n.permissions] : [];
     form.is_active = n ? n.is_active : true;
     form.notes = n?.notes || '';
+    form.test_recipient = !!n?.test_recipient;
     // رقم جديد والشرط مفروض: مفعّل افتراضياً (يطفئه المدير لرقم التقارير)
     form.require_mfa = n ? !!n.require_mfa : !!props.modes.mfaRequired;
     baseline.value = JSON.stringify(form.data());

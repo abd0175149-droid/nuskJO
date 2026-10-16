@@ -79,6 +79,12 @@ class WhatsAppWebhookController extends Controller
             return response()->json(['ok' => false], 403);
         }
 
+        // «اختبار الاتصال» (E23، العلم channel_selftest): ارتداد موقّع منا يُعترض هنا، قبل «آخر توقيع صحيح» والحفظ والسياج
+        // والمعالجة، فلا يترك أثراً في المحادثات ولا في سجل الويبهوك ولا يوقظ البوت
+        if (\App\Services\WhatsApp\ChannelSelfTest::intercepts($raw)) {
+            return response()->json(['ok' => true]);
+        }
+
         // «آخر توقيع صحيح» في الإعدادات: كتابة واحدة في الدقيقة على الأكثر
         if (Cache::add('wa:sig:ok:tick', 1, 60)) {
             Cache::forever('wa:sig:last_ok_at', now()->toIso8601String());

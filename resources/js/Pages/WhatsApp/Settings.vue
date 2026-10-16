@@ -272,6 +272,10 @@
                     <!-- إشعار القراءة ومؤشر الكتابة (E35) -->
                     <ReadReceiptsField class="mt-4" v-model="form.send_read_receipts" :flag-on="readReceiptsFlagOn"
                                        :dirty="isDirty('send_read_receipts')" :error="errors.send_read_receipts"/>
+
+                    <!-- أدوات التشخيص (E23): اختبار الاتصال والإرسال التجريبي، كلٌّ خلف علمه -->
+                    <ChannelTestPanel v-if="props.diagnostics?.channel_test"/>
+                    <TestSendPanel v-if="props.diagnostics?.test_send" :recipients="props.diagnostics.recipients || []" :per-hour="props.diagnostics.per_hour || 10"/>
                 </div>
 
                 <!-- ================= 3. الذكاء ================= -->
@@ -492,6 +496,8 @@ import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
 import DoctorPanel from '@/Components/WhatsApp/DoctorPanel.vue';
+import ChannelTestPanel from '@/Components/WhatsApp/ChannelTestPanel.vue';
+import TestSendPanel from '@/Components/WhatsApp/TestSendPanel.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
 import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
 import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
@@ -535,6 +541,7 @@ const props = defineProps({
     graph: Object,
     health: { type: Array, default: () => [] },
     doctor: { type: Object, default: null },
+    diagnostics: { type: Object, default: () => ({ channel_test: false, test_send: false, recipients: [] }) },
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
     mediaArchive: { type: Object, default: null },

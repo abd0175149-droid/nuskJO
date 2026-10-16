@@ -761,7 +761,8 @@ TXT;
     {
         $after = self::watermarkOn($s)
             ? ReplyState::mark($conv)
-            : (int) $conv->messages()->where('direction', 'out')->max('id');
+            // الإرسال التجريبي (E23) ليس رداً على شيء: لا يُحسب آخر صادر
+            : (int) $conv->messages()->where('direction', 'out')->where('source', '!=', 'test')->max('id');
 
         return $conv->messages()
             ->where('direction', 'in')->where('id', '>', $after)
@@ -782,7 +783,7 @@ TXT;
             return ReplyState::hasPending($conv);
         }
         // تحديث الهوية والتفاعل لا يوقظان البوت: آخر رسالة حقيقية هي المعتبرة
-        $last = $conv->messages()->where('source', '!=', 'system')->where('msg_type', '!=', 'reaction')->orderByDesc('id')->first();
+        $last = $conv->messages()->whereNotIn('source', ['system', 'test'])->where('msg_type', '!=', 'reaction')->orderByDesc('id')->first();
 
         return $last && $last->direction === 'in';
     }

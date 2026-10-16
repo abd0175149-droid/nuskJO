@@ -57,6 +57,13 @@ class WhatsAppSettingsController extends Controller
             'health' => ChannelDoctor::checks(),
             // E23: آخر فحص كامل (whatsapp:doctor --store أو الزر)، بلا أي قيمة سرية
             'doctor' => ChannelDoctor::last(),
+            // E23: «اختبار الاتصال» و«إرسال تجريبي» (كلٌّ خلف علمه)، والمستلمون بالاسم وآخر أربعة أرقام
+            'diagnostics' => [
+                'channel_test' => \App\Services\WhatsApp\ChannelSelfTest::enabled(),
+                'test_send' => $testSend = \App\Services\WhatsApp\TestSend::enabled(),
+                'recipients' => $testSend ? \App\Services\WhatsApp\TestSend::recipients() : [],
+                'per_hour' => (int) config('whatsapp.monitor.test_send_per_hour', 10),
+            ],
             'ops' => app(OpsHealth::class)->snapshot(),
             'meta' => MetaHealth::summary(WaBotSetting::current()),
             'mediaArchive' => rescue(fn () => \App\Services\WhatsApp\Media\MediaArchiver::summary(), null, false),

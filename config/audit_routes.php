@@ -196,6 +196,8 @@ return [
     // E23: أدوات التشخيص
     'WhatsAppController@runDoctor' => 'none: فحص للقراءة (الحصيلة في الكاش يومين)',
     'OpsStatusController@refresh' => 'none: إعادة بناء لقطة القراءة (كاش 60 ثانية)',
+    'WhatsAppController@channelTest' => 'none: قراءات ميتا وارتداد موقّع إلى خادمنا، بلا إرسال لعميل ولا تعديل عند ميتا',
+    'WhatsAppController@testSend' => 'wa.test_send',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

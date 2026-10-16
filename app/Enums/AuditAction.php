@@ -157,6 +157,8 @@ enum AuditAction: string
     // E22: رفع حجب القناة يدوياً بسبب، وتأكيد الاطلاع على اقتراح الرفع
     case WaHealthUnblock = 'wa.health_unblock';
     case WaHealthAck = 'wa.health_ack';
+    // E23: إرسال تجريبي لرقم إدارة معلَّم (نص ثابت من الكود، بالمصدر test)
+    case WaTestSend = 'wa.test_send';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -205,7 +207,7 @@ enum AuditAction: string
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
             self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
-            self::WaHealthChange, self::WaHealthUnblock => AuditSeverity::Warn,
+            self::WaHealthChange, self::WaHealthUnblock, self::WaTestSend => AuditSeverity::Warn,
             self::WaLlmTermsConfirm => AuditSeverity::Warn,
             self::WaConversationExport, self::WaSearchIndexRepair => AuditSeverity::Warn,
             self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed,
@@ -383,6 +385,7 @@ enum AuditAction: string
             self::OfferStoryGenerate => 'توليد بطاقة الحالة 9:16',
             self::WaHealthUnblock => 'رفع حجب القناة يدوياً',
             self::WaHealthAck => 'الاطلاع على اقتراح رفع الحجب',
+            self::WaTestSend => 'إرسال تجريبي لرقم إدارة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -420,7 +423,9 @@ enum AuditAction: string
             // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
             self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked,
             // E22: انتقال صحة القناة (بديل صف الإيقاف التلقائي) وحدث الحساب الحرج: «من حجب الإرسال؟» له جواب دائماً
-            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock], true);
+            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock,
+            // E23: كل رسالة تجريبية خرجت إلى رقم حقيقي
+            self::WaTestSend], true);
     }
 
     public function isNoise(): bool
