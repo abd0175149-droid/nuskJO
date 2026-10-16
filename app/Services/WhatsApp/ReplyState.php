@@ -149,7 +149,7 @@ final class ReplyState
 
         // المتأخرة تُجمَّع للإدارة: إشعار واحد في الساعة مع إشعار الموكَّل
         if ($reason === 'stale' && $conv->assigned_to && \Illuminate\Support\Facades\Cache::add('wa:stale:alert:' . now()->format('YmdH'), 1, now()->addHour())) {
-            WhatsAppInbox::notifyAdmins('⏱️ رسائل وصلت متأخرة', 'وصلت رسائل واتساب متأخرة فلم يرد عليها البوت — راجع فلتر «تدخّل».', '/whatsapp/inbox?filter=attention');
+            WhatsAppInbox::notifyAdmins('⏱️ رسائل وصلت متأخرة', 'وصلت رسائل واتساب متأخرة فلم يرد عليها البوت — راجع فلتر «تدخّل».', '/whatsapp/inbox?filter=attention', 'RB-01');
         }
     }
 

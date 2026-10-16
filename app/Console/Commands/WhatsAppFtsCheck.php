@@ -119,7 +119,7 @@ class WhatsAppFtsCheck extends Command
         AuditLog::safe(AuditAction::WaSearchIndexRepair, 'system', null, null, ['reason' => $report['problems'], 'actions' => $actions]);
         WaLog::warning('wa.fts.repaired', ['reason' => implode(',', $report['problems']), 'count' => count($actions)]);
         if (Cache::add('wa:fts:notified:'.now()->toDateString(), 1, now()->endOfDay())) {
-            WhatsAppInbox::notifyAdmins('🔎 فهرس البحث أُصلح', 'أُعيد بناء فهرس البحث في الرسائل تلقائياً بعد خلل. راجع آخر هجرة طُبّقت.', '/whatsapp/settings#ops');
+            WhatsAppInbox::notifyAdmins('🔎 فهرس البحث أُصلح', 'أُعيد بناء فهرس البحث في الرسائل تلقائياً بعد خلل. راجع آخر هجرة طُبّقت.', '/whatsapp/settings#ops', 'RB-17');
         }
 
         return $actions;

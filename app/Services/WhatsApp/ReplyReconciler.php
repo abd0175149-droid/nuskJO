@@ -146,7 +146,7 @@ final class ReplyReconciler
 
         if ($waiting > 0 && !$dryRun && Cache::add('wa:queue:lag:'.now()->format('YmdH'), 1, now()->addHour())) {
             WaLog::warning('reply.queue_lag', ['count' => $waiting]);
-            WhatsAppInbox::notifyAdmins('🐢 تأخر طابور ردود واتساب', "{$waiting} وظيفة رد تنتظر أكثر من ".self::QUEUE_LAG_MINUTES.' دقائق. تحقّق من عامل الطابور.');
+            WhatsAppInbox::notifyAdmins('🐢 تأخر طابور ردود واتساب', "{$waiting} وظيفة رد تنتظر أكثر من ".self::QUEUE_LAG_MINUTES.' دقائق. تحقّق من عامل الطابور.', runbook: 'RB-11');
         }
 
         return $waiting;

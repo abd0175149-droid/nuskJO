@@ -120,7 +120,8 @@ class WhatsAppChannel
     private static function alertOnce(string $kind, string $title, string $body, string $url): void
     {
         if (Cache::add("wa:graph-alert:{$kind}:" . now()->toDateString(), 1, now()->addDay())) {
-            WhatsAppInbox::notifyAdmins($title, $body, $url);
+            // رفض appsecret_proof سرّ تطبيق لا يطابق (RB-02)، ومضيف الوسائط إعداد يُراجَع (RB-17)
+            WhatsAppInbox::notifyAdmins($title, $body, $url, $kind === 'proof' ? 'RB-02' : 'RB-17');
         }
     }
 

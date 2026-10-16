@@ -87,5 +87,7 @@ return [
         'coexistence_guard' => env('WA_FEATURE_COEXISTENCE_GUARD'),
         'coexistence_echoes' => env('WA_FEATURE_COEXISTENCE_ECHOES'),
         'coexistence_history_hold' => env('WA_FEATURE_COEXISTENCE_HISTORY_HOLD'),
+        // E25
+        'alert_runbook_refs' => env('WA_FEATURE_ALERT_RUNBOOK_REFS'),
     ],
 ];

@@ -24,7 +24,7 @@ class RunBackupJob implements ShouldQueue
         try {
             $snapshots->run('manual', 'web', false, $this->userId);
         } catch (BackupFailed $e) {
-            WhatsAppInbox::notifyAdmins('⚠️ فشل النسخ الاحتياطي', $e->getMessage(), '/settings/backups');
+            WhatsAppInbox::notifyAdmins('⚠️ فشل النسخ الاحتياطي', $e->getMessage(), '/settings/backups', 'RB-06');
         }
     }
 }

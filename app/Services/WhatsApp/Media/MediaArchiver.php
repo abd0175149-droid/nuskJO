@@ -211,7 +211,8 @@ final class MediaArchiver
     public static function alertOnce(string $kind, string $title, string $body): void
     {
         if (Cache::add("wa:media:alert:{$kind}:".now()->toDateString(), 1, now()->addDay())) {
-            WhatsAppInbox::notifyAdmins($title, $body, '/whatsapp/settings#media');
+            // مضيف غير متوقع إعداد يُراجَع (RB-17)، والباقي سقف الأرشيف أو القرص أو ملفات مفقودة (RB-08)
+            WhatsAppInbox::notifyAdmins($title, $body, '/whatsapp/settings#media', $kind === 'host' ? 'RB-17' : 'RB-08');
         }
     }
 

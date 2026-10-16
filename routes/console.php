@@ -35,7 +35,7 @@ Artisan::command('whatsapp:window-reminders', function () {
             if ($c->assigned_to) {
                 \App\Services\NotificationService::send((int) $c->assigned_to, $title, $body, ['type' => 'whatsapp', 'icon' => '⏳', 'action_url' => $url]);
             } else {
-                \App\Services\WhatsApp\WhatsAppInbox::notifyAdmins($title, $body, $url);
+                \App\Services\WhatsApp\WhatsAppInbox::notifyAdmins($title, $body, $url, runbook: 'RB-01');
             }
             $sent++;
         });
@@ -124,7 +124,7 @@ Artisan::command('whatsapp:graph-version-check', function () {
         $this->warn("{$label}: {$reason}");
         if (\Illuminate\Support\Facades\Cache::add("wa:graphver:{$kind}:".($version ?? 'none').':'.now()->toDateString(), 1, now()->addDay())) {
             \Illuminate\Support\Facades\Log::error("WA graph version check [{$kind}]: {$reason}");
-            \App\Services\WhatsApp\WhatsAppInbox::notifyAdmins($title, "{$label}: {$reason} — راجع خطة الترقية", '/whatsapp/settings');
+            \App\Services\WhatsApp\WhatsAppInbox::notifyAdmins($title, "{$label}: {$reason} — راجع خطة الترقية", '/whatsapp/settings', runbook: 'RB-07');
             $sent++;
         }
     }

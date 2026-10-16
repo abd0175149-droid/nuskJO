@@ -100,6 +100,8 @@ final class FeatureFlags
         'coexistence_guard' => ['label' => 'حارس التعايش: أي رسالة من تطبيق الأعمال على الهاتف توقف البوت في محادثتها فوراً، بلا تخزين', 'capability' => 'C011', 'available' => true],
         'coexistence_echoes' => ['label' => 'التعايش: رسائل هاتف الوكالة تُحفظ في الصندوق وتوقف البوت (بقرار المالك المكتوب)', 'capability' => 'C011', 'available' => true],
         'coexistence_history_hold' => ['label' => 'حفظ سجل المحادثات السابق (history) مشفّراً بانتظار قرار الاستيراد، ثم يُمحى بعد مدته', 'capability' => 'C012', 'available' => true],
+        // E25: إحالة تنبيه المدراء إلى كتيّبه في docs/RUNBOOK.md (نص فقط؛ الوثائق لا تُخدم من الموقع)
+        'alert_runbook_refs' => ['label' => 'إحالة كل تنبيه تشغيل للمدراء إلى كتيّبه: « — الكتيب RB-NN» في آخر نص الإشعار، بلا بيانات عميل', 'capability' => 'C225', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */
