@@ -29,6 +29,7 @@
 
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { setDirtyForm } from '@/utils/reloadOnce.js';
 
 const props = defineProps({
   open: Boolean,
@@ -115,4 +116,9 @@ function onNativeClose() {
 watch(() => props.open, (v) => (v ? show() : hide()));
 onMounted(() => { if (props.open) show(); });
 onBeforeUnmount(hide);
+
+// نموذج مفتوح بتعديل غير محفوظ: لا إعادة تحميل تلقائية بعد النشر فوقه (E28)، بل شريط «تحديث متاح»
+const dirtyId = titleId;
+watch(() => props.open && props.dirty, (on) => setDirtyForm(dirtyId, on), { immediate: true });
+onBeforeUnmount(() => setDirtyForm(dirtyId, false));
 </script>

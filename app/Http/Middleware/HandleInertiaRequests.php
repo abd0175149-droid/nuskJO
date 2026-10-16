@@ -38,6 +38,8 @@ class HandleInertiaRequests extends Middleware
             // مزايا خلف أعلام: القائمة تُخفي ما لم يُفعَّل بعد
             'features' => [
                 'audit_page' => (bool) config('audit.page'),
+                // شريط الانقطاع والتعافي بعد النشر و«قد تكون أُرسلت» (E28، العلم connection_resilience)
+                'resilience' => \App\Services\WhatsApp\SendOutcome::enabled(),
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);

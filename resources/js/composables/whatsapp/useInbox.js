@@ -7,12 +7,28 @@ import { useDrafts } from '@/composables/useDrafts';
 import { createSendKeys } from '@/composables/whatsapp/useSendKey.js';
 import { appendPage, cursorOf, mergeFirstPage } from './useConversationList.js';
 import { applyUpdates, lastId, mergeNewer, mergeOlder, needsReload } from './useThread.js';
+import { resilienceEnabled } from '@/utils/connectionGuard.js';
+import { SERVER_DOWN_STATUSES } from '@/composables/useConnectionStatus.js';
 
 const OUT_OF_SCOPE = 'هذه المحادثة غير متاحة لك: ربما نُقلت لموظف آخر أو أُزيل وسم اختصاصك. اطلب من المدير توكيلها لك إن كنت تحتاجها';
 const api = { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
 const threadUrl = (id, action) => `/api/whatsapp/conversations/${id}/${action}`;
 const gone = (e) => [403, 404].includes(e?.response?.status);
 const hhmmNow = () => new Date().toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
+
+// نتيجة إرسال مجهولة (E28، العلم connection_resilience): لا «تعذّر» لما قد يكون خرج، والإرسال معطّل 10 ثوانٍ
+export const MAYBE_SENT = 'قد تكون الرسالة أُرسلت — راجع المحادثة قبل الإعادة';
+export const SEND_COOLDOWN_MS = 10000;
+const UNKNOWN_CODES = ['OUTCOME_UNKNOWN', 'SEND_IN_PROGRESS'];
+/** بلا رد (شبكة أو مهلة axios)، أو 500 و5xx البوابة (504 و524…)، أو رمز «مجهول/قيد الإرسال» من الخادم */
+export function outcomeUnknown(e) {
+    if (!e || e.__CANCEL__ || e.code === 'ERR_CANCELED') return false;
+    const status = e.response?.status;
+    if (!e.response) return true;
+    return status === 500 || SERVER_DOWN_STATUSES.includes(status) || UNKNOWN_CODES.includes(e.response.data?.code);
+}
+/** نص الخادم إن كان رسالتنا العربية، وإلا النص الثابت: لا HTML ولا رابط من صفحة بوابة */
+const safeNotice = (text) => (typeof text === 'string' && text && text.length < 300 && !/[<>]|https?:/i.test(text) ? text : MAYBE_SENT);
 
 export function errorText(e, fallback) {
     const d = e?.response?.data || {};
@@ -44,6 +60,9 @@ export function useInbox(props, thread) {
         notice: '',
         sending: false,
         sendError: '',
+        // «قد تكون أُرسلت» (E28) وتعطيل الإرسال بعدها
+        sendNotice: '',
+        sendCooldown: false,
         requesting: false,
         // الجوال: إما القائمة وإما المحادثة (تحت lg)
         view: 'list',
@@ -51,6 +70,7 @@ export function useInbox(props, thread) {
         summary: props.summary || null,
     });
     let failures = 0;
+    let cooldownTimer = null;
     let syncedAt = null;
     let seq = 0;
     let inflight = null;
@@ -151,6 +171,7 @@ export function useInbox(props, thread) {
 
     async function open(id, { read = true } = {}) {
         const mine = ++seq;
+        if (id !== s.activeId) endCooldown();
         s.activeId = id;
         s.view = 'thread';
         s.sendError = '';
@@ -239,13 +260,31 @@ export function useInbox(props, thread) {
         markRead(s.activeId);
     }
 
+    function endCooldown() {
+        clearTimeout(cooldownTimer);
+        cooldownTimer = null;
+        s.sendCooldown = false;
+        s.sendNotice = '';
+    }
+
+    /** ربما خرجت الرسالة: إشعار كهرماني، واستطلاع فوري، والمسودة ومفتاحها باقيان (الإعادة تعود replayed)، والزر معطّل 10 ثوانٍ */
+    function maybeSent(id, text) {
+        s.sendError = '';
+        s.sendNotice = safeNotice(text);
+        s.sendCooldown = true;
+        clearTimeout(cooldownTimer);
+        cooldownTimer = setTimeout(() => { cooldownTimer = null; s.sendCooldown = false; }, SEND_COOLDOWN_MS);
+        if (s.activeId === id) poll();
+    }
+
     /** confirmFn(message): Promise<boolean> لتحذير السياسة (E15.9) */
     async function send(confirmFn) {
         const id = s.activeId;
         const body = drafts.get(id).trim();
-        if (!id || !body || s.sending) return;
+        if (!id || !body || s.sending || s.sendCooldown) return;
         s.sending = true;
         s.sendError = '';
+        s.sendNotice = '';
         const headers = { ...api.headers, 'Idempotency-Key': sendKeys.keyFor(id, body) };
         try {
             let res;
@@ -260,6 +299,7 @@ export function useInbox(props, thread) {
                 res = await axios.post(threadUrl(id, 'send'), { body, ack_warnings: true }, { headers });
             }
             // 202 «غير مؤكد» (دفتر الإرسال E19): المسودة والمفتاح باقيان، ولا إعادة تلقائية. الخيط يُظهر الصف ⚠️
+            if (res?.data?.unknown && resilienceEnabled()) return maybeSent(id, res.data.error);
             if (res?.data?.unknown) {
                 s.sendError = `${res.data.error || 'قد تكون الرسالة وصلت.'} لم تُمسح المسودة: تحقق من الخيط قبل إعادة الإرسال.`;
                 if (s.activeId === id) poll();
@@ -274,6 +314,12 @@ export function useInbox(props, thread) {
             }
         } catch (e) {
             if (e?.response?.status === 404 && s.activeId === id) return closeOutOfScope();
+            // مهلة أو انقطاع أو 5xx من البوابة (E28): ربما وصلت، فلا «تعذّر الإرسال»
+            if (resilienceEnabled() && outcomeUnknown(e)) {
+                maybeSent(id, e?.response?.data?.error);
+                if (e?.response?.data?.code === 'SEND_IN_PROGRESS' && s.activeId === id) setTimeout(() => s.activeId === id && poll(), 3000);
+                return;
+            }
             s.sendError = errorText(e, 'تعذّر الإرسال');
             const code = e?.response?.data?.code;
             // المفتاح مستعمل لنص آخر: مفتاح جديد، والضغطة التالية ترسل
@@ -443,6 +489,6 @@ export function useInbox(props, thread) {
         refilter: () => load({ reset: true }),
         followAction, loadSummary,
         tick: async () => { const ok = await load(); await poll(); loadSummary(); if (!ok) throw new Error('list refresh failed'); },
-        dispose: () => { seq++; },
+        dispose: () => { seq++; clearTimeout(cooldownTimer); },
     };
 }

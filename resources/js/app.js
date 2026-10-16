@@ -16,6 +16,8 @@ import '@fontsource/inter/700.css';
 import '../css/app.css';
 import './echo';
 import { installHistoryGuard } from './utils/historyGuard';
+import { installConnectionGuard, recoverPageLoad, setResilience } from './utils/connectionGuard';
+import { router } from '@inertiajs/vue3';
 
 // Axios global setup: CSRF token + credentials
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
@@ -30,13 +32,20 @@ installHistoryGuard();
 
 createInertiaApp({
     title: (title) => title ? `${title} - NUSUK` : 'NUSUK',
+    // صفحة حُذف ملفها بعد نشر جديد (E28): إعادة تحميل واحدة بحارس 30 ثانية بدل صفحة بيضاء
     resolve: (name) =>
         resolvePageComponent(
             `./Pages/${name}.vue`,
             import.meta.glob('./Pages/**/*.vue')
-        ),
+        ).catch((error) => {
+            if (!recoverPageLoad(error)) throw error;
+            return new Promise(() => {});
+        }),
     setup({ el, App, props, plugin }) {
         const app = createApp({ render: () => h(App, props) });
+        // شريط الانقطاع وبطاقة خطأ الصفحة (E28، العلم connection_resilience)
+        setResilience(props.initialPage?.props?.features?.resilience);
+        installConnectionGuard({ router, axios, app });
         app.use(plugin);
         app.use(ZiggyVue);
         app.mount(el);

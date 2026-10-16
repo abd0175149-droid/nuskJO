@@ -41,6 +41,12 @@
       🔌 البوت في وضع التحويل<span v-if="llm.opened_at"> منذ {{ hhmm(llm.opened_at) }}</span>. مزوّد الذكاء متعطّل — ردّوا على العملاء يدوياً.
     </div>
 
+    <!-- البث اللحظي متوقف (E28): القائمة تبقى بالاستطلاع السريع، فلا حاجة لإجراء من الموظف -->
+    <div v-if="realtime === 'unavailable' || realtime === 'failed'" role="status" data-test="realtime-off"
+         class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-2.5 text-xs text-gray-600 dark:text-gray-300">
+      ⚡ التحديث اللحظي متوقف — القائمة تتحدّث كل 15 ثانية حتى يعود الاتصال.
+    </div>
+
     <div v-if="staleSince" role="status"
          class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-2.5 text-xs text-gray-600 dark:text-gray-300">
       ⚠️ تعذّر التحديث منذ {{ staleSince }} — تحقّق من الاتصال، وستتحدّث القائمة تلقائياً عند عودته.
@@ -62,6 +68,8 @@ defineProps({
   llm: { type: Object, default: () => ({ state: 'closed' }) },
   staleSince: { type: String, default: '' },
   notice: { type: String, default: '' },
+  // حالة المقبس للصندوق (E28): connected | connecting | unavailable | failed | disabled
+  realtime: { type: String, default: 'disabled' },
 });
 defineEmits(['dismiss']);
 
