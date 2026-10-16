@@ -627,7 +627,7 @@ const act = async (action, payload, onDone, fallback) => {
   }
 };
 
-const toggleBot = () => act('toggle-bot', {}, (data) => { thread.value.bot_enabled = data.bot_enabled; }, 'تعذّر تغيير حالة البوت');
+const toggleBot = () => act('toggle-bot', { enabled: !thread.value?.bot_enabled }, (data) => { thread.value.bot_enabled = data.bot_enabled; }, 'تعذّر تغيير حالة البوت');
 
 const resolve = () => act('resolve', {}, () => { thread.value.needs_attention = false; thread.value.attention_reason = null; }, 'تعذّر حفظ المعالجة');
 

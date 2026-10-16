@@ -28,6 +28,16 @@ describe('thread merge', () => {
         expect(list[0].status).toBe('sent');
     });
 
+    it('applies the status fields of E18, E19 and E21 and drops the ones the update no longer carries', () => {
+        const list = [m(1, { status: 'failed', error: 'تعذّر التسليم', error_code: 'RECIPIENT_UNREACHABLE', category: 'caller', action: 'اطلب…', meta_code: 131026, multi_fail: false })];
+        applyUpdates(list, [{ id: 1, status: 'delivered', error: null, status_at: '14:05', multi_fail: true }]);
+        expect(list[0]).toMatchObject({ status: 'delivered', error: null, status_at: '14:05', multi_fail: true });
+        for (const gone of ['error_code', 'category', 'action', 'meta_code']) expect(list[0]).not.toHaveProperty(gone);
+
+        applyUpdates(list, [{ id: 1, status: 'read', error: null, status_at: '14:06', multi_fail: true, attempts: 1, can_resend: false }]);
+        expect(list[0]).toMatchObject({ status: 'read', status_at: '14:06', attempts: 1, can_resend: false });
+    });
+
     it('reloads on a gap', () => {
         expect(needsReload({ gap: true })).toBe(true);
         expect(needsReload({ messages: [] })).toBe(false);

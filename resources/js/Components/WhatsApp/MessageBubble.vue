@@ -16,7 +16,7 @@
       <div class="flex items-center gap-1.5 mt-1 text-[10px] opacity-70 flex-wrap">
         <span dir="ltr">{{ m.at }}</span>
         <span v-if="m.source !== 'customer' && !m.sender">· {{ SOURCES[m.source] || m.source }}</span>
-        <!-- حالة التسليم (يكملها E21) -->
+        <!-- حالة التسليم: ⏳ و⚠️ و❌ من E19، وعلامات ✓ و✓✓ من E21 -->
         <slot name="status">
           <span v-if="m.status === 'failed'" class="font-bold" :title="m.error || ''">· ❌ فشل</span>
           <span v-else-if="m.status === 'blocked'" class="px-1.5 rounded bg-red-600 text-white font-bold" :title="m.error || ''">🛡️ حُجبت</span>
@@ -24,6 +24,8 @@
           <span v-else-if="m.status === 'queued'" data-test="status-queued">· ⏳ قيد الإرسال</span>
           <span v-else-if="m.status === 'unknown'" data-test="status-unknown" class="px-1.5 rounded bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 font-bold"
                 title="لا دليل على وصولها: تحقق مع العميل قبل الإعادة">⚠️ غير مؤكد — قد تكون وصلت</span>
+          <!-- تصل حقولها مع العلم delivery_status_v2 وحده (multi_fail منطقية لكل صادر) -->
+          <DeliveryTicks v-else-if="ticks" :status="m.status" :status-at="m.status_at || null" :multi-fail="m.multi_fail"/>
         </slot>
       </div>
       <!-- سبب الفشل (E18): نص عربي من جدول الرموز، وفئة ملوّنة، وإجراء يُفتح بـ ⓘ. نص فقط بلا v-html -->
@@ -48,6 +50,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import DeliveryTicks from './DeliveryTicks.vue';
 import WaText from './WaText.vue';
 
 const props = defineProps({ m: { type: Object, required: true } });
@@ -60,6 +63,9 @@ const CATEGORY_LABELS = {
   auth: 'اعتماد', integrity: 'تقييد', window: 'النافذة', throttle: 'خنق', transient: 'مؤقت',
   quality: 'جودة', caller: 'الطلب', unknown: 'غير معروف',
 };
+
+// علامات التسليم (E21): للصادر وحده، وحين يرسل الخادم حقولها
+const ticks = computed(() => props.m.direction === 'out' && typeof props.m.multi_fail === 'boolean');
 
 const hasReason = computed(() => ['failed', 'blocked', 'unknown'].includes(props.m.status) && !!props.m.error);
 
