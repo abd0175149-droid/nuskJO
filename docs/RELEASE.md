@@ -359,6 +359,46 @@ appsecret_proof (اختياري): `WA_APPSECRET_PROOF=true` أسبوعاً بل�
 4. فعّل الفرض. المرفوض يُعدّ ولا يُخزَّن محتواه، مع تنبيه عند أول رفض في اليوم.
 - **التراجع:** العلمان إلى off وقت التشغيل. الجدول لا يؤذي إن بقي، و`whatsapp:webhook-events-prune` يمحو أي جسم متبقٍ. والمسار في `routes/webhooks.php` منذ E07، فلا يُنقل.
 
+## ترويسات الأمان والحاوية وسلسلة التوريد (E26، على مراحل)
+
+لا هجرة. النشر يعيد بناء الصورة (nginx وsupervisord وصور أساس مثبّتة بالبصمة). ما يعمل عند النشر بلا علم:
+- **لا سكربت ولا خط من طرف ثالث وقت التشغيل:** صفحات الطباعة ترسم القالب بـ pdf.js من حزمتنا وبلا eval، والخطوط من /build.
+- **سياسة أمن المحتوى بتقارير فقط** (`CSP_MODE=report`): nonce جديد لكل صفحة، ولا يُحجب شيء. المتصفحات ترسل ما كان سيُحجب إلى `/csp-report`، فيُحفظ التوجيه والمصدر وقالب المسار فقط (بلا رابط ولا query)، بحد 16KB و30 تقريراً في الدقيقة لكل عنوان. القراءة: `docker exec -u www-data nuskjo-app php artisan security:csp-report`.
+- **ترويسات nginx على كل رد** من ملف مشترك: X-Frame-Options وnosniff وReferrer-Policy وHSTS لمضيف nuskjo وحده (بلا includeSubDomains ولا preload) وPermissions-Policy وCOOP، وبلا رقم إصدار nginx. `/storage` بـ sandbox وكاش ساعة (PDF مستثنى). CORS مغلق، و`whatsapp:doctor` ينبّه إن فُتح.
+- **الحاوية:** no-new-privileges، وحدود الذاكرة والعمليات والمعالج من `/opt/nuskJO/.env` (الافتراضي 3g و1024 و2.0). `scripts/deploy.sh` يشغّل `scripts/smoke.sh` بعد كل نشر: /up، وبرامج supervisor، وتوليد بطاقة حقيقي (`ops:smoke-card`)، وإصدار كروميوم، وصلاحيات المرفقات 700/600، والترويسات.
+- **بوابتا التدقيق قبل البناء** (`composer audit` و`npm audit` للحزم التشغيلية) بخط أساس مسبَّب ومؤرّخ في `composer.json` و`security/npm-audit-baseline.json`. تسجيل فقط حتى `NUSKJO_AUDIT_GATE=enforce`. تعذّر الشبكة تحذير لا منع.
+
+قبل النشر:
+1. نسخة ووسم: `backup:run --reason=manual --label=pre-e26` و`docker tag nuskjo-nuskjo-app:latest nuskjo-nuskjo-app:pre-e26`.
+2. قِس الذاكرة 10 دقائق مع توليد 3 بطاقات متتالية من /offers: `bash scripts/security/measure-memory.sh`. ضع المقترح في `/opt/nuskJO/.env` (`NUSKJO_MEM_LIMIT`)؛ لا يقل عن 2g.
+3. في Cloudflare › SSL/TLS › Edge Certificates: HSTS مطفأ على مستوى المنطقة. إن كان مفعّلاً بـ includeSubDomains فهو يمس كل المشاريع على المنطقة: قرار المالك قبل أي خطوة.
+
+المرحلة 1، النشر (`bash scripts/deploy.sh`):
+1. `scripts/smoke.sh` أخضر. ثم من خارج الخادم: `curl -sI` على `/login` و`/build/manifest.json` وصورة بطاقة في `/storage/offer-cards/` و`/firebase-messaging-sw.js`. الترويسات الست في كلها، و/storage فيه `sandbox`.
+2. يدوياً: صفحة طباعة فاتورة ترسم القالب بلا طلب لمضيف آخر (تبويب Network)، وإشعار FCM يصل، والجرس يتحدّث (Reverb)، والموقع في تسجيل الحضور يعمل، وبطاقة تُرسل لرقم إداري ضمن نافذته.
+3. تحقق مرة من وصول التقارير: في وحدة تحكم المتصفح على أي صفحة أضف سكربتاً من أصل آخر، ثم انتظر دقائق (المتصفح يجمع التقارير قبل إرسالها) وشغّل `security:csp-report`. يجب أن يظهر السطر.
+4. أسبوع مراقبة: `security:csp-report` يومياً. ما مصدره مضيفنا أو inline على صفحة من التطبيق كسرٌ يُصلح قبل الفرض. إضافات المتصفحات (chrome-extension وأمثالها) ضجيج.
+
+المرحلة 2، صلاحيات storage:
+1. `docker exec nuskjo-app id nginx` يُظهر المجموعة www-data.
+2. `NUSKJO_STORAGE_PERMS=strict` في `/opt/nuskJO/.env` ثم `docker compose up -d nuskjo-app` بلا بناء. المجلدات 750 والملفات 640، ومجلدا المرفقات والنسخ يبقيان 700/600.
+3. `bash scripts/smoke.sh`، وصورة بطاقة ترد 200 من الخارج، وإرسال بطاقة من الصندوق.
+
+المرحلة 3، الفرض بعد أسبوع تقارير نظيف: العلم `csp_enforce` من إعدادات الواتساب (بسبب، ويُدقَّق)، أو `CSP_MODE=enforce` ثم `up -d`. راقب يومين: الطباعة والصندوق والإشعارات والجرس ومعاينة البطاقة.
+
+المرحلة 4، البوابات والفحص الأسبوعي:
+1. بعد أسبوع الخط الأساسي: `NUSKJO_AUDIT_GATE=enforce bash scripts/deploy.sh` (أو `export` في ملف صدفة sysadmin)، ومتغير المستودع `NUSKJO_AUDIT_GATE=enforce` في GitHub › Settings › Variables فتصير خطوتا CI مانعتين.
+2. الحزم في الخط الأساسي تُحدَّث قبل تاريخ مراجعتها (`composer update` و`npm update` للحزم المذكورة، ثم الاختبارات والفحص اليدوي أعلاه)، ويُحذف استثناؤها. بند انقضى تاريخه يمنع البوابة.
+3. فحص Trivy أسبوعي على المضيف: `mkdir -p ~/security/nuskjo` ثم سطر `scripts/security/crontab.example` في `crontab -e` لـ sysadmin، وتشغيل أول يدوياً. الملخص (التاريخ والأعداد) في بطاقة «صحة النظام والقناة»، وتنبيه للمدراء عند حرجة أو زيادة العالية. التقرير وSBOM في `~/security/nuskjo/<التاريخ>`، آخر 12.
+4. GitHub › Settings › Code security: Dependabot alerts وsecurity updates، وSecret scanning مع Push protection، وPrivate vulnerability reporting. وأنشئ الوسمين `dependencies` و`security`. الفحص الأسبوعي في GitHub يرفق التقرير فقط بعد `NUSKJO_SCAN_ARTIFACTS=true`، ولا يُضبط قبل أن يصير المستودع خاصاً.
+
+المرحلة 5، «Require App Secret» (المالك، في لوحة تطبيق ميتا):
+1. الشروط كلها: `WA_APPSECRET_PROOF=true` سبعة أيام بنسبة 100% وصفر رفض في `whatsapp:doctor` («جاهز لـ Require App Secret»)، والحارس المعماري أخضر (كل نداء برمز عبر GraphClient)، وتأكيد كتابي أن لا مستهلك آخر لرموز التطبيق.
+2. App Dashboard › App Settings › Advanced › Security › Require App Secret، في ساعة هادئة. فوراً: `whatsapp:graph-smoke --media` و`whatsapp:credentials-check` و`whatsapp:health-status`، ورسالة نصية من الصندوق لرقم إداري ضمن نافذته، ورسالة صوتية واردة تُفرَّغ.
+3. مراقبة 24 ساعة: لا رموز 100 أو 190 جديدة. بعدها الرمز المسرَّب وحده لا يكفي لاستدعاء Graph، وأي تدوير لسر التطبيق يحدّث `WA_APP_SECRET` في الدقيقة نفسها.
+
+- **التراجع، الأخف أولاً:** CSP بإطفاء العلم أو `CSP_MODE=report` أو `off` ثم `up -d`. صلاحيات storage بـ `NUSKJO_STORAGE_PERMS=legacy` ثم `up -d`: الإقلاع يعيد الملفات العامة 755/644 ولا يمس المرفقات والنسخ. الحدود بـ `NUSKJO_MEM_LIMIT=0` و`NUSKJO_PIDS_LIMIT=0` و`NUSKJO_CPUS=0` ثم `up -d`، أو الصورة `pre-e26`. الترويسات بـ `git revert` ثم البناء؛ وHSTS الذي وصل المتصفحات يبقى حتى انتهائه، وهو آمن ما دام HTTPS دائماً عبر Cloudflare. البوابات بـ `NUSKJO_AUDIT_GATE=warn`. و«Require App Secret» بإطفائه من اللوحة.
+
 ## مغادرة موظف
 
 بالترتيب، في اليوم نفسه:
