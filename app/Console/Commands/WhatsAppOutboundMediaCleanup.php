@@ -43,7 +43,8 @@ class WhatsAppOutboundMediaCleanup extends Command
             return self::SUCCESS;
         }
 
-        $types = array_values(array_intersect((array) config('whatsapp.outbound.remote_delete.types', []), ['image', 'document', 'video']));
+        // audio: رسالة الموظف الصوتية (E34)، بقرار المالك كبقية الأنواع (بعد played مثلاً)
+        $types = array_values(array_intersect((array) config('whatsapp.outbound.remote_delete.types', []), ['image', 'document', 'video', 'audio']));
         $statuses = array_values(array_intersect((array) config('whatsapp.outbound.remote_delete.statuses', []), self::DELIVERED));
         if ($types === [] || $statuses === []) {
             $this->line('لا أنواع أو حالات مضبوطة للحذف: لا شيء.');

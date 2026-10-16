@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\QueuesWhatsAppFiles;
+use App\Http\Controllers\Concerns\SendsVoiceNotes;
 use App\Models\WaConversation;
 use App\Services\WhatsApp\MetaError;
 use App\Services\WhatsApp\Outbound\OutboundFileStore;
@@ -25,11 +26,16 @@ use Illuminate\Validation\Rule;
 class WhatsAppFileController extends Controller
 {
     use QueuesWhatsAppFiles;
+    use SendsVoiceNotes;
 
     public function store(Request $request, WaConversation $conversation)
     {
         $user = $request->user();
         abort_unless($user->can('whatsapp.reply'), 403);
+        // رسالة الموظف الصوتية (E34): فرع بعلمه staff_voice_notes، على الحجز والطابور نفسيهما
+        if ($request->boolean('voice')) {
+            return $this->storeVoice($request, $conversation);
+        }
         abort_unless(FeatureFlags::on('staff_file_send'), 404);
 
         $key = SendKey::staff((string) $request->header('Idempotency-Key', ''));

@@ -59,6 +59,8 @@
 - [x] لا ملف بلا حوار تأكيد: الملف وحجمه والمستلم بالاسم وآخر 4 أرقام، ونوع الوثيقة إلزامي للمستند، وتأكيد ثانٍ للتأشيرة. المحادثة والمستلم يُثبَّتان لحظة الاختيار والخادم يطابقهما (`confirm_conversation_id`)، وEnter لا يرسل ملفاً. — ✅ SendFileConfirm + Composer (SendFileConfirm.test.js، Composer.test.js)
 - [x] فقاعة الملف المتفائلة: معاينة وشريط تقدم، ثم «في الطابور» حتى يظهر صفها في الخيط؛ انقطاع الشبكة: «إعادة المحاولة» بالمفتاح نفسه، ورفض الخادم يزيلها ويعرض السبب. — ✅ PendingBubble + useOutbox (outbox.test.js)
 - [x] لوحة إيموجي ثابتة تُدرج عند موضع المؤشر (سطح المكتب). — ✅ EmojiPicker + Composer
+- [x] الرسالة الصوتية (E34، العلم `staff_voice_notes` ووجود ffmpeg): زر 🎤 بنقرة للبدء ونقرة للإيقاف، مخفي بلا دعم المتصفح أو مع نافذة مغلقة؛ مؤقت `aria-live` وإيقاف عند دقيقتين، ومعاينة، وتأكيد المستلم، ومفتاح واحد لكل تسجيل؛ «حذف» وEsc وتغيير المحادثة تطفئ الميكروفون وتحرر الـ blob؛ «المحوّل مشغول» يُبقي التسجيل لإعادة الإرسال. — ✅ VoiceRecorder + useVoiceRecorder (VoiceRecorder.test.js، voiceRecorder.test.js)
+- [x] فقاعة الصوت: مشغّل `preload=none` من مسار المرفقات، والمدة، والتفريغ مطوياً أو سبب غيابه، و«▶️ سُمعت»؛ التفريغ المتأخر يصل باستطلاع الحالات. — ✅ VoiceNote + DeliveryTicks + useThread.applyUpdates (voiceOutbox.test.js)
 
 ## الطوارئ والتوقيت
 - [x] `visibilitychange` إلى ظاهر: استطلاع فوري. — ✅ usePolling (createPoller)

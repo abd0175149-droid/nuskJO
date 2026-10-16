@@ -229,7 +229,8 @@ class BotAnalytics
         $botReplies = $msgs->where('source', 'bot')->count() + $ruleReplies;
         $staffReplies = $msgs->where('source', 'staff')->count();
         $systemMsgs = $msgs->where('source', 'system')->count();
-        $voice = $msgs->where('msg_type', 'audio')->count();
+        // صوتيات العملاء وحدها: رسائل الموظف الصوتية (E34) ردود موظف لا مؤشر صوت
+        $voice = $msgs->where('msg_type', 'audio')->where('direction', 'in')->count();
 
         // زمن الاستجابة: من رسالة العميل إلى أول ردّ بعدها
         $latencies = [];

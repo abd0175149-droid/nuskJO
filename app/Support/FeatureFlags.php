@@ -78,6 +78,9 @@ final class FeatureFlags
         'channel_health' => ['label' => 'صحة القناة كآلة حالات: أحداث ميتا بتصنيف صحيح وسجل دائم، والحجب BLOCKED بدل الإيقاف الآلي، ولا قفل على رفع الحظر ولا على قيود رسائل الشركة', 'capability' => 'C232', 'available' => true],
         'channel_health_block_on_token' => ['label' => 'منع الإرسال وتوليد الردود عند رمز ميتا غير صالح (بدل التنبيه وحده)', 'capability' => 'C260', 'available' => true],
         'integrity_breaker_lock' => ['label' => 'قاطع النزاهة يحجب الإرسال عند تكرار 131031 أو 131048 (بدل التنبيه والفحص)', 'capability' => 'C244', 'available' => true],
+        // E34: رسائل الموظف الصوتية، والتفريغ للزملاء علم مستقل يُطفأ وحده بقرار المالك
+        'staff_voice_notes' => ['label' => 'رسائل الموظف الصوتية من الصندوق (تسجيل حتى دقيقتين، وتصل العميل رسالة صوتية بزر تشغيل)', 'capability' => 'C018,C021', 'available' => true],
+        'staff_voice_transcript' => ['label' => 'تفريغ رسائل الموظف الصوتية نصاً للزملاء عبر Gemini (لا يصل العميل)', 'capability' => 'C018', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

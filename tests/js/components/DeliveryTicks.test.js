@@ -32,7 +32,12 @@ describe('DeliveryTicks', () => {
         expect(mark(read).text()).toBe('✓✓');
         expect(mark(read).classes()).toEqual(expect.arrayContaining(['bg-sky-700', 'text-white']));
         expect(mark(read).attributes('aria-label')).toBe('قُرئت 14:06');
-        expect(ticks({ status: 'played' }).find('[role="img"]').attributes('aria-label')).toBe('شُغّلت');
+        // E34: الرسالة الصوتية التي شغّلها العميل شارة «▶️ سُمعت» بدل ✓✓
+        const played = mark(ticks({ status: 'played', statusAt: '14:07' }));
+        expect(played.text()).toBe('▶️ سُمعت');
+        expect(played.attributes('aria-label')).toBe('سُمعت 14:07');
+        expect(played.attributes('dir')).toBe('rtl');
+        expect(played.classes()).toEqual(expect.arrayContaining(['bg-sky-700', 'text-white']));
     });
 
     it('adds a small warning when one of the customer devices failed', () => {

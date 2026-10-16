@@ -65,5 +65,8 @@ return [
         'channel_health' => env('WA_FEATURE_CHANNEL_HEALTH'),
         'channel_health_block_on_token' => env('WA_FEATURE_CHANNEL_HEALTH_BLOCK_ON_TOKEN'),
         'integrity_breaker_lock' => env('WA_FEATURE_INTEGRITY_BREAKER_LOCK'),
+        // E34: رسائل الموظف الصوتية وتفريغها للزملاء
+        'staff_voice_notes' => env('WA_FEATURE_STAFF_VOICE_NOTES'),
+        'staff_voice_transcript' => env('WA_FEATURE_STAFF_VOICE_TRANSCRIPT'),
     ],
 ];

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\WaBotSetting;
 use App\Services\WhatsApp\ChannelDoctor;
 use App\Services\WhatsApp\Graph\GraphClient;
+use App\Services\WhatsApp\MediaConverter;
 use App\Services\WhatsApp\MetaErrorReactor;
 use App\Services\WhatsApp\WebhookStats;
 use Illuminate\Console\Command;
@@ -28,6 +29,12 @@ class WhatsAppDoctor extends Command
         $this->table(['المفتاح', 'المصدر', 'المتغير', 'محفوظ مظلَّل', 'يُفك'], $rows);
         // E26: إصدار كروميوم (توليد البطاقات) كما سُجّل عند البناء
         $this->line('chromium: '.(ChannelDoctor::chromiumVersion() ?? 'غير مسجّل (خارج الحاوية أو صورة أقدم)'));
+        // E34: ffmpeg لرسائل الموظف الصوتية (بمهلة 5 ثوانٍ)، وأعداد اليوم: التحويلات ومتوسط زمنها و«مشغول» (503) والفشل
+        $ffmpeg = MediaConverter::version();
+        $voice = MediaConverter::stats();
+        $this->line('ffmpeg: '.($ffmpeg !== null ? 'متاح — '.$ffmpeg : 'غير متاح (زر التسجيل مخفي)')
+            ." · تحويلات اليوم {$voice['ok']}".($voice['avg_ms'] !== null ? " بمتوسط {$voice['avg_ms']}ms" : '')
+            ." · مشغول {$voice['busy']} · فشل {$voice['failed']}");
 
         // E18: إثبات سر التطبيق آخر 7 أيام (شرط دخول E26: نداءات = بإثبات، وصفر رفض)، وفئات أخطاء ميتا اليوم
         $proof = GraphClient::proofSummary();
@@ -71,6 +78,9 @@ class WhatsAppDoctor extends Command
         }
 
         $checks = [...ChannelDoctor::checks(), ...ChannelDoctor::sourceWarnings($settings), ...WebhookStats::checks($hook)];
+        if ($ffmpeg === null && \App\Support\FeatureFlags::on('staff_voice_notes')) {
+            $checks[] = ['level' => 'error', 'code' => 'FFMPEG_MISSING', 'message' => 'العلم staff_voice_notes مفعّل وffmpeg غير موجود: زر التسجيل مخفي والمسار يرد 503. أعد بناء الصورة أو أطفئ العلم.'];
+        }
         if ($checks === []) {
             $this->info('✅ صحة القناة: لا ملاحظات');
 

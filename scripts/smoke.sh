@@ -42,6 +42,9 @@ if docker exec -u www-data "$APP_CONTAINER" php artisan ops:smoke-card --no-ansi
 # 5) إصدار كروميوم المسجّل عند البناء
 chromium="$(docker exec "$APP_CONTAINER" cat /etc/chromium-version 2>/dev/null || true)"
 if [[ -n "$chromium" ]]; then pass "كروميوم: ${chromium}"; else fail "لا /etc/chromium-version في الصورة"; fi
+# 5ب) ffmpeg لرسائل الموظف الصوتية (E34)
+ffmpeg="$(docker exec "$APP_CONTAINER" ffmpeg -hide_banner -version 2>/dev/null | head -1 || true)"
+if [[ -n "$ffmpeg" ]]; then pass "ffmpeg: ${ffmpeg}"; else fail "لا ffmpeg في الصورة (الرسائل الصوتية)"; fi
 
 # 6) الجوازات والنسخ لـ www-data وحده بعد الإقلاع (A17): لا بت للمجموعة أو الغير، وnginx لا يفتح المجلد
 leaks="$(docker exec "$APP_CONTAINER" sh -c 'find storage/app/wa-media -perm /077 -print 2>/dev/null | head -3

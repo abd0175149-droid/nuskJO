@@ -34,6 +34,11 @@ export function applyUpdates(messages, updates) {
             else delete m[k];
         }
         if (u.media) m.media = u.media;
+        // رسالة الموظف الصوتية (E34): التفريغ يصل بعد الإرسال فيُحدَّث نصها وحقلها
+        if (u.voice) {
+            m.voice = u.voice;
+            if (typeof u.body === 'string') m.body = u.body;
+        }
     }
     return messages;
 }

@@ -12,6 +12,7 @@ use App\Services\WhatsApp\Media\MediaPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 
 /**
@@ -46,8 +47,7 @@ class WhatsAppMediaController extends Controller
         }
 
         $type = in_array($message->media_mime, self::INERT, true) ? $message->media_mime : 'application/octet-stream';
-
-        return $disk->response($message->media_path, MediaName::safe($message), [
+        $headers = [
             'Content-Type' => $type,
             'Content-Disposition' => HeaderUtils::makeDisposition('attachment', MediaName::safe($message), MediaName::ascii($message)),
             'X-Content-Type-Options' => 'nosniff',
@@ -57,7 +57,14 @@ class WhatsAppMediaController extends Controller
             'Cross-Origin-Resource-Policy' => 'same-origin',
             'Referrer-Policy' => 'no-referrer',
             'X-Robots-Tag' => 'noindex',
-        ], 'attachment');
+        ];
+
+        // الصوت (E34): من القرص المحلي بدعم Range، فيعرف مشغّل المتصفح مدة ogg ويتنقل فيه. الترويسات نفسها
+        if (str_starts_with($type, 'audio/') && config('filesystems.disks.'.config('whatsapp.media.disk').'.driver') === 'local') {
+            return new BinaryFileResponse($disk->path($message->media_path), 200, $headers, false, null, false, false);
+        }
+
+        return $disk->response($message->media_path, MediaName::safe($message), $headers, 'attachment');
     }
 
     /** تنزيل يدوي حتى 100MB لملف كبير أو فشل، خلال صلاحية معرّفه عند ميتا */

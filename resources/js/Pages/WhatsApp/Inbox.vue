@@ -39,7 +39,8 @@
                     @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"
                     :media-policy="mediaPolicy" :recipient="inbox.recipient.value" :outbox="inbox.outboxItems.value"
                     @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"
-                    :can-block="canBlock" @block="blockOpen = true" @unblock="inbox.unblock(prompt)"/>
+                    :can-block="canBlock" @block="blockOpen = true" @unblock="inbox.unblock(prompt)"
+                    :voice-policy="voicePolicy" :send-voice="inbox.sendVoice"/>
       </div>
     </div>
 
@@ -107,6 +108,8 @@ const props = defineProps({
   canBlock: Boolean,
   // E28: البث اللحظي (العلم inbox_realtime)
   realtime: { type: Object, default: () => ({ inbox: false }) },
+  // E34: الرسائل الصوتية (العلم وffmpeg والحدود)
+  voicePolicy: { type: Object, default: null },
 });
 
 const threadView = ref(null);

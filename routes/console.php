@@ -284,6 +284,11 @@ Schedule::command('whatsapp:health-expiry')
     ->everyFifteenMinutes()
     ->withoutOverlapping(5);
 
+// رسائل الموظف الصوتية (E34): كنس ما بقي من ملفات التحويل المؤقتة (عملية قُتلت قبل حذفها) كل ساعة
+Schedule::command('whatsapp:voice-tmp-sweep')
+    ->hourlyAt(35)
+    ->withoutOverlapping(10);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

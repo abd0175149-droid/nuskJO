@@ -30,6 +30,8 @@ final class WaLog
         'qr_link_id', 'channel',
         // E22: انتقالات صحة القناة (الحالتان والكاتب ورمز السبب) وعدّاد الفشل المتتالي
         'from', 'to', 'writer', 'effect', 'severity',
+        // E34: الرسائل الصوتية (المدة، ورمز خروج ffmpeg وstderr مقصوصاً بلا مسار المجلد المؤقت)
+        'seconds', 'exit', 'stderr',
     ];
 
     public static function info(string $event, array $context = []): void

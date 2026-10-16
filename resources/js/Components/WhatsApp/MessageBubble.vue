@@ -10,7 +10,8 @@
       <slot name="quote">
         <p v-if="m.reply_to" dir="auto" class="mb-1 px-2 py-1 rounded-lg border-s-2 border-gray-400/60 bg-black/5 dark:bg-white/5 text-[11px] opacity-80 break-words line-clamp-2 [unicode-bidi:plaintext]">↩️ {{ m.reply_to }}</p>
       </slot>
-      <WaText :text="m.body || ''"/>
+      <!-- رسالة الموظف الصوتية (E34): المدة والتفريغ في خانة المرفق، فلا يتكرر النص -->
+      <WaText v-if="!m.voice" :text="m.body || ''"/>
       <!-- المرفق (E14) -->
       <slot name="media"/>
       <!-- الترجمة والتثبيت الداخلي (E29) -->

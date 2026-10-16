@@ -90,7 +90,8 @@ class NginxConfigTest extends TestCase
         $this->assertStringNotContainsString('includeSubDomains', $snippet);
         $this->assertStringNotContainsString('preload', $snippet);
         $this->assertStringContainsString('geolocation=(self)', $snippet);
-        $this->assertStringContainsString('microphone=()', $snippet);
+        // E34: الميكروفون للأصل نفسه وحده (رسائل الموظف الصوتية)
+        $this->assertStringContainsString('microphone=(self)', $snippet);
         $this->assertStringContainsString('camera=()', $snippet);
     }
 
