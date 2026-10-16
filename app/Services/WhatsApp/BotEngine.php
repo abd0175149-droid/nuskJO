@@ -175,7 +175,8 @@ TXT;
             return self::skip('stale');
         }
 
-        $pending = self::pendingCustomerText($conv, $s);
+        $pendingMsgs = self::pendingCustomerMessages($conv, $s);
+        $pending = $pendingMsgs->pluck('body')->implode("\n");
 
         // ⓪ طلب حذف البيانات (E13): إيصال يبنيه الكود وتحويل، فلا يدّعي النموذج حذفاً لم يحدث
         if (HandoffGuard::wantsErasure($pending)) {
@@ -188,15 +189,24 @@ TXT;
             return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف', $run);
         }
 
-        // ② قاطع المزوّد (E12): أثناء العطل لا نداء للنموذج، بل الاحتياطي إن ضُبط، وإلا تحويل برسالة ثابتة.
-        //    قبل حدّ المعدّل كي لا يستهلك الانقطاع حصة العميل في الساعة
+        // حدّ المعدّل لكل محادثة — يُقرأ هنا (قراءة بلا أثر) ويُزاد بعد الإرسال الناجح وحده، فالإعادة لا تستهلكه
+        $limited = self::rateLimited($conv, $s);
+
+        // ③ القواعد الحتمية (E37): بعد كل البوابات ومنها حد المعدّل، وقبل قاطع المزوّد والنموذج، فتجيب الأسئلة الثابتة
+        //    حتى أثناء عطل المزوّد. null = لا قاعدة (أو وضع الظل)، فيكمل المسار كما هو
+        if (!$limited && ($ruled = AutoRuleEngine::tryReply($conv, $s, $run, $pending, $pendingMsgs)) !== null) {
+            return $ruled;
+        }
+
+        // ④ قاطع المزوّد (E12): أثناء العطل لا نداء للنموذج، بل الاحتياطي إن ضُبط، وإلا تحويل برسالة ثابتة.
+        //    قبل تحويل حد المعدّل: الانقطاع يتقدّم كما كان
         $route = self::route($s);
         if ($route === null) {
             return self::outageHandoff($conv, $s, $pending, $run);
         }
 
-        // حدّ المعدّل لكل محادثة — عند بلوغه نحوّل بدل الصمت. يُزاد بعد الإرسال الناجح وحده، فالإعادة لا تستهلكه
-        if (self::rateLimited($conv, $s)) {
+        // بلغ حد المعدّل: نحوّل بدل الصمت
+        if ($limited) {
             return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run);
         }
 
@@ -500,7 +510,8 @@ TXT;
         // دفتر الإرسال (E19.9): صادر لم يثبت وصوله (قيد الإرسال، فشل، غير مؤكد، محجوب) خارج السياق، فلا يظن النموذج
         // أنه قال ما لم يصل. قد يعيد البوت صياغة معلومة في رد «غير مؤكد» وصل فعلاً، وهذا أهون من البناء على رد لم يصل
         $rows = $conv->messages()
-            ->whereIn('source', ['customer', 'bot', 'staff', 'injected'])
+            // rule (E37): يرى النموذج ما قالته القاعدة فلا يكرره
+            ->whereIn('source', ['customer', 'bot', 'staff', 'injected', 'rule'])
             ->where('msg_type', '!=', 'reaction')
             ->when(\App\Support\FeatureFlags::on('send_ledger'), fn ($q) => $q->excludeUndelivered())
             ->orderByDesc('id')->limit($take)->get()->reverse()->values();
@@ -687,8 +698,13 @@ TXT;
         ]));
     }
 
-    /** نصّ رسائل العميل التي تنتظر الردّ الآن: بعد العلامة، أو (البوابة القديمة) بعد آخر رسالة صادرة */
-    private static function pendingCustomerText(WaConversation $conv, WaBotSetting $s): string
+    /**
+     * رسائل العميل التي تنتظر الردّ الآن (حتى 10): بعد العلامة، أو (البوابة القديمة) بعد آخر رسالة صادرة.
+     * نصها مجموعاً هو ما يُفحص (طلب موظف، حذف، القواعد)، وأنواعها وإحالاتها لشروط القواعد (E37).
+     *
+     * @return \Illuminate\Support\Collection<int, WaMessage>
+     */
+    private static function pendingCustomerMessages(WaConversation $conv, WaBotSetting $s): \Illuminate\Support\Collection
     {
         $after = self::watermarkOn($s)
             ? ReplyState::mark($conv)
@@ -698,8 +714,7 @@ TXT;
             ->where('direction', 'in')->where('id', '>', $after)
             ->where('source', 'customer')
             ->where('msg_type', '!=', 'reaction')
-            ->orderBy('id')->limit(10)->pluck('body')
-            ->implode("\n");
+            ->orderBy('id')->limit(10)->get();
     }
 
     private static function watermarkOn(WaBotSetting $s): bool
@@ -738,8 +753,8 @@ TXT;
         return (int) Cache::get(self::rateKey($conv), 0) >= max(1, (int) $s->rate_limit_per_hour);
     }
 
-    /** بعد إرسال ناجح: العلامة إلى ما دخل السياق، وعدّاد الحد */
-    private static function served(WaConversation $conv, ReplyRun $run): void
+    /** بعد إرسال ناجح (من النموذج أو من قاعدة حتمية، E37): العلامة إلى ما دخل السياق، وعدّاد الحد */
+    public static function served(WaConversation $conv, ReplyRun $run): void
     {
         ReplyState::advance($conv, $run->uptoId);
         $key = self::rateKey($conv);

@@ -515,7 +515,7 @@ class WhatsAppInbox
         }
 
         // رد آلي لم يصل: المحادثة تحتاج موظفاً
-        if ($advances && $status === 'failed' && $m->direction === 'out' && in_array($m->source, ['bot', 'system'], true)
+        if ($advances && $status === 'failed' && $m->direction === 'out' && in_array($m->source, ['bot', 'system', 'rule'], true)
             && ($conv = WaConversation::find($m->conversation_id)) && ReplyState::available()) {
             ReplyState::markUnserved($conv, 'send_failed');
         }

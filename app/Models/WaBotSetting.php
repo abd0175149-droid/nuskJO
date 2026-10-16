@@ -28,6 +28,8 @@ class WaBotSetting extends Model
         'fallback_provider', 'fallback_model', 'fallback_api_key', 'fallback_api_key_rotated_at',
         // E35: إشعار القراءة ومؤشر الكتابة (off | on_reply | on_open)
         'send_read_receipts',
+        // E37: وضع الردود الحتمية (shadow | live) والمكوّنات الرسمية في واتساب
+        'auto_rules_mode', 'conversational_automation',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
@@ -62,6 +64,7 @@ class WaBotSetting extends Model
         'wa_app_secret_rotated_at' => 'datetime',
         'api_key_rotated_at' => 'datetime',
         'wa_suspended_at' => 'datetime',
+        'conversational_automation' => 'array',
     ];
 
     protected static function booted(): void

@@ -27,5 +27,8 @@ return [
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
         'read_receipts' => env('WA_FEATURE_READ_RECEIPTS'),
+        'auto_rules' => env('WA_FEATURE_AUTO_RULES'),
+        'conversational_components' => env('WA_FEATURE_CONVERSATIONAL_COMPONENTS'),
+        'inbound_silence_alert' => env('WA_FEATURE_INBOUND_SILENCE_ALERT'),
     ],
 ];

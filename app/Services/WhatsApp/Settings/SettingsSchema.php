@@ -67,6 +67,9 @@ final class SettingsSchema
             'group' => 'ai', 'ui' => 'custom', 'label' => 'المزوّد الاحتياطي'],
         'fallback_model' => ['type' => 'string', 'regex' => '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', 'nullable' => true, 'default' => null, 'patchable' => true,
             'group' => 'ai', 'ui' => 'custom', 'label' => 'نموذج الاحتياطي'],
+        // الردود الحتمية (E37): shadow يقيّم ويعدّ ولا يرسل، وlive يرسل. فوقه العلم auto_rules. يغيّر ما يصل العملاء فهو حساس
+        'auto_rules_mode' => ['type' => 'enum', 'values' => 'auto_rule_modes', 'default' => 'shadow', 'patchable' => true, 'sensitive' => true,
+            'group' => 'rules', 'ui' => 'custom', 'label' => 'وضع الردود الحتمية'],
         'model_prices' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'أسعار النموذج (صفحة التحليلات)'],
         'cache_discount' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'خصم الكاش (صفحة التحليلات)'],
 
@@ -87,6 +90,8 @@ final class SettingsSchema
         'wa_channel_health' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'آخر فحص للقناة'],
         // يكتبه MetaErrorReactor مباشرة (عمود واحد خارج SettingsWriter) فلا يدخل حساب تعارض النسخة
         'wa_last_error' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'آخر خطأ من ميتا'],
+        // المكوّنات الرسمية (E37): المحفوظ وآخر مزامنة وآخر قراءة من ميتا وآخر خطأ. تكتبه مزامنة صفحة الردود الحتمية وحدها
+        'conversational_automation' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'الأوامر والأسئلة المقترحة في واتساب'],
     ];
 
     /** أعمدة يكتبها الكاتب نفسه مع فعلها (تدوير سر، إيقاف، علم)، لا حقول إعدادات تُعرض أو تُحفظ من الصفحة */
@@ -174,6 +179,7 @@ final class SettingsSchema
             'providers' => array_keys(LlmFactory::PROVIDERS),
             'breaker_modes' => ['off', 'shadow', 'on'],
             'read_receipt_modes' => \App\Services\WhatsApp\ReadReceipts::MODES,
+            'auto_rule_modes' => \App\Services\WhatsApp\AutoRuleEngine::MODES,
             default => [],
         };
     }

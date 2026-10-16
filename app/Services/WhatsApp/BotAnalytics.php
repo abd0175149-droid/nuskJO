@@ -224,8 +224,9 @@ class BotAnalytics
             ['key' => 'closed',   'label' => 'حُسم (تمّ الحجز)',  'value' => $closed],
         ];
 
-        // ── مؤشّرات الردود
-        $botReplies = $msgs->where('source', 'bot')->count();
+        // ── مؤشّرات الردود: ردود القواعد الحتمية (E37) آلية كالبوت، ولها مؤشرها المنفصل
+        $ruleReplies = $msgs->where('source', 'rule')->count();
+        $botReplies = $msgs->where('source', 'bot')->count() + $ruleReplies;
         $staffReplies = $msgs->where('source', 'staff')->count();
         $systemMsgs = $msgs->where('source', 'system')->count();
         $voice = $msgs->where('msg_type', 'audio')->count();
@@ -255,7 +256,8 @@ class BotAnalytics
         $medianLat = $ln ? ($ln % 2 ? $latencies[intdiv($ln, 2)] : ($latencies[$ln / 2 - 1] + $latencies[$ln / 2]) / 2) : 0;
         $p90Lat = $ln ? $latencies[min($ln - 1, (int) floor($ln * 0.9))] : 0;
 
-        $usage = WaBotUsage::where('source', 'live')->get();
+        // صفوف القواعد (model=rule) بلا نداء ولا أداة: خارج مؤشرات الأدوات
+        $usage = WaBotUsage::where('source', 'live')->where('model', '!=', 'rule')->get();
         $withTools = $usage->filter(fn ($u) => !empty($u->tools_used))->count();
         $leaks = $usage->where('leaked', true)->count();
 
@@ -266,6 +268,7 @@ class BotAnalytics
 
         $metrics = [
             ['key' => 'automation', 'label' => 'نسبة الأتمتة',       'value' => $totalReplies ? round($botReplies * 100 / $totalReplies) : 0, 'unit' => '%', 'good' => 'high'],
+            ['key' => 'rule_replies', 'label' => 'ردود القواعد',     'value' => $ruleReplies, 'unit' => '', 'good' => 'neutral'],
             ['key' => 'median',     'label' => 'وسيط زمن الردّ',     'value' => $medianLat, 'unit' => 'ث', 'good' => 'low'],
             ['key' => 'p90',        'label' => 'p90 لزمن الردّ',     'value' => $p90Lat, 'unit' => 'ث', 'good' => 'low'],
             ['key' => 'unanswered', 'label' => 'رسائل بلا جواب',     'value' => $unanswered, 'unit' => '', 'good' => 'low'],
