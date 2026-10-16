@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Search\FtsSchema;
+use App\Services\WhatsApp\Search\SearchFailed;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsWhatsAppStaff;
@@ -58,6 +59,21 @@ class MessageSearchFallbackTest extends TestCase
         $this->assertSame([$b], array_column($this->search(['q' => 'فندق 150'])->json('hits'), 'message_id'));
         $this->assertSame([], $this->search(['q' => '_%_'])->json('hits'), 'محارف LIKE تُهرَّب');
         $this->assertSame('recent', $this->search(['q' => 'فندق', 'sort' => 'relevance'])->json('sort'), 'الصلة مع الفهرس وحده');
+    }
+
+    public function test_a_failing_query_never_carries_the_search_text(): void
+    {
+        FtsSchema::fake(false);
+        DB::statement('ALTER TABLE wa_messages RENAME COLUMN body_norm TO body_norm_gone');
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->actingAs($this->manager)->getJson('/api/whatsapp/search?q=N7654321');
+            $this->fail('البحث نجح على عمود غير موجود');
+        } catch (SearchFailed $e) {
+            $this->assertStringNotContainsString('N7654321', $e->getMessage());
+            $this->assertStringNotContainsString('7654321', (string) $e);
+        }
     }
 
     public function test_a_broken_index_falls_back_to_like_for_that_search(): void

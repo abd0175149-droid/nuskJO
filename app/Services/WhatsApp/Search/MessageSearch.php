@@ -54,15 +54,23 @@ final class MessageSearch
         }
 
         $engine = $query->match() !== null && FtsSchema::available() ? 'fts' : 'like';
+        // QueryException تحمل SQL بقيمه، أي نص البحث: تُستبدل قبل أن تصل السجل
+        $attempt = function (string $engine) use ($f, $query, $visible, $conversationId) {
+            try {
+                return $this->run($f, $query, $visible, $conversationId, $engine);
+            } catch (QueryException $e) {
+                throw new SearchFailed("message search failed ({$engine}, sqlstate {$e->getCode()})");
+            }
+        };
         try {
-            $result = $this->run($f, $query, $visible, $conversationId, $engine);
-        } catch (QueryException $e) {
+            $result = $attempt($engine);
+        } catch (SearchFailed $e) {
             if ($engine !== 'fts') {
                 throw $e;
             }
             // فهرس تالف أو ناقص: هذا البحث بـ LIKE، وwhatsapp:fts-check يصلحه
-            WaLog::warning('wa.search.fts_failed', ['reason' => class_basename($e)]);
-            $result = $this->run($f, $query, $visible, $conversationId, $engine = 'like');
+            WaLog::warning('wa.search.fts_failed', ['reason' => 'QueryException']);
+            $result = $attempt($engine = 'like');
         }
 
         return $result + [
