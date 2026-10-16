@@ -42,6 +42,9 @@ final class ConversationEraser
             'admin_actions_redacted' => $canonical ? $this->adminActionsQuery($canonical)->count() : 0,
             'usage_detached' => DB::table('wa_bot_usage')->whereIn('conversation_id', $ids)->count(),
             'files' => Schema::hasColumn('wa_messages', 'media_path') ? DB::table('wa_messages')->whereIn('conversation_id', $ids)->whereNotNull('media_path')->where('media_path', '!=', '')->count() : 0,
+            // E29: التصنيفات على المحادثة والتثبيت داخل الخيط (قائمة wa_labels نفسها عامة بلا بيانات شخصية فلا تُمس)
+            'labels' => Schema::hasTable('wa_conversation_labels') ? DB::table('wa_conversation_labels')->whereIn('conversation_id', $ids)->count() : 0,
+            'thread_pins' => Schema::hasTable('wa_thread_pins') ? DB::table('wa_thread_pins')->whereIn('conversation_id', $ids)->count() : 0,
         ];
         $media = $mode === 'forget' ? $this->recentMediaIds($ids) : [];
         $counts['media_meta'] = count($media);
@@ -70,6 +73,9 @@ final class ConversationEraser
         $step('messages', $done['messages']);
         $done['notes'] = $this->deleteInBatches('wa_customer_notes', fn ($q) => $q->whereIn('conversation_id', $ids));
         $done['topics'] = Schema::hasTable('wa_conversation_topics') ? $this->deleteInBatches('wa_conversation_topics', fn ($q) => $q->whereIn('conversation_id', $ids)) : 0;
+        // E29: الترجمات داخل payload ذهبت مع الرسائل
+        $done['labels'] = $this->deleteInBatches('wa_conversation_labels', fn ($q) => $q->whereIn('conversation_id', $ids));
+        $done['thread_pins'] = $this->deleteInBatches('wa_thread_pins', fn ($q) => $q->whereIn('conversation_id', $ids));
         $quoteNumbers = DB::table('quote_requests')->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote())->pluck('request_number')->filter()->all();
         $done['quotes'] = $this->deleteInBatches('quote_requests', fn ($q) => $q->whereIn('conversation_id', $ids)->whereNull('invoice_id')->whereNotExists($this->invoiceForQuote()));
         $done['quotes_kept_invoiced'] = DB::table('quote_requests')->whereIn('conversation_id', $ids)->count();

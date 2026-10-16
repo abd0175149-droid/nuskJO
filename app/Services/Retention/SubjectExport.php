@@ -25,6 +25,9 @@ final class SubjectExport
         'receipt' => ['receipt_number', 'receipt_date', 'amount_jod'],
         // مرفقات الأرشيف (E14، A8): الوصف وحده؛ نسخة الملف نفسه يسلّمها الموظف من الصندوق عند الطلب
         'attachment' => ['created_at', 'direction', 'msg_type', 'media_mime', 'media_size', 'media_status', 'media_archived_at'],
+        // E29: التصنيفات الداخلية بأسمائها وحدها، والملاحظة المثبتة لأنها بيانات عن الشخص
+        'label' => ['name'],
+        'pinned_note' => ['note', 'updated_at'],
     ];
 
     /** @return array{data: array<string, mixed>, counts: array<string, int>} */
@@ -51,6 +54,14 @@ final class SubjectExport
                     'type' => $m->media_mime, 'bytes' => $m->media_size, 'kept' => $m->media_status === 'stored', 'archived_at' => $m->media_archived_at])
             : collect();
         $notes = DB::table('wa_customer_notes')->whereIn('conversation_id', $ids)->orderBy('id')->get(self::FIELDS['note']);
+        $labels = Schema::hasTable('wa_conversation_labels')
+            ? DB::table('wa_conversation_labels')->join('wa_labels', 'wa_labels.id', '=', 'wa_conversation_labels.label_id')
+                ->whereIn('wa_conversation_labels.conversation_id', $ids)->distinct()->orderBy('wa_labels.name')->pluck('wa_labels.name')
+                ->map(fn ($name) => ['name' => $name])
+            : collect();
+        $pinned = Schema::hasTable('wa_thread_pins')
+            ? DB::table('wa_thread_pins')->whereIn('conversation_id', $ids)->where('kind', 'note')->orderBy('id')->get(self::FIELDS['pinned_note'])
+            : collect();
         $quotes = DB::table('quote_requests')->whereIn('conversation_id', $ids)
             ->when($client, fn ($q) => $q->orWhere('client_id', $client->id))->orderBy('id')->get(self::FIELDS['quote']);
         $invoices = $client ? DB::table('invoices')->where('client_id', $client->id)->orderBy('invoice_date')->get(['id', ...self::FIELDS['invoice']]) : collect();
@@ -67,12 +78,15 @@ final class SubjectExport
             'invoices' => $invoices->map(fn ($i) => collect((array) $i)->only(self::FIELDS['invoice'])->all() + ['remaining_jod' => $remaining[$i->id] ?? null])->values(),
             'receipts' => $receipts->values(),
             'attachments' => $attachments->values(),
+            'labels' => $labels->values(),
+            'pinned_notes' => $pinned->values(),
         ];
 
         return ['data' => $data, 'counts' => [
             'conversations' => $convs->count(), 'messages' => $messages->count(), 'notes' => $notes->count(),
             'quote_requests' => $quotes->count(), 'invoices' => $invoices->count(), 'receipts' => $receipts->count(),
             'attachments' => $attachments->count(), 'attachments_kept' => $attachments->where('kept', true)->count(),
+            'labels' => $labels->count(), 'pinned_notes' => $pinned->count(),
         ]];
     }
 

@@ -47,7 +47,7 @@ final class MessageTranslator
     /** «عربية أصلاً»: الحروف العربية 60% فأكثر من الحروف، ولا حرف فارسي أو أوردي */
     private const ARABIC_SHARE = 0.6;
 
-    private const PERSO_URDU = '/[\x{067E}\x{0686}\x{0698}\x{06A9}\x{06AF}\x{06CC}\x{0679}\x{0688}\x{0691}\x{06BA}\x{06BE}\x{06C1}\x{06C3}\x{06D2}\x{06D3}]/u';
+    public const PERSO_URDU = '/[\x{067E}\x{0686}\x{0698}\x{06A9}\x{06AF}\x{06CC}\x{0679}\x{0688}\x{0691}\x{06BA}\x{06BE}\x{06C1}\x{06C3}\x{06D2}\x{06D3}]/u';
 
     /** لغات «ترجم ردّي» (قرار المالك) */
     public const REPLY_TARGETS = [

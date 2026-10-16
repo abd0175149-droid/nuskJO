@@ -37,7 +37,9 @@ class AppServiceProvider extends ServiceProvider
                 }
 
                 return array_values(array_unique($names));
-            }, ['Google Gemini'], false));
+            }, ['Google Gemini'], false))
+                // الترجمة عند طلب الموظف (E29): السطر يظهر ما دام العلم مفعّلاً
+                ->with('staffTranslation', rescue(fn () => \App\Support\FeatureFlags::on('staff_translation'), false, false));
         });
 
         \App\Models\Agent::observe(\App\Observers\AgentObserver::class);
