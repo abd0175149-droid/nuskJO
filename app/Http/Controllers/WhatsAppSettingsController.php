@@ -59,6 +59,8 @@ class WhatsAppSettingsController extends Controller
             'mediaArchive' => rescue(fn () => \App\Services\WhatsApp\Media\MediaArchiver::summary(), null, false),
             // E20: استقبال الويبهوك (أعداد فقط)
             'webhookIntake' => rescue(fn () => \App\Services\WhatsApp\WebhookStats::summary(), null, false),
+            // E26: آخر فحص أمني للصورة (التاريخ والأعداد فقط)
+            'securityScan' => rescue(fn () => \App\Services\Ops\SecurityScan::summary(), null, false),
             // E18: آخر خطأ قناة من ميتا، وفئات اليوم، ونسبة إثبات سر التطبيق خلال 7 أيام
             'metaErrors' => [
                 'last' => WaBotSetting::current()->wa_last_error,

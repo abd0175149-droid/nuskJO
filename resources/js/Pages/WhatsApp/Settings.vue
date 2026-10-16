@@ -76,10 +76,11 @@
                             </span>
                         </li>
                     </ul>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
                         مهام فاشلة خلال 24 ساعة: <span class="font-bold">{{ ops.failed_24h ?? '؟' }}</span>
                         <template v-if="!ops.enabled"> · فحص /up مطفأ (OPS_HEALTH_CHECKS)</template>
                     </p>
+                    <SecurityScanLine :scan="props.securityScan"/>
 
                     <!-- رمز ميتا -->
                     <p class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">رمز ميتا</p>
@@ -475,6 +476,7 @@ import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
 import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
 import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
 import MetaLastErrorCard from '@/Components/WhatsApp/MetaLastErrorCard.vue';
+import SecurityScanLine from '@/Components/WhatsApp/SecurityScanLine.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
@@ -511,6 +513,7 @@ const props = defineProps({
     meta: { type: Object, default: () => ({}) },
     mediaArchive: { type: Object, default: null },
     webhookIntake: { type: Object, default: null },
+    securityScan: { type: Object, default: null },
     metaErrors: { type: Object, default: () => ({ last: null, today: {}, proof: null }) },
     toolMeta: { type: Array, default: () => [] },
 });
