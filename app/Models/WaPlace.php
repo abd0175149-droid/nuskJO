@@ -14,6 +14,9 @@ class WaPlace extends Model
 {
     public const KINDS = ['office' => 'المكتب', 'meeting' => 'نقطة تجمع', 'hotel' => 'فندق', 'other' => 'أخرى'];
 
+    /** افتراضات الجدول نفسها، فيعرفها الصف قبل إعادة قراءته */
+    protected $attributes = ['kind' => 'office', 'is_default' => false, 'bot_allowed' => false, 'is_active' => true, 'sort_order' => 0];
+
     protected $fillable = ['name', 'address', 'latitude', 'longitude', 'kind', 'is_default', 'bot_allowed', 'is_active',
         'sort_order', 'created_by', 'updated_by'];
 

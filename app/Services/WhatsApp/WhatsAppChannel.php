@@ -616,7 +616,7 @@ class WhatsAppChannel
         if (!\App\Support\FeatureFlags::on('wa_share_cards')) {
             return self::failLocal('FEATURE_OFF', 'إرسال الموقع غير مفعّل.');
         }
-        if (!$place->is_active) {
+        if (!\App\Models\WaPlace::active()->whereKey($place->id)->exists()) {
             return self::failLocal('PLACE_INACTIVE', 'هذا الموقع غير فعّال.');
         }
 
@@ -642,10 +642,10 @@ class WhatsAppChannel
         if ($cards->isEmpty() || $cards->count() > \App\Models\WaContactCard::MAX_PER_MESSAGE) {
             return self::failLocal('BAD_CONTACTS', 'اختر من بطاقة إلى '.\App\Models\WaContactCard::MAX_PER_MESSAGE.' بطاقات.');
         }
-        if ($cards->contains(fn ($c) => !$c instanceof \App\Models\WaContactCard || !$c->is_active)) {
+        $ids = $cards->map(fn ($c) => $c instanceof \App\Models\WaContactCard ? (int) $c->id : 0)->all();
+        if (\App\Models\WaContactCard::active()->whereIn('id', $ids)->count() !== count(array_unique($ids)) || count(array_unique($ids)) !== count($ids)) {
             return self::failLocal('CARD_INACTIVE', 'بطاقة غير فعّالة.');
         }
-        $ids = $cards->pluck('id')->map(fn ($id) => (int) $id)->all();
         $res = self::send($conv, Outbound\RichTypes::contacts($cards), $source, $staffId, [
             'send_key' => $opts['send_key'] ?? null,
             'reply_to' => $opts['reply_to'] ?? null,

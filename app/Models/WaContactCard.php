@@ -15,6 +15,9 @@ class WaContactCard extends Model
     /** حد البطاقات في رسالة واحدة (حد ميتا 257، ونقيّده عمداً) */
     public const MAX_PER_MESSAGE = 3;
 
+    /** افتراضات الجدول نفسها، فيعرفها الصف قبل إعادة قراءته */
+    protected $attributes = ['bot_allowed' => false, 'is_active' => true, 'sort_order' => 0];
+
     protected $fillable = ['label', 'formatted_name', 'org', 'job_title', 'phone_e164', 'wa_id', 'email', 'url',
         'consent_user_id', 'consent_note', 'consented_at', 'bot_allowed', 'is_active', 'sort_order', 'created_by', 'updated_by'];
 

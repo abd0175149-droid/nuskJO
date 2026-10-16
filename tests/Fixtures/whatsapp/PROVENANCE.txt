@@ -85,3 +85,13 @@ user_preferences_resume.json  الحمولة نفسها بالقيمة resume و
 user_preferences_foreign_phone.json  الحمولة نفسها لرقم آخر في التطبيق نفسه (phone_number_id=199999999999999 مصنوع، والرقم
                               المعروض 16505553333)، كما تصل من زر Test أو من رقم آخر: تُتجاهل وتُعدّ. E21.
                               [user_preferences] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/user_preferences
+reaction_removed.json         [messages] § reaction بلا حقل emoji: هكذا تصل إزالة العميل لتفاعله (الحقل محذوف لا فارغ)، على
+                              هدف reaction.json نفسه وبطابع أحدث. E33.
+unsupported_edit.json         [messages] § unsupported مع unsupported.type=edit و errors (131051): تعديل العميل لرسالة سابقة
+                              (ويبهوك edit لأرقام التعايش وحدها). [unsupported] و[edit] في المرجع. E33.
+unsupported_poll.json         الحمولة نفسها بالقيمة poll_creation (استطلاع لا تعرضه منصة ميتا). E33.
+location.json                 [messages] § location: latitude وlongitude ونص name وaddress مصنوعان (Sample Place). E33.
+contacts.json                 [messages] § contacts: بطاقة بالاسم (Sheena Nelson من أمثلة ميتا) والرقم الآخر في الحساب
+                              نفسه 16505553333 بـ phone وwa_id. E33.
+error_131009_context.json     [errors] § 131009 بشكل أجسام E18، وerror_data.details مصنوع يذكر context وmessage_id. الرمز
+                              والتفاصيل الفعلية لاقتباس غير صالح تُسجَّل في تجربة قبل التفعيل ويُضبط الشرط عليها. E33.
