@@ -633,6 +633,97 @@ class WhatsAppChannel
         return ['ok' => true, 'code' => null];
     }
 
+    // ==================== المكوّنات الرسمية: الأوامر وأسئلة البداية (E37) ====================
+
+    /**
+     * أوامر «/» وأسئلة البداية (ice breakers) لرقمنا: POST /{pnid}/conversational_automation. إعداد للرقم لا رسالة،
+     * فلا يمر بـ dispatch. القفلان الأولان: القناة مهيّأة، والإيقاف الطارئ (لا نكتب شيئاً لميتا). enable_welcome_message
+     * دائماً false. لا يُسجَّل الرمز ولا الرد الخام: الرمز والفئة وfbtrace_id وحدها.
+     *
+     * @param  array{prompts: list<string>, commands: list<array{command_name: string, command_description: string}>}  $desired
+     * @return array{ok: bool, code: ?string, meta_code?: ?int, category?: ?string, fbtrace_id?: ?string, message?: string}
+     */
+    public static function setConversationalAutomation(array $desired): array
+    {
+        $s = WaBotSetting::current();
+        if ($locked = self::componentsLock($s)) {
+            return $locked;
+        }
+        try {
+            $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'conversational_automation'], [
+                'enable_welcome_message' => false,
+                'prompts' => array_values($desired['prompts'] ?? []),
+                'commands' => array_values($desired['commands'] ?? []),
+            ], (string) $s->token(), 20);
+        } catch (\Throwable $e) {
+            return self::componentsFailure($e);
+        }
+
+        return $res->successful() ? ['ok' => true, 'code' => null] : self::componentsRejected($res);
+    }
+
+    /**
+     * ما تعرضه ميتا الآن: GET /{pnid}?fields=conversational_automation (للمقارنة بالمحفوظ). قراءة بالقفلين نفسيهما.
+     *
+     * @return array{ok: bool, code: ?string, data?: array{enable_welcome_message: bool, prompts: list<string>, commands: list<array{command_name: string, command_description: string}>}}
+     */
+    public static function getConversationalAutomation(): array
+    {
+        $s = WaBotSetting::current();
+        if ($locked = self::componentsLock($s)) {
+            return $locked;
+        }
+        try {
+            $res = Graph\GraphClient::request('GET', [(string) $s->phoneNumberId()], ['fields' => 'conversational_automation'], (string) $s->token(), 20);
+        } catch (\Throwable $e) {
+            return self::componentsFailure($e);
+        }
+        if (!$res->successful()) {
+            return self::componentsRejected($res);
+        }
+        $data = (array) $res->json('conversational_automation', []);
+
+        return ['ok' => true, 'code' => null, 'data' => [
+            'enable_welcome_message' => (bool) ($data['enable_welcome_message'] ?? false),
+            'prompts' => array_values(array_filter((array) ($data['prompts'] ?? []), 'is_string')),
+            'commands' => array_values(array_map(fn ($c) => [
+                'command_name' => (string) data_get($c, 'command_name', ''),
+                'command_description' => (string) data_get($c, 'command_description', ''),
+            ], array_filter((array) ($data['commands'] ?? []), 'is_array'))),
+        ]];
+    }
+
+    private static function componentsLock(WaBotSetting $s): ?array
+    {
+        if (!$s->channelReady()) {
+            return ['ok' => false, 'code' => self::ERR_NOT_CONFIGURED, 'message' => 'قناة الواتساب غير مهيّأة.'];
+        }
+        if ($s->sendingSuspended()) {
+            return ['ok' => false, 'code' => self::ERR_SUSPENDED, 'message' => 'الإرسال موقوف حالياً (قفل طارئ): لا يُكتب شيء لميتا.'];
+        }
+
+        return null;
+    }
+
+    private static function componentsFailure(\Throwable $e): array
+    {
+        $code = $e instanceof \InvalidArgumentException ? self::ERR_CONFIG
+            : ($e instanceof \Illuminate\Http\Client\ConnectionException ? MetaError::networkKind($e) : 'ERROR');
+        WaLog::warning('wa.conv_automation_failed', ['error_code' => $code, 'type' => class_basename($e)]);
+
+        return ['ok' => false, 'code' => $code, 'message' => 'تعذّر الوصول إلى ميتا الآن — حاول بعد قليل.'];
+    }
+
+    private static function componentsRejected(Response $res): array
+    {
+        $err = MetaError::fromGraphResponse($res);
+        WaLog::warning('wa.conv_automation_failed', ['meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category,
+            'fbtrace_id' => $err->fbtraceId, 'http' => $res->status()]);
+
+        return ['ok' => false, 'code' => $err->code, 'meta_code' => $err->metaCode, 'category' => $err->category,
+            'fbtrace_id' => $err->fbtraceId, 'message' => $err->staffMessage];
+    }
+
     // ==================== المحرّك ====================
 
     /** @return array{to: string}|array{recipient: string}|null */

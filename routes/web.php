@@ -204,6 +204,17 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::post('whatsapp/knowledge/reorder', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'reorder'])->name('whatsapp.knowledge.reorder')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'update'])->name('whatsapp.knowledge.update')->middleware('perm:whatsapp.settings');
     Route::delete('whatsapp/knowledge/{entry}', [\App\Http\Controllers\WhatsAppKnowledgeController::class, 'destroy'])->name('whatsapp.knowledge.destroy')->middleware('perm:whatsapp.settings');
+    // الردود الحتمية (E37): الإدارة بـ whatsapp.auto_rules، والمكوّنات الرسمية (كتابة في ميتا) بـ whatsapp.settings
+    Route::get('whatsapp/auto-rules', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'index'])->name('whatsapp.auto-rules')->middleware('perm:whatsapp.auto_rules');
+    Route::post('whatsapp/auto-rules', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'store'])->name('whatsapp.auto-rules.store')->middleware('perm:whatsapp.auto_rules');
+    Route::post('whatsapp/auto-rules/reorder', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'reorder'])->name('whatsapp.auto-rules.reorder')->middleware('perm:whatsapp.auto_rules');
+    Route::put('whatsapp/auto-rules/{rule}', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'update'])->name('whatsapp.auto-rules.update')->middleware('perm:whatsapp.auto_rules');
+    Route::delete('whatsapp/auto-rules/{rule}', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'destroy'])->name('whatsapp.auto-rules.destroy')->middleware('perm:whatsapp.auto_rules');
+    Route::post('whatsapp/auto-rules/{rule}/toggle', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'toggle'])->name('whatsapp.auto-rules.toggle')->middleware('perm:whatsapp.auto_rules');
+    Route::post('api/whatsapp/auto-rules/test', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'test'])->middleware(['perm:whatsapp.auto_rules', 'throttle:30,1']);
+    Route::post('api/whatsapp/auto-rules/simulate', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'simulate'])->middleware(['perm:whatsapp.auto_rules', 'throttle:4,1']);
+    Route::get('api/whatsapp/conversational-automation', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'automation'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
+    Route::post('api/whatsapp/conversational-automation/sync', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'syncAutomation'])->middleware(['perm:whatsapp.settings', 'throttle:3,1']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');

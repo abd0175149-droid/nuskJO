@@ -39,7 +39,7 @@
     <!-- المواضيع -->
     <div class="flex flex-wrap items-center gap-1.5">
       <span class="text-[11px] text-gray-400 dark:text-gray-500">المواضيع:</span>
-      <span v-for="tp in (thread.topics || [])" :key="tp.key" :title="tp.source === 'manual' ? 'وسم يدوي' : 'وسم آلي من البوت'"
+      <span v-for="tp in (thread.topics || [])" :key="tp.key" :title="TOPIC_SOURCES[tp.source] || TOPIC_SOURCES.bot"
             class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] leading-4"
             :class="tp.source === 'manual'
               ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-300 ring-1 ring-gold-300 dark:ring-gold-700'
@@ -78,6 +78,9 @@ import { computed, ref, watch } from 'vue';
 import { colorFor, initials } from '@/composables/whatsapp/useInitials.js';
 import { formatPhone } from '@/composables/whatsapp/usePhoneFormat.js';
 import ThreadActionsMenu from './ThreadActionsMenu.vue';
+
+// مصدر الوسم: يدوي، أو آلي من البوت، أو من قاعدة حتمية (E37)
+const TOPIC_SOURCES = { manual: 'وسم يدوي', bot: 'وسم آلي من البوت', rule: 'وسم آلي من قاعدة حتمية' };
 
 const props = defineProps({
   thread: { type: Object, required: true },

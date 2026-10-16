@@ -83,6 +83,12 @@ describe('MessageBubble', () => {
         expect(no.find('[data-test="copy-to-composer"]').exists()).toBe(false);
     });
 
+    it('labels deterministic rule replies and colours them apart (E37)', () => {
+        const w = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'rule', body: 'مكتبنا في عمّان' }) } });
+        expect(w.text()).toContain('⚡ قاعدة');
+        expect(w.html()).toContain('bg-teal-600');
+    });
+
     it('shows 👁 on inbound messages the customer was told were read (E35)', () => {
         const seen = mount(MessageBubble, { props: { m: msg({ id: 5 }), readUpto: 7 } });
         expect(seen.find('[data-test="read-receipt"]').attributes('title')).toBe('أُبلغ العميل بالقراءة');

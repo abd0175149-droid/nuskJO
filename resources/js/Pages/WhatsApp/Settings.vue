@@ -447,7 +447,7 @@
 
                 <IdentityModePanel :mode="identityMode"/>
 
-                <FeatureFlagsPanel :flags="flags"/>
+                <FeatureFlagsPanel id="flags" class="scroll-mt-20" :flags="flags"/>
 
                 <!-- ================= شريط الحفظ ================= -->
                 <div class="sticky bottom-0 z-10 -mx-1 px-1 py-3">

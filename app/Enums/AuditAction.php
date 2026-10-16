@@ -104,6 +104,13 @@ enum AuditAction: string
     case WaQuickReplyDelete = 'wa.quick_reply_delete';
     case WaQuickReplyApprove = 'wa.quick_reply_approve';
     case WaLastErrorCleared = 'wa.last_error_clear';
+    // E37: قواعد الرد الحتمية والمكوّنات الرسمية في واتساب
+    case WaAutoRuleCreate = 'wa.auto_rule_create';
+    case WaAutoRuleUpdate = 'wa.auto_rule_update';
+    case WaAutoRuleDelete = 'wa.auto_rule_delete';
+    case WaAutoRuleToggle = 'wa.auto_rule_toggle';
+    case WaAutoRuleReorder = 'wa.auto_rule_reorder';
+    case WaConvAutomationSync = 'wa.conv_automation_sync';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -164,7 +171,9 @@ enum AuditAction: string
             self::UserActivate, self::UserDeactivate, self::UserDelete, self::UserRestoreAdmin,
             self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
-            self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove => 'config',
+            self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove,
+            self::WaAutoRuleCreate, self::WaAutoRuleUpdate, self::WaAutoRuleDelete, self::WaAutoRuleToggle, self::WaAutoRuleReorder,
+            self::WaConvAutomationSync => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
@@ -263,6 +272,12 @@ enum AuditAction: string
             self::WaQuickReplyDelete => 'حذف رد جاهز',
             self::WaQuickReplyApprove => 'اعتماد رد جاهز يذكر بيانات دفع',
             self::WaLastErrorCleared => 'تصفير آخر خطأ من ميتا («تمّ الحل»)',
+            self::WaAutoRuleCreate => 'إضافة قاعدة رد حتمية',
+            self::WaAutoRuleUpdate => 'تعديل قاعدة رد حتمية',
+            self::WaAutoRuleDelete => 'حذف قاعدة رد حتمية',
+            self::WaAutoRuleToggle => 'تفعيل قاعدة رد حتمية أو إيقافها',
+            self::WaAutoRuleReorder => 'ترتيب قواعد الرد الحتمية',
+            self::WaConvAutomationSync => 'مزامنة الأوامر والأسئلة المقترحة مع واتساب',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

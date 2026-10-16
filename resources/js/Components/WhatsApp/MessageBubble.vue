@@ -56,7 +56,8 @@ import WaText from './WaText.vue';
 const props = defineProps({ m: { type: Object, required: true }, readUpto: { type: Number, default: null } });
 defineEmits(['resend']);
 
-const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' };
+// rule (E37): رد قاعدة حتمية بنص ثابت معتمد
+const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة', rule: '⚡ قاعدة' };
 
 // فئات MetaErrorCatalog (E18)
 const CATEGORY_LABELS = {
@@ -82,6 +83,7 @@ const tone = computed(() => {
   if (m.direction === 'in') return 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-ss-sm';
   if (m.status === 'blocked') return 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-se-sm';
   if (m.source === 'bot') return 'bg-emerald-600 text-white rounded-se-sm';
+  if (m.source === 'rule') return 'bg-teal-600 text-white rounded-se-sm';
   if (m.source === 'system') return 'bg-gray-500 text-white rounded-se-sm';
   return 'bg-gold-500 text-black rounded-se-sm';
 });
