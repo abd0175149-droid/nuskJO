@@ -124,7 +124,7 @@
         </p>
         <template v-else>
           <p class="text-xs text-gray-500 dark:text-gray-400">
-            آخر لقطة قبل {{ data.queue.age_minutes }} دقيقة<template v-if="snap.scheduler_beat_age_s !== null"> · نبضة المجدول قبل {{ snap.scheduler_beat_age_s }} ث</template>
+            عمر آخر لقطة {{ data.queue.age_minutes }} د<template v-if="snap.scheduler_beat_age_s !== null"> · نبضة المجدول قبل {{ snap.scheduler_beat_age_s }} ث</template>
             <template v-if="snap.channel_health"> · القناة <bdi dir="ltr" class="font-mono">{{ snap.channel_health }}</bdi></template>
           </p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
