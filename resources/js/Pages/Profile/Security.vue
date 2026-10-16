@@ -41,7 +41,7 @@
                         <form @submit.prevent="confirmCode" class="space-y-3 min-w-0">
                             <div>
                                 <p class="text-xs font-bold text-gray-500 dark:text-gray-400">لا تستطيع المسح؟ اكتب هذا المفتاح في التطبيق:</p>
-                                <p dir="ltr" class="mt-1 font-mono text-sm break-all select-all text-gray-800 dark:text-gray-100">{{ setup.secret }}</p>
+                                <p dir="ltr" class="mt-1 font-mono text-sm break-words select-all text-gray-800 dark:text-gray-100">{{ setup.secret }}</p>
                             </div>
                             <div>
                                 <label for="mfa-code" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الرقم الظاهر في التطبيق</label>

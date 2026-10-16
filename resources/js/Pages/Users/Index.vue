@@ -176,7 +176,8 @@ const props = defineProps({ users: Object, roles: Array, assignableRoles: { type
 const page = usePage();
 const search = ref(props.filters?.search || '');
 const roleFilter = ref(props.filters?.role_id || '');
-const statusFilter = ref(props.filters?.filter || '');
+// filters يصل مصفوفة فارغة بلا معاملات، فـ filters.filter هي دالة المصفوفة: النص وحده يُقبل
+const statusFilter = ref(typeof props.filters?.filter === 'string' ? props.filters.filter : '');
 const showModal = ref(false);
 let t = null;
 

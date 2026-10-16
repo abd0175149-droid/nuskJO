@@ -49,10 +49,10 @@ export function rememberVisit(visit) {
 }
 
 /**
- * بعد كل زيارة (router.on('navigate')): العلامة تفتح النافذة وتعيد الزيارة الملتقطة بعد التأكيد عبر $visit،
- * وزيارة بلا علامة تُسقط الملتقط فلا يُعاد لاحقاً خطأً.
+ * بعد كل زيارة ناجحة (router.on('success')؛ لا navigate، فهو لا يُطلق حين يعود التحويل إلى الرابط نفسه فيُستبدل
+ * السجل): العلامة تفتح النافذة وتعيد الزيارة الملتقطة بعد التأكيد عبر $visit، وزيارة بلا علامة تُسقط الملتقط.
  */
-export function handleNavigate(page, visit) {
+export function handleVisitResult(page, visit) {
     const pending = lastMutation;
     lastMutation = null;
     if (!page?.props?.flash?.stepup_required || stepUpState.open) return;
@@ -69,7 +69,7 @@ export function handleNavigate(page, visit) {
 /** يربط الالتقاط بموجّه Inertia مرة واحدة (app.js) */
 export function installStepUpVisits(router) {
     router.on('before', (event) => rememberVisit(event.detail.visit));
-    router.on('navigate', (event) => handleNavigate(event.detail.page, (url, options) => router.visit(url, options)));
+    router.on('success', (event) => handleVisitResult(event.detail.page, (url, options) => router.visit(url, options)));
 }
 
 /**

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-    handleNavigate, installStepUpInterceptor, registerStepUpHost, rememberVisit, settleStepUp, stepUpState,
+    handleVisitResult, installStepUpInterceptor, registerStepUpHost, rememberVisit, settleStepUp, stepUpState,
 } from '@/composables/useStepUp.js';
 
 // axios وهمي: يلتقط معالج الخطأ ويعيد الطلب المُعاد
@@ -18,7 +18,7 @@ afterEach(() => {
     host = null;
     stepUpState.viaFlash = false;
     stepUpState.replayable = false;
-    handleNavigate({ props: {} }, () => {});
+    handleVisitResult({ props: {} }, () => {});
 });
 
 describe('step-up interceptor', () => {
@@ -90,7 +90,7 @@ describe('Inertia visits bounced for step-up', () => {
         rememberVisit(post);
         rememberVisit({ method: 'get', url: new URL('http://nusk.test/invoices') });
 
-        handleNavigate({ props: { flash: { stepup_required: true } } }, visit);
+        handleVisitResult({ props: { flash: { stepup_required: true } } }, visit);
         expect(stepUpState).toMatchObject({ open: true, viaFlash: true, replayable: true });
         settleStepUp(true);
         await Promise.resolve();
@@ -102,14 +102,14 @@ describe('Inertia visits bounced for step-up', () => {
     it('a visit that finished normally is never replayed later, and cancelling replays nothing', async () => {
         const visit = vi.fn();
         rememberVisit(post);
-        handleNavigate({ props: { flash: {} } }, visit);
-        handleNavigate({ props: { flash: { stepup_required: true } } }, visit);
+        handleVisitResult({ props: { flash: {} } }, visit);
+        handleVisitResult({ props: { flash: { stepup_required: true } } }, visit);
         expect(stepUpState.replayable).toBe(false);
         settleStepUp(true);
         await Promise.resolve();
 
         rememberVisit(post);
-        handleNavigate({ props: { flash: { stepup_required: true } } }, visit);
+        handleVisitResult({ props: { flash: { stepup_required: true } } }, visit);
         settleStepUp(false);
         await Promise.resolve();
         expect(visit).not.toHaveBeenCalled();

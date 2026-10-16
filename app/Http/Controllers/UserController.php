@@ -66,9 +66,9 @@ class UserController extends Controller
             'is_active' => (bool) $u->is_active,
             'has_mfa' => $u->hasTwoFactor(),
             'requires_mfa' => $u->requiresMfa(),
-            'last_login' => $u->last_login_at?->diffForHumans(),
+            'last_login' => $u->last_login_at?->locale('ar')->diffForHumans(),
             'last_login_at' => $u->last_login_at?->timezone('Asia/Amman')->format('Y-m-d H:i'),
-            'last_seen' => $u->last_seen_at?->diffForHumans(),
+            'last_seen' => $u->last_seen_at?->locale('ar')->diffForHumans(),
             'idle' => (bool) $u->is_active && ($u->last_seen_at ?? $u->created_at)?->lt($idleBefore),
             'last_login_ip' => $canSeeIp ? $u->last_login_ip : null,
         ]);
