@@ -22,6 +22,15 @@ class QuoteRequest extends Model
         'source_msg_id', 'dedupe_key',
     ];
 
+    /** تسميات عربية للتصدير (E24)، مطابقة لصفحة طلبات التسعير */
+    public const TYPE_LABELS = [
+        'flight' => 'تذاكر', 'package' => 'باقة', 'visa' => 'تأشيرة', 'hotel' => 'فندق', 'transport' => 'نقل', 'other' => 'أخرى',
+    ];
+
+    public const STATUS_LABELS = [
+        'new' => 'جديد', 'priced' => 'مسعّر', 'sent' => 'أُرسل', 'won' => 'تم الحجز', 'lost' => 'لم يتم', 'cancelled' => 'ملغى',
+    ];
+
     protected $casts = [
         'depart_date' => 'date',
         'return_date' => 'date',
@@ -63,6 +72,17 @@ class QuoteRequest extends Model
     public function quoter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'quoted_by');
+    }
+
+    /** الموظف الموكَّل بالطلب */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
     }
 
     public function pax(): int

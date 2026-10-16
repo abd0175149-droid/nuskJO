@@ -64,6 +64,8 @@ return [
             'accounting.trial-balance.relocate-line', 'accounting.journal-entries.destroy',
             // التصدير
             'audit-logs.export',
+            // E24: تصدير طلبات التسعير، وأفعال صفحة الإخفاقات (رسالة تُعاد لعميل، ومهمة، وإشعار ميتا)
+            'quote-requests.export', 'whatsapp.failures.redrive', 'ops.failed-jobs.retry', 'whatsapp.webhook-events.replay',
         ],
     ],
 

@@ -70,6 +70,8 @@ enum AuditAction: string
     case QuoteRequestCreate = 'quote.create';
     case QuotePrice = 'quote.price';
     case QuoteStatus = 'quote.status';
+    // E24: تصدير طلبات التسعير CSV (أعمدة بيضاء، وعدد الصفوف)
+    case QuoteExport = 'quote.export';
 
     // ===== واتساب من جهة الموظفين والنظام =====
     case WaSettingsUpdate = 'wa.settings_update';
@@ -157,6 +159,8 @@ enum AuditAction: string
     // E22: رفع حجب القناة يدوياً بسبب، وتأكيد الاطلاع على اقتراح الرفع
     case WaHealthUnblock = 'wa.health_unblock';
     case WaHealthAck = 'wa.health_ack';
+    // E24: إعادة إرسال رسالة فشلت فشلاً عابراً من صفحة الإخفاقات (الصف نفسه بالمفتاح نفسه)
+    case WaRedrive = 'wa.redrive';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -184,6 +188,8 @@ enum AuditAction: string
     case RetentionPruned = 'retention.pruned';
     case ClientDataExport = 'client.data_export';
     case ConfigExport = 'config.export';
+    // E24: queue:retry لمهمة خلفية فاشلة من صفحة الإخفاقات
+    case OpsJobRetry = 'ops.job_retry';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
     public const INTENTIONALLY_UNEMITTED = [];
@@ -212,6 +218,7 @@ enum AuditAction: string
             self::WaAdminMfaBlocked => AuditSeverity::Warn,
             self::WaBlock, self::WaUnblock, self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
             self::WaQrDelete => AuditSeverity::Warn,
+            self::WaRedrive, self::QuoteExport => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -245,6 +252,7 @@ enum AuditAction: string
             self::WaOptoutMeta, self::WaOptinMeta, self::WaHealthChange, self::WaAccountEventCritical => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
             self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay, self::WaSearchIndexRepair, self::WaMediaRemoteDelete => 'system',
+            self::QuoteExport, self::OpsJobRetry => 'system',
             default => 'whatsapp',
         };
     }
@@ -383,6 +391,9 @@ enum AuditAction: string
             self::OfferStoryGenerate => 'توليد بطاقة الحالة 9:16',
             self::WaHealthUnblock => 'رفع حجب القناة يدوياً',
             self::WaHealthAck => 'الاطلاع على اقتراح رفع الحجب',
+            self::WaRedrive => 'إعادة إرسال رسالة فشلت (صفحة الإخفاقات)',
+            self::QuoteExport => 'تصدير طلبات التسعير',
+            self::OpsJobRetry => 'إعادة مهمة خلفية فاشلة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -420,7 +431,9 @@ enum AuditAction: string
             // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
             self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked,
             // E22: انتقال صحة القناة (بديل صف الإيقاف التلقائي) وحدث الحساب الحرج: «من حجب الإرسال؟» له جواب دائماً
-            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock], true);
+            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock,
+            // E24: رسالة أُعيدت لعميل، وطلبات تسعير خرجت في ملف
+            self::WaRedrive, self::QuoteExport], true);
     }
 
     public function isNoise(): bool

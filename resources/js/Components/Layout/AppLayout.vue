@@ -382,6 +382,7 @@ const menuGroups = [
         { icon: '🧩', label: 'الردود الحتمية', route: '/whatsapp/auto-rules', permission: 'whatsapp.auto_rules' },
         { icon: '👔', label: 'أرقام الإدارة', route: '/whatsapp/admin-numbers', permission: 'whatsapp.settings' },
         { icon: '📊', label: 'استهلاك البوت وجودته', route: '/whatsapp/analytics', permission: 'whatsapp.settings' },
+        { icon: '🧯', label: 'الإخفاقات', route: '/whatsapp/failures', permission: 'whatsapp.settings', feature: 'failures_center' },
         { icon: '🗑️', label: 'طلبات حذف البيانات', route: '/whatsapp/erasure-requests', permission: 'whatsapp.erase' },
         { icon: '⛔', label: 'المحظورون', route: '/whatsapp/blocks', permission: 'whatsapp.block', feature: 'wa_block' },
     ]},

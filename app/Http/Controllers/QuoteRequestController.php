@@ -106,6 +106,8 @@ class QuoteRequestController extends Controller
                 'priced' => QuoteRequest::query()->visibleTo($me)->where('status', 'priced')->count(),
             ],
             'canReply' => auth()->user()->can('whatsapp.reply'),
+            // تصدير CSV (E24): العلم والصلاحية معاً، والخادم يفحصهما أيضاً
+            'canExport' => auth()->user()->can('quotes.export') && \App\Support\FeatureFlags::on('quote_export'),
         ]);
     }
 
@@ -202,6 +204,83 @@ class QuoteRequestController extends Controller
         \App\Models\AuditLog::safe(\App\Enums\AuditAction::QuotePrice, 'quote_request', $quoteRequest->id, $quoteRequest->request_number, [
             'quoted_price_jod' => (float) $data['quoted_price_jod'], 'send_to_client' => !empty($data['send_to_client']), 'sent_ok' => $sentOk,
         ]);
+    }
+
+    /**
+     * تصدير CSV (E24، العلم quote_export والصلاحية quotes.export): مدى تاريخين (366 يوماً على الأكثر) وفلاتر الصفحة
+     * نفسها ونطاق السياج (E04). أعمدة بيضاء بترويسات عربية بلا هاتف ولا اسم عميل ولا تفاصيل ولا ملاحظة ولا مسار ولا
+     * تكلفة. كل خلية عبر Csv::cell (تعقيم الصيغ، E09)، ودفعات بالمعرّف لا get() كاملاً، وسقف config('audit.export_max_rows').
+     * التدقيق صارم قبل البث بعدد الصفوف، وفشله يمنع التصدير.
+     */
+    public function export(Request $request)
+    {
+        abort_unless(\App\Support\FeatureFlags::on('quote_export'), 404);
+        abort_unless(auth()->user()->can('quotes.export'), 403);
+
+        $data = $request->validate([
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'status' => 'nullable|in:open,new,priced,sent,won,lost,cancelled,all',
+            'search' => 'nullable|string|max:100',
+        ]);
+        $tz = 'Asia/Amman';
+        $from = \Illuminate\Support\Carbon::parse($data['from'], $tz)->startOfDay();
+        $to = \Illuminate\Support\Carbon::parse($data['to'], $tz)->endOfDay();
+        if ($from->diffInDays($to) > 366) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['to' => 'المدى سنة واحدة على الأكثر (366 يوماً).']);
+        }
+        $status = $data['status'] ?? 'all';
+        $search = $data['search'] ?? null;
+        $max = (int) (config('audit.export_max_rows') ?: 10000);
+
+        $query = QuoteRequest::query()
+            ->visibleTo(auth()->user())
+            ->whereBetween('quote_requests.created_at', [$from->copy()->utc(), $to->copy()->utc()])
+            ->when($status === 'open', fn ($q) => $q->whereIn('status', ['new', 'priced']))
+            ->when(in_array($status, ['new', 'priced', 'sent', 'won', 'lost', 'cancelled'], true), fn ($q) => $q->where('status', $status))
+            ->when($search, fn ($q, $s) => $q->where(function ($w) use ($s) {
+                $w->where('request_number', 'like', "%{$s}%")
+                    ->orWhere('phone', 'like', "%{$s}%")
+                    ->orWhere('customer_name', 'like', "%{$s}%");
+            }));
+        $rows = min($max, (clone $query)->count());
+
+        // من صدّر ماذا: قبل البث، وفشله يمنع التصدير
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::QuoteExport, 'quote_request', null, null, [
+            'from' => $from->toDateString(), 'to' => $to->toDateString(), 'status' => $status, 'search' => $search !== null, 'rows' => $rows,
+        ]);
+
+        $name = 'quote-requests_'.$from->toDateString().'_'.$to->toDateString().'.csv';
+
+        return response()->streamDownload(function () use ($query, $max, $tz) {
+            $h = fopen('php://output', 'w');
+            \App\Support\Csv::bom($h);
+            \App\Support\Csv::put($h, ['رقم الطلب', 'التاريخ', 'النوع', 'الحالة', 'العرض', 'الموكَّل', 'المُسعِّر', 'السعر المعروض (د.أ)', 'وقت التسعير', 'رقم الفاتورة']);
+            $n = 0;
+            $query->with(['offer:id,title', 'quoter:id,name', 'assignee:id,name', 'invoice:id,invoice_number'])
+                ->select(['id', 'request_number', 'created_at', 'type', 'status', 'offer_id', 'assigned_to', 'quoted_by', 'quoted_price_jod', 'quoted_at', 'invoice_id'])
+                ->lazyById(500)->each(function (QuoteRequest $r) use ($h, $max, $tz, &$n) {
+                    if ($n >= $max) {
+                        \App\Support\Csv::put($h, ['⚠ اقتُطع التصدير عند '.number_format($max).' صف — ضيّق المدى']);
+
+                        return false;
+                    }
+                    \App\Support\Csv::put($h, [
+                        $r->request_number,
+                        $r->created_at?->copy()->setTimezone($tz)->format('Y-m-d H:i'),
+                        QuoteRequest::TYPE_LABELS[$r->type] ?? $r->type,
+                        QuoteRequest::STATUS_LABELS[$r->status] ?? $r->status,
+                        $r->offer?->title,
+                        $r->assignee?->name,
+                        $r->quoter?->name,
+                        $r->quoted_price_jod !== null ? number_format((float) $r->quoted_price_jod, 3, '.', '') : null,
+                        $r->quoted_at?->copy()->setTimezone($tz)->format('Y-m-d H:i'),
+                        $r->invoice?->invoice_number,
+                    ]);
+                    $n++;
+                });
+            fclose($h);
+        }, $name, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function updateStatus(Request $request, QuoteRequest $quoteRequest)

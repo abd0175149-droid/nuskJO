@@ -955,9 +955,9 @@ class WhatsAppChannel
             array_flip(['messaging_product', 'to', 'recipient', 'recipient_type', 'statusHistory', 'biz_opaque_callback_data']),
         );
         $previous = (array) ($payload['_redrive'] ?? []);
-        $requeued = array_diff_key($payload, array_flip(['_released_key', '_meta_error', '_reaped', '_stale'])) + [
+        $requeued = [
             '_redrive' => ['n' => (int) ($previous['n'] ?? 0) + 1, 'prev_attempts' => (int) $row->attempts, 'by' => $byUserId, 'at' => now()->toIso8601String()],
-        ];
+        ] + array_diff_key($payload, array_flip(['_released_key', '_meta_error', '_reaped', '_stale']));
         try {
             $moved = WaMessage::whereKey($row->id)->where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->whereNull('send_key')->update([
                 'status' => WaMessage::STATUS_QUEUED, 'send_key' => mb_substr($key, 0, 64), 'attempts' => 0,

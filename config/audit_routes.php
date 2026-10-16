@@ -193,6 +193,10 @@ return [
     'WhatsAppQrController@destroy' => 'wa.qr_delete',
     'WhatsAppChannelHealthController@unblock' => 'wa.health_unblock',
     'WhatsAppChannelHealthController@acknowledge' => 'wa.health_ack',
+    // E24: صفحة الإخفاقات (إعادة إرسال، وqueue:retry، وإعادة إشعار يدقّقه أمر E20 باسم المدير)
+    'WhatsAppFailuresController@redrive' => 'wa.redrive',
+    'WhatsAppFailuresController@retryJob' => 'ops.job_retry',
+    'WhatsAppFailuresController@replayWebhook' => 'wa.webhook_replay',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

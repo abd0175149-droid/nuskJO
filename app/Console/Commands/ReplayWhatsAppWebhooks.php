@@ -50,9 +50,10 @@ class ReplayWhatsAppWebhooks extends Command
             }
             $events = collect([$event]);
             if (!$dry) {
-                // المعرّف وحده في التدقيق، بلا جسم
-                AuditActor::as('system', 'whatsapp:replay-webhooks', fn () => AuditLog::safe(AuditAction::WaWebhookReplay, 'wa_webhook_event', $event->id,
-                    '#'.$event->id, ['status' => $event->status, 'attempts' => $event->attempts, 'force' => (bool) $this->option('force')]));
+                // المعرّف وحده في التدقيق، بلا جسم. من صفحة الإخفاقات (E24) يُنسب إلى المدير الذي ضغط، ومن الطرفية إلى النظام
+                $write = fn () => AuditLog::safe(AuditAction::WaWebhookReplay, 'wa_webhook_event', $event->id,
+                    '#'.$event->id, ['status' => $event->status, 'attempts' => $event->attempts, 'force' => (bool) $this->option('force')]);
+                \Illuminate\Support\Facades\Context::hasHidden('audit_actor') ? $write() : AuditActor::as('system', 'whatsapp:replay-webhooks', $write);
             }
         } else {
             $events = WaWebhookEvent::replayable()->orderBy('id')->limit(max(1, (int) $this->option('limit')))->get();
