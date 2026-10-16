@@ -300,6 +300,25 @@ class WhatsAppController extends Controller
 
             return ['attempts' => (int) $m->attempts, 'can_resend' => (bool) $resend];
         };
+        // حالات التسليم (E21، مع delivery_status_v2): وقت ميتا للحالة، و«فشل على أحد الأجهزة»، ورقم ميتا للفاشلة.
+        // تُحسب من الأعمدة وpayload المحمّل، ولا يُعاد payload ولا details للواجهة
+        $ticks = \App\Services\WhatsApp\StatusApplier::enabled();
+        if ($ticks) {
+            array_push($columns, 'status_at', 'meta_code', 'payload');
+        }
+        $delivery = function ($m) use ($ticks): array {
+            if (!$ticks || $m->direction !== 'out') {
+                return [];
+            }
+
+            return [
+                // بتوقيت وقت الرسالة نفسه (at) في الفقاعة، فلا يبدو أن القراءة سبقت الإرسال أو تأخرت عنه
+                'status_at' => $m->status_at?->format('H:i'),
+                'multi_fail' => in_array($m->status, \App\Services\WhatsApp\DeliveryStatus::POSITIVE, true)
+                    && collect((array) data_get($m->payload, 'statusHistory', []))->contains(fn ($h) => (data_get($h, 's') ?? data_get($h, 'status')) === 'failed'),
+            ] + ($m->status === 'failed' && $m->meta_code !== null ? ['meta_code' => (int) $m->meta_code] : []);
+        };
+        $columns = array_values(array_unique($columns));
         $failure = function ($m) use ($errorCols, $canSupport): array {
             if ($errorCols === [] || $m->direction !== 'out' || !in_array($m->status, ['failed', 'unknown', 'blocked'], true)) {
                 return [];
@@ -330,8 +349,8 @@ class WhatsAppController extends Controller
                     ->where('id', '<=', $v['after'])
                     ->where('updated_at', '>=', $v['since'])
                     ->orderByDesc('id')->limit(100)
-                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $errorCols, $ledger ? ['attempts', 'payload'] : []))
-                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + $ledgerFields($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
+                    ->get(array_values(array_unique(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $errorCols, $ledger ? ['attempts', 'payload'] : [], $ticks ? ['status_at', 'meta_code', 'payload'] : []))))
+                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
                     ->all();
             }
         } else {
@@ -362,7 +381,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m) + $ledgerFields($m))->values();
+        ] + $failure($m) + $ledgerFields($m) + $delivery($m))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 
@@ -689,12 +708,24 @@ class WhatsAppController extends Controller
 
     private const CONTACT_REQUEST_BODY = 'لنكمل خدمتك، شارك رقم هاتفك بالضغط على الزر أدناه.';
 
-    public function toggleBot(WaConversation $conversation)
+    /**
+     * تشغيل البوت في المحادثة أو إيقافه بقيمة صريحة (E21): enabled يُكتب كما هو، فالنقرتان بالقيمة نفسها تعطيان النتيجة
+     * نفسها. تبويب قديم بلا enabled يقلب القيمة (سطر wa.toggle_bot.legacy) لإصدار واحد، ثم يصير enabled إلزامياً.
+     */
+    public function toggleBot(Request $request, WaConversation $conversation)
     {
         abort_unless(auth()->user()->can('whatsapp.bot_toggle'), 403);
+        $data = $request->validate(['enabled' => 'sometimes|boolean']);
+
+        if (array_key_exists('enabled', $data)) {
+            $enabled = (bool) $data['enabled'];
+        } else {
+            $enabled = !$conversation->bot_enabled;
+            \App\Services\WhatsApp\WaLog::info('wa.toggle_bot.legacy', ['conv_id' => $conversation->id]);
+        }
 
         $conversation->update([
-            'bot_enabled' => !$conversation->bot_enabled,
+            'bot_enabled' => $enabled,
             'needs_attention' => false,
             'bot_paused_until' => null,
         ] + (\App\Services\WhatsApp\ReplyState::available() ? ['attention_reason' => null] : []));

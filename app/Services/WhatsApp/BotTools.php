@@ -3,6 +3,8 @@
 namespace App\Services\WhatsApp;
 
 use App\Enums\AuditAction;
+use App\Enums\HandoffReason;
+use App\Events\WhatsApp\ConversationHandedOff;
 use App\Models\AuditLog;
 use App\Models\Invoice;
 use App\Models\Offer;
@@ -11,7 +13,6 @@ use App\Models\QuoteRequest;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaCustomerNote;
-use App\Services\NotificationService;
 use App\Services\OfferCardService;
 use App\Services\OfferPricing;
 use App\Services\TravelersReport;
@@ -503,7 +504,7 @@ class BotTools
         }
 
         self::auditQuote($qr, $conv);
-        self::escalate($conv, $qr, '💰 طلب تسعير جديد');
+        self::escalate($conv, $qr, HandoffReason::Quote);
 
         return [
             'request_number' => $qr->request_number,
@@ -569,7 +570,7 @@ class BotTools
         }
 
         self::auditQuote($qr, $conv);
-        self::escalate($conv, $qr, '🧾 طلب تأكيد حجز');
+        self::escalate($conv, $qr, HandoffReason::Booking);
 
         return [
             'request_number' => $qr->request_number,
@@ -669,8 +670,11 @@ class BotTools
 
     /**
      * التحويل الكامل: إيقاف البوت + شارة تدخّل + إشعار الأدمن وموظف العميل المسؤول.
+     * يطلق ConversationHandedOff دائماً (E21، بعد الاعتماد)، والموضع الوحيد للحدث: handoffFromCode وforceHandoff
+     * وحارس الادعاء يمرّون كلهم من هنا. والعلم wa_event_bus هو القرار الوحيد للإشعار والتدقيق: مطفأ = مباشرة هنا كما
+     * كان، مفعّل = المستمعان NotifyHandoffRecipients وAuditWhatsAppEvents.
      */
-    private static function escalate(WaConversation $conv, ?QuoteRequest $qr, string $title): void
+    private static function escalate(WaConversation $conv, ?QuoteRequest $qr, HandoffReason $reason): void
     {
         // الأولوية: توكيل قائم ← مختصّ الموضوع ← موظف العميل المسؤول
         $assignee = TopicRouter::assigneeFor($conv);
@@ -690,26 +694,17 @@ class BotTools
             $qr->update(['assigned_to' => $assignee]);
         }
 
+        EventBus::emit(new ConversationHandedOff($conv->id, $assignee !== null ? (int) $assignee : null, $qr?->id, $reason->value));
+        if (FeatureFlags::on('wa_event_bus')) {
+            return;
+        }
+
         AuditLog::safe(AuditAction::WaHandoff, 'wa_conversation', $conv->id, null, [
-            'title' => $title, 'quote_request_id' => $qr?->id, 'assigned_to' => $assignee,
+            'title' => $reason->title(), 'quote_request_id' => $qr?->id, 'assigned_to' => $assignee,
         ]);
 
         // الجرس: الاسم بلا رقم ورقم الطلب، والتفاصيل في صفحة الطلب (E15.10)
-        $who = $conv->noticeLabel();
-        $body = $qr ? "{$who} — طلب {$qr->request_number}" : "{$who} — يحتاج تدخّلاً بشرياً.";
-        $url = $qr ? '/quote-requests?status=all&search='.rawurlencode((string) $qr->request_number) : '/whatsapp/inbox?conv='.$conv->id;
-
-        WhatsAppInbox::notifyAdmins($title, $body, $url);
-
-        if ($assignee) {
-            try {
-                NotificationService::send($assignee, $title, $body, [
-                    'type' => 'whatsapp', 'icon' => '💬', 'action_url' => $url,
-                ]);
-            } catch (\Throwable $e) {
-                // الإشعار ليس حرجاً — الطلب محفوظ والشارة مرفوعة
-            }
-        }
+        HandoffNotice::send($conv, $qr, $reason, $assignee !== null ? (int) $assignee : null);
     }
 
     private static function saveNote(array $in, WaConversation $conv): array
@@ -730,14 +725,15 @@ class BotTools
      * تحويل يقرّره الكود (طلب صريح لموظف، حارس الوعد، الميزانية، حد المعدّل…): مدخل موثوق لا يراه النموذج ولا يمر
      * بالمنفّذ، ويعمل ولو كانت الأداة مخفية.
      */
-    public static function handoffFromCode(WaConversation $conv, string $reason): array
+    public static function handoffFromCode(WaConversation $conv, string $reason, HandoffReason $why = HandoffReason::HumanRequest): array
     {
-        return self::handoff(['reason' => $reason], $conv);
+        return self::handoff(['reason' => $reason], $conv, $why);
     }
 
-    private static function handoff(array $in, WaConversation $conv): array
+    /** الأداة نفسها (من النموذج عبر ToolInvoker: handoff_tool)، أو من الكود بسببه الثابت */
+    private static function handoff(array $in, WaConversation $conv, HandoffReason $why = HandoffReason::HandoffTool): array
     {
-        self::escalate($conv, null, '🙋 تحويل محادثة واتساب');
+        self::escalate($conv, null, $why);
 
         return [
             'ok' => true,

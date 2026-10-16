@@ -116,6 +116,10 @@ enum AuditAction: string
     case WaWebhookBadSignature = 'wa.webhook_bad_sig';
     case WaWebhookVerifyFailed = 'wa.webhook_verify_fail';
     case WaWebhookReplay = 'wa.webhook_replay';
+    // E21: تفضيلات واتساب (user_preferences) وتغيّر صحة القناة من الناقل
+    case WaOptoutMeta = 'wa.optout_meta';
+    case WaOptinMeta = 'wa.optin_meta';
+    case WaHealthChange = 'wa.health_change';
 
     // ===== النظام =====
     case AuditExport = 'audit.export';
@@ -145,7 +149,8 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
+            self::WaHealthChange => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -167,7 +172,8 @@ enum AuditAction: string
             self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
-            self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
+            self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
+            self::WaOptoutMeta, self::WaOptinMeta, self::WaHealthChange => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
             self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay => 'system',
             default => 'whatsapp',
@@ -276,6 +282,9 @@ enum AuditAction: string
             self::WaWebhookBadSignature => 'توقيع ويبهوك مرفوض',
             self::WaWebhookVerifyFailed => 'فشل ربط الويبهوك',
             self::WaWebhookReplay => 'إعادة معالجة إشعار ويبهوك',
+            self::WaOptoutMeta => 'إيقاف التسويق من تفضيلات واتساب',
+            self::WaOptinMeta => 'استئناف التسويق من تفضيلات واتساب',
+            self::WaHealthChange => 'تغيّر حالة قناة الإرسال',
             self::AuditExport => 'تصدير سجل التدقيق',
             self::SystemReset => 'مسح بيانات النظام',
             self::AuditPruned => 'تقليم سجل التدقيق',

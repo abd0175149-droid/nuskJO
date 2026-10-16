@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Console\Commands\BackupSafeMode;
 use App\Enums\AuditAction;
+use App\Events\WhatsApp\ChannelHealthChanged;
 use App\Exceptions\StaleSettingsException;
 use App\Models\AuditLog;
 use App\Models\Setting;
@@ -189,6 +190,11 @@ class WhatsAppSettingsController extends Controller
                 'wa_suspended' => $on, 'wa_suspended_at' => now(), 'wa_suspended_by' => $user->id,
                 'wa_suspended_source' => $on ? 'manual' : null, 'wa_suspended_reason' => $data['reason'],
             ], null, AuditAction::WaSuspendManual, ['on' => $on, 'reason' => $data['reason']] + ($on ? [] : ['previous_source' => $previous]), label: 'قفل الإرسال الطارئ');
+            // E21: تغيّر فعلي في صحة القناة بيد مستخدم (السبب نص المدير فلا يُحمل في الحدث)
+            $suspended = $previous === 'manual' ? ChannelHealthChanged::SUSPENDED_MANUAL : ChannelHealthChanged::SUSPENDED_AUTO;
+            \App\Services\WhatsApp\EventBus::emit($on
+                ? new ChannelHealthChanged(ChannelHealthChanged::AVAILABLE, ChannelHealthChanged::SUSPENDED_MANUAL, 'manual', null)
+                : new ChannelHealthChanged($suspended, ChannelHealthChanged::AVAILABLE, 'manual', $previous));
 
             WhatsAppInbox::notifyAdmins(
                 $on ? '⛔ أُوقف إرسال الواتساب' : '✅ استُؤنف إرسال الواتساب',

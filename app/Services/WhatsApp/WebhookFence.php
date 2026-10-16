@@ -20,8 +20,8 @@ final class WebhookFence
 {
     public const REASONS = ['waba_mismatch', 'pnid_missing', 'pnid_mismatch', 'channel_unconfigured'];
 
-    /** حقول تحمل metadata.phone_number_id للرقم المستقبِل */
-    public const PNID_FIELDS = ['messages', 'calls', 'smb_message_echoes', 'history', 'smb_app_state_sync', 'user_id_update'];
+    /** حقول تحمل metadata.phone_number_id للرقم المستقبِل (user_preferences منذ E21) */
+    public const PNID_FIELDS = ['messages', 'calls', 'smb_message_echoes', 'history', 'smb_app_state_sync', 'user_id_update', 'user_preferences'];
 
     public static function enforcing(): bool
     {

@@ -38,6 +38,12 @@ return [
         'reap_minutes' => 15,
     ],
 
+    // حالات التسليم (E21، العلم delivery_status_v2): مهلة الإيصال اليتيم في الكاش (ثوانٍ)، وسقف عناصر statusHistory
+    'status' => [
+        'orphan_ttl' => 600,
+        'history_max' => 12,
+    ],
+
     // بوابة المحتوى الصادر (E15.9): حسابات الشركة المسموح ظهورها في الرسائل الآلية (IBAN بلا مسافات، مفصولة بفواصل)
     'outbound_policy' => [
         'allow_ibans' => array_values(array_filter(array_map(fn ($i) => strtoupper(str_replace(' ', '', trim($i))), explode(',', (string) env('WA_POLICY_ALLOW_IBANS', ''))))),

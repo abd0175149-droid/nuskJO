@@ -26,5 +26,8 @@ return [
         'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
+        'delivery_status_v2' => env('WA_FEATURE_DELIVERY_STATUS_V2'),
+        'wa_event_bus' => env('WA_FEATURE_WA_EVENT_BUS'),
+        'user_preferences_optout' => env('WA_FEATURE_USER_PREFERENCES_OPTOUT'),
     ],
 ];

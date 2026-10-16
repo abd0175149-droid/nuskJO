@@ -2,6 +2,7 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Enums\HandoffReason;
 use App\Models\WaAdminNumber;
 use App\Models\WaBotSetting;
 use App\Models\WaBotUsage;
@@ -155,12 +156,12 @@ TXT;
         // ⓪ طلب حذف البيانات (E13): إيصال يبنيه الكود وتحويل، فلا يدّعي النموذج حذفاً لم يحدث
         if (HandoffGuard::wantsErasure($pending)) {
             return self::forceHandoff($conv, $s, $pending, 'طلب العميل حذف بياناته', $run, 'data_erasure',
-                HandoffGuard::erasureConfirmation(HandoffGuard::isLatin($pending)));
+                HandoffGuard::erasureConfirmation(HandoffGuard::isLatin($pending)), HandoffReason::Erasure);
         }
 
         // ① طلب صريح لموظف: يُحوَّل بالكود، ولا يُترك للنموذج أن يزعم التحويل
         if (HandoffGuard::wantsHuman($pending)) {
-            return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف', $run);
+            return self::forceHandoff($conv, $s, $pending, 'طلب العميل التحدّث مع موظف', $run, why: HandoffReason::HumanRequest);
         }
 
         // ② قاطع المزوّد (E12): أثناء العطل لا نداء للنموذج، بل الاحتياطي إن ضُبط، وإلا تحويل برسالة ثابتة.
@@ -172,7 +173,7 @@ TXT;
 
         // حدّ المعدّل لكل محادثة — عند بلوغه نحوّل بدل الصمت. يُزاد بعد الإرسال الناجح وحده، فالإعادة لا تستهلكه
         if (self::rateLimited($conv, $s)) {
-            return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run);
+            return self::forceHandoff($conv, $s, $pending, 'تجاوز حدّ ردود البوت في الساعة', $run, why: HandoffReason::RateLimit);
         }
 
         try {
@@ -182,7 +183,7 @@ TXT;
             if ($run->abort === 'budget' && !$run->escalated) {
                 self::recordUsage($conv->id, $s->model, $usage);
 
-                return self::forceHandoff($conv, $s, $pending, 'تجاوز زمن الرد', $run, 'budget');
+                return self::forceHandoff($conv, $s, $pending, 'تجاوز زمن الرد', $run, 'budget', why: HandoffReason::Budget);
             }
 
             if (trim((string) $text) === '') {
@@ -192,7 +193,7 @@ TXT;
             // ② ردٌّ يَعِد بموظف دون أداة تحويل ← يُنفَّذ التحويل فعلاً
             $escalated = HandoffGuard::escalated($usage['tools']);
             if (!$escalated && HandoffGuard::claimsHandoff($text)) {
-                BotTools::handoffFromCode($conv->fresh(), 'الردّ وعد بموظف دون تحويل فعلي');
+                BotTools::handoffFromCode($conv->fresh(), 'الردّ وعد بموظف دون تحويل فعلي', HandoffReason::GuardClaim);
                 $usage['tools'][] = 'handoff_guard';
             }
 
@@ -723,10 +724,11 @@ TXT;
         return self::skip($reason);
     }
 
-    /** تحويل يقرّره الكود: أداة التحويل نفسها + رسالة تأكيد يبنيها الكود بلغة العميل */
-    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null, ?string $attention = null, ?string $text = null): array
+    /** تحويل يقرّره الكود: أداة التحويل نفسها + رسالة تأكيد يبنيها الكود بلغة العميل. $why سبب حدث التحويل (E21) */
+    private static function forceHandoff(WaConversation $conv, WaBotSetting $s, string $pending, string $reason, ?ReplyRun $run = null, ?string $attention = null, ?string $text = null,
+        HandoffReason $why = HandoffReason::HumanRequest): array
     {
-        BotTools::handoffFromCode($conv, $reason);
+        BotTools::handoffFromCode($conv, $reason, $why);
         if ($run) {
             $run->escalated = true;
         }
