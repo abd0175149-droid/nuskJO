@@ -1,0 +1,30 @@
+مصدر ردود Graph في هذا المجلد (E23)
+=====================================
+
+ردود قراءة (GET) مكتوبة يدوياً على شكل الأمثلة في مرجع WhatsApp Cloud API الرسمي، لـ Graph v25.0.
+كُتبت في 2026-10-16. لم يُنسخ أي شيء من الإنتاج. تستعملها الاختبارات وLogTransport (WA_TRANSPORT=log) محلياً.
+
+المراجع:
+  [health]   https://developers.facebook.com/documentation/business-messaging/whatsapp/support/health-status/
+  [numbers]  https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/phone_numbers/
+  [override] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/override/
+  [subapps]  https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/subscribed_apps/
+  [appsubs]  https://developers.facebook.com/docs/graph-api/reference/app/subscriptions/
+  [debug]    https://developers.facebook.com/docs/graph-api/reference/debug_token
+
+قواعد التجهيل (FixturePiiGuardTest يفحص هذا المجلد أيضاً):
+  - phone_number_id = 106540352242922 وdisplay_phone_number = 15550783881، والرقم الآخر 16505553333 (أمثلة ميتا).
+  - WABA = 102290129340398 من أمثلة ميتا، والتطبيق 100000000000002.
+  - رابطنا https://nuskjo.example.test/api/whatsapp/webhook، والرابط الغريب على نطاق example.com.
+
+الملفات:
+
+phone_node_ok.json            [health] [override] عقدة الرقم بكل الحقول: AVAILABLE وCONNECTED وwebhook_configuration
+                              (رابط التطبيق وحده) وحد الرسائل على v25.0.
+phone_node_override.json      [override] override على الرقم يشير إلى رابط غريب.
+app_subscriptions_ok.json     [appsubs] اشتراك whatsapp_business_account برابطنا وكل الحقول المطلوبة بإصداراتها.
+app_subscriptions_wrong_url.json [appsubs] رابط غريب، وsecurity غير مشترك.
+subscribed_apps.json          [subapps] تطبيقنا مشترك في الحساب بلا override.
+subscribed_apps_override.json [subapps] تطبيقنا مشترك مع override_callback_uri على الحساب.
+phone_numbers.json            [numbers] رقمان: رقمنا CONNECTED، ورقم آخر PENDING بجودة RED.
+debug_token_ok.json           [debug] رمز مستخدم نظام صالح لا ينتهي بالصلاحيتين.

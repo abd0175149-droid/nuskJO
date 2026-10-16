@@ -157,8 +157,9 @@ class FixturePiiGuardTest extends TestCase
 
         if (is_array($decoded)) {
             $this->walkKeys($decoded, function (string $key, $value) use (&$violations) {
+                // E23: webhook_configuration.phone_number رابط override لا رقم (والأرقام الأردنية في النص الخام تُفحص أعلاه)
                 if (in_array($key, self::PHONE_KEYS, true) && (is_string($value) || is_int($value))
-                    && !in_array((string) $value, self::ALLOWED_PHONES, true)) {
+                    && !in_array((string) $value, self::ALLOWED_PHONES, true) && !str_starts_with((string) $value, 'https://')) {
                     $violations[] = "{$key} خارج القائمة البيضاء ({$this->mask((string) $value)})";
                 }
                 if (preg_match(self::PASSPORT_KEYS, $key) && $value !== null && $value !== '') {

@@ -65,5 +65,10 @@ return [
         'channel_health' => env('WA_FEATURE_CHANNEL_HEALTH'),
         'channel_health_block_on_token' => env('WA_FEATURE_CHANNEL_HEALTH_BLOCK_ON_TOKEN'),
         'integrity_breaker_lock' => env('WA_FEATURE_INTEGRITY_BREAKER_LOCK'),
+        // E23
+        'channel_monitor' => env('WA_FEATURE_CHANNEL_MONITOR'),
+        'channel_selftest' => env('WA_FEATURE_CHANNEL_SELFTEST'),
+        'wa_test_send' => env('WA_FEATURE_WA_TEST_SEND'),
+        'ops_status_page' => env('WA_FEATURE_OPS_STATUS_PAGE'),
     ],
 ];

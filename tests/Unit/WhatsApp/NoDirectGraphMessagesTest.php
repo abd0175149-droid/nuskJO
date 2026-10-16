@@ -35,7 +35,7 @@ class NoDirectGraphMessagesTest extends TestCase
     public function test_the_messages_segment_is_only_called_from_the_channel(): void
     {
         $offenders = array_keys(array_filter($this->appCode(), fn (string $code, string $path) => $path !== 'app/Services/WhatsApp/WhatsAppChannel.php'
-            && preg_match("/['\"]messages['\"]\s*\]/", $code) === 1 && str_contains($code, 'GraphClient'), ARRAY_FILTER_USE_BOTH));
+            && preg_match("/['\"]messages['\"]\s*\]/", $code) === 1 && (str_contains($code, 'GraphClient') || str_contains($code, 'WhatsAppTransport')), ARRAY_FILTER_USE_BOTH));
 
         $this->assertSame([], $offenders, 'إرسال إلى /messages خارج WhatsAppChannel');
     }
@@ -47,7 +47,8 @@ class NoDirectGraphMessagesTest extends TestCase
         $callers = [];
         foreach ($functions[1] as $i => [$name, $offset]) {
             $end = $functions[1][$i + 1][1] ?? strlen($code);
-            if (preg_match("/GraphClient::request\(\s*'POST'\s*,\s*\[[^\]]*'messages'\s*\]/", substr($code, $offset, $end - $offset))) {
+            // E23: النداء عبر الناقل (self::transport()) كالنداء المباشر لـ GraphClient
+            if (preg_match("/(?:GraphClient::request|transport\(\)->request)\(\s*'POST'\s*,\s*\[[^\]]*'messages'\s*\]/", substr($code, $offset, $end - $offset))) {
                 $callers[] = $name;
             }
         }

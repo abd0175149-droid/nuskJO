@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "object": "whatsapp_business_account",
+      "callback_url": "https://aibot-platform.example.com/hooks/whatsapp?tenant=demo",
+      "active": true,
+      "fields": [
+        {"name": "messages", "version": "v25.0"},
+        {"name": "account_update", "version": "v25.0"},
+        {"name": "phone_number_quality_update", "version": "v25.0"},
+        {"name": "account_alerts", "version": "v25.0"},
+        {"name": "business_capability_update", "version": "v25.0"},
+        {"name": "phone_number_name_update", "version": "v25.0"},
+        {"name": "user_preferences", "version": "v25.0"}
+      ]
+    }
+  ]
+}

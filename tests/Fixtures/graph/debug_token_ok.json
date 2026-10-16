@@ -1,0 +1,14 @@
+{
+  "data": {
+    "app_id": "100000000000002",
+    "type": "SYSTEM_USER",
+    "application": "Test Travel App",
+    "expires_at": 0,
+    "is_valid": true,
+    "scopes": ["whatsapp_business_messaging", "whatsapp_business_management"],
+    "granular_scopes": [
+      {"scope": "whatsapp_business_messaging", "target_ids": ["102290129340398"]},
+      {"scope": "whatsapp_business_management", "target_ids": ["102290129340398"]}
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "health_status": {
+    "can_send_message": "AVAILABLE",
+    "entities": [
+      {"entity_type": "PHONE_NUMBER", "id": "106540352242922", "can_send_message": "AVAILABLE"},
+      {"entity_type": "WABA", "id": "102290129340398", "can_send_message": "AVAILABLE"}
+    ]
+  },
+  "quality_rating": "GREEN",
+  "status": "CONNECTED",
+  "name_status": "APPROVED",
+  "throughput": {"level": "STANDARD"},
+  "verified_name": "Test Travel",
+  "display_phone_number": "15550783881",
+  "webhook_configuration": {
+    "phone_number": "https://aibot-platform.example.com/hooks/whatsapp?tenant=demo",
+    "application": "https://nuskjo.example.test/api/whatsapp/webhook"
+  },
+  "id": "106540352242922"
+}

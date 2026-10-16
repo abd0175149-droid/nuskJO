@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "id": "106540352242922",
+      "display_phone_number": "15550783881",
+      "verified_name": "Test Travel",
+      "quality_rating": "GREEN",
+      "code_verification_status": "VERIFIED",
+      "status": "CONNECTED",
+      "name_status": "APPROVED",
+      "throughput": {"level": "STANDARD"}
+    },
+    {
+      "id": "106540352242933",
+      "display_phone_number": "16505553333",
+      "verified_name": "Test Travel Branch",
+      "quality_rating": "RED",
+      "code_verification_status": "NOT_VERIFIED",
+      "status": "PENDING",
+      "name_status": "PENDING_REVIEW",
+      "throughput": {"level": "NOT_APPLICABLE"}
+    }
+  ],
+  "paging": {"cursors": {"before": "QVFIUk", "after": "QVFIUl"}}
+}

@@ -78,6 +78,11 @@ final class FeatureFlags
         'channel_health' => ['label' => 'صحة القناة كآلة حالات: أحداث ميتا بتصنيف صحيح وسجل دائم، والحجب BLOCKED بدل الإيقاف الآلي، ولا قفل على رفع الحظر ولا على قيود رسائل الشركة', 'capability' => 'C232', 'available' => true],
         'channel_health_block_on_token' => ['label' => 'منع الإرسال وتوليد الردود عند رمز ميتا غير صالح (بدل التنبيه وحده)', 'capability' => 'C260', 'available' => true],
         'integrity_breaker_lock' => ['label' => 'قاطع النزاهة يحجب الإرسال عند تكرار 131031 أو 131048 (بدل التنبيه والفحص)', 'capability' => 'C244', 'available' => true],
+        // E23: المراقب الدوري وأدوات التشخيص (قراءة GET فقط، وإرسال تجريبي محصور بأرقام الإدارة المعلَّمة)
+        'channel_monitor' => ['label' => 'المراقب الدوري: صحة الرقم كل 30 دقيقة، واشتراكات الويبهوك كل ساعة وتنبيه انحرافها، وتنبيه فحص الإعدادات اليومي', 'capability' => 'C234', 'available' => true],
+        'channel_selftest' => ['label' => '«اختبار الاتصال» في الإعدادات: قراءات ميتا الرسمية وارتداد موقّع عبر رابط الويبهوك العام', 'capability' => 'C218', 'available' => true],
+        'wa_test_send' => ['label' => '«إرسال تجريبي» لأرقام الإدارة المعلَّمة وحدها، بنافذة مفتوحة وحد 10 في الساعة', 'capability' => 'C217', 'available' => true],
+        'ops_status_page' => ['label' => 'صفحة «حالة النظام» للقراءة (القاعدة والقرص والطوابير والنبضات والنسخ وصحة واتساب) بالصلاحية ops.view', 'capability' => 'C220', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

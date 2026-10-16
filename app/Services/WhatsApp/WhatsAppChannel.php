@@ -146,7 +146,7 @@ class WhatsAppChannel
 
         // (أ) البيانات الوصفية (نداء Graph عبر GraphClient، بالإثبات إن فُعّل)
         try {
-            $meta = Graph\GraphClient::request('GET', [$mediaId], array_filter(['phone_number_id' => $s->phoneNumberId()]), $token, 20);
+            $meta = self::transport()->request('GET', [$mediaId], array_filter(['phone_number_id' => $s->phoneNumberId()]), $token, 20);
         } catch (\InvalidArgumentException) {
             return self::mediaFail(self::ERR_CONFIG, 'معرّف الوسائط أو إصدار Graph غير صالح.');
         } catch (\Throwable $e) {
@@ -309,6 +309,15 @@ class WhatsAppChannel
         return $media['ok'] ? ['bytes' => $media['bytes'], 'mime' => $media['mime'], 'host' => $media['host']] : null;
     }
 
+    /**
+     * الناقل المربوط (E23): CloudApiTransport فوق GraphClient في الإنتاج دائماً، وLogTransport بلا شبكة للاختبار.
+     * الأقفال كلها في dispatch قبل الوصول إليه، فلا يتجاوزها أي ناقل.
+     */
+    private static function transport(): Transport\WhatsAppTransport
+    {
+        return app(Transport\WhatsAppTransport::class);
+    }
+
     // ==================== فحوص ميتا للقراءة (MetaHealth، E08) ====================
 
     /**
@@ -317,12 +326,12 @@ class WhatsAppChannel
      *
      * @return array{reached: bool, status: ?int, json: array<string, mixed>}
      */
-    public static function debugToken(): array
+    public static function debugToken(int $timeout = 15): array
     {
         $s = WaBotSetting::current();
         try {
             // رمز التطبيق في Authorization، والإثبات (إن فُعّل) محسوب عليه هو
-            $res = Graph\GraphClient::request('GET', ['debug_token'], ['input_token' => (string) $s->token()], $s->appId().'|'.$s->appSecret(), 15, 5);
+            $res = self::transport()->request('GET', ['debug_token'], ['input_token' => (string) $s->token()], $s->appId().'|'.$s->appSecret(), $timeout, min(5, $timeout));
         } catch (\Throwable $e) {
             WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'debug_token']);
 
@@ -365,7 +374,7 @@ class WhatsAppChannel
     {
         $s = WaBotSetting::current();
         try {
-            $res = Graph\GraphClient::request('GET', [(string) $s->phoneNumberId()], ['fields' => 'health_status,quality_rating,verified_name'], (string) $s->token(), 15);
+            $res = self::transport()->request('GET', [(string) $s->phoneNumberId()], ['fields' => 'health_status,quality_rating,verified_name'], (string) $s->token(), 15);
         } catch (\Throwable $e) {
             WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'health_status']);
 
@@ -609,7 +618,7 @@ class WhatsAppChannel
                 return ['ok' => false, 'code' => 'ALREADY'];
             }
 
-            $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], [
+            $res = self::transport()->request('POST', [(string) $s->phoneNumberId(), 'messages'], [
                 'messaging_product' => 'whatsapp',
                 'status' => 'read',
                 'message_id' => (string) $target->wamid,
@@ -1554,7 +1563,7 @@ class WhatsAppChannel
         // إشعار القراءة عند رد الموظف (E35): أعلى وارد لحظة الإرسال، فلا يُعلَّم مقروءاً ما يصل أثناء النداء
         $receiptUpto = ReadReceipts::replyUpto($conv, $source, $msgType);
         try {
-            $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25);
+            $res = self::transport()->request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25);
         } catch (\InvalidArgumentException $e) {
             WaLog::error('graph.config.invalid', ['reason' => $e->getMessage()]);
             $err = MetaError::local(self::ERR_CONFIG);
@@ -1735,7 +1744,7 @@ class WhatsAppChannel
             $res = null;
             $exc = null;
             try {
-                $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25, 5);
+                $res = self::transport()->request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25, 5);
             } catch (\InvalidArgumentException $e) {
                 WaLog::error('graph.config.invalid', ['reason' => $e->getMessage()]);
                 $err = MetaError::local(self::ERR_CONFIG);

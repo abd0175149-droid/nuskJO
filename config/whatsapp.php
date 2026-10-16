@@ -168,4 +168,18 @@ return [
         // الأحداث المعلوماتية تُقلَّم بعدها (الحرج والتحذير يبقيان)
         'info_retention_days' => 180,
     ],
+
+    // الناقل إلى ميتا (E23): cloud وحده في الإنتاج. log بلا شبكة للاختبار والتطوير المحلي، ويُرفض في production
+    'transport' => env('WA_TRANSPORT', 'cloud'),
+
+    // المراقب الدوري وأدوات التشخيص (E23، docs/whatsapp/diagnostics.md). العلم channel_monitor يقرر القراءات الإضافية
+    'monitor' => [
+        // حقول ويبهوك ميتا التي يجب أن يكون تطبيقنا مشتركاً فيها (قائمة E22 مع user_preferences من E21)
+        'required_webhook_fields' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_REQUIRED_WEBHOOK_FIELDS',
+            'messages,account_update,phone_number_quality_update,account_alerts,security,business_capability_update,phone_number_name_update,user_preferences'))))),
+        // أعمار القراءات المخزّنة (ثوانٍ): الرقم 10 دقائق، والاشتراكات وأرقام الحساب ساعة
+        'probe_ttl' => ['node' => 600, 'subs' => 3600, 'numbers' => 3600],
+        // الإرسال التجريبي (العلم wa_test_send): حد النظام كله في الساعة
+        'test_send_per_hour' => 10,
+    ],
 ];
