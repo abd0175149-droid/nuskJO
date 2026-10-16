@@ -2,6 +2,8 @@
 
 namespace App\Services\WhatsApp\Outbound;
 
+use App\Models\WaMessage;
+
 /**
  * رسالة الموظف الصوتية على المغلف الموحّد (E34): النوع audio مسجّل بـ registerType وسيطاً (media_* والحجز المؤجل)،
  * بالحمولة الرسمية {type: audio, audio: {id, voice: true}}: ملف ogg/opus أحادي مرفوع بالمعرّف، فيراه العميل رسالة صوتية
@@ -51,6 +53,26 @@ final class VoiceNote
         $s = (int) round(max(0.0, $seconds));
 
         return sprintf('%d:%02d', intdiv($s, 60), $s % 60);
+    }
+
+    /**
+     * حقل voice في الخيط لرسالة الموظف الصوتية: المدة، والتفريغ للزملاء أو سبب تعذّره. لمن يرى المحادثة (whatsapp.view
+     * داخل نطاقه)؛ الملف نفسه من مسار E14 لمن يملك whatsapp.media. لا حمولة خام ولا مسار.
+     *
+     * @return array{voice?: array{seconds: int, transcript: ?string, transcript_failed: ?string}}
+     */
+    public static function threadFields(WaMessage $m): array
+    {
+        $p = (array) ($m->payload ?? []);
+        if ($m->direction !== 'out' || $m->source !== 'staff' || $m->msg_type !== self::TYPE || !isset($p['_voice'])) {
+            return [];
+        }
+
+        return ['voice' => [
+            'seconds' => (int) round((float) data_get($p, '_voice.seconds', 0)),
+            'transcript' => is_string($p['_transcript'] ?? null) ? $p['_transcript'] : null,
+            'transcript_failed' => is_string($p['_transcript_failed'] ?? null) ? $p['_transcript_failed'] : null,
+        ]];
     }
 
     /** حمولة رسالة صوتية أصلية (audio بعلم voice) */

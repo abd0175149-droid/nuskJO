@@ -80,7 +80,7 @@ class DeliveryStatusTest extends TestCase
 
     public function test_arabic_labels(): void
     {
-        $this->assertSame(['قيد الإرسال', 'أُرسلت', 'سُلّمت', 'قُرئت', 'شُغّلت', 'فشلت', 'غير مؤكدة', 'غير مؤكدة'],
+        $this->assertSame(['قيد الإرسال', 'أُرسلت', 'سُلّمت', 'قُرئت', 'سُمعت', 'فشلت', 'غير مؤكدة', 'غير مؤكدة'],
             array_map(DeliveryStatus::label(...), ['queued', 'sent', 'delivered', 'read', 'played', 'failed', 'unknown', 'unconfirmed']));
     }
 }

@@ -57,6 +57,12 @@ class WhatsAppController extends Controller
             'canMedia' => auth()->user()->can('whatsapp.media'),
             // إرسال الملفات من المنشئ (E32): الأنواع والحدود والعلم؛ الخادم يفحص كل شيء من جديد
             'mediaPolicy' => auth()->user()->can('whatsapp.reply') ? \App\Services\WhatsApp\Outbound\OutboundMediaPolicy::forClient() : null,
+            // رسائل الموظف الصوتية (E34): الزر بالعلم ووجود ffmpeg، والحدود للمتصفح؛ الخادم يفحص كل شيء من جديد
+            'voicePolicy' => auth()->user()->can('whatsapp.reply') && \App\Support\FeatureFlags::on('staff_voice_notes') ? [
+                'enabled' => \App\Services\WhatsApp\MediaConverter::available(),
+                'max_seconds' => (int) config('whatsapp.voice.max_seconds'),
+                'max_bytes' => (int) config('whatsapp.voice.max_upload_bytes'),
+            ] : null,
             // متابعة الصندوق (E17): الإغلاق والتأجيل والتثبيت و«غير مقروء»
             'followup' => \App\Services\WhatsApp\InboxFollowup::enabled(),
             // بطاقات أعلى الصندوق (E17.6): أعداد فقط، وتتحدّث من /api/whatsapp/inbox-summary
@@ -72,6 +78,7 @@ class WhatsAppController extends Controller
                 'wa_labels' => \App\Services\WhatsApp\LabelService::enabled(),
                 'thread_pins' => \App\Services\WhatsApp\ThreadPins::enabled(),
                 'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
+                'staff_voice_notes' => \App\Support\FeatureFlags::on('staff_voice_notes'),
             ],
             'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
             // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص
@@ -365,6 +372,12 @@ class WhatsAppController extends Controller
                     && collect((array) data_get($m->payload, 'statusHistory', []))->contains(fn ($h) => (data_get($h, 's') ?? data_get($h, 'status')) === 'failed'),
             ] + ($m->status === 'failed' && $m->meta_code !== null ? ['meta_code' => (int) $m->meta_code] : []);
         };
+        // رسالة الموظف الصوتية (E34): المدة والتفريغ للزملاء من الحمولة في الخادم (لا حمولة خام)، والملف من مسار E14
+        $voiceOn = \App\Support\FeatureFlags::on('staff_voice_notes');
+        if ($voiceOn) {
+            $columns[] = 'payload';
+        }
+        $voice = fn ($m): array => $voiceOn ? \App\Services\WhatsApp\Outbound\VoiceNote::threadFields($m) : [];
         $columns = array_values(array_unique($columns));
         $failure = function ($m) use ($errorCols, $canSupport): array {
             if ($errorCols === [] || $m->direction !== 'out' || !in_array($m->status, ['failed', 'unknown', 'blocked'], true)) {
@@ -400,8 +413,10 @@ class WhatsAppController extends Controller
                     ->where('id', '<=', $v['after'])
                     ->where('updated_at', '>=', $v['since'])
                     ->orderByDesc('id')->limit(100)
-                    ->get(array_values(array_unique(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $remoteDeleted ? ['media_remote_deleted_at'] : [], $errorCols, $ledger ? ['attempts', 'payload'] : [], $ticks ? ['status_at', 'meta_code', 'payload'] : []))))
-                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
+                    ->get(array_values(array_unique(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $remoteDeleted ? ['media_remote_deleted_at'] : [], $errorCols, $ledger ? ['attempts', 'payload'] : [], $ticks ? ['status_at', 'meta_code', 'payload'] : [], $voiceOn ? ['source', 'body', 'payload'] : []))))
+                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : [])
+                        // التفريغ يصل بعد الإرسال: يُحدَّث النص وحقل الصوت في مكانهما (E34)
+                        + (($vf = $voice($m)) ? $vf + ['body' => $m->body] : []))
                     ->all();
             }
         } elseif (isset($v['around'])) {
@@ -442,7 +457,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []))->values();
+        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []) + $voice($m))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 

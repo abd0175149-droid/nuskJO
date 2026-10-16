@@ -1,8 +1,9 @@
 <template>
-  <!-- علامات التسليم (E21): ✓ أُرسلت، ✓✓ سُلّمت، ✓✓ زرقاء قُرئت، و⚠ فشل على أحد أجهزة العميل. ⏳ و⚠️ و❌ من E19 في الفقاعة نفسها -->
+  <!-- علامات التسليم (E21): ✓ أُرسلت، ✓✓ سُلّمت، ✓✓ زرقاء قُرئت، و«▶️ سُمعت» للرسالة الصوتية (E34)، و⚠ فشل على أحد أجهزة العميل.
+       ⏳ و⚠️ و❌ من E19 في الفقاعة نفسها -->
   <span v-if="tick" class="inline-flex items-center gap-1" data-test="delivery-ticks">
     <span role="img" :aria-label="tick.label" :title="tick.title" :data-status="status"
-          class="font-bold leading-none" :class="tick.cls" dir="ltr">{{ tick.glyph }}</span>
+          class="font-bold leading-none" :class="tick.cls" :dir="tick.dir || 'ltr'">{{ tick.glyph }}</span>
     <span v-if="multiFail" role="img" aria-label="فشل التسليم على أحد أجهزة العميل" title="فشل التسليم على أحد أجهزة العميل"
           class="leading-none" data-test="multi-fail">⚠︎</span>
   </span>
@@ -32,8 +33,9 @@ const tick = computed(() => {
       return { glyph: '✓✓', label: `سُلّمت${at}`, title: `سُلّمت${at} — ${NOT_READ}`, cls: '' };
     case 'read':
       return { glyph: '✓✓', label: `قُرئت${at}`, title: `قُرئت${at}`, cls: READ };
+    // شغّل العميل الرسالة الصوتية (ميتا ترسل played أول مرة): شارة بنص بدل ✓✓
     case 'played':
-      return { glyph: '✓✓', label: `شُغّلت${at}`, title: `شُغّلت${at}`, cls: READ };
+      return { glyph: '▶️ سُمعت', label: `سُمعت${at}`, title: `سُمعت${at} — شغّل العميل الرسالة الصوتية`, cls: READ, dir: 'rtl' };
     default:
       return null;
   }

@@ -440,6 +440,19 @@ export function useInbox(props, thread) {
         if (s.activeId === id) poll();
     }
 
+    /**
+     * رسالة صوتية من المسجّل (E34): فقاعة متفائلة كالملف بمفتاح التسجيل نفسه. يعيد النتيجة للمسجّل: نجاح أو انقطاع (الفقاعة
+     * تتولى الإعادة) فيُصفَّر، وغير ذلك (المحوّل مشغول، طويلة) يبقى التسجيل للمعاينة وإعادة الإرسال.
+     */
+    async function sendVoice(payload) {
+        const id = payload?.conversationId ?? s.activeId;
+        if (!id || !payload?.file) return { ok: false, error: 'لا تسجيل.' };
+        const res = await outbox.send(id, { file: payload.file, kind: 'audio', voice: true, key: payload.key, seconds: payload.seconds });
+        if (!res.ok && !res.network && res.status === 404 && s.activeId === id) closeOutOfScope();
+        if (s.activeId === id) poll();
+        return res;
+    }
+
     async function retryFile(item, confirmFn) {
         await outbox.retry(item, confirmFn);
         if (s.activeId === item.convId) poll();
@@ -599,7 +612,7 @@ export function useInbox(props, thread) {
 
     return {
         s, draft, cannotReachPhoneless, canRequestPhone, copyToDraft,
-        outboxItems, recipient, sendFile, retryFile, dismissFile: outbox.dismiss,
+        outboxItems, recipient, sendFile, retryFile, dismissFile: outbox.dismiss, sendVoice,
         load, loadMore, open, poll, loadOlder, jumpToNew, reachedBottom, send,
         toggleBot, resolve, setTopic, assignTo, requestPhone, onLinked, unlinkClient,
         openFromList, back, onPopState, openFromUrl,

@@ -18,6 +18,9 @@
       <span class="text-[11px] text-gray-400">يصل العميلَ زرٌّ يشارك به رقمه، فيظهر هنا ويُربط بحسابه.</span>
     </div>
 
+    <!-- رسالة صوتية (E34): التسجيل والمعاينة والتأكيد فوق خانة الكتابة، والمسودة النصية لا تتأثر -->
+    <VoiceRecorder v-if="voiceEnabled" ref="voiceRef" :max-seconds="voicePolicy.max_seconds || 120" :max-bytes="voicePolicy.max_bytes || 3000000"
+                   :conversation-id="conversationId" :recipient="recipient" :send="sendVoice" :env="voiceEnv" @state="(v) => (voiceState = v)"/>
     <form v-if="canReply" @submit.prevent="submit" class="relative flex items-end gap-2">
       <!-- الردود الجاهزة (E17): الزر، أو «/» في بداية خانة فارغة -->
       <button v-if="quickReplies" type="button" :disabled="blocked" @click="pickerOpen = true" aria-label="ردود جاهزة" title="ردود جاهزة (أو اكتب /)"
@@ -31,6 +34,10 @@
       <button type="button" :disabled="blocked" @click="emojiOpen = !emojiOpen" aria-label="رموز تعبيرية" title="رموز تعبيرية" :aria-expanded="emojiOpen"
               class="shrink-0 min-w-11 min-h-11 px-2.5 rounded-xl text-sm border border-gray-200 dark:border-gray-700 hover:border-gold-400 disabled:opacity-50 hidden sm:inline-block">😊</button>
       <EmojiPicker v-if="emojiOpen" @pick="insertEmoji" @close="emojiOpen = false"/>
+      <!-- نقرة للبدء ونقرة للإيقاف (لا «اضغط مطوّلاً»)؛ يُخفى بلا علم أو ffmpeg أو دعم المتصفح أو مع نافذة مغلقة -->
+      <button v-if="voiceButton" type="button" :disabled="blocked || voiceState !== 'idle'" @click="voiceRef?.start()" data-test="voice-record"
+              aria-label="تسجيل رسالة صوتية" :title="`تسجيل رسالة صوتية (حتى ${voiceLimit})`"
+              class="shrink-0 min-w-11 min-h-11 px-2.5 rounded-xl text-sm border border-gray-200 dark:border-gray-700 hover:border-gold-400 disabled:opacity-50">🎤</button>
       <textarea ref="textarea" :value="modelValue" @input="onInput" @keydown.enter="onEnter"
                 rows="2" dir="auto" :disabled="blocked" placeholder="اكتب ردّك..." aria-label="نص الرد"
                 class="flex-1 min-w-0 px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm resize-none dark:text-white disabled:opacity-50 [unicode-bidi:plaintext]"></textarea>
@@ -62,6 +69,8 @@ import { prepareAttachment } from '@/composables/whatsapp/useAttachment.js';
 import QuickReplyPicker from './QuickReplyPicker.vue';
 import EmojiPicker from './EmojiPicker.vue';
 import SendFileConfirm from './SendFileConfirm.vue';
+import VoiceRecorder from './VoiceRecorder.vue';
+import { clock, voiceSupported } from '@/composables/whatsapp/useVoiceRecorder.js';
 import { urgency, windowLabel } from '@/composables/whatsapp/useWindowCountdown.js';
 
 const props = defineProps({
@@ -84,6 +93,10 @@ const props = defineProps({
   recipient: { type: Object, default: () => ({}) },
   // للاختبار: بديل التحويل إلى JPEG
   convertImage: { type: Function, default: undefined },
+  // الرسائل الصوتية (E34): {enabled, max_seconds, max_bytes} من الخادم، ودالة الإرسال من الصندوق، ونافذة بديلة للاختبار
+  voicePolicy: { type: Object, default: null },
+  sendVoice: { type: Function, default: null },
+  voiceEnv: { type: Object, default: undefined },
 });
 const emit = defineEmits(['update:modelValue', 'submit', 'requestPhone', 'sendFile']);
 
@@ -143,6 +156,13 @@ const confirmFile = (choice) => {
   pending.value = null;
   if (p) emit('sendFile', { file: p.file, kind: p.kind, conversationId: p.conversationId, ...choice });
 };
+
+// ===== الرسالة الصوتية (E34) =====
+const voiceEnabled = computed(() => !!props.voicePolicy?.enabled && !!props.sendVoice);
+const voiceButton = computed(() => voiceEnabled.value && props.windowOpen && voiceSupported(props.voiceEnv ?? globalThis));
+const voiceLimit = computed(() => clock(props.voicePolicy?.max_seconds || 120));
+const voiceRef = ref(null);
+const voiceState = ref('idle');
 
 // ===== الإيموجي: عند موضع المؤشر =====
 const emojiOpen = ref(false);

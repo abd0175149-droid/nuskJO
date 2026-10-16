@@ -36,7 +36,8 @@
                     @load-newer="inbox.loadNewer" @back-to-latest="inbox.backToLatest" @set-filters="inbox.setThreadFilters"
                     @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"
                     :media-policy="mediaPolicy" :recipient="inbox.recipient.value" :outbox="inbox.outboxItems.value"
-                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"/>
+                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"
+                    :voice-policy="voicePolicy" :send-voice="inbox.sendVoice"/>
       </div>
     </div>
 
@@ -96,6 +97,8 @@ const props = defineProps({
   canExport: Boolean,
   // E32: إرسال الملفات (الأنواع والحدود والعلم)
   mediaPolicy: { type: Object, default: null },
+  // E34: الرسائل الصوتية (العلم وffmpeg والحدود)
+  voicePolicy: { type: Object, default: null },
 });
 
 const threadView = ref(null);

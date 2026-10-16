@@ -36,8 +36,10 @@
           </div>
           <p v-if="jumpMiss" class="text-center text-[11px] text-amber-700 dark:text-amber-400" role="status">الرسالة المثبتة أقدم من المعروض — حمّل الرسائل الأقدم ثم أعد المحاولة.</p>
           <MessageBubble v-for="m in messages" :key="m.id" :m="m" :data-msg-id="m.id" :flash="flashId === m.id" :read-upto="thread.read_receipt_upto_id || null" @resend="(msg) => $emit('resend', msg)">
-            <template v-if="m.media" #media>
-              <MediaChip :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
+            <template v-if="m.media || m.voice" #media>
+              <!-- الرسالة الصوتية (E34): مشغّل ومدة وتفريغ بدل بطاقة المرفق -->
+              <VoiceNote v-if="flags.staff_voice_notes && m.type === 'audio'" :message-id="m.id" :media="m.media || null" :voice="m.voice || null"/>
+              <MediaChip v-else-if="m.media" :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
             </template>
             <template v-if="flags.staff_translation || flags.thread_pins" #extras>
               <BubbleExtras :m="m" :conversation-id="thread.id" :can-reply="canReply" :translate="!!flags.staff_translation" :pins="!!flags.thread_pins"
@@ -75,7 +77,8 @@
                 @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
                 :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
                 :quick-replies="quickReplies" :conversation-id="thread.id"
-                :media-policy="mediaPolicy" :recipient="recipient" @send-file="(p) => $emit('sendFile', p)"/>
+                :media-policy="mediaPolicy" :recipient="recipient" @send-file="(p) => $emit('sendFile', p)"
+                :voice-policy="voicePolicy" :send-voice="sendVoice"/>
       <TranslateReplyPanel :open="translateOpen" :conversation-id="thread.id" :source-text="draft" :target="translateTarget" :targets="translateTargets"
                            @close="translateOpen = false" @sent="onTranslatedSent"/>
     </template>
@@ -94,6 +97,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import BubbleExtras from './BubbleExtras.vue';
 import Composer from './Composer.vue';
+import VoiceNote from './VoiceNote.vue';
 import FactCard from './FactCard.vue';
 import ThreadLabels from './ThreadLabels.vue';
 import TranslateReplyBar from './TranslateReplyBar.vue';
@@ -147,6 +151,9 @@ const props = defineProps({
   mediaPolicy: { type: Object, default: null },
   recipient: { type: Object, default: () => ({}) },
   outbox: { type: Array, default: () => [] },
+  // E34: المسجّل الصوتي ودالة إرساله
+  voicePolicy: { type: Object, default: null },
+  sendVoice: { type: Function, default: null },
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
   'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend', 'labelsChanged', 'translatedSent',

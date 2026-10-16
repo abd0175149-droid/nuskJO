@@ -63,7 +63,8 @@ final class DeliveryStatus
             'sent' => 'أُرسلت',
             'delivered' => 'سُلّمت',
             'read' => 'قُرئت',
-            'played' => 'شُغّلت',
+            // رسالة صوتية شغّلها العميل (E34، A7)
+            'played' => 'سُمعت',
             self::FAILED => 'فشلت',
             'unknown', 'unconfirmed' => 'غير مؤكدة',
             default => $status,

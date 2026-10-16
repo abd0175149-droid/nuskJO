@@ -265,7 +265,7 @@ class SendVoiceNoteTest extends TestCase
         $this->assertSame([], glob(MediaConverter::tmpDir().'/*') ?: []);
     }
 
-    public function test_without_ffmpeg_the_route_answers_503_and_the_inbox_hides_the_button(): void
+    public function test_without_ffmpeg_the_route_answers_503(): void
     {
         Queue::fake();
         MediaConverter::fake(null);
