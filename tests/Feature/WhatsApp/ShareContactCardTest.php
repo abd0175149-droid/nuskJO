@@ -143,6 +143,19 @@ class ShareContactCardTest extends TestCase
         $this->assertSame([['name' => 'Sheena Nelson']], $card($viewer));
     }
 
+    public function test_the_conversation_export_shows_cards_by_name_only(): void
+    {
+        WaMessage::factory()->inbound()->create(['conversation_id' => $this->conv->id, 'msg_type' => 'contacts', 'body' => '👤 جهة اتصال: أخي — +1 650-555-3333']);
+        $h = fopen('php://memory', 'w+');
+
+        (new \App\Services\WhatsApp\ConversationExporter)->stream($this->conv, 'txt', null, null, $h);
+        rewind($h);
+        $text = (string) stream_get_contents($h);
+
+        $this->assertStringContainsString('👤 جهة اتصال: أخي', $text);
+        $this->assertStringNotContainsString('555', $text);
+    }
+
     public function test_the_optional_bot_tool_takes_only_a_listed_key(): void
     {
         $this->fakeGraph();

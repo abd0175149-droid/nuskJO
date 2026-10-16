@@ -140,6 +140,10 @@ final class ConversationExporter
         if ($m->msg_type === 'reaction') {
             return 'تفاعل: '.($body !== '' ? $body : '—');
         }
+        // بطاقة جهة اتصال بالاسم وحده (E33): رسائل قبل E33 حملت الرقم في النص
+        if ($m->msg_type === 'contacts') {
+            $body = trim(preg_replace('/\s*—?\s*\+?\d[\d\s\-().]{5,}\d/u', '', $body) ?? $body);
+        }
 
         return $body !== '' ? $body : (self::PLACEHOLDERS[$m->msg_type] ?? '['.$m->msg_type.']');
     }
