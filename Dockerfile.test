@@ -19,4 +19,6 @@ RUN composer dump-autoload --optimize \
     && cp .env.example .env \
     && php artisan key:generate --force
 
-CMD ["php", "artisan", "test"]
+# مجموعة horizon مرتبطة بالتاريخ (أفق إصدار Graph وExpires في security.txt، E25): تبقى في CI وتُستثنى هنا، فلا يمنع
+# يومٌ بعينه إصلاحاً عاجلاً. التنبيه اليومي whatsapp:graph-version-check والمراجعة الشهرية (docs/RISKS.md) يغطيانها
+CMD ["php", "artisan", "test", "--exclude-group=horizon"]
