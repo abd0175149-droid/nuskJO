@@ -91,6 +91,14 @@ final class SendKey
         return self::isUuid($uuid) ? 'staff:'.$uuid : null;
     }
 
+    /** الإرسال التجريبي (E23): Idempotency-Key من اللوحة، فنقرتان لا تُخرجان رسالتين */
+    public static function test(string $uuid): ?string
+    {
+        $uuid = strtolower(trim($uuid));
+
+        return self::isUuid($uuid) ? 'test:'.$uuid : null;
+    }
+
     public static function isUuid(?string $value): bool
     {
         return is_string($value) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1;

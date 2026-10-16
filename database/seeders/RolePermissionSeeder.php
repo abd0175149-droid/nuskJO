@@ -53,6 +53,8 @@ class RolePermissionSeeder extends Seeder
             // النسخ الاحتياطي (للمدير وحده افتراضياً؛ لا تُمنح لأي دور أدناه)
             'backups' => ['view', 'run', 'restore_ack'],
             'audit' => ['view', 'export'],
+            // حالة النظام (E23): قراءة فقط، للمدير وحده افتراضياً
+            'ops' => ['view'],
 
             // المحاسبة وإدارة الأدوار
             'accounting' => ['view', 'manage', 'close'],
@@ -71,7 +73,7 @@ class RolePermissionSeeder extends Seeder
             'users' => 'المستخدمين', 'employees' => 'الموظفين', 'attendance' => 'الحضور',
             'leaves' => 'الإجازات', 'advances' => 'السلف', 'payroll' => 'الرواتب',
             'hr_reports' => 'تقارير HR', 'backups' => 'النسخ الاحتياطي', 'audit' => 'سجل التدقيق',
-            'accounting' => 'المحاسبة', 'roles' => 'الأدوار والصلاحيات',
+            'accounting' => 'المحاسبة', 'roles' => 'الأدوار والصلاحيات', 'ops' => 'التشغيل',
             'integrations' => 'التكاملات الصادرة', 'mcp' => 'خادم MCP للقراءة',
         ];
 

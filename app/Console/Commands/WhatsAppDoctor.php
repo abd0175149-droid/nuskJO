@@ -10,10 +10,17 @@ use App\Services\WhatsApp\MetaErrorReactor;
 use App\Services\WhatsApp\WebhookStats;
 use Illuminate\Console\Command;
 
-/** فحص صحة القناة والإعداد. يطبع فقط (لا سجل)، ويعيد 0 دائماً إلا مع --strict وعند أي تحذير. */
+/**
+ * فحص صحة القناة والإعداد. يطبع فقط (لا سجل)، ويعيد 0 دائماً إلا مع --strict وعند أي تحذير.
+ * E23: قسما البيئة (local) وميتا (remote، بميزانية --budget ثوانٍ كلية، و--offline يتخطاه)، و--store يحفظ الحصيلة
+ * يومين وينبّه عند خطأ جديد. يعمل عند الإقلاع (entrypoint، بلا منع) ويومياً وبزر «شغّل الفحص».
+ */
 class WhatsAppDoctor extends Command
 {
-    protected $signature = 'whatsapp:doctor {--strict : يعيد 1 عند أي تحذير أو خطأ}';
+    protected $signature = 'whatsapp:doctor {--strict : يعيد 1 عند أي تحذير أو خطأ}
+        {--budget=5 : ميزانية الفحوص البعيدة بالثواني (لكل نداء 5 حداً أقصى)}
+        {--offline : بلا نداء لميتا}
+        {--store : احفظ الحصيلة لبطاقة الإعدادات وصفحة الحالة ونبّه عند خطأ جديد}';
 
     protected $description = 'فحص صحة قناة الواتساب والإعداد (قراءة فقط، بلا أسرار)';
 
@@ -77,9 +84,22 @@ class WhatsAppDoctor extends Command
             $this->line("حقل غير معالج: {$field} × {$n}");
         }
 
-        $checks = [...ChannelDoctor::checks(), ...ChannelDoctor::sourceWarnings($settings), ...WebhookStats::checks($hook)];
+        // E23: الفحص الكامل (الإعداد والويبهوك والبيئة وميتا بميزانية). لا يرمي: الإقلاع لا يتوقف عليه
+        $result = ChannelDoctor::run(max(1, (int) $this->option('budget')), (bool) $this->option('offline'));
+        $icon = ['ok' => '✅', 'warn' => '⚠️', 'error' => '❌', 'skip' => '⏭️'];
+        foreach (['local' => 'البيئة', 'remote' => 'ميتا (قراءة فقط)'] as $section => $title) {
+            $rows = array_values(array_filter($result['checks'], fn ($c) => $c['section'] === $section));
+            $this->table(["فحوص {$title}", 'الرمز', 'الرسالة'], array_map(fn ($c) => [$icon[$c['level']], $c['code'], $c['message']], $rows));
+        }
+        if ($this->option('store')) {
+            ChannelDoctor::store($result);
+        }
+        $this->line("الحصيلة: {$result['counts']['ok']} سليم · {$result['counts']['warn']} تحذير · {$result['counts']['error']} خطأ · {$result['counts']['skip']} متخطى ({$result['duration_ms']} ms)");
+
+        $checks = array_values(array_filter($result['checks'], fn ($c) => in_array($c['level'], ['warn', 'error'], true)));
+        // E34: علم الرسائل الصوتية مفعّل وffmpeg غير موجود في الصورة
         if ($ffmpeg === null && \App\Support\FeatureFlags::on('staff_voice_notes')) {
-            $checks[] = ['level' => 'error', 'code' => 'FFMPEG_MISSING', 'message' => 'العلم staff_voice_notes مفعّل وffmpeg غير موجود: زر التسجيل مخفي والمسار يرد 503. أعد بناء الصورة أو أطفئ العلم.'];
+            $checks[] = ['section' => 'local', 'level' => 'error', 'code' => 'FFMPEG_MISSING', 'message' => 'العلم staff_voice_notes مفعّل وffmpeg غير موجود: زر التسجيل مخفي والمسار يرد 503. أعد بناء الصورة أو أطفئ العلم.'];
         }
         if ($checks === []) {
             $this->info('✅ صحة القناة: لا ملاحظات');
@@ -87,8 +107,8 @@ class WhatsAppDoctor extends Command
             return self::SUCCESS;
         }
 
-        $this->table(['المستوى', 'الرمز', 'الرسالة'], array_map(
-            fn ($c) => [$c['level'] === 'error' ? '❌ خطأ' : '⚠️ تحذير', $c['code'], $c['message']],
+        $this->table(['المستوى', 'الرمز', 'الرسالة', 'النصيحة'], array_map(
+            fn ($c) => [$c['level'] === 'error' ? '❌ خطأ' : '⚠️ تحذير', $c['code'], $c['message'], $c['advice'] ?? ''],
             $checks,
         ));
 

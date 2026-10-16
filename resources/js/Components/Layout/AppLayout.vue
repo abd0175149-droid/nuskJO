@@ -420,6 +420,7 @@ const menuGroups = [
         { icon: '📍', label: 'مواقع الحضور', route: '/attendance-locations', permission: 'settings.view' },
         { icon: '⚙️', label: 'إعدادات النظام', route: '/settings', permission: 'settings.view' },
         { icon: '🛟', label: 'النسخ الاحتياطي', route: '/settings/backups', permission: 'backups.view' },
+        { icon: '🖥️', label: 'حالة النظام', route: '/ops/status', permission: 'ops.view', feature: 'ops_status' },
         { icon: '🧾', label: 'سجل التدقيق', route: '/audit-logs', permission: 'audit.view', feature: 'audit_page' },
         { icon: '🔌', label: 'التكاملات', route: '/settings/integrations', permission: ['integrations.manage', 'mcp.use'], feature: 'integrations' },
     ]},

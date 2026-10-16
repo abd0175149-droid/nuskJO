@@ -76,5 +76,10 @@ return [
         'wa_staff_reactions' => env('WA_FEATURE_WA_STAFF_REACTIONS'),
         'wa_link_preview' => env('WA_FEATURE_WA_LINK_PREVIEW'),
         'wa_share_cards' => env('WA_FEATURE_WA_SHARE_CARDS'),
+        // E23
+        'channel_monitor' => env('WA_FEATURE_CHANNEL_MONITOR'),
+        'channel_selftest' => env('WA_FEATURE_CHANNEL_SELFTEST'),
+        'wa_test_send' => env('WA_FEATURE_WA_TEST_SEND'),
+        'ops_status_page' => env('WA_FEATURE_OPS_STATUS_PAGE'),
     ],
 ];

@@ -945,6 +945,98 @@ class WhatsAppController extends Controller
         ]);
     }
 
+    /**
+     * زر «شغّل الفحص» (E23): whatsapp:doctor كاملاً بميزانية 8 ثوانٍ للقراءات البعيدة، وتُحفظ الحصيلة لبطاقة الإعدادات
+     * وصفحة الحالة. قراءة فقط: لا يغيّر شيئاً عند ميتا ولا حالة القناة، ولا ينبّه (المدير يرى النتيجة أمامه).
+     */
+    public function runDoctor()
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        $result = \App\Services\WhatsApp\ChannelDoctor::run(8);
+        \App\Services\WhatsApp\ChannelDoctor::store($result, alert: false);
+
+        return response()->json(['doctor' => $result]);
+    }
+
+    /**
+     * «اختبار الاتصال» (E23، العلم channel_selftest): قراءات ميتا الرسمية وارتداد موقّع عبر الرابط العام وآخر ويبهوك حقيقي.
+     * لا يرسل لأي عميل ولا يعدّل شيئاً عند ميتا.
+     */
+    public function channelTest()
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+        abort_unless(\App\Services\WhatsApp\ChannelSelfTest::enabled(), 404);
+
+        return response()->json(\App\Services\WhatsApp\ChannelSelfTest::run());
+    }
+
+    /**
+     * «إرسال تجريبي» (E23، العلم wa_test_send): رقم إدارة معلَّم test_recipient، بنافذة مفتوحة، ونص ثابت من الكود
+     * لا يكتبه المستخدم. حد 10 في الساعة للنظام كله، و3 في الدقيقة للمستخدم (المسار)، وتدقيق لكل إرسال.
+     */
+    public function testSend(Request $request)
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+        abort_unless(\App\Services\WhatsApp\TestSend::enabled(), 404);
+
+        // لا نص حر: الأداة لا تصير قناة إرسال بديلة
+        $data = $request->validate([
+            'admin_number_id' => 'required|integer|exists:wa_admin_numbers,id',
+            'kind' => ['required', Rule::in(\App\Services\WhatsApp\TestSend::KINDS)],
+            'body' => 'prohibited', 'text' => 'prohibited', 'message' => 'prohibited', 'caption' => 'prohibited', 'to' => 'prohibited',
+        ]);
+
+        $number = \App\Models\WaAdminNumber::findOrFail($data['admin_number_id']);
+        if (!$number->is_active || !$number->test_recipient) {
+            return response()->json(['ok' => false, 'code' => 'NOT_TEST_RECIPIENT', 'error' => 'هذا الرقم غير معلَّم لاستقبال الرسائل التجريبية — فعّله من صفحة أرقام الإدارة.'], 422);
+        }
+        $conv = \App\Services\WhatsApp\TestSend::conversationFor($number);
+        if (!$conv) {
+            return response()->json(['ok' => false, 'code' => 'NO_CONVERSATION', 'error' => 'لا محادثة لهذا الرقم بعد — اطلب من صاحبه مراسلة رقم الشركة أولاً.'], 422);
+        }
+        if (!$conv->isWindowOpen()) {
+            return response()->json(['ok' => false, 'code' => WhatsAppChannel::ERR_WINDOW,
+                'error' => 'اطلب من صاحب الرقم مراسلة رقم الشركة أولاً — لا نرسل خارج نافذة 24 ساعة ولا قوالب.'], 422);
+        }
+
+        $limit = (int) config('whatsapp.monitor.test_send_per_hour', 10);
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts(\App\Services\WhatsApp\TestSend::RATE_KEY, $limit)) {
+            return response()->json(['ok' => false, 'code' => 'RATE_LIMITED', 'error' => "حد الإرسال التجريبي {$limit} رسائل في الساعة للنظام كله — حاول لاحقاً."], 429);
+        }
+        \Illuminate\Support\Facades\RateLimiter::hit(\App\Services\WhatsApp\TestSend::RATE_KEY, 3600);
+
+        $key = \App\Services\WhatsApp\SendKey::test((string) $request->header('Idempotency-Key', ''))
+            ?? \App\Services\WhatsApp\SendKey::test((string) \Illuminate\Support\Str::uuid());
+        ['result' => $res, 'row' => $row] = \App\Services\WhatsApp\TestSend::send($conv, $data['kind'], $key);
+
+        if ($row) {
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaTestSend, 'wa_message', $row->id, null, [
+                'kind' => $data['kind'], 'admin_number_id' => $number->id, 'ok' => (bool) $res['ok'], 'code' => $res['code'] ?? null,
+            ]);
+        }
+
+        return response()->json([
+            'ok' => (bool) $res['ok'],
+            'code' => $res['code'] ?? null,
+            'meta_code' => $row?->meta_code,
+            'label' => $res['ok'] ? null : ($res['error'] ?? null),
+            'message_id' => $row?->id,
+            'wamid' => $res['message_id'] ?? null,
+        ]);
+    }
+
+    /** حالة رسالة تجريبية للوحة (تُستطلع كل 5 ثوانٍ دقيقتين): رسائل المصدر test وحدها */
+    public function testSendStatus(int $testMessage)
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+        abort_unless(\App\Services\WhatsApp\TestSend::enabled(), 404);
+
+        $m = \App\Models\WaMessage::where('source', \App\Services\WhatsApp\TestSend::SOURCE)->findOrFail($testMessage);
+
+        return response()->json(\App\Services\WhatsApp\TestSend::status($m));
+    }
+
     // ==================== التحليلات ====================
 
     public function analytics()

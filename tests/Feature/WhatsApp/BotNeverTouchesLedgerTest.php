@@ -191,6 +191,8 @@ class BotNeverTouchesLedgerTest extends TestCase
         $read('get_pending_approvals');
         $read('get_open_quotes');
         $read('get_attention_queue');
+        // E23: حالة القناة قراءة لا تمس الدفاتر
+        $read('get_channel_status');
         $found = $read('find_client', ['query' => 'عميل الدفاتر']);
         $this->assertSame(125.5, $found['clients'][0]['balance_jod']);
 

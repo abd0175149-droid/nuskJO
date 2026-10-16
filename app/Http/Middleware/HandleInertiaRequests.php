@@ -50,6 +50,8 @@ class HandleInertiaRequests extends Middleware
                 // E40: «🔌 التكاملات» لمن يملك صلاحيتها وأحد العلمين مفعّل (لا استعلام لغيره)
                 'integrations' => (bool) rescue(fn () => $user && ($user->can('integrations.manage') || $user->can('mcp.use'))
                     && (\App\Support\FeatureFlags::on('integration_outbox') || \App\Support\FeatureFlags::on('mcp_server')), false, false),
+                // E23: رابط «حالة النظام» لمن يملك ops.view والعلم مفعّل
+                'ops_status' => $user?->can('ops.view') ? rescue(fn () => \App\Support\FeatureFlags::on('ops_status_page'), false, false) : false,
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);

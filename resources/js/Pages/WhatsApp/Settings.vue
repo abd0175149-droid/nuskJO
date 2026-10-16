@@ -5,13 +5,8 @@
         <div class="space-y-6 pb-4">
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
             <div v-if="$page.props.flash?.error" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">❌ {{ $page.props.flash.error }}</div>
-            <!-- صحة القناة (whatsapp:doctor): الرسالة والنصيحة فقط، بلا أي قيمة سرية -->
-            <div v-if="health.length" role="status" class="p-4 rounded-xl border text-sm border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
-                <p class="font-bold mb-1">🩺 صحة القناة</p>
-                <ul class="space-y-1">
-                    <li v-for="c in health" :key="c.code">{{ c.level === 'error' ? '❌' : '⚠️' }} {{ c.message }}</li>
-                </ul>
-            </div>
+            <!-- فحص الإعدادات (whatsapp:doctor، E23): الرسالة والنصيحة فقط، بلا أي قيمة سرية. يحل محل شريط E06 -->
+            <DoctorPanel :quick="health" :last="props.doctor"/>
 
             <ConflictBanner :fields="conflict.fields" :others="conflict.others" @dismiss="conflict = { fields: [], others: [] }"/>
             <div v-if="Object.keys(errors).length" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300">
@@ -278,6 +273,10 @@
                     <!-- إشعار القراءة ومؤشر الكتابة (E35) -->
                     <ReadReceiptsField class="mt-4" v-model="form.send_read_receipts" :flag-on="readReceiptsFlagOn"
                                        :dirty="isDirty('send_read_receipts')" :error="errors.send_read_receipts"/>
+
+                    <!-- أدوات التشخيص (E23): اختبار الاتصال والإرسال التجريبي، كلٌّ خلف علمه -->
+                    <ChannelTestPanel v-if="props.diagnostics?.channel_test"/>
+                    <TestSendPanel v-if="props.diagnostics?.test_send" :recipients="props.diagnostics.recipients || []" :per-hour="props.diagnostics.per_hour || 10"/>
                 </div>
 
                 <!-- ================= 3. الذكاء ================= -->
@@ -502,6 +501,9 @@ import { router } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
+import DoctorPanel from '@/Components/WhatsApp/DoctorPanel.vue';
+import ChannelTestPanel from '@/Components/WhatsApp/ChannelTestPanel.vue';
+import TestSendPanel from '@/Components/WhatsApp/TestSendPanel.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
 import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
 import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
@@ -545,6 +547,8 @@ const props = defineProps({
     providers: { type: Object, default: () => ({}) },
     graph: Object,
     health: { type: Array, default: () => [] },
+    doctor: { type: Object, default: null },
+    diagnostics: { type: Object, default: () => ({ channel_test: false, test_send: false, recipients: [] }) },
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
     mediaArchive: { type: Object, default: null },

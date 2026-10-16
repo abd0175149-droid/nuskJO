@@ -23,6 +23,8 @@ class WaAdminNumber extends Model
 
     protected $fillable = [
         'phone', 'name', 'user_id', 'permissions', 'is_active', 'notes', 'last_used_at', 'created_by', 'require_mfa',
+        // E23: يستقبل «الإرسال التجريبي» (قرار المالك أي الأرقام)
+        'test_recipient',
     ];
 
     protected $casts = [
@@ -30,6 +32,7 @@ class WaAdminNumber extends Model
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
         'require_mfa' => 'boolean',
+        'test_recipient' => 'boolean',
     ];
 
     /**

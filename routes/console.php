@@ -179,13 +179,10 @@ foreach (\App\Services\Ops\OpsHealth::queues() as $queue) {
         ->everyMinute()
         ->name("ops:queue-beat:{$queue}");
 }
-// فحوص ميتا للقراءة (WA_META_CHECKS): الرمز يومياً وصحة القناة كل ساعة، والنتيجة في بطاقة صحة النظام
+// فحوص ميتا للقراءة (WA_META_CHECKS): الرمز يومياً، والنتيجة في بطاقة صحة النظام. صحة القناة صارت whatsapp:health (E23، أدناه)
 Schedule::command('whatsapp:credentials-check')
     ->dailyAt(config('ops.credentials_check_at'))
     ->timezone('Asia/Amman')
-    ->withoutOverlapping(10);
-Schedule::command('whatsapp:health-status')
-    ->hourly()
     ->withoutOverlapping(10);
 
 // الوظائف الفاشلة تحمل بيانات عملاء في payload والاستثناء: أسبوع ثم تُحذف
@@ -283,6 +280,18 @@ Schedule::command('whatsapp:qr-sync')
 Schedule::command('whatsapp:health-expiry')
     ->everyFifteenMinutes()
     ->withoutOverlapping(5);
+// المراقب الدوري (E23): whatsapp:health في الدقيقة 7 و37 (بعيداً عن :00 و:15 و:30 و:45 المزدحمة). العلم channel_monitor
+// مطفأ = فحص health_status القديم مرة في الساعة (الدقيقة 37 تُتخطى). نحو 4 نداءات في الساعة من حد 200
+Schedule::command('whatsapp:health')
+    ->cron('7,37 * * * *')
+    ->when(fn () => now()->minute < 30 || \App\Services\WhatsApp\MetaHealth::monitorOn())
+    ->withoutOverlapping(10);
+// فحص الإعدادات اليومي (E23): الحصيلة في 'wa:doctor:last' يومين لبطاقة الإعدادات وصفحة الحالة، وتنبيه واحد عند تحوّل
+// فحص إلى خطأ (العلم channel_monitor). بعد فحوص 04:00–04:25 وقبل فحص الرمز (08:00)
+Schedule::command('whatsapp:doctor --budget=20 --store --no-ansi')
+    ->timezone('Asia/Amman')
+    ->dailyAt('07:50')
+    ->withoutOverlapping(10);
 
 // رسائل الموظف الصوتية (E34): كنس ما بقي من ملفات التحويل المؤقتة (عملية قُتلت قبل حذفها) كل ساعة
 Schedule::command('whatsapp:voice-tmp-sweep')

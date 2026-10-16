@@ -35,7 +35,7 @@ class ChannelDoctorTest extends TestCase
         $this->configureChannel(['wa_verify_token' => null, 'wa_verify_token_hash' => hash('sha256', str_repeat('v', 64))]);
 
         $this->assertSame([], ChannelDoctor::checks());
-        $this->artisan('whatsapp:doctor', ['--strict' => true])->expectsOutputToContain('لا ملاحظات')->assertExitCode(0);
+        $this->artisan('whatsapp:doctor', ['--strict' => true, '--offline' => true])->expectsOutputToContain('لا ملاحظات')->assertExitCode(0);
     }
 
     public function test_the_doctor_lists_sources_and_warns_about_shadowing_and_old_keys_without_values(): void

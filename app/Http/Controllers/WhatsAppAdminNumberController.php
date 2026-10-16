@@ -27,6 +27,7 @@ class WhatsAppAdminNumberController extends Controller
 
         return Inertia::render('WhatsApp/AdminNumbers', [
             'title' => 'أرقام الإدارة',
+            'testSendEnabled' => FeatureFlags::on('wa_test_send'),
             'numbers' => $numbers->map(fn ($n) => [
                 'id' => $n->id,
                 'phone' => $n->phone,
@@ -43,6 +44,8 @@ class WhatsAppAdminNumberController extends Controller
                 'effective' => $n->effectivePermissions(),
                 'warnings' => AdminTools::permissionWarnings($n),
                 'is_active' => (bool) $n->is_active,
+                // E23: يستقبل «الإرسال التجريبي» (العلم wa_test_send)
+                'test_recipient' => (bool) $n->test_recipient,
                 'notes' => $n->notes,
                 'last_used' => $n->last_used_at?->diffForHumans(),
                 // رقمٌ مسجّل لعميل أيضاً؟ تنبيه: صاحبه سيُخدم كإدارة لا كعميل
@@ -90,11 +93,11 @@ class WhatsAppAdminNumberController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
-        $before = $adminNumber->only(['phone', 'name', 'permissions', 'is_active', 'require_mfa']);
+        $before = $adminNumber->only(['phone', 'name', 'permissions', 'is_active', 'require_mfa', 'test_recipient']);
         $adminNumber->update($this->validated($request, $adminNumber));
 
         AuditLog::log(\App\Enums\AuditAction::Update, 'wa_admin_number', $adminNumber->id, $adminNumber->name, [
-            'before' => $before, 'after' => $adminNumber->only(['phone', 'name', 'permissions', 'is_active', 'require_mfa']),
+            'before' => $before, 'after' => $adminNumber->only(['phone', 'name', 'permissions', 'is_active', 'require_mfa', 'test_recipient']),
         ]);
 
         return back()->with('success', "حُفظ رقم الإدارة «{$adminNumber->name}»");
@@ -122,6 +125,7 @@ class WhatsAppAdminNumberController extends Controller
             'is_active' => 'boolean',
             'notes' => 'nullable|string|max:1000',
             'require_mfa' => 'sometimes|boolean',
+            'test_recipient' => 'sometimes|boolean',
         ], [
             'phone.required' => 'رقم الهاتف مطلوب.',
             'name.required' => 'اسم صاحب الرقم مطلوب.',

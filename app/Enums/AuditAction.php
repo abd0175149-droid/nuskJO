@@ -163,6 +163,8 @@ enum AuditAction: string
     case WaShareCard = 'wa.share_card';
     case WaPlaceChange = 'wa.place_change';
     case WaCardChange = 'wa.card_change';
+    // E23: إرسال تجريبي لرقم إدارة معلَّم (نص ثابت من الكود، بالمصدر test)
+    case WaTestSend = 'wa.test_send';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -224,7 +226,7 @@ enum AuditAction: string
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
             self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
-            self::WaHealthChange, self::WaHealthUnblock => AuditSeverity::Warn,
+            self::WaHealthChange, self::WaHealthUnblock, self::WaTestSend => AuditSeverity::Warn,
             self::WaLlmTermsConfirm => AuditSeverity::Warn,
             self::WaConversationExport, self::WaSearchIndexRepair => AuditSeverity::Warn,
             self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed,
@@ -417,6 +419,7 @@ enum AuditAction: string
             self::WaShareCard => 'إرسال بطاقة اتصال معتمدة لعميل',
             self::WaPlaceChange => 'تعديل موقع معتمد للدبوس',
             self::WaCardChange => 'تعديل بطاقة اتصال معتمدة',
+            self::WaTestSend => 'إرسال تجريبي لرقم إدارة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -469,7 +472,9 @@ enum AuditAction: string
             // E40: كل قراءة عبر MCP (بيانات تخرج لعميل ذكاء)، وإصدار رموزه وإبطالها، والإيقاف الآلي لوجهة
             self::McpToolCall, self::McpTokenCreate, self::McpTokenRevoke, self::IntegrationEndpointAutoPaused,
             // E33: التصحيح دليل عند نزاع على سعر
-            self::WaMsgCorrect], true);
+            self::WaMsgCorrect,
+            // E23: كل رسالة تجريبية خرجت إلى رقم حقيقي
+            self::WaTestSend], true);
     }
 
     public function isNoise(): bool

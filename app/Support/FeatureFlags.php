@@ -89,6 +89,11 @@ final class FeatureFlags
         'wa_staff_reactions' => ['label' => 'تفاعل الموظف بإيموجي على رسالة العميل (إقرار لا يُعدّ رداً ولا يوقف البوت)', 'capability' => 'C008', 'available' => true],
         'wa_link_preview' => ['label' => 'معاينة الرابط في رد الموظف بخانة صريحة، للروابط العامة وحدها', 'capability' => 'C002', 'available' => true],
         'wa_share_cards' => ['label' => 'إرسال دبوس الموقع وبطاقات الاتصال من القوائم المعتمدة', 'capability' => 'C006', 'available' => true],
+        // E23: المراقب الدوري وأدوات التشخيص (قراءة GET فقط، وإرسال تجريبي محصور بأرقام الإدارة المعلَّمة)
+        'channel_monitor' => ['label' => 'المراقب الدوري: صحة الرقم كل 30 دقيقة، واشتراكات الويبهوك كل ساعة وتنبيه انحرافها، وتنبيه فحص الإعدادات اليومي', 'capability' => 'C234', 'available' => true],
+        'channel_selftest' => ['label' => '«اختبار الاتصال» في الإعدادات: قراءات ميتا الرسمية وارتداد موقّع عبر رابط الويبهوك العام', 'capability' => 'C218', 'available' => true],
+        'wa_test_send' => ['label' => '«إرسال تجريبي» لأرقام الإدارة المعلَّمة وحدها، بنافذة مفتوحة وحد 10 في الساعة', 'capability' => 'C217', 'available' => true],
+        'ops_status_page' => ['label' => 'صفحة «حالة النظام» للقراءة (القاعدة والقرص والطوابير والنبضات والنسخ وصحة واتساب) بالصلاحية ops.view', 'capability' => 'C220', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

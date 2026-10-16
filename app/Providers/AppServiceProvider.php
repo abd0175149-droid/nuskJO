@@ -13,6 +13,19 @@ class AppServiceProvider extends ServiceProvider
     {
         // البث اللحظي للصندوق (E28): طلب واحد أو وظيفة واحدة، فتُجمَّع لمسات المحادثة نفسها في حدث واحد
         $this->app->scoped(\App\Services\WhatsApp\Realtime\InboxBroadcaster::class);
+
+        // الناقل إلى ميتا (E23): cloud دائماً في الإنتاج. log (بلا شبكة) للاختبار والتطوير المحلي، ويُرفض في production
+        // ولا يُطبَّق، بلا كسر الإقلاع: يُربط Cloud ويُكتب سطر حرج، وwhatsapp:doctor يعلّمه خطأً
+        $this->app->singleton(\App\Services\WhatsApp\Transport\WhatsAppTransport::class, function ($app) {
+            if (config('whatsapp.transport', 'cloud') === 'log') {
+                if (!$app->environment('production')) {
+                    return new \App\Services\WhatsApp\Transport\LogTransport;
+                }
+                \Illuminate\Support\Facades\Log::critical('wa.transport_log_refused_in_production');
+            }
+
+            return new \App\Services\WhatsApp\Transport\CloudApiTransport;
+        });
     }
 
     /**

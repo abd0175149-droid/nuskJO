@@ -193,6 +193,11 @@ return [
     'WhatsAppQrController@destroy' => 'wa.qr_delete',
     'WhatsAppChannelHealthController@unblock' => 'wa.health_unblock',
     'WhatsAppChannelHealthController@acknowledge' => 'wa.health_ack',
+    // E23: أدوات التشخيص
+    'WhatsAppController@runDoctor' => 'none: فحص للقراءة (الحصيلة في الكاش يومين)',
+    'OpsStatusController@refresh' => 'none: إعادة بناء لقطة القراءة (كاش 60 ثانية)',
+    'WhatsAppController@channelTest' => 'none: قراءات ميتا وارتداد موقّع إلى خادمنا، بلا إرسال لعميل ولا تعديل عند ميتا',
+    'WhatsAppController@testSend' => 'wa.test_send',
 
     // ===== التكاملات الصادرة وخادم MCP (E40) =====
     'McpController@handle' => 'mcp.tool_call',

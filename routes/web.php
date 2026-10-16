@@ -282,6 +282,17 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/qr-links', [\App\Http\Controllers\WhatsAppQrController::class, 'store'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
     Route::delete('api/whatsapp/qr-links/{link}', [\App\Http\Controllers\WhatsAppQrController::class, 'destroy'])->whereNumber('link')->middleware('perm:whatsapp.settings');
     Route::get('whatsapp/qr-links/{link}/{format}', [\App\Http\Controllers\WhatsAppQrController::class, 'download'])->whereNumber('link')->where('format', 'png|svg')->middleware('perm:whatsapp.settings');
+    // أدوات التشخيص (E23): فحص الإعدادات بزر (قراءة، 3 كل 10 دقائق)
+    Route::post('api/whatsapp/doctor', [\App\Http\Controllers\WhatsAppController::class, 'runDoctor'])->middleware(['perm:whatsapp.settings', 'throttle:3,10,wa-doctor']);
+    // «اختبار الاتصال» (العلم channel_selftest): قراءات رسمية وارتداد موقّع، 6 في الدقيقة
+    Route::post('api/whatsapp/channel-test', [\App\Http\Controllers\WhatsAppController::class, 'channelTest'])->middleware(['perm:whatsapp.settings', 'throttle:6,1,wa-channel-test']);
+    // «إرسال تجريبي» (العلم wa_test_send): أرقام الإدارة المعلَّمة وحدها، 3 في الدقيقة للمستخدم و10 في الساعة للنظام
+    Route::post('api/whatsapp/test-send', [\App\Http\Controllers\WhatsAppController::class, 'testSend'])->middleware(['perm:whatsapp.settings', 'throttle:3,1,wa-test-send']);
+    Route::get('api/whatsapp/test-send/{testMessage}/status', [\App\Http\Controllers\WhatsAppController::class, 'testSendStatus'])->whereNumber('testMessage')->middleware(['perm:whatsapp.settings', 'throttle:60,1,wa-test-status']);
+    // حالة النظام (E23): قراءة فقط بالصلاحية ops.view والعلم ops_status_page
+    Route::get('ops/status', [\App\Http\Controllers\OpsStatusController::class, 'index'])->name('ops.status')->middleware('perm:ops.view');
+    Route::get('api/ops/status', [\App\Http\Controllers\OpsStatusController::class, 'data'])->middleware('perm:ops.view');
+    Route::post('api/ops/status/refresh', [\App\Http\Controllers\OpsStatusController::class, 'refresh'])->middleware(['perm:ops.view', 'throttle:6,1,ops-status']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');
