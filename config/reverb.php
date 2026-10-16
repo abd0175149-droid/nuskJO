@@ -43,10 +43,23 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
-                'allowed_origins' => ['*'],
+                // E28: المضيف وحده (Reverb يطابق مضيف ترويسة Origin بـ Str::is)، وافتراضياً مضيف APP_URL.
+                // REVERB_ALLOWED_ORIGINS='*' للتراجع المؤقت، أو قائمة مضيفات مفصولة بفواصل
+                'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) (env('REVERB_ALLOWED_ORIGINS')
+                    ?: parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)))))),
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
                 'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),
+                // سقف اتصالات التطبيق (مضيف مشترك)، ولا أحداث من المتصفح (لا نستعمل whisper)
+                'max_connections' => (int) env('REVERB_APP_MAX_CONNECTIONS', 200),
+                'accept_client_events_from' => (string) env('REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM', 'none'),
+                // حد رسائل كل اتصال (اشتراك ونبضة): كل تنقّل يكلف رسالتين، فالحد بعيد عن الاستعمال العادي
+                'rate_limiting' => [
+                    'enabled' => (bool) env('REVERB_APP_RATE_LIMITING_ENABLED', true),
+                    'max_attempts' => (int) env('REVERB_APP_RATE_LIMIT_MAX_ATTEMPTS', 60),
+                    'decay_seconds' => (int) env('REVERB_APP_RATE_LIMIT_DECAY_SECONDS', 60),
+                    'terminate_on_limit' => (bool) env('REVERB_APP_RATE_LIMIT_TERMINATE', true),
+                ],
             ],
         ],
     ],

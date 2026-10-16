@@ -14,8 +14,11 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Support\Facades\Route::group([], base_path('routes/webhooks.php'));
         },
     )
-    // broadcasting/auth (E27): لا حدث لحظي لجلسة لم تجتز العامل الثاني. الدخول والتعطيل يُفحصان في routes/channels.php
-    ->withBroadcasting(__DIR__.'/../routes/channels.php', ['middleware' => ['web', 'mfa']])
+    // تفويض القنوات الخاصة (E28): جلسة نشطة اجتازت العامل الثاني (E27) وحارس المسارات وحد معدّل، كبقية المسارات
+    // المحمية. قرار كل قناة في routes/channels.php، والقدرة realtime.subscribe لأي مستخدم نشط
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', [
+        'middleware' => ['web', 'auth', 'auth.session', 'active', 'mfa', 'authz.fence', 'can:realtime.subscribe', 'throttle:broadcast-auth'],
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,

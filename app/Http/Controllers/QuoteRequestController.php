@@ -179,7 +179,8 @@ class QuoteRequestController extends Controller
 
                 return back()->with('success', 'أُرسل هذا السعر نفسه للعميل قبل قليل — لم يُرسل مرة ثانية.');
             }
-            if (!empty($res['unknown'])) {
+            // مجهول النتيجة (E19)، ومع connection_resilience (E28) المهلة والانقطاع وقيد الإرسال أيضاً: لا «تعذّر» لما قد يكون خرج
+            if (!empty($res['unknown']) || (\App\Services\WhatsApp\SendOutcome::unknown($res) && \App\Services\WhatsApp\SendOutcome::enabled())) {
                 return back()->with('error', 'حُفظ السعر، وقد يكون أُرسل — تحقق من المحادثة قبل إعادة الإرسال.');
             }
             if ($res['ok']) {

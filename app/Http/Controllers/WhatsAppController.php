@@ -79,6 +79,8 @@ class WhatsAppController extends Controller
             'canExport' => auth()->user()->can('whatsapp.export') && \App\Support\FeatureFlags::on('conversation_export'),
             // الحظر الرسمي (E31): الزر والفلتر لمن يملك whatsapp.block والعلم مفعّل، والخادم يفرضهما بنفسه
             'canBlock' => self::canBlock(),
+            // الصندوق اللحظي (E28): الاشتراك في أحداث wa.changed على قناة المستخدم، والاستطلاع احتياطي
+            'realtime' => ['inbox' => \App\Support\FeatureFlags::on('inbox_realtime')],
             'topics' => TopicRouter::TOPICS,
             'attentionReasons' => \App\Services\WhatsApp\ReplyState::REASONS,
             // من يُوكَّل يجب أن يستطيع فتح المحادثة؛ وإلا رُفض التوكيل في assign
@@ -554,7 +556,11 @@ class WhatsAppController extends Controller
             // إزالة وسم خارج اختصاصك تخفي المحادثة عن مختصه: للمسؤول عن التوزيع وحده
             $mine = in_array($data['topic'], TopicRouter::topicsForUser($me->id), true);
             abort_unless($mine || $me->can('whatsapp.assign') || $me->can('whatsapp.view_all'), 403, 'لا يمكنك إزالة وسم خارج اختصاصك');
+            // البث اللحظي (E28): من كان يراها قبل الإزالة يُبلَّغ أيضاً، فتختفي من قائمة مختص الوسم المُزال
+            $before = app(\App\Services\WhatsApp\Realtime\InboxBroadcaster::class)->enabled()
+                ? \App\Services\WhatsApp\Realtime\InboxAudience::for($conversation) : [];
             TopicRouter::untag($conversation, $data['topic']);
+            $conversation->touchRealtime('meta', $before);
         }
 
         \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaTopic, 'wa_conversation', $conversation->id, null, ['topic' => $data['topic'], 'attach' => (bool) $data['attach']]);
@@ -701,6 +707,19 @@ class WhatsAppController extends Controller
             \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaPolicyOverride, 'wa_conversation', $conversation->id, null, ['reasons' => $warnings]);
         }
 
+        return self::sendResponse($res);
+    }
+
+    /**
+     * رد الإرسال. مع connection_resilience (E28): النتيجة المجهولة (مهلة أو انقطاع بعد بدء الإرسال، والمسار القديم أيضاً)
+     * 202 OUTCOME_UNKNOWN «قد تكون أُرسلت»، والرفض الصريح 422 كما هو، وتعارض المفتاح 409 كما في E19.
+     */
+    private static function sendResponse(array $res): \Illuminate\Http\JsonResponse
+    {
+        if (empty($res['conflict']) && \App\Services\WhatsApp\SendOutcome::unknown($res) && \App\Services\WhatsApp\SendOutcome::enabled()) {
+            return response()->json(\App\Services\WhatsApp\SendOutcome::body($res), 202);
+        }
+
         return response()->json($res, self::sendStatus($res));
     }
 
@@ -816,7 +835,7 @@ class WhatsAppController extends Controller
 
         $res = WhatsAppChannel::sendContactRequest($conversation, self::CONTACT_REQUEST_BODY, 'staff', auth()->id(), self::staffSendKey(request()));
 
-        return response()->json($res, self::sendStatus($res));
+        return self::sendResponse($res);
     }
 
     private const CONTACT_REQUEST_BODY = 'لنكمل خدمتك، شارك رقم هاتفك بالضغط على الزر أدناه.';

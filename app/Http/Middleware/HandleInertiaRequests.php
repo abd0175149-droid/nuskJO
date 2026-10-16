@@ -45,6 +45,8 @@ class HandleInertiaRequests extends Middleware
                 'audit_page' => (bool) config('audit.page'),
                 // E31: رابط «المحظورون» لمن يملك whatsapp.block والعلم مفعّل (القراءة لهؤلاء وحدهم)
                 'wa_block' => $user?->can('whatsapp.block') ? rescue(fn () => \App\Support\FeatureFlags::on('wa_block'), false, false) : false,
+                // شريط الانقطاع والتعافي بعد النشر و«قد تكون أُرسلت» (E28، العلم connection_resilience)
+                'resilience' => \App\Services\WhatsApp\SendOutcome::enabled(),
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);

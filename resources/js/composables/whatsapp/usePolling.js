@@ -1,7 +1,8 @@
 // استطلاع دوري (E16): لا يتداخل طلبان، ويتوقف والصفحة مخفية ويستأنف بطلب فوري عند عودتها، ويتباطأ عند الفشل المتكرر.
-// يبقى 15 ثانية حتى يحل البث اللحظي (E28).
+// مع البث اللحظي (E28) يصير احتياطاً: setInterval(60000) والمقبس متصل، و15000 حين ينقطع (useInboxRealtime).
 
-export function createPoller(tick, { interval = 15000, maxInterval = 60000, doc = globalThis.document, onError } = {}) {
+export function createPoller(tick, { interval: initial = 15000, maxInterval = 60000, doc = globalThis.document, onError } = {}) {
+    let interval = initial;
     let timer = null;
     let inFlight = null;
     let failures = 0;
@@ -58,5 +59,12 @@ export function createPoller(tick, { interval = 15000, maxInterval = 60000, doc 
         run,
         failures: () => failures,
         nextDelay: delay,
+        /** فترة الاستطلاع الأساسية (E28)؛ تُطبَّق على الموعد التالي فوراً */
+        setInterval(ms) {
+            if (!(ms > 0) || ms === interval) return;
+            interval = ms;
+            if (running) schedule();
+        },
+        interval: () => interval,
     };
 }

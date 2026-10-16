@@ -60,5 +60,7 @@ return [
         'wa_qr_links' => env('WA_FEATURE_WA_QR_LINKS'),
         'entry_tracking' => env('WA_FEATURE_ENTRY_TRACKING'),
         'offer_story_card' => env('WA_FEATURE_OFFER_STORY_CARD'),
+        'inbox_realtime' => env('WA_FEATURE_INBOX_REALTIME'),
+        'connection_resilience' => env('WA_FEATURE_CONNECTION_RESILIENCE'),
     ],
 ];

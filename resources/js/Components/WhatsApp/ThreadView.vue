@@ -86,7 +86,8 @@
       <TranslateReplyBar v-if="translateBar" class="shrink-0" v-model="translateMode" v-model:target="translateTarget" :targets="translateTargets"/>
       <Composer class="shrink-0" :model-value="draft" @update:model-value="(v) => $emit('update:draft', v)" @submit="onSubmit"
                 @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
-                :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
+                :sending="sending" :error="error" :notice="sendNotice" :cooldown="sendCooldown"
+                :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
                 :quick-replies="quickReplies" :conversation-id="thread.id" :blocked="!!thread.blocked"
                 :media-policy="mediaPolicy" :recipient="recipient" @send-file="(p) => $emit('sendFile', p)"/>
       <TranslateReplyPanel :open="translateOpen" :conversation-id="thread.id" :source-text="draft" :target="translateTarget" :targets="translateTargets"
@@ -129,6 +130,9 @@ const props = defineProps({
   draft: { type: String, default: '' },
   sending: Boolean,
   error: { type: String, default: '' },
+  // E28: «قد تكون أُرسلت» (كهرماني) وتعطيل الإرسال 10 ثوانٍ بعدها
+  sendNotice: { type: String, default: '' },
+  sendCooldown: Boolean,
   requesting: Boolean,
   cannotReachPhoneless: Boolean,
   canRequestPhone: Boolean,

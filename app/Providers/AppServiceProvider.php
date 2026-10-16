@@ -11,7 +11,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // البث اللحظي للصندوق (E28): طلب واحد أو وظيفة واحدة، فتُجمَّع لمسات المحادثة نفسها في حدث واحد
+        $this->app->scoped(\App\Services\WhatsApp\Realtime\InboxBroadcaster::class);
     }
 
     /**
@@ -59,6 +60,7 @@ class AppServiceProvider extends ServiceProvider
         $this->defineCspReportRateLimit();
         $this->defineFileSendRateLimit();
         $this->defineMfaRateLimit();
+        $this->defineRealtimeAndSendLimits();
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\AuditAuthEvents::class);
         // التقليم نفسه يترك أثراً (فئة system، فلا يُقلَّم)
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ModelsPruned::class, function ($event) {
@@ -214,6 +216,28 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
+     * حدود E28: تفويض القنوات الخاصة (لكل مستخدم ولكل عنوان، مخزن limiter)، والإرسال لكل موظف (wa-send) على الرد
+     * والسعر وطلب الرقم. طلب Inertia (السعر) يعود برسالة في الصفحة، وطلب axios بـ 429 وLOCAL_RATE_LIMIT.
+     */
+    private function defineRealtimeAndSendLimits(): void
+    {
+        \Illuminate\Support\Facades\RateLimiter::for('broadcast-auth', fn (\Illuminate\Http\Request $r) => [
+            \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('broadcasting.auth_limit.per_user', 60))->by('u:'.($r->user()?->id ?? $r->ip())),
+            \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('broadcasting.auth_limit.per_ip', 120))->by('ip:'.$r->ip()),
+        ]);
+
+        \Illuminate\Support\Facades\RateLimiter::for('wa-send', function (\Illuminate\Http\Request $r) {
+            $text = 'تمهّل قليلاً — أرسلت رسائل كثيرة في دقيقة';
+
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('whatsapp.send.per_minute', 30))
+                ->by('wa-send:u:'.($r->user()?->id ?? $r->ip()))
+                ->response(fn (\Illuminate\Http\Request $req, array $headers) => $req->header('X-Inertia')
+                    ? back()->with('error', $text)
+                    : response()->json(['ok' => false, 'code' => 'LOCAL_RATE_LIMIT', 'error' => $text], 429, $headers));
+        });
+    }
+
+    /**
      * مسار واحد لكل فحوص الصلاحية (E03): المعطّل مرفوض دائماً، والمدير مسموح دائماً،
      * وغيرهما بصلاحيات دوره. القدرة «admin» للمسارات الخاصة بالمدير وحده.
      */
@@ -234,6 +258,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         \Illuminate\Support\Facades\Gate::define('admin', fn (\App\Models\User $user) => $user->isAdmin());
+        // طلب توقيع قناة بث (E28): لأي مستخدم نشط، وقرار كل قناة في routes/channels.php
+        \Illuminate\Support\Facades\Gate::define('realtime.subscribe', fn (\App\Models\User $user) => (bool) $user->is_active);
     }
 
     /**

@@ -5,7 +5,8 @@
     <!-- ارتفاع الشاشة ناقص رأس التطبيق وحشوته: القائمة والمحادثة تمرّران داخلهما (E16) -->
     <div class="flex flex-col gap-3 sm:gap-4 h-[calc(100dvh-var(--app-header)-2*var(--app-pad))] min-h-[28rem]">
       <InboxStatusBar :class="s.view === 'thread' ? 'hidden lg:block' : ''" class="shrink-0"
-                      :status="status" :llm="s.llm" :stale-since="s.staleSince" :notice="s.notice" @dismiss="s.notice = ''"/>
+                      :status="status" :llm="s.llm" :stale-since="s.staleSince" :notice="s.notice" @dismiss="s.notice = ''"
+                      :realtime="realtime?.inbox ? connection.state.realtime : 'disabled'"/>
       <InboxCards v-if="followup && s.summary" :class="s.view === 'thread' ? 'hidden lg:flex' : ''" class="shrink-0"
                   :summary="s.summary" :active="s.filter" @filter="(f) => { s.filter = f; inbox.refilter(); }"/>
 
@@ -21,6 +22,7 @@
         <ThreadView ref="threadView" :class="s.view === 'list' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-2"
                     :thread="s.thread" :messages="s.messages" :notes="s.notes" :has-more="s.hasMore" :loading-older="s.loadingOlder" :new-below="s.newBelow"
                     v-model:draft="inbox.draft.value" :sending="s.sending" :error="s.sendError" :requesting="s.requesting"
+                    :send-notice="s.sendNotice" :send-cooldown="s.sendCooldown"
                     :cannot-reach-phoneless="inbox.cannotReachPhoneless.value" :can-request-phone="inbox.canRequestPhone.value"
                     :can-reply="canReply" :can-assign="canAssign" :can-toggle-bot="canToggleBot" :can-link-client="canLinkClient"
                     :staff="staff" :topics="topics" :attention-reasons="attentionReasons"
@@ -63,6 +65,8 @@ import MediaViewer from '@/Components/WhatsApp/MediaViewer.vue';
 import ThreadView from '@/Components/WhatsApp/ThreadView.vue';
 import { useInbox } from '@/composables/whatsapp/useInbox.js';
 import { createPoller } from '@/composables/whatsapp/usePolling.js';
+import { useInboxRealtime } from '@/composables/whatsapp/useInboxRealtime.js';
+import { useConnectionStatus } from '@/composables/useConnectionStatus.js';
 import { onPopState } from '@/utils/historyGuard';
 import { useConfirm } from '@/composables/useConfirm';
 
@@ -101,6 +105,8 @@ const props = defineProps({
   mediaPolicy: { type: Object, default: null },
   // E31: الحظر الرسمي (whatsapp.block والعلم wa_block)
   canBlock: Boolean,
+  // E28: البث اللحظي (العلم inbox_realtime)
+  realtime: { type: Object, default: () => ({ inbox: false }) },
 });
 
 const threadView = ref(null);
@@ -146,8 +152,17 @@ function onTranslatedSent(res) {
   inbox.poll();
 }
 
-// كل 15 ثانية، ويتوقف والصفحة مخفية ويستأنف بطلب فوري عند عودتها
+// كل 15 ثانية، ويتوقف والصفحة مخفية ويستأنف بطلب فوري عند عودتها. مع البث اللحظي (E28) احتياط كل 60 ثانية متصلاً
 const poller = createPoller(inbox.tick, { interval: 15000 });
+const connection = useConnectionStatus();
+useInboxRealtime({
+  activeId: () => s.activeId,
+  reloadList: () => { inbox.load(); inbox.loadSummary(); },
+  pollThread: () => inbox.poll(),
+  poller,
+  enabled: !!props.realtime?.inbox,
+  userId: usePage().props.auth?.user?.id ?? null,
+});
 
 let releaseHistory = () => {};
 onMounted(() => {

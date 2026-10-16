@@ -189,12 +189,15 @@
             <!-- Page Content -->
             <main class="flex-1 p-3 sm:p-6 overflow-x-hidden" :class="isDark ? 'bg-gray-900' : 'bg-gray-50'">
                 <MfaBanner />
+                <PageErrorCard />
                 <slot />
             </main>
             <!-- نافذة التأكيد الموحّدة (useConfirm، E16.9): مثيل واحد للصفحة -->
             <ConfirmDialog />
             <!-- تأكيد الهوية قبل فعل حساس (E27) -->
             <StepUpModal />
+            <!-- شريط الانقطاع الوحيد (E28) -->
+            <ConnectionBanner />
         </div>
     </div>
 </template>
@@ -208,6 +211,8 @@ import PushToggle from './PushToggle.vue';
 import ConfirmDialog from '../ConfirmDialog.vue';
 import MfaBanner from '../Security/MfaBanner.vue';
 import StepUpModal from '../Security/StepUpModal.vue';
+import ConnectionBanner from './ConnectionBanner.vue';
+import PageErrorCard from './PageErrorCard.vue';
 import axios from 'axios';
 
 const page = usePage();

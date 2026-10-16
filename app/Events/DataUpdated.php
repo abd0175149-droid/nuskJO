@@ -2,12 +2,17 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 
-class DataUpdated implements ShouldBroadcast
+/**
+ * تحديث كيان (شجرة الحسابات، الوكلاء): نوعه وفعله ورقمه فقط، على القناة الخاصة staff (E28) لكل موظف نشط مصادَق،
+ * بعد أن كانت قناة عامة يراها كل حامل للمفتاح العام. يُطلق بعد اعتماد المعاملة.
+ */
+class DataUpdated implements ShouldBroadcast, ShouldDispatchAfterCommit
 {
     use Dispatchable, InteractsWithSockets;
 
@@ -19,7 +24,7 @@ class DataUpdated implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
-        return [new Channel('nusuk-updates')];
+        return [new PrivateChannel('staff')];
     }
 
     public function broadcastAs(): string

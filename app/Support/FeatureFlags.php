@@ -71,6 +71,9 @@ final class FeatureFlags
         'wa_qr_links' => ['label' => 'رموز QR وروابط قصيرة رسمية للعروض (message_qrdls) وتبويب «المشاركة»', 'capability' => 'C056', 'available' => true],
         'entry_tracking' => ['label' => 'تسجيل مصدر المحادثة (رمز أو رابط أو إعلان) ووسم موضوع العرض وتلميح البوت', 'capability' => 'C056', 'available' => true],
         'offer_story_card' => ['label' => 'بطاقة حالة 9:16 للعرض تُنزَّل للنشر اليدوي (لا نشر آلي)', 'capability' => 'C041', 'available' => true],
+        // E28: البث اللحظي الآمن للصندوق، وشريط الانقطاع والتعافي بعد النشر
+        'inbox_realtime' => ['label' => 'الصندوق اللحظي: الرسالة والحالة تظهران خلال ثانيتين لمن يرى المحادثة (والاستطلاع احتياطي كل 60 ثانية)', 'capability' => 'C138', 'available' => true],
+        'connection_resilience' => ['label' => 'شريط انقطاع واحد، وبطاقة «خطأ في الصفحة»، وإعادة تحميل واحدة بعد النشر، و«قد تكون أُرسلت» للإرسال مجهول النتيجة', 'capability' => 'C277', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

@@ -49,6 +49,8 @@
     </p>
     <QuickReplyPicker v-if="quickReplies" :open="pickerOpen" :conversation-id="conversationId" @close="pickerOpen = false" @insert="insert"/>
     <p v-if="canReply && fine" class="mt-1 text-[10px] text-gray-400 hidden lg:block">Enter للإرسال، وShift+Enter لسطر جديد</p>
+    <!-- نتيجة مجهولة (E28): ليست فشلاً، فلا ❌ أحمر -->
+    <p v-if="notice" class="mt-1.5 text-xs font-bold text-amber-700 dark:text-amber-400" role="status" data-test="maybe-sent">⚠️ {{ notice }}</p>
     <p v-if="error" class="mt-1.5 text-xs text-red-600" role="alert">❌ {{ error }}</p>
     <p v-if="attachError" class="mt-1.5 text-xs text-red-600" role="alert" data-test="attach-error">❌ {{ attachError }}</p>
     <SendFileConfirm v-if="attachEnabled" :open="!!pending" :file="pending?.file" :kind="pending?.kind" :recipient="pending?.recipient"
@@ -74,6 +76,9 @@ const props = defineProps({
   windowLeft: { type: Number, default: null },
   sending: Boolean,
   error: { type: String, default: '' },
+  // E28: «قد تكون أُرسلت»، والإرسال معطّل 10 ثوانٍ بعدها حتى يُراجع الخيط
+  notice: { type: String, default: '' },
+  cooldown: Boolean,
   cannotReachPhoneless: Boolean,
   canRequestPhone: Boolean,
   requesting: Boolean,
@@ -94,7 +99,7 @@ const emit = defineEmits(['update:modelValue', 'submit', 'requestPhone', 'sendFi
 
 // على اللمس Enter سطر جديد والإرسال بالزر؛ على سطح المكتب Enter يرسل
 const fine = props.finePointer ?? isFinePointer();
-const blocked = computed(() => props.blocked || !props.windowOpen || props.sending || props.cannotReachPhoneless);
+const blocked = computed(() => props.blocked || !props.windowOpen || props.sending || props.cooldown || props.cannotReachPhoneless);
 
 const unfilled = computed(() => unfilledVariables(props.modelValue));
 const unfilledLabel = computed(() => unfilled.value.map((v) => `{{${v}}}`).join(' '));
