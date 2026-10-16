@@ -242,6 +242,11 @@ Schedule::command('whatsapp:webhook-events-prune')
     ->hourlyAt(15)
     ->withoutOverlapping(10);
 
+// الملفات المرسلة (E32.12): حذفها من خوادم ميتا بعد التسليم بقرار المالك. لا يعمل إلا بالعلم outbound_media_remote_delete
+Schedule::command('whatsapp:outbound-media-cleanup')
+    ->hourlyAt(25)
+    ->withoutOverlapping(10);
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

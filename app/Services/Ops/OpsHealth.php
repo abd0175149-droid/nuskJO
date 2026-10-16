@@ -23,6 +23,8 @@ final class OpsHealth
 
     private const MEDIA_QUEUE = 'wa-media';
 
+    private const MEDIA_OUT_QUEUE = 'wa-media-out';
+
     /** وظيفة أرشفة متاحة لم يلتقطها العامل منذ ساعة: تحذير في البطاقة فقط */
     private const MEDIA_BACKLOG_SECONDS = 3600;
 
@@ -72,7 +74,8 @@ final class OpsHealth
                 }
             }
             // طابور الأرشيف (E14) له تحذيره الخاص ولا يُسقط /up: تنزيل متأخر لا يعطّل الرد
-            $backlog = DB::table('jobs')->whereNull('reserved_at')->where('queue', '!=', self::MEDIA_QUEUE)
+            // طابورا الوسائط (أرشفة الوارد، وملفات الموظف E32) لهما تحذيرهما ولا يُسقطان /up
+            $backlog = DB::table('jobs')->whereNull('reserved_at')->whereNotIn('queue', [self::MEDIA_QUEUE, self::MEDIA_OUT_QUEUE])
                 ->where('available_at', '<=', $now - (int) config('ops.backlog_stale_seconds'))
                 ->exists();
             if ($backlog) {

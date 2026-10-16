@@ -104,6 +104,10 @@ enum AuditAction: string
     case WaQuickReplyDelete = 'wa.quick_reply_delete';
     case WaQuickReplyApprove = 'wa.quick_reply_approve';
     case WaLastErrorCleared = 'wa.last_error_clear';
+    // الملفات الصادرة (E32): كل ملف خرج لعميل (بلا اسمه)، والفاتورة على واتساب في سجل الفاتورة، والحذف من خوادم ميتا
+    case WaFileSent = 'wa.file_sent';
+    case WaInvoiceSent = 'wa.invoice_sent';
+    case WaMediaRemoteDelete = 'wa.media_remote_delete';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -169,7 +173,7 @@ enum AuditAction: string
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
-            self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay => 'system',
+            self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay, self::WaMediaRemoteDelete => 'system',
             default => 'whatsapp',
         };
     }
@@ -263,6 +267,9 @@ enum AuditAction: string
             self::WaQuickReplyDelete => 'حذف رد جاهز',
             self::WaQuickReplyApprove => 'اعتماد رد جاهز يذكر بيانات دفع',
             self::WaLastErrorCleared => 'تصفير آخر خطأ من ميتا («تمّ الحل»)',
+            self::WaFileSent => 'إرسال ملف لعميل على واتساب',
+            self::WaInvoiceSent => 'إرسال فاتورة PDF على واتساب',
+            self::WaMediaRemoteDelete => 'حذف ملفات مرسلة من خوادم واتساب',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -288,7 +295,9 @@ enum AuditAction: string
     {
         return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload, self::WaMediaRefetch,
             // إعادة إشعار بعينه بيد مطوّر (نادرة، وقد تتجاوز الميزانية): أثرها دائم
-            self::WaWebhookReplay], true);
+            self::WaWebhookReplay,
+            // كل ملف خرج لعميل (قد يحمل رقم جواز) وكل فاتورة على واتساب (E32)
+            self::WaFileSent, self::WaInvoiceSent], true);
     }
 
     public function isNoise(): bool

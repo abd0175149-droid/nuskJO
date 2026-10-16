@@ -18,6 +18,8 @@ final class WaLog
         'error_code', 'category', 'attempt', 'scope',
         // E20: استقبال الويبهوك (أنواع أحداث المكالمات ببصمة مقتطعة، ورقم الصف والعنصر، وأعداد المحو والإعادة)
         'events', 'item', 'event_id', 'wiped', 'deleted', 'overdue', 'processed', 'failed', 'dead',
+        // E32: الملفات الصادرة (النوع المكتشف، وأول 12 حرفاً من البصمة؛ لا اسم ملف أبداً)
+        'mime', 'sha12',
     ];
 
     public static function info(string $event, array $context = []): void

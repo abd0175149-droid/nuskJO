@@ -90,6 +90,23 @@ class ReplyTimingInvariantsTest extends TestCase
         $this->assertLessThan($this->composeGrace(), (int) $media['stopwaitsecs']);
     }
 
+    /** ملفات الموظف (E32): طابورها أولاً عند العامل نفسه، والوظيفة تحت مهلته، وعمر الطابور الأقصى تحت المنظّف (15 دقيقة) */
+    public function test_an_outbound_file_job_fits_the_media_worker_and_the_reaper(): void
+    {
+        $ini = parse_ini_file(base_path('docker/supervisord.conf'), true, INI_SCANNER_RAW);
+        $media = $ini['program:laravel-media'];
+        preg_match('/--timeout=(\d+)/', $media['command'], $m);
+        preg_match('/--queue=([\w,-]+)/', $media['command'], $q);
+        $job = new \App\Jobs\SendWhatsAppMediaJob(1);
+
+        $this->assertSame(['wa-media-out', 'wa-media'], explode(',', $q[1]), 'ملفات الموظف قبل أرشفة الوارد');
+        $this->assertSame('wa-media-out', $job->queue);
+        $this->assertSame(1, $job->tries);
+        $this->assertLessThan((int) $m[1], $job->timeout);
+        $this->assertLessThan($job->timeout, (int) config('whatsapp.outbound.upload_timeout_max') + 25 + 5);
+        $this->assertLessThan((int) config('whatsapp.send.reap_minutes', 15), (int) config('whatsapp.outbound.queue_max_minutes'));
+    }
+
     public function test_the_queue_workers_stop_before_the_web_server(): void
     {
         $ini = parse_ini_file(base_path('docker/supervisord.conf'), true, INI_SCANNER_RAW);

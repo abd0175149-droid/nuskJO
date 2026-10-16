@@ -79,6 +79,50 @@ final class GraphClient
         return $response;
     }
 
+    /**
+     * رفع ملف متعدد الأجزاء (E32: POST {pnid}/media). الملف من مورد مفتوح يقرؤه Guzzle على دفعات، لا نص في الذاكرة،
+     * والحقول الأخرى أجزاء نصية. الإثبات والعدّادات ومنع التحويل كما في request().
+     *
+     * @param  list<string>  $segments
+     * @param  array<string, string>  $fields
+     *
+     * @throws \InvalidArgumentException إعداد غير صالح أو ملف لا يُقرأ (قبل أي اتصال)
+     * @throws ConnectionException فشل الاتصال أو المهلة
+     */
+    public static function upload(array $segments, string $path, string $mime, string $filename, array $fields, #[\SensitiveParameter] ?string $token = null, int $timeout = 60, int $connectTimeout = 10): Response
+    {
+        $url = self::url(...$segments);
+        $token ??= (string) WaBotSetting::current()->token();
+        $stream = is_file($path) ? @fopen($path, 'rb') : false;
+        if ($stream === false) {
+            throw new \InvalidArgumentException('MEDIA_FILE_UNREADABLE');
+        }
+
+        // المورد يغلقه Guzzle مع الطلب (لا fclose هنا: السجل في الاختبارات يقرأ الجسم بعد الإرسال)
+        $request = Http::withToken($token)
+            ->withoutRedirecting()
+            ->connectTimeout($connectTimeout)
+            ->timeout($timeout)
+            ->acceptJson()
+            ->attach('file', $stream, $filename, ['Content-Type' => $mime]);
+
+        $proof = self::proof($token);
+        if ($proof !== null) {
+            $request = $request->withQueryParameters(['appsecret_proof' => $proof]);
+        }
+        self::count('calls');
+        if ($proof !== null) {
+            self::count('proof');
+        }
+
+        $response = $request->post($url, $fields);
+        if (!$response->successful() && self::isProofRejection($response)) {
+            self::count('proof_err');
+        }
+
+        return $response;
+    }
+
     /** الإثبات على الرمز المرسل نفسه، أو null إن كان المفتاح مطفأ أو لا سر */
     public static function proof(#[\SensitiveParameter] string $token): ?string
     {

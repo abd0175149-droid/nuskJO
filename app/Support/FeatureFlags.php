@@ -31,6 +31,11 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E32: الملفات الصادرة. المرفقات قبل الفاتورة، والحذف من ميتا بقرار المالك وحده
+        'staff_file_send' => ['label' => 'إرسال الصور وPDF والفيديو من صندوق المحادثات (بتأكيد المستلم)', 'capability' => 'C020', 'available' => true],
+        'invoice_whatsapp_send' => ['label' => 'فاتورة PDF للتنزيل وإرسالها للعميل على واتساب (المعتمدة وحدها)', 'capability' => 'C016', 'available' => true],
+        'offer_card_by_media_id' => ['label' => 'بطاقة العرض تُرفع وتُرسل بالمعرّف بدل الرابط العام', 'capability' => 'C015', 'available' => true],
+        'outbound_media_remote_delete' => ['label' => 'حذف الملفات المرسلة من خوادم واتساب بعد قراءتها', 'capability' => 'C020', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

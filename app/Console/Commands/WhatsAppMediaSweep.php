@@ -45,13 +45,15 @@ class WhatsAppMediaSweep extends Command
         return $n;
     }
 
-    /** لكل مجلد شهر: ملفات القرص مقابل media_path على دفعات */
+    /** لكل مجلد شهر (الوارد في الجذر، والصادر تحت outbound/ منذ E32): ملفات القرص مقابل media_path على دفعات */
     private function sweepOrphans(): int
     {
         $disk = MediaArchiver::disk();
         $n = 0;
-        foreach ($disk->directories() as $year) {
-            if (!preg_match('/^\d{4}$/', $year)) {
+        $years = array_merge($disk->directories(), $disk->exists(\App\Services\WhatsApp\Outbound\OutboundFileStore::DIR)
+            ? $disk->directories(\App\Services\WhatsApp\Outbound\OutboundFileStore::DIR) : []);
+        foreach ($years as $year) {
+            if (!preg_match('#^(?:outbound/)?\d{4}$#', $year)) {
                 continue;
             }
             foreach ($disk->directories($year) as $month) {

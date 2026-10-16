@@ -26,5 +26,10 @@ return [
         'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
+        // E32
+        'staff_file_send' => env('WA_FEATURE_STAFF_FILE_SEND'),
+        'invoice_whatsapp_send' => env('WA_FEATURE_INVOICE_WHATSAPP_SEND'),
+        'offer_card_by_media_id' => env('WA_FEATURE_OFFER_CARD_BY_MEDIA_ID'),
+        'outbound_media_remote_delete' => env('WA_FEATURE_OUTBOUND_MEDIA_REMOTE_DELETE'),
     ],
 ];
