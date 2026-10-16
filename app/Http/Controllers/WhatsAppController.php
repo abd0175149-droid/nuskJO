@@ -462,6 +462,8 @@ class WhatsAppController extends Controller
         // E33: الاقتباس بمعرّفنا، والتفاعلات على أهدافها (صف التفاعل الذي هدفه في الصفحة لا يُعاد فقاعة)، والتصحيح والموقع والبطاقات
         $rich = \App\Services\WhatsApp\RichThread::prepare($conversation, $rows, $user);
         $rows = $rows->filter(fn ($m) => $rich->keep($m))->values();
+        // E36: ما عُرض من خيارات وما اختاره العميل ورد نموذج التسعير، بلا معرّفات
+        $interactive = \App\Services\WhatsApp\InteractiveThread::prepare($conversation, $rows, $user);
 
         // staff_id كان يُحفظ ولا يُرسل للواجهة، فلم يكن يظهر من أرسل الرسالة
         $msgs = $rows->map(fn ($m) => [
@@ -469,7 +471,7 @@ class WhatsAppController extends Controller
             'direction' => $m->direction,
             'source' => $m->source,
             'type' => $m->msg_type,
-            'body' => $rich->body($m),
+            'body' => $interactive->body($m, $rich->body($m)),
             'status' => $m->status,
             'error' => $m->error_message,
             'sender' => $m->source === 'staff' ? ($m->staff?->name ?: 'موظف') : null,
@@ -478,7 +480,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []) + $voice($m) + $rich->fields($m))->values();
+        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []) + $voice($m) + $rich->fields($m) + $interactive->fields($m))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 
