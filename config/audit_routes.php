@@ -193,6 +193,8 @@ return [
     'WhatsAppQrController@destroy' => 'wa.qr_delete',
     'WhatsAppChannelHealthController@unblock' => 'wa.health_unblock',
     'WhatsAppChannelHealthController@acknowledge' => 'wa.health_ack',
+    // E23: أدوات التشخيص
+    'WhatsAppController@runDoctor' => 'none: فحص للقراءة (الحصيلة في الكاش يومين)',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====
     'AgentController@store' => 'none: بطاقة طرف؛ أثره المالي في السندات والفواتير المدقَّقة',

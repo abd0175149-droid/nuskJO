@@ -55,6 +55,8 @@ class WhatsAppSettingsController extends Controller
             'toolMeta' => BotTools::meta(),
             'graph' => GraphVersions::panel(),
             'health' => ChannelDoctor::checks(),
+            // E23: آخر فحص كامل (whatsapp:doctor --store أو الزر)، بلا أي قيمة سرية
+            'doctor' => ChannelDoctor::last(),
             'ops' => app(OpsHealth::class)->snapshot(),
             'meta' => MetaHealth::summary(WaBotSetting::current()),
             'mediaArchive' => rescue(fn () => \App\Services\WhatsApp\Media\MediaArchiver::summary(), null, false),

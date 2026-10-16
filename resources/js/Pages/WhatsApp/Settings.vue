@@ -5,13 +5,8 @@
         <div class="space-y-6 pb-4">
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
             <div v-if="$page.props.flash?.error" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">❌ {{ $page.props.flash.error }}</div>
-            <!-- صحة القناة (whatsapp:doctor): الرسالة والنصيحة فقط، بلا أي قيمة سرية -->
-            <div v-if="health.length" role="status" class="p-4 rounded-xl border text-sm border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
-                <p class="font-bold mb-1">🩺 صحة القناة</p>
-                <ul class="space-y-1">
-                    <li v-for="c in health" :key="c.code">{{ c.level === 'error' ? '❌' : '⚠️' }} {{ c.message }}</li>
-                </ul>
-            </div>
+            <!-- فحص الإعدادات (whatsapp:doctor، E23): الرسالة والنصيحة فقط، بلا أي قيمة سرية. يحل محل شريط E06 -->
+            <DoctorPanel :quick="health" :last="props.doctor"/>
 
             <ConflictBanner :fields="conflict.fields" :others="conflict.others" @dismiss="conflict = { fields: [], others: [] }"/>
             <div v-if="Object.keys(errors).length" class="p-4 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300">
@@ -496,6 +491,7 @@ import { router } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
+import DoctorPanel from '@/Components/WhatsApp/DoctorPanel.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
 import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
 import WebhookIntakePanel from '@/Components/WhatsApp/WebhookIntakePanel.vue';
@@ -538,6 +534,7 @@ const props = defineProps({
     providers: { type: Object, default: () => ({}) },
     graph: Object,
     health: { type: Array, default: () => [] },
+    doctor: { type: Object, default: null },
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
     mediaArchive: { type: Object, default: null },

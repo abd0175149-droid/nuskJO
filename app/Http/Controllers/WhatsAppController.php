@@ -899,6 +899,20 @@ class WhatsAppController extends Controller
         ]);
     }
 
+    /**
+     * زر «شغّل الفحص» (E23): whatsapp:doctor كاملاً بميزانية 8 ثوانٍ للقراءات البعيدة، وتُحفظ الحصيلة لبطاقة الإعدادات
+     * وصفحة الحالة. قراءة فقط: لا يغيّر شيئاً عند ميتا ولا حالة القناة، ولا ينبّه (المدير يرى النتيجة أمامه).
+     */
+    public function runDoctor()
+    {
+        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
+
+        $result = \App\Services\WhatsApp\ChannelDoctor::run(8);
+        \App\Services\WhatsApp\ChannelDoctor::store($result, alert: false);
+
+        return response()->json(['doctor' => $result]);
+    }
+
     // ==================== التحليلات ====================
 
     public function analytics()

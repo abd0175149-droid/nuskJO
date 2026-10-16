@@ -47,6 +47,15 @@ class GraphCallsUseClientTest extends TestCase
         $this->assertSame([], $outside($this->offenders('/Http::withToken\s*\(/')), 'رمز وصول يُرسل خارج GraphClient');
     }
 
+    /** E23: الناقل لا يفتح طريقاً ثانياً: Cloud يفوّض إلى GraphClient وحده، وLog بلا Http أصلاً */
+    public function test_the_transport_layer_adds_no_second_route_to_meta(): void
+    {
+        $files = array_filter($this->appCode(), fn ($f) => str_starts_with($f, 'app/Services/WhatsApp/Transport/'), ARRAY_FILTER_USE_KEY);
+
+        $this->assertSame(['app/Services/WhatsApp/Transport/CloudApiTransport.php'], array_keys(array_filter($files, fn ($code) => str_contains($code, 'GraphClient'))));
+        $this->assertSame([], array_keys(array_filter($files, fn ($code) => preg_match('/Http::|Guzzle\\Client|curl_/', $code) === 1)));
+    }
+
     public function test_there_is_one_error_code_table(): void
     {
         $this->assertSame(['app/Services/WhatsApp/MetaErrorCatalog.php'], $this->offenders('/\b131047\b/'));

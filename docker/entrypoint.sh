@@ -67,8 +67,9 @@ php artisan storage:link --force 2>/dev/null || true
 # Seed chart of accounts if fresh database
 as_www "php artisan db:seed --class=ChartOfAccountsSeeder --force --no-interaction" 2>/dev/null || true
 
-# صحة القناة في docker logs (لا يوقف الإقلاع): أسرار لا تُفك، رمز تحقق قصير، كلمة مرور افتراضية...
-as_www "php artisan whatsapp:doctor --no-ansi" || true
+# صحة القناة في docker logs (لا يوقف الإقلاع): أسرار لا تُفك، رمز تحقق قصير، كلمة مرور افتراضية، وتعارضات البيئة،
+# وقراءات ميتا بميزانية 5 ثوانٍ كلية (E23). || true: لا يمنع الإقلاع أبداً مهما حدث
+as_www "php artisan whatsapp:doctor --no-ansi --budget=5" || true
 
 # ما قد يكون أنشأه root أثناء الإقلاع (التخزين المؤقت للعروض والإعدادات)
 chown -R www-data:www-data storage/framework storage/logs bootstrap/cache
