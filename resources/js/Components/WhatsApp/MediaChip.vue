@@ -6,6 +6,8 @@
             <span v-if="media.size" class="shrink-0 opacity-70" dir="ltr">{{ formatSize(media.size) }}</span>
         </div>
         <p v-if="label" class="mt-0.5 opacity-80">{{ label }}</p>
+        <!-- ملف مرسل حُذف من خوادم ميتا بعد قراءته (E32.12): نسختنا باقية، والعميل لا يعيد تنزيله -->
+        <p v-if="media.remote_deleted" class="mt-0.5 opacity-80" data-test="remote-deleted">🗑️ حُذف من خوادم واتساب بعد القراءة</p>
 
         <div v-if="media.viewable || media.refetchable" class="mt-1 flex flex-wrap items-center gap-1.5">
             <button v-if="media.viewable && media.previewable" type="button" @click="$emit('view')"

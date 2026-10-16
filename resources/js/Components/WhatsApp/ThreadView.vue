@@ -20,7 +20,9 @@
               <MediaChip :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
             </template>
           </MessageBubble>
-          <p v-if="!messages.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>
+          <!-- ملفات الموظف في طريقها (E32): تُزال حين يظهر صفها في الخيط -->
+          <PendingBubble v-for="o in outbox" :key="o.key" :item="o" @retry="(i) => $emit('outboxRetry', i)" @dismiss="(i) => $emit('outboxDismiss', i)"/>
+          <p v-if="!messages.length && !outbox.length" class="text-center text-gray-400 text-sm py-10">لا رسائل</p>
         </div>
         <button v-if="newBelow" type="button" @click="$emit('jumpToNew')"
                 class="absolute bottom-3 inset-x-0 mx-auto w-fit min-h-11 px-3.5 py-1.5 rounded-full text-xs font-bold text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md">
@@ -35,7 +37,8 @@
       <Composer class="shrink-0" :model-value="draft" @update:model-value="(v) => $emit('update:draft', v)" @submit="$emit('send')"
                 @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
                 :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
-                :quick-replies="quickReplies" :conversation-id="thread.id"/>
+                :quick-replies="quickReplies" :conversation-id="thread.id"
+                :media-policy="mediaPolicy" :recipient="recipient" @send-file="(p) => $emit('sendFile', p)"/>
     </template>
 
     <div v-else class="flex-1 grid place-items-center py-24 text-center">
@@ -53,6 +56,7 @@ import { nextTick, ref } from 'vue';
 import Composer from './Composer.vue';
 import MediaChip from './MediaChip.vue';
 import MessageBubble from './MessageBubble.vue';
+import PendingBubble from './PendingBubble.vue';
 import ThreadHeader from './ThreadHeader.vue';
 import { isNearBottom, preserveOnPrepend, scrollToBottom } from '@/composables/whatsapp/useStickToBottom.js';
 
@@ -80,9 +84,13 @@ const props = defineProps({
   followup: Boolean,
   canReprocess: Boolean,
   quickReplies: Boolean,
+  // E32: المرفقات وفقاعاتها المتفائلة
+  mediaPolicy: { type: Object, default: null },
+  recipient: { type: Object, default: () => ({}) },
+  outbox: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
-  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend']);
+  'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend', 'sendFile', 'outboxRetry', 'outboxDismiss']);
 
 const scroller = ref(null);
 

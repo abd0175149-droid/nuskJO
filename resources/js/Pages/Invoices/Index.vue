@@ -48,6 +48,9 @@
                             <td data-label="بواسطة" class="px-4 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ inv.creator?.name || '—' }}</div><div v-if="inv.status !== 'pending'" class="mt-0.5">{{ inv.status === 'approved' ? '✅' : '❌' }} {{ inv.approver?.name || '—' }}</div></td>
                             <td data-label="" class="px-4 py-3 text-center whitespace-nowrap actions-cell">
                                 <a :href="'/invoices/'+inv.id+'/print'" target="_blank" aria-label="طباعة" title="طباعة" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
+                                <!-- فاتورة PDF للعميل بلا تكلفة، وإرسالها على واتساب (E32) -->
+                                <a v-if="invoicePdf" :href="'/invoices/'+inv.id+'/pdf'" aria-label="تنزيل PDF" title="تنزيل PDF للعميل" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">⬇️ PDF</a>
+                                <button v-if="invoiceWhatsapp && inv.status==='approved'" @click="waInvoice = inv" aria-label="إرسال على واتساب" title="إرسال الفاتورة على واتساب" class="px-2 py-1 text-xs text-green-700 hover:bg-green-50 rounded-lg btn-mobile-sm">📤 واتساب</button>
                                 <button @click="viewInv(inv)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">👁️</button>
                                 <button v-if="inv.status==='pending' && inv.offer_id && (can('invoices.update') || can('invoices.create'))" @click="openPOS(inv)" class="px-2 py-1 text-xs font-bold rounded-lg btn-mobile-sm" :class="costsMissing(inv) ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'">📝 {{ costsMissing(inv) ? 'إكمال التكاليف' : 'تعديل' }}</button>
                                 <button v-if="inv.status==='pending' && can('invoices.approve') && mayApprove(inv)" @click="approveInv(inv)" aria-label="اعتماد" :disabled="!!costsMissing(inv) || busy.has(inv.id)" :title="costsMissing(inv) ? 'لا تُعتمد قبل اكتمال التكاليف: لكل بند وكيل وتكلفة' : 'اعتماد'" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm disabled:opacity-30 disabled:cursor-not-allowed">✅</button>
@@ -207,6 +210,7 @@
             </div>
         </div>
 
+        <InvoiceWhatsAppDialog :open="!!waInvoice" :invoice="waInvoice || {}" @close="waInvoice = null"/>
     </AppLayout>
 </template>
 
@@ -225,11 +229,15 @@ const { confirm, prompt } = useConfirm();
 const { isHighlighted } = useHighlight();
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import OfferInvoiceForm from '@/Components/Invoices/OfferInvoiceForm.vue';
+import InvoiceWhatsAppDialog from '@/Components/Invoices/InvoiceWhatsAppDialog.vue';
 import { onMounted } from 'vue';
 
 const props = defineProps({ invoices: Object, filters: Object, agents: Array, clients: Array, services: Array, employees: { type: Array, default: () => [] }, currentEmployeeId: { type: [Number, String], default: null }, exchangeRate: Number,
     offerCatalog: { type: Array, default: () => [] }, roomTypes: { type: Object, default: () => ({}) }, today: String,
-    prefill: { type: Object, default: null }, openOffer: { type: Number, default: null }, offerMode: Boolean });
+    prefill: { type: Object, default: null }, openOffer: { type: Number, default: null }, offerMode: Boolean,
+    invoicePdf: Boolean, invoiceWhatsapp: Boolean });
+// الفاتورة المفتوح لها حوار الإرسال على واتساب (E32.9)
+const waInvoice = ref(null);
 const search = ref(props.filters?.search||'');
 const statusFilter = ref(props.filters?.status||'');
 const showPOS = ref(false);

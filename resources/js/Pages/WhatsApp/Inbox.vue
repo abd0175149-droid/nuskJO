@@ -26,7 +26,9 @@
                     @back="inbox.back" @link="linkOpen = true" @unlink="unlink" @resolve="inbox.resolve" @toggle-bot="inbox.toggleBot"
                     @set-topic="inbox.setTopic" @assign="inbox.assignTo" @load-older="inbox.loadOlder" @jump-to-new="inbox.jumpToNew"
                     @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"
-                    @resend="(m) => inbox.copyToDraft(m, askResend)"/>
+                    @resend="(m) => inbox.copyToDraft(m, askResend)"
+                    :media-policy="mediaPolicy" :recipient="inbox.recipient.value" :outbox="inbox.outboxItems.value"
+                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"/>
       </div>
     </div>
 
@@ -74,6 +76,8 @@ const props = defineProps({
   summary: { type: Object, default: null },
   canReprocess: Boolean,
   quickReplies: Boolean,
+  // E32: إرسال الملفات (الأنواع والحدود والعلم)
+  mediaPolicy: { type: Object, default: null },
 });
 
 const threadView = ref(null);
