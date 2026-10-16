@@ -92,7 +92,7 @@ class SystemAndUserIdUpdateTest extends TestCase
             'messages' => [['from' => self::PHONE, 'id' => 'wamid.E1', 'timestamp' => (string) now()->timestamp, 'type' => 'text', 'text' => ['body' => 'مرحبا']]],
         ])->assertOk();
 
-        $this->assertLogged('warning', 'webhook.value_error');
+        $this->assertLogged('warning', 'wa.webhook_error');
         $this->assertSame('مرحبا', WaMessage::sole()->body);
     }
 }

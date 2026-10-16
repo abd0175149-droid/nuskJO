@@ -6,16 +6,13 @@ use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Support\SecretRedactor;
-use App\Support\UrlPath;
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 
 /**
  * بوّابة الإرسال الوحيدة إلى ميتا — كل صادر (بوت/موظف/نظام) يمرّ من هنا.
  *
- * السائق الوحيد المسموح هو WhatsApp Cloud API الرسمية عبر graph.facebook.com. يُمنع إضافة
+ * السائق الوحيد المسموح هو WhatsApp Cloud API الرسمية (Graph API). يُمنع إضافة
  * whatsapp-web.js أو Baileys أو أي عميل غير رسمي، لأن ذلك يخالف شروط واتساب ويعرّض الرقم الوحيد للحظر.
  *
  * مرفوض عمداً، ويعيد UNSUPPORTED لا نجاحاً وهمياً: القوالب (قرار المالك)، والمجموعات، والحالات (stories).
@@ -26,8 +23,8 @@ use Illuminate\Support\Facades\Http;
  *   2) قفل الإرسال الطارئ (wa_suspended)
  *   3) نافذة 24 ساعة من آخر رسالة واردة — لا استثناء لأحد
  *
- * عميل Graph رفيع (graph/graphPath): الإصدار من الإعداد وحده، وكل مقطع مسار مرمَّز، ولا تحويلات،
- * وappsecret_proof خلف WA_APPSECRET_PROOF، وأخطاء ميتا تتحول إلى رموز صريحة (MetaErrorCatalog).
+ * كل نداء Graph عبر Graph\GraphClient (الإصدار من الإعداد، ومقاطع مرمَّزة، ولا تحويلات، وappsecret_proof خلف
+ * WA_APPSECRET_PROOF)، وكل خطأ ميتا يصير MetaError من الجدول الوحيد MetaErrorCatalog (E18).
  */
 class WhatsAppChannel
 {
@@ -52,80 +49,54 @@ class WhatsAppChannel
     /** أنواع الصوت التي نفرّغها؛ غيرها لا يُنزَّل */
     private const AUDIO_MIME = ['audio/ogg', 'audio/opus', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr'];
 
-    // ==================== عميل Graph ====================
-
-    /** الإصدار من الإعداد وحده (لا قيمة احتياطية هنا) */
-    private static function graphVersion(): ?string
-    {
-        $version = config('services.whatsapp.graph_version');
-
-        return GraphVersions::isValid($version) ? $version : null;
-    }
-
-    /** @throws \InvalidArgumentException إصدار غير صالح أو مقطع يغيّر المسار */
-    private static function graphPath(string ...$segments): string
-    {
-        $version = self::graphVersion() ?? throw new \InvalidArgumentException('GRAPH_VERSION_INVALID');
-
-        return 'https://graph.facebook.com/' . $version . '/' . implode('/', array_map(UrlPath::segment(...), $segments));
-    }
-
-    private static function graph(WaBotSetting $s, int $timeout): PendingRequest
-    {
-        $request = Http::withToken((string) $s->token())
-            ->withoutRedirecting()
-            ->connectTimeout(10)
-            ->timeout($timeout)
-            ->acceptJson();
-
-        $secret = $s->appSecret();
-        if (config('services.whatsapp.appsecret_proof') && $secret) {
-            $request = $request->withQueryParameters(['appsecret_proof' => hash_hmac('sha256', (string) $s->token(), $secret)]);
-        }
-
-        return $request;
-    }
-
-    /** @return array{code: ?int, message: string, details: ?string, trace: ?string, status: int} */
-    private static function graphError(Response $res): array
-    {
-        $json = $res->json() ?? [];
-
-        return [
-            'code' => is_numeric(data_get($json, 'error.code')) ? (int) data_get($json, 'error.code') : null,
-            'message' => (string) data_get($json, 'error.message', 'HTTP ' . $res->status()),
-            'details' => data_get($json, 'error.error_data.details'),
-            'trace' => data_get($json, 'error.fbtrace_id'),
-            'status' => $res->status(),
-        ];
-    }
+    // ==================== أخطاء ميتا (E18) ====================
 
     /**
-     * خطأ ميتا => [رمزنا، النص المحفوظ، رمز ميتا، fbtrace_id]، ثم فعل الجدول (تنبيه أو إيقاف).
-     * السجل يحمل الرمز وfbtrace_id وحالة HTTP فقط.
+     * ما يُعرض ويُعاد لخطأ مصنَّف: الجديد مع meta_error_v2، وإلا رمز الجدول القديم ونصه (وضع الظل).
      *
-     * @return array{0: string, 1: string, 2: ?int, 3: ?string}
+     * @return array{0: string, 1: string} [الرمز المعاد، الرسالة المحفوظة والمعروضة]
      */
-    private static function mapGraphError(Response $res): array
+    private static function shown(MetaError $err): array
     {
-        $e = self::graphError($res);
-        WaLog::error('graph.error', ['meta_code' => $e['code'], 'http' => $e['status'], 'fbtrace_id' => $e['trace']]);
+        if (MetaErrorCatalog::v2()) {
+            return [$err->code, $err->staffMessage];
+        }
+        if ($err->code === self::ERR_PROOF) {
+            return [self::ERR_PROOF, '[100] إثبات سر التطبيق مرفوض — راجع WA_APPSECRET_PROOF وسر التطبيق.'];
+        }
 
-        if ($e['code'] === 100 && str_contains(strtolower($e['message']), 'appsecret_proof')) {
+        return [MetaErrorCatalog::codeFor($err->metaCode),
+            SecretRedactor::clean(MetaErrorCatalog::message($err->metaCode, $err->metaMessage ?? ('HTTP '.$err->httpStatus)))];
+    }
+
+    /** المسار القديم للتنبيه والإيقاف (وضع الظل). مع meta_error_v2 يتولاهما MetaErrorReactor */
+    private static function legacyReact(MetaError $err, bool $accountOnly = false): void
+    {
+        if (MetaErrorCatalog::v2()) {
+            return;
+        }
+        if ($err->code === self::ERR_PROOF) {
             self::alertOnce('proof', '⛔ ميتا رفضت appsecret_proof',
                 'كل نداءات Graph تُرفض. عطّل WA_APPSECRET_PROOF أو صحّح سر التطبيق، ثم config:cache.', '/whatsapp/settings');
 
-            return [self::ERR_PROOF, '[100] إثبات سر التطبيق مرفوض — راجع WA_APPSECRET_PROOF وسر التطبيق.', 100, $e['trace']];
+            return;
+        }
+        // تنزيل الوسائط: رمز مرفوض أو صلاحية ناقصة وحدهما (كما كان)
+        if ($accountOnly && !(in_array($err->httpStatus, [401, 403], true) && MetaErrorCatalog::isAccountError($err->metaCode))) {
+            return;
+        }
+        MetaErrorCatalog::react($err->metaCode);
+    }
+
+    /** إضافة لا استبدال: المستدعون يقرؤون ok وerror، والجديد يحمل الفئة والإجراء وقابلية الإعادة والنطاق */
+    private static function failWith(MetaError $err, string $code, string $msg): array
+    {
+        $out = self::fail($code, $msg, $err->metaCode);
+        if (MetaErrorCatalog::v2()) {
+            $out += ['category' => $err->category, 'retryable' => $err->isRetryable(), 'action' => $err->action, 'scope' => $err->scope];
         }
 
-        MetaErrorCatalog::react($e['code']);
-
-        return [
-            MetaErrorCatalog::codeFor($e['code']),
-            SecretRedactor::clean(MetaErrorCatalog::message($e['code'], $e['message'])),
-            $e['code'],
-            $e['trace'],
-        ];
+        return $out;
     }
 
     /** تنبيه للمدير مرة في اليوم لكل نوع */
@@ -145,7 +116,7 @@ class WhatsAppChannel
      *
      * @return array{ok: bool, code: ?string, error: ?string, bytes?: string, mime?: string, host?: string, sha256_ok?: ?bool}
      */
-    public static function fetchMedia(string $mediaId, string $kind = 'audio', int $maxBytes = 15_000_000): array
+    public static function fetchMedia(string $mediaId, string $kind = 'audio', int $maxBytes = 15_000_000, ?int $messageId = null): array
     {
         $s = WaBotSetting::current();
         $token = $s->token();
@@ -156,14 +127,11 @@ class WhatsAppChannel
             return self::mediaFail(self::ERR_UNSUPPORTED, 'تنزيل هذا النوع من الوسائط غير مدعوم.');
         }
 
-        // (أ) البيانات الوصفية
+        // (أ) البيانات الوصفية (نداء Graph عبر GraphClient، بالإثبات إن فُعّل)
         try {
-            $lookupUrl = self::graphPath($mediaId);
+            $meta = Graph\GraphClient::request('GET', [$mediaId], array_filter(['phone_number_id' => $s->phoneNumberId()]), $token, 20);
         } catch (\InvalidArgumentException) {
             return self::mediaFail(self::ERR_CONFIG, 'معرّف الوسائط أو إصدار Graph غير صالح.');
-        }
-        try {
-            $meta = self::graph($s, 20)->get($lookupUrl, array_filter(['phone_number_id' => $s->phoneNumberId()]));
         } catch (\Throwable $e) {
             WaLog::error('media.lookup.connection_failed', ['exception' => $e]);
 
@@ -171,12 +139,7 @@ class WhatsAppChannel
         }
         $url = (string) $meta->json('url', '');
         if (!$meta->successful() || $url === '') {
-            $metaCode = is_numeric(data_get($meta->json(), 'error.code')) ? (int) data_get($meta->json(), 'error.code') : null;
-            WaLog::error('media.lookup.failed', ['http' => $meta->status(), 'meta_code' => $metaCode]);
-            // رمز مرفوض أو صلاحية ناقصة يظهر هنا أيضاً (تنزيل الصوت)، فينبّه كما ينبّه الإرسال
-            if (in_array($meta->status(), [401, 403], true) && MetaErrorCatalog::isAccountError($metaCode)) {
-                MetaErrorCatalog::react($metaCode);
-            }
+            self::mediaLookupFailed($meta, $messageId);
 
             return self::mediaFail('META_ERROR', 'تعذّر جلب بيانات الوسائط من ميتا.');
         }
@@ -221,7 +184,7 @@ class WhatsAppChannel
             'on_redirect' => fn ($request, $response, $uri) => WaLog::error('media.download.redirected', ['host' => $uri->getHost()]),
         ];
         try {
-            $file = Http::withToken($token)->connectTimeout(10)->timeout(40)
+            $file = Graph\GraphClient::media(40, $token)
                 ->withOptions(['stream' => true, 'allow_redirects' => $redirects])
                 ->get($url);
         } catch (\Throwable $e) {
@@ -273,7 +236,7 @@ class WhatsAppChannel
             return ['ok' => false, 'http' => null, 'meta_code' => null, 'code' => self::ERR_NOT_CONFIGURED];
         }
         try {
-            $res = self::graph($s, 20)->get(self::graphPath($mediaId), array_filter(['phone_number_id' => $s->phoneNumberId()]));
+            $res = Graph\GraphClient::request('GET', [$mediaId], array_filter(['phone_number_id' => $s->phoneNumberId()]), (string) $s->token(), 20);
         } catch (\InvalidArgumentException) {
             return ['ok' => false, 'http' => null, 'meta_code' => null, 'code' => self::ERR_CONFIG];
         } catch (\Throwable $e) {
@@ -284,10 +247,7 @@ class WhatsAppChannel
         $metaCode = is_numeric(data_get($res->json(), 'error.code')) ? (int) data_get($res->json(), 'error.code') : null;
         $url = (string) $res->json('url', '');
         if (!$res->successful() || $url === '') {
-            WaLog::warning('media.lookup.failed', ['http' => $res->status(), 'meta_code' => $metaCode]);
-            if (in_array($res->status(), [401, 403], true) && MetaErrorCatalog::isAccountError($metaCode)) {
-                MetaErrorCatalog::react($metaCode);
-            }
+            self::mediaLookupFailed($res, null);
 
             return ['ok' => false, 'http' => $res->status(), 'meta_code' => $metaCode, 'code' => 'META_ERROR',
                 'not_found' => $res->status() === 404 || $metaCode === 100 || str_contains(strtolower((string) data_get($res->json(), 'error.message', '')), 'not found')];
@@ -295,6 +255,17 @@ class WhatsAppChannel
 
         return ['ok' => true, 'http' => $res->status(), 'meta_code' => null, 'url' => $url,
             'mime' => (string) $res->json('mime_type', ''), 'file_size' => (int) $res->json('file_size', 0), 'sha256' => (string) $res->json('sha256', '')];
+    }
+
+    /** فشل الخطوة الأولى (Graph): تصنيف وسطر wa.media_failed بالمعرّفات، و190 ينبّه كما في الإرسال */
+    private static function mediaLookupFailed(Response $res, ?int $messageId): MetaError
+    {
+        $err = MetaError::fromGraphResponse($res);
+        WaLog::warning('wa.media_failed', ['message_id' => $messageId, 'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category, 'http' => $res->status()]);
+        self::legacyReact($err, accountOnly: true);
+        MetaErrorReactor::react($err, ['message_id' => $messageId, 'source' => 'media']);
+
+        return $err;
     }
 
     /** رابط تنزيل من ميتا: https ومضيف من WA_MEDIA_HOSTS. الأرشيف لا يرسل الرمز لغيره أياً كان media_host_mode */
@@ -333,9 +304,8 @@ class WhatsAppChannel
     {
         $s = WaBotSetting::current();
         try {
-            $res = Http::withToken($s->appId().'|'.$s->appSecret())
-                ->withoutRedirecting()->connectTimeout(5)->timeout(15)->acceptJson()
-                ->get(self::graphPath('debug_token'), ['input_token' => (string) $s->token()]);
+            // رمز التطبيق في Authorization، والإثبات (إن فُعّل) محسوب عليه هو
+            $res = Graph\GraphClient::request('GET', ['debug_token'], ['input_token' => (string) $s->token()], $s->appId().'|'.$s->appSecret(), 15, 5);
         } catch (\Throwable $e) {
             WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'debug_token']);
 
@@ -361,8 +331,7 @@ class WhatsAppChannel
             return null;
         }
         try {
-            $url = self::graphPath($mediaId);
-            $res = self::graph($s, 10)->withQueryParameters(array_filter(['phone_number_id' => $s->phoneNumberId()]))->delete($url);
+            $res = Graph\GraphClient::request('DELETE', [$mediaId], array_filter(['phone_number_id' => $s->phoneNumberId()]), (string) $s->token(), 10);
         } catch (\Throwable $e) {
             WaLog::warning('media.delete_failed', ['type' => $e::class]);
 
@@ -379,7 +348,7 @@ class WhatsAppChannel
     {
         $s = WaBotSetting::current();
         try {
-            $res = self::graph($s, 15)->get(self::graphPath((string) $s->phoneNumberId()), ['fields' => 'health_status,quality_rating,verified_name']);
+            $res = Graph\GraphClient::request('GET', [(string) $s->phoneNumberId()], ['fields' => 'health_status,quality_rating,verified_name'], (string) $s->token(), 15);
         } catch (\Throwable $e) {
             WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'health_status']);
 
@@ -401,7 +370,7 @@ class WhatsAppChannel
             return null;
         }
         try {
-            $res = self::graph($s, 15)->get(self::graphPath($phoneNumberId), ['fields' => 'id']);
+            $res = Graph\GraphClient::request('GET', [$phoneNumberId], ['fields' => 'id'], (string) $s->token(), 15);
         } catch (\Throwable $e) {
             WaLog::error('meta.check.unreachable', ['type' => $e::class, 'field' => 'phone_number_id']);
 
@@ -426,19 +395,21 @@ class WhatsAppChannel
             return ['ok' => false, 'code' => self::ERR_NOT_CONFIGURED, 'status' => null];
         }
         try {
-            $url = self::graphPath((string) $s->phoneNumberId());
+            $res = Graph\GraphClient::request('GET', [(string) $s->phoneNumberId()], ['fields' => 'id,display_phone_number,quality_rating,verified_name'], (string) $s->token(), 20);
         } catch (\InvalidArgumentException) {
             return ['ok' => false, 'code' => self::ERR_CONFIG, 'status' => null];
-        }
-        try {
-            $res = self::graph($s, 20)->get($url, ['fields' => 'id,display_phone_number,quality_rating,verified_name']);
         } catch (\Throwable $e) {
             WaLog::error('graph.smoke.connection_failed', ['exception' => $e]);
 
             return ['ok' => false, 'code' => 'HTTP_ERROR', 'status' => null];
         }
         if (!$res->successful()) {
-            return ['ok' => false, 'code' => self::mapGraphError($res)[0], 'status' => $res->status()];
+            $err = MetaError::fromGraphResponse($res);
+            WaLog::warning('graph.smoke.failed', ['meta_code' => $err->metaCode, 'error_code' => $err->code, 'http' => $res->status(), 'fbtrace_id' => $err->fbtraceId]);
+            self::legacyReact($err);
+            MetaErrorReactor::react($err, ['source' => 'smoke']);
+
+            return ['ok' => false, 'code' => self::shown($err)[0], 'status' => $res->status()];
         }
 
         $data = array_intersect_key((array) $res->json(), array_flip(['id', 'display_phone_number', 'quality_rating', 'verified_name']));
@@ -503,7 +474,7 @@ class WhatsAppChannel
         ?int $staffId = null
     ): array {
         if (!str_starts_with($url, 'https://')) {
-            return self::fail('BAD_MEDIA_URL', 'رابط الصورة يجب أن يكون HTTPS ليقبله واتساب.');
+            return self::failLocal('BAD_MEDIA_URL', 'رابط الصورة يجب أن يكون HTTPS ليقبله واتساب.');
         }
 
         $image = ['link' => $url];
@@ -623,7 +594,7 @@ class WhatsAppChannel
         if ($source === 'staff') {
             $staff = $staffId ? \App\Models\User::find($staffId) : null;
             if (!$staff || !TopicRouter::canSee($conv, $staff)) {
-                return self::fail(self::ERR_OUT_OF_SCOPE, 'هذه المحادثة خارج نطاقك — لا يمكنك مراسلة هذا العميل.');
+                return self::failLocal(self::ERR_OUT_OF_SCOPE, 'هذه المحادثة خارج نطاقك — لا يمكنك مراسلة هذا العميل.');
             }
         }
 
@@ -631,23 +602,23 @@ class WhatsAppChannel
 
         // ── القفل 1: القناة مهيّأة؟
         if (!$s->channelReady()) {
-            return self::fail(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
+            return self::failLocal(self::ERR_NOT_CONFIGURED, 'قناة الواتساب غير مهيّأة (رمز الوصول أو معرّف الرقم ناقص).');
         }
 
         // ── القفل 2: إيقاف إرسال طارئ
         if ($s->sendingSuspended()) {
-            return self::fail(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).');
+            return self::failLocal(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).');
         }
 
         // ── القفل 3: نافذة 24 ساعة
         if (!$conv->isWindowOpen()) {
-            return self::fail(self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.');
+            return self::failLocal(self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.');
         }
 
         // ── القفل 4: إلى من؟ الرقم إن عُرف، وإلا معرّف ميتا (BSUID) إن سمح وضع الهوية لهذا المصدر. لا الاثنان معاً
         $target = self::target($conv, $source);
         if ($target === null) {
-            return self::fail(self::ERR_NO_RECIPIENT, 'العميل يراسل باسم مستخدم ورقمه غير ظاهر، والرد عليه غير مفعّل بعد — أبلغ المدير.');
+            return self::failLocal(self::ERR_NO_RECIPIENT, 'العميل يراسل باسم مستخدم ورقمه غير ظاهر، والرد عليه غير مفعّل بعد — أبلغ المدير.');
         }
         $payload = ['messaging_product' => 'whatsapp'] + $target + $payload;
 
@@ -664,35 +635,31 @@ class WhatsAppChannel
         }
 
         try {
-            $url = self::graphPath((string) $s->phoneNumberId(), 'messages');
+            $res = Graph\GraphClient::request('POST', [(string) $s->phoneNumberId(), 'messages'], $payload, (string) $s->token(), 25);
         } catch (\InvalidArgumentException $e) {
             WaLog::error('graph.config.invalid', ['reason' => $e->getMessage()]);
+            $err = MetaError::local(self::ERR_CONFIG);
 
-            return self::fail(self::ERR_CONFIG, 'إصدار Graph أو معرّف الرقم غير صالح في الإعدادات.');
-        }
-
-        try {
-            $res = self::graph($s, 25)->post($url, $payload);
+            return self::failWith($err, self::ERR_CONFIG, $err->staffMessage);
         } catch (\Throwable $e) {
-            // نص الاستثناء يحمل الرابط: للسجل منقّحاً، ورقم مرجعي للواجهة
-            WaLog::error('send.connection_failed', ['conv_id' => $conv->id, 'exception' => $e]);
-            $ref = \App\Support\ErrorRef::log($e, 'wa.send.connection_failed', ['conv_id' => $conv->id]);
-            // رسالة الموظف تترك أثراً «غير مؤكد»: المهلة قد تقع بعد أن سلّمتها ميتا، فلا يعيد كتابتها دون أن يرى ذلك
-            if ($source === 'staff') {
-                self::store($conv, null, $displayBody, $msgType, $source, 'unconfirmed', "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}", $staffId, $stored, errorCode: 'HTTP_ERROR', phoneNumberId: $s->phoneNumberId());
-            }
-
-            return self::fail('HTTP_ERROR', "تعذّر الاتصال بميتا (مهلة أو شبكة). رقم المرجع: {$ref}");
+            return self::networkFailure($e, $conv, $displayBody, $msgType, $source, $staffId, $stored, $s->phoneNumberId());
         }
 
         $json = $res->json() ?? [];
 
         if (!$res->successful()) {
-            [$code, $err, $metaCode, $trace] = self::mapGraphError($res);
-            self::store($conv, null, $displayBody, $msgType, $source, 'failed', $err, $staffId, $stored, $metaCode, $trace, $code, $s->phoneNumberId());
-            WaLog::warning('wa.send.failed', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType, 'code' => $code, 'meta_code' => $metaCode, 'fbtrace_id' => $trace]);
+            // رمز ميتا لا عنوانها: الصف failed بالرمز والفئة وfbtrace_id، ونص ميتا الخام لا يُخزَّن (details مقنّعة في الحمولة)
+            $err = MetaError::fromGraphResponse($res);
+            [$code, $shown] = self::shown($err);
+            $row = self::store($conv, null, $displayBody, $msgType, $source, 'failed', $shown, $staffId, $stored + ['_meta_error' => $err->forPayload()],
+                $err->metaCode, $err->fbtraceId, $err->code, $s->phoneNumberId(), $err->category);
+            WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source, 'type' => $msgType,
+                'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category, 'fbtrace_id' => $err->fbtraceId,
+                'http' => $res->status(), 'attempt' => 1]);
+            self::legacyReact($err);
+            MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source]);
 
-            return self::fail($code, $err, $metaCode);
+            return self::failWith($err, $code, $shown);
         }
 
         // 200 بلا معرّف رسالة: قبلتها ميتا ولا دليل على الإرسال، فلا تُعرض «أُرسلت» (E12.8)
@@ -731,6 +698,34 @@ class WhatsAppChannel
     }
 
     /**
+     * فشل الاتصال بميتا: نص الاستثناء يحمل الرابط، فللسجل منقّحاً ورقم مرجعي للواجهة.
+     * رسالة الموظف تترك أثراً دائماً (E12)، ومع meta_error_v2 كل رسالة: تعذّر الاتصال => failed (لم تُرسل)،
+     * والمهلة => unconfirmed (قد تكون وصلت، فلا يعيدها أحد دون أن يرى ذلك).
+     */
+    private static function networkFailure(\Throwable $e, WaConversation $conv, string $displayBody, string $msgType, string $source, ?int $staffId, array $stored, ?string $phoneNumberId): array
+    {
+        WaLog::error('send.connection_failed', ['conv_id' => $conv->id, 'type' => class_basename($e)]);
+        $ref = \App\Support\ErrorRef::log($e, 'wa.send.connection_failed', ['conv_id' => $conv->id]);
+        $err = MetaError::network(MetaError::networkKind($e));
+        $v2 = MetaErrorCatalog::v2();
+
+        $row = null;
+        if ($source === 'staff' || $v2) {
+            $status = !$v2 || $err->code === 'HTTP_TIMEOUT' ? 'unconfirmed' : 'failed';
+            $text = $v2 ? "{$err->staffMessage} رقم المرجع: {$ref}" : "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}";
+            $row = self::store($conv, null, $displayBody, $msgType, $source, $status, $text, $staffId, $stored + ['_meta_error' => $err->forPayload()],
+                errorCode: $err->code, phoneNumberId: $phoneNumberId, category: $err->category);
+        }
+        WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source, 'type' => $msgType,
+            'error_code' => $err->code, 'category' => $err->category, 'attempt' => 1]);
+        MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source]);
+
+        return $v2
+            ? self::failWith($err, $err->code, "{$err->staffMessage} رقم المرجع: {$ref}")
+            : self::fail('HTTP_ERROR', "تعذّر الاتصال بميتا (مهلة أو شبكة). رقم المرجع: {$ref}");
+    }
+
+    /**
      * رسالة آلية حجبتها السياسة: لا نداء لميتا، والمحفوظ نص بديل وبصمة sha256 للأصل وحدها (لا يبقى المحتوى المحجوب)،
      * والمحادثة «تحتاج تدخّلاً» لموظف. المتصل لا يرسل بديلاً (BotEngine لا يستدعي failSafe لفشل الإرسال).
      */
@@ -742,31 +737,38 @@ class WhatsAppChannel
         self::store($conv, null, "[حُجبت رسالة آلية: {$label}]", $msgType, $source, 'blocked',
             "حُجبت قبل الإرسال بسياسة المحتوى الصادر ({$label})، ولم تصل العميل.", $staffId,
             ['_policy' => ['mode' => 'enforce', 'reasons' => $decision->reasons, 'sha256' => $hash]],
-            errorCode: $decision->errorCode(), phoneNumberId: $phoneNumberId);
+            errorCode: $decision->errorCode(), phoneNumberId: $phoneNumberId, category: MetaErrorCatalog::byCode($decision->errorCode())['category'] ?? null);
         ReplyState::markUnserved($conv, 'policy_block');
 
-        return self::fail('POLICY_BLOCKED', 'حُجبت الرسالة قبل الإرسال بسياسة المحتوى الصادر.');
+        return self::failLocal('POLICY_BLOCKED', 'حُجبت الرسالة قبل الإرسال بسياسة المحتوى الصادر.');
     }
 
     private static ?bool $hasMetaColumns = null;
 
     private static ?bool $hasE11Columns = null;
 
+    private static ?bool $hasCategory = null;
+
     private static function store(
         WaConversation $conv, ?string $wamid, string $body, string $msgType,
         string $source, string $status, ?string $error, ?int $staffId, array $payload,
-        ?int $metaCode = null, ?string $fbtraceId = null, ?string $errorCode = null, ?string $phoneNumberId = null
-    ): void {
+        ?int $metaCode = null, ?string $fbtraceId = null, ?string $errorCode = null, ?string $phoneNumberId = null, ?string $category = null
+    ): ?WaMessage {
         // بين النشر والهجرة 2026_10_14_000006 (و000012) لا أعمدة بعد، والرسالة تُحفظ رغم ذلك
         self::$hasMetaColumns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['meta_code', 'fbtrace_id']);
         self::$hasE11Columns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['phone_number_id', 'error_code']);
         $meta = self::$hasMetaColumns ? ['meta_code' => $metaCode, 'fbtrace_id' => $fbtraceId] : [];
         if (self::$hasE11Columns) {
             // الرقم الذي أُرسل منه: إن بُدّل رقم القناة لاحقاً بقي معروفاً لكل رسالة
-            $meta += ['phone_number_id' => $phoneNumberId, 'error_code' => $errorCode];
+            $meta += ['phone_number_id' => $phoneNumberId, 'error_code' => $errorCode !== null ? mb_substr($errorCode, 0, 32) : null];
+        }
+        // بين النشر والهجرة 2026_10_14_000018: لا عمود فئة بعد
+        self::$hasCategory ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'error_category');
+        if (self::$hasCategory) {
+            $meta['error_category'] = $category;
         }
 
-        WaMessage::create($meta + [
+        return WaMessage::create($meta + [
             'conversation_id' => $conv->id,
             'wamid' => $wamid,
             'direction' => 'out',
@@ -778,6 +780,12 @@ class WhatsAppChannel
             'error_message' => $error,
             'staff_id' => $staffId,
         ]);
+    }
+
+    /** قفل محلي قبل ميتا (بلا صف): النص كما هو، ومع meta_error_v2 فئته وإجراؤه من الجدول */
+    private static function failLocal(string $code, string $msg): array
+    {
+        return self::failWith(MetaError::local($code), $code, $msg);
     }
 
     /** meta_code: رقم ميتا إن ردّت بخطأ (لإعادة مؤجلة على الخنق وحده) */

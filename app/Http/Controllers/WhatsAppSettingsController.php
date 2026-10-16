@@ -300,6 +300,19 @@ class WhatsAppSettingsController extends Controller
         return response()->json(['breaker' => $this->breakerState($s)]);
     }
 
+    /** «تمّ الحل» لآخر خطأ من ميتا (E18): يصفّر wa_last_error وحده، ولا يرفع أي قفل */
+    public function clearLastError(): JsonResponse
+    {
+        $this->authorizeSettings();
+        $s = WaBotSetting::current();
+        $last = (array) ($s->wa_last_error ?? []);
+        WaBotSetting::whereKey($s->getKey())->update(['wa_last_error' => null]);
+        AuditLog::safe(AuditAction::WaLastErrorCleared, 'setting', null, 'wa_last_error',
+            array_filter(['meta_code' => $last['meta_code'] ?? null, 'error_code' => $last['error_code'] ?? null], fn ($v) => $v !== null));
+
+        return response()->json(['ok' => true, 'last_error' => null]);
+    }
+
     /** حالة القاطع للأساسي والاحتياطي، وآخر 10 حوادث: أنواع وأوقات وأعداد، بلا بيانات عملاء */
     private function breakerState(WaBotSetting $s): array
     {

@@ -515,7 +515,8 @@ class WhatsAppController extends Controller
             \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaPolicyOverride, 'wa_conversation', $conversation->id, null, ['reasons' => $warnings]);
         }
 
-        return response()->json($res, $res['ok'] ? 200 : 422);
+        // مهلة ميتا (E18، حتى E19): 503 «قد تكون أُرسلت»، وسائر الفشل 422 بالفئة والإجراء
+        return response()->json($res, $res['ok'] ? 200 : (($res['code'] ?? null) === 'HTTP_TIMEOUT' ? 503 : 422));
     }
 
     // ==================== ربط المحادثة بعميل (E11.8) ====================

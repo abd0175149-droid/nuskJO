@@ -263,8 +263,8 @@ TXT;
         if (Cache::add('wa:llm:outage:'.($incident ?? 'isolated').':'.$conv->id, 1, now()->addHours($incident ? 6 : 1))) {
             $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'system');
             $sent = (bool) $res['ok'];
-            // خنق من ميتا: إعادة واحدة مؤجلة؛ 368 و131047 و190 لا يُعاد عليها أبداً
-            if (!$res['ok'] && in_array($res['meta_code'] ?? null, \App\Jobs\SendOutageNotice::RETRY_META_CODES, true)) {
+            // خنق من ميتا (فئة throttle في MetaErrorCatalog): إعادة واحدة مؤجلة. وما في NEVER_RETRY لا يُعاد أبداً
+            if (!$res['ok'] && MetaErrorCatalog::isThrottle($res['meta_code'] ?? null)) {
                 \App\Jobs\SendOutageNotice::dispatch($conv->id, false)->delay(now()->addSeconds(30));
             }
         }

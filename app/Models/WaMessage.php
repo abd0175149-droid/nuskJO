@@ -15,6 +15,8 @@ class WaMessage extends Model
         'body', 'payload', 'status', 'error_message', 'staff_id', 'meta_code', 'fbtrace_id', 'meta_at',
         // E11: رقمنا، والاقتباس، ورمز الخطأ الداخلي، ومفتاح الإرسال، ووصف الوسائط، والإحالة
         'phone_number_id', 'reply_to_wamid', 'error_code', 'send_key',
+        // E18: فئة الخطأ من MetaErrorCatalog
+        'error_category',
         'media_id', 'media_mime', 'media_sha256', 'media_filename', 'media_size', 'media_path', 'referral',
         // E14: حالة الأرشفة (pending|stored|too_large|failed|expired|rejected|purged|missing|skipped_quota|skipped_consent)
         'media_status', 'media_error', 'media_archived_at',

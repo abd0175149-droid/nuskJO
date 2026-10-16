@@ -175,6 +175,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::patch('api/whatsapp/settings/flags/{flag}', [\App\Http\Controllers\WhatsAppSettingsController::class, 'toggleFlag'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::patch('api/whatsapp/settings/identity-mode', [\App\Http\Controllers\WhatsAppSettingsController::class, 'identityMode'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::post('api/whatsapp/settings/llm-breaker/open', [\App\Http\Controllers\WhatsAppSettingsController::class, 'breakerOpen'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::post('api/whatsapp/settings/last-error/clear', [\App\Http\Controllers\WhatsAppSettingsController::class, 'clearLastError'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::post('api/whatsapp/settings/llm-breaker/close', [\App\Http\Controllers\WhatsAppSettingsController::class, 'breakerClose'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::get('whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analytics'])->name('whatsapp.analytics')->middleware('perm:whatsapp.settings');
     Route::get('api/whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analyticsData'])->middleware('perm:whatsapp.settings');

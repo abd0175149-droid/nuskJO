@@ -67,9 +67,15 @@ class WhatsAppInbox
                 // مطابقة كل رسالة بمدخلها: بالمعرّف (BSUID) ثم بالرقم (ContactIdentity::contactFor)
                 $contacts = (array) data_get($value, 'contacts', []);
 
-                // أخطاء على مستوى الحمولة: الرمز والعنوان فقط
+                // أخطاء على مستوى الحمولة (130429 مثلاً): الرمز وفئته فقط، ولا شيء في wa_messages
                 foreach ((array) data_get($value, 'errors', []) as $error) {
-                    WaLog::warning('webhook.value_error', ['meta_code' => data_get($error, 'code'), 'reason' => mb_substr((string) data_get($error, 'title'), 0, 120)]);
+                    try {
+                        $err = MetaError::fromWebhookError((array) $error);
+                        WaLog::warning('wa.webhook_error', ['field' => $field, 'meta_code' => $err->metaCode, 'category' => $err->category, 'error_code' => $err->code]);
+                        MetaErrorReactor::react($err, ['source' => 'webhook']);
+                    } catch (\Throwable $e) {
+                        WaLog::error('wa.webhook_error.classify_failed', ['type' => class_basename($e)]);
+                    }
                 }
 
                 // حالات التسليم
@@ -79,6 +85,12 @@ class WhatsAppInbox
 
                 // الرسائل الواردة
                 foreach (data_get($value, 'messages', []) as $msg) {
+                    // وارد غير مدعوم (131051): نصه العربي من InboundMessage، وهنا الرمز وفئته فقط بلا تنبيه
+                    foreach ((array) data_get($msg, 'errors', []) as $error) {
+                        $inCode = data_get($error, 'code');
+                        WaLog::notice('wa.inbound_error', ['wamid' => data_get($msg, 'id'), 'meta_code' => is_numeric($inCode) ? (int) $inCode : null,
+                            'category' => is_numeric($inCode) ? MetaErrorCatalog::classify((int) $inCode)['category'] : 'unknown']);
+                    }
                     $convId = self::storeInbound((array) $msg, $contacts, $to);
                     if ($convId) {
                         $touched[] = $convId;
@@ -91,6 +103,8 @@ class WhatsAppInbox
     }
 
     private static ?bool $hasMetaAt = null;
+
+    private static ?bool $hasCategory = null;
 
     private static function hasMetaAt(): bool
     {
@@ -332,9 +346,16 @@ class WhatsAppInbox
         $payload = $m->payload ?? [];
         $payload['statusHistory'][] = ['status' => $status, 'at' => now()->toIso8601String()];
 
-        // ميتا توصي بالبناء على code لا على title: الرمز مع نص عربي من الجدول، أو عنوان ميتا لما لا يعرفه
+        // ميتا توصي بالبناء على code لا على title: MetaError من الجدول الوحيد. خطأ في التصنيف لا يُسقط بقية الحالات
         $code = is_numeric(data_get($st, 'errors.0.code')) ? (int) data_get($st, 'errors.0.code') : null;
-        $error = $code !== null ? MetaErrorCatalog::message($code, (string) data_get($st, 'errors.0.title', '')) : '';
+        $err = null;
+        try {
+            $err = $code !== null || $status === 'failed' ? MetaError::fromStatusError((array) data_get($st, 'errors.0', [])) : null;
+        } catch (\Throwable $e) {
+            WaLog::error('wa.status.classify_failed', ['type' => class_basename($e)]);
+        }
+        $v2 = MetaErrorCatalog::v2();
+        $error = $code === null ? '' : ($v2 && $err ? $err->staffMessage : MetaErrorCatalog::message($code, (string) data_get($st, 'errors.0.title', '')));
 
         // الحالات تتقدّم ولا تتراجع (ميتا لا تضمن الترتيب): الأدنى يُضاف إلى السجل وحده، وfailed نهائية
         $rank = ['sent' => 1, 'delivered' => 2, 'read' => 3, 'played' => 4];
@@ -349,9 +370,16 @@ class WhatsAppInbox
             if ($code !== null && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_code')) {
                 $update['meta_code'] = $code;
             }
-            // رمزنا الداخلي من الجدول (رقم ميتا في meta_code)
-            if ($code !== null && (self::$hasE11Columns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['reply_to_wamid', 'media_id', 'phone_number_id']))) {
-                $update['error_code'] = mb_substr(MetaErrorCatalog::codeFor($code), 0, 32);
+            // رمزنا الداخلي وفئته من الجدول (رقم ميتا في meta_code)
+            if ($err && $status === 'failed' && (self::$hasE11Columns ??= \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['reply_to_wamid', 'media_id', 'phone_number_id']))) {
+                $update['error_code'] = mb_substr($err->code, 0, 32);
+                if (self::$hasCategory ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'error_category')) {
+                    $update['error_category'] = $err->category;
+                }
+                if ($err->details !== null) {
+                    $payload['_meta_error'] = $err->forPayload();
+                    $update['payload'] = $payload;
+                }
             }
         }
         $m->update($update);
@@ -361,8 +389,22 @@ class WhatsAppInbox
             ContactIdentity::fillFromStatus($st, $c);
         }
 
-        if ($code !== null) {
-            WaLog::warning('wa.status.failed', ['message_id' => $m->id, 'conv_id' => $m->conversation_id, 'meta_code' => $code]);
+        if ($err && $status === 'failed') {
+            WaLog::warning('wa.delivery_failed', ['conv_id' => $m->conversation_id, 'message_id' => $m->id, 'wamid' => $wamid,
+                'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category]);
+            if (!$v2 && $code !== null) {
+                MetaErrorCatalog::react($code);
+            }
+            // الويبهوك المكرر لا يعيد التنبيه ولا العدّ (المفتاح يحمل wamid)
+            MetaErrorReactor::react($err, ['conv_id' => $m->conversation_id, 'message_id' => $m->id, 'wamid' => (string) $wamid, 'source' => 'webhook']);
+            // رسالة موظف لم تصل لسبب عند العميل: يُبلَّغ مرسلها مرة واحدة، بلا نص الرسالة
+            if ($v2 && $advances && $m->source === 'staff' && $m->staff_id && $err->scope === 'recipient'
+                && \Illuminate\Support\Facades\Cache::add("wa:delivery-failed:notify:{$m->id}", 1, now()->addDays(2))) {
+                $name = optional(WaConversation::find($m->conversation_id))->noticeLabel() ?? 'العميل';
+                \App\Services\NotificationService::send((int) $m->staff_id, '⚠️ لم تصل رسالتك', "لم تصل رسالتك إلى {$name}: {$err->staffMessage}",
+                    ['type' => 'whatsapp', 'icon' => '⚠️', 'action_url' => "/whatsapp/inbox?conv={$m->conversation_id}"]);
+            }
+        } elseif ($code !== null && !$v2) {
             MetaErrorCatalog::react($code);
         }
 

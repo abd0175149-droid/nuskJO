@@ -21,9 +21,6 @@ class SendOutageNotice implements ShouldQueue
 {
     use Queueable;
 
-    /** خنق من ميتا يستحق إعادة واحدة مؤجلة؛ 368 و131047 و190 لا يُعاد عليها أبداً */
-    public const RETRY_META_CODES = [130429, 131056, 80007, 4];
-
     public int $tries = 1;
 
     public int $timeout = 30;

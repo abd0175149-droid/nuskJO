@@ -1,0 +1,12 @@
+{
+  "error": {
+    "message": "Business eligibility payment issue",
+    "type": "OAuthException",
+    "code": 131042,
+    "error_data": {
+      "messaging_product": "whatsapp",
+      "details": "Message failed to send because there were one or more errors related to your payment method."
+    },
+    "fbtrace_id": "Ax6Payment00000000000AA"
+  }
+}

@@ -25,6 +25,8 @@ return [
         'webhook_version' => env('WA_WEBHOOK_VERSION'),
         // appsecret_proof مع كل نداء Graph. يُفعَّل قبل «Require App Secret» في لوحة ميتا بأسبوع على الأقل
         'appsecret_proof' => (bool) env('WA_APPSECRET_PROOF', false),
+        // عدّادات نداءات Graph والإثبات (GraphClient): مخزن file داخل حجم التخزين، لا قاعدة البيانات
+        'graph_counter_store' => env('WA_GRAPH_COUNTER_STORE', 'file'),
         // تنزيل الوسائط: log يسجّل المضيف الغريب ويكمل، enforce يرفضه. https إلزامي في الوضعين
         'media_host_mode' => env('WA_MEDIA_HOST_MODE', 'log'),
         'media_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_MEDIA_HOSTS', 'fbsbx.com,whatsapp.net,facebook.com,fbcdn.net'))))),

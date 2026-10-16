@@ -1,0 +1,12 @@
+{
+  "error": {
+    "message": "Account not registered",
+    "type": "OAuthException",
+    "code": 133010,
+    "error_data": {
+      "messaging_product": "whatsapp",
+      "details": "The phone number is not registered on the WhatsApp Business Platform."
+    },
+    "fbtrace_id": "Ax5NotRegistered00000AA"
+  }
+}

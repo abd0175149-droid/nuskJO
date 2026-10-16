@@ -103,6 +103,7 @@ enum AuditAction: string
     case WaQuickReplyUpdate = 'wa.quick_reply_update';
     case WaQuickReplyDelete = 'wa.quick_reply_delete';
     case WaQuickReplyApprove = 'wa.quick_reply_approve';
+    case WaLastErrorCleared = 'wa.last_error_clear';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -165,7 +166,7 @@ enum AuditAction: string
             self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
-            self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange => 'meta',
+            self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
             self::RetentionPruned, self::ConfigExport => 'system',
             default => 'whatsapp',
@@ -260,6 +261,7 @@ enum AuditAction: string
             self::WaQuickReplyUpdate => 'تعديل رد جاهز',
             self::WaQuickReplyDelete => 'حذف رد جاهز',
             self::WaQuickReplyApprove => 'اعتماد رد جاهز يذكر بيانات دفع',
+            self::WaLastErrorCleared => 'تصفير آخر خطأ من ميتا («تمّ الحل»)',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',

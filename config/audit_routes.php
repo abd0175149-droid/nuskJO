@@ -102,6 +102,7 @@ return [
     'WhatsAppSettingsController@identityMode' => 'wa.identity_mode',
     'WhatsAppSettingsController@breakerOpen' => 'wa.breaker_manual',
     'WhatsAppSettingsController@breakerClose' => 'wa.breaker_manual',
+    'WhatsAppSettingsController@clearLastError' => 'wa.last_error_clear',
     'WhatsAppMediaController@refetch' => 'wa.media_refetch',
     'WhatsAppController@saveRouting' => 'wa.routing_update',
     'WhatsAppController@savePrices' => 'wa.model_prices',

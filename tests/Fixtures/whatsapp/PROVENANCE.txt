@@ -52,3 +52,13 @@ image_with_sha.json           [messages] § image مع caption وmime_type وsha
 document_pdf.json             [messages] § document مع filename (booking.pdf) وmime_type وsha256 (hex) وid. E14.
 media_131052.json             [messages] § رسالة unsupported تحمل errors[0].code=131052 (Media download error: ملف أكبر من
                               100MB أو تعذّر تنزيله عند ميتا). [errors] § 131052. E14.
+error_190.json …                E18: أجسام أخطاء Graph المتزامنة بشكل المرجع (error.code/type/message/error_data.details/fbtrace_id)
+  error_0.json                  [errors] § 0 و190 و131026 و131056 و133010 و131042 و100 (appsecret_proof) ورمز مجهول 999999.
+  error_131026.json             fbtrace_id قيم صنعناها (Ax…)، والنصوص الإنجليزية كما في جدول الرموز. لا رقم عميل فيها.
+  error_131056.json
+  error_133010.json
+  error_131042.json
+  error_100_appsecret_proof.json  [securing-requests] رفض الإثبات: code=100 مع ذكر appsecret_proof في الرسالة.
+  error_unknown_999999.json     رمز لا يعرفه الجدول: يصنَّف unknown/META_ERROR.
+status_failed_131026.json     [messages] § statuses (failed) بشكل status_failed_131047.json مع code=131026 (Message undeliverable). E18.
+value_errors_130429.json      [messages] § value.errors على مستوى الحمولة (130429 Rate limit hit) بلا statuses ولا messages. E18.

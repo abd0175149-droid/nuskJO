@@ -19,7 +19,7 @@ class WaBotSetting extends Model
         'context_messages', 'pause_minutes', 'max_tool_loops', 'rate_limit_per_hour',
         'fail_message', 'fail_handoff', 'tools_config', 'model_prices', 'cache_discount',
         'max_reply_age_minutes', 'reliability',
-        'wa_app_id', 'wa_credentials_status', 'wa_channel_health',
+        'wa_app_id', 'wa_credentials_status', 'wa_channel_health', 'wa_last_error',
         // E10: settings_version خارج القائمة عمداً (يرفعه SettingsWriter وحده)
         'wa_verify_token_hash', 'wa_verify_token_rotated_at', 'wa_token_rotated_at', 'wa_app_secret_rotated_at', 'api_key_rotated_at',
         'wa_suspended_at', 'wa_suspended_by', 'wa_suspended_source', 'wa_suspended_reason', 'feature_flags',
@@ -48,6 +48,7 @@ class WaBotSetting extends Model
         'reliability' => 'array',
         'wa_credentials_status' => 'array',
         'wa_channel_health' => 'array',
+        'wa_last_error' => 'array',
         'wa_token' => 'encrypted',
         'wa_app_secret' => 'encrypted',
         'api_key' => 'encrypted',

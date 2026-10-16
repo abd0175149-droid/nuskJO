@@ -76,6 +76,8 @@ final class SettingsSchema
         'reliability' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'أعلام موثوقية الرد (whatsapp:reliability)'],
         'wa_credentials_status' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'آخر فحص للرمز'],
         'wa_channel_health' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'آخر فحص للقناة'],
+        // يكتبه MetaErrorReactor مباشرة (عمود واحد خارج SettingsWriter) فلا يدخل حساب تعارض النسخة
+        'wa_last_error' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'آخر خطأ من ميتا'],
     ];
 
     /** أعمدة يكتبها الكاتب نفسه مع فعلها (تدوير سر، إيقاف، علم)، لا حقول إعدادات تُعرض أو تُحفظ من الصفحة */

@@ -76,6 +76,17 @@ final class ChannelDoctor
             $add('error', 'META_TOKEN_REJECTED', 'رفضت ميتا رمز الوصول (190) خلال آخر 24 ساعة — حدّث الرمز من الإعدادات.');
         }
 
+        // E18: رفض ميتا لإثبات سر التطبيق يوقف كل النداءات، والرمز المجهول المتكرر يستحق مراجعة الجدول
+        $today = Graph\GraphClient::counters(1)[0];
+        if ($today['proof_err'] > 0) {
+            $add('error', 'APPSECRET_PROOF_REJECTED', "رفضت ميتا appsecret_proof اليوم ({$today['proof_err']} مرة) — صحّح سر التطبيق أو أعد WA_APPSECRET_PROOF=false.");
+        }
+        foreach (rescue(fn () => MetaErrorReactor::unknownCodes(), [], false) as $code => $count) {
+            if ($count >= 3) {
+                $add('warn', 'META_UNKNOWN_CODE', "رمز ميتا {$code} لا يعرفه جدول الرموز وتكرر {$count} مرات اليوم — راجع MetaErrorCatalog.");
+            }
+        }
+
         if (config('app.debug') && app()->isProduction()) {
             $add('error', 'APP_DEBUG', 'APP_DEBUG مفعّل في الإنتاج — صفحات الخطأ تكشف البيئة.');
         }

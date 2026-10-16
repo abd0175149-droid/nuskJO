@@ -174,7 +174,8 @@ class QuoteRequestController extends Controller
             if ($res['ok']) {
                 $quoteRequest->update(['status' => 'sent']);
             } else {
-                return back()->with('error', 'حُفظ السعر لكن تعذّر إرساله: ' . $res['error']);
+                // نص عربي من جدول الرموز (E18) مع الإجراء إن وُجد، لا نص ميتا الخام
+                return back()->with('error', 'حُفظ السعر لكن تعذّر إرساله: ' . $res['error'] . (!empty($res['action']) ? ' — ' . $res['action'] : ''));
             }
         } else {
             self::auditPrice($quoteRequest, $data, null);

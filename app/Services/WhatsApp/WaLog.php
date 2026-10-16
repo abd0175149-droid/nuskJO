@@ -14,6 +14,8 @@ final class WaLog
         'conv_id', 'message_id', 'wamid', 'status', 'meta_code', 'fbtrace_id', 'source', 'type', 'ms', 'model',
         'tokens_in', 'tokens_out', 'tool', 'field', 'event', 'count', 'phone_tail', 'exception',
         'http', 'host', 'entry', 'reason', 'offer_id', 'code', 'bytes', 'policy_reason',
+        // E18: تصنيف أخطاء ميتا (لا body ولا phone ولا name ولا token ولا Authorization ولا رابط كامل)
+        'error_code', 'category', 'attempt', 'scope',
     ];
 
     public static function info(string $event, array $context = []): void

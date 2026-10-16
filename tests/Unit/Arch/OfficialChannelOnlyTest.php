@@ -5,7 +5,7 @@ namespace Tests\Unit\Arch;
 use Tests\TestCase;
 
 /**
- * حارس معماري: القناة الوحيدة هي WhatsApp Cloud API الرسمية، وكل نداء لميتا يمر بعميل Graph في WhatsAppChannel،
+ * حارس معماري: القناة الوحيدة هي WhatsApp Cloud API الرسمية، وكل نداء لميتا يمر بـ Graph\GraphClient (E18)،
  * ومفتاح Gemini لا يُكتب في رابط، وأرقام الإصدارات القديمة في جدول GraphVersions وحده.
  */
 class OfficialChannelOnlyTest extends TestCase
@@ -29,9 +29,9 @@ class OfficialChannelOnlyTest extends TestCase
         return array_keys(array_filter($this->appFiles(), fn (string $code) => str_contains($code, $needle)));
     }
 
-    public function test_graph_is_called_only_from_the_channel(): void
+    public function test_graph_is_called_only_from_the_client(): void
     {
-        $this->assertSame(['app/Services/WhatsApp/WhatsAppChannel.php'], $this->filesContaining('graph.facebook.com'));
+        $this->assertSame(['app/Services/WhatsApp/Graph/GraphClient.php'], $this->filesContaining('graph.facebook.com'));
     }
 
     public function test_gemini_host_appears_only_in_its_provider(): void

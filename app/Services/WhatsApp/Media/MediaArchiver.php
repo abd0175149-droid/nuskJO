@@ -12,7 +12,6 @@ use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -233,7 +232,8 @@ final class MediaArchiver
         }
 
         try {
-            $res = Http::withToken($token)->withoutRedirecting()->connectTimeout(10)->timeout(90)->withOptions($options)->get($url);
+            // رابط ميتا المؤقت (lookaside) ليس نداء Graph: Authorization وحده عبر GraphClient، بلا إثبات
+            $res = \App\Services\WhatsApp\Graph\GraphClient::media(90, $token)->withoutRedirecting()->withOptions($options)->get($url);
         } catch (\Throwable $e) {
             for ($x = $e; $x; $x = $x->getPrevious()) {
                 if ($x instanceof MediaTooLarge || str_contains($x->getMessage(), 'cURL error 63')) {
