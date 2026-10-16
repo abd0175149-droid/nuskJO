@@ -73,6 +73,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { renderTemplate } from '@/composables/usePdfTemplate';
 
 const props = defineProps({ receipt: Object, templateUrl: String, layout: Object });
 
@@ -141,32 +142,10 @@ const sigStyle = computed(() => {
 
 const pdfCanvas = ref(null);
 
+// قالب PDF من pdf.js المحلي بلا eval (usePdfTemplate، E26)
 const renderPdf = async () => {
-    if (!props.templateUrl || !pdfCanvas.value) return;
-    try {
-        const pdfjsLib = await loadPdfJs();
-        const pdf = await pdfjsLib.getDocument(props.templateUrl).promise;
-        const page = await pdf.getPage(1);
-        const scale = 2;
-        const viewport = page.getViewport({ scale });
-        const canvas = pdfCanvas.value;
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    } catch (e) { console.error('PDF error:', e); }
+    try { await renderTemplate(props.templateUrl, [pdfCanvas.value]); } catch (e) { console.error('PDF error:', e); }
 };
-
-const loadPdfJs = () => new Promise((resolve, reject) => {
-    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload = () => {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        resolve(window.pdfjsLib);
-    };
-    s.onerror = reject;
-    document.head.appendChild(s);
-});
 
 onMounted(() => { setTimeout(renderPdf, 300); });
 const doPrint = () => window.print();
