@@ -184,6 +184,42 @@ class BotTools
             'required' => ['card_key'],
             'rules' => ['card_key' => 'required|string|max:20'],
         ],
+        // E36: القوائم والأزرار ونموذج طلب التسعير. مطفأة افتراضياً وخلف أعلامها، وتُعلن بشروط المحادثة (InteractiveReply::offerable).
+        // لا ترسل بنفسها: تجهّز الخيارات من ChoiceBuilder، ونص رد النموذج يصير body الرسالة التفاعلية (رسالة واحدة).
+        // لا تقبل عنواناً ولا معرّفاً ولا سعراً: نوعاً ورقم عرض يُتحقق منه
+        'show_offers_menu' => [
+            'label' => 'قائمة العروض التفاعلية', 'handler' => 'showOffersMenu', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'interactive_choices',
+            'description' => 'اعرض على العميل قائمة تفاعلية بالعروض يختار منها بلمسة. استعملها بدل سرد العروض نصاً. '
+                .'بعدها اكتب جملة قصيرة تمهّد للقائمة فقط: القائمة تحمل العناوين والأسعار.',
+            'properties' => [
+                'category' => ['type' => 'string', 'description' => 'تصنيف اختياري', 'enum' => ['package', 'umrah', 'hajj', 'flight', 'visa', 'hotel', 'transport', 'tour']],
+            ],
+            'required' => [],
+            'rules' => ['category' => 'nullable|string|in:package,umrah,hajj,flight,visa,hotel,transport,tour'],
+        ],
+        'present_choices' => [
+            'label' => 'خيارات تفاعلية (فندق، غرفة، حجز)', 'handler' => 'presentChoices', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'interactive_choices',
+            'description' => 'اعرض على العميل اختيارات تفاعلية من بيانات العرض: category (التصنيفات)، offer_option (فنادق العرض)، '
+                .'room_type (سعة الغرفة لخيار، ومعها option_ref)، booking_actions (أزرار «احجز هذا» و«سؤال آخر» و«كلّم موظفاً»). '
+                .'بعد أن يختار العميل عرضاً أرسل بطاقته ثم استعملها لاختيار الفندق والغرفة. لا تكتب الخيارات نصاً.',
+            'properties' => [
+                'kind' => ['type' => 'string', 'description' => 'نوع الاختيار', 'enum' => ['category', 'offer_option', 'room_type', 'booking_actions']],
+                'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض (لغير category)', 'minimum' => 1],
+                'option_ref' => ['type' => 'string', 'description' => 'ref الخيار من get_offer_details أو من اختيار العميل المؤكد (لـ room_type)', 'maxLength' => 64],
+            ],
+            'required' => ['kind'],
+            'rules' => ['kind' => 'required|string|in:category,offer_option,room_type,booking_actions', 'offer_id' => 'nullable|integer|min:1',
+                'option_ref' => 'nullable|string|max:64'],
+        ],
+        'send_quote_form' => [
+            'label' => 'نموذج طلب التسعير داخل واتساب', 'handler' => 'sendQuoteForm', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'quote_flow',
+            'description' => 'أرسل للعميل نموذجاً قصيراً لطلب التسعير يعبّئه داخل واتساب (المسار والتواريخ وعدد المسافرين). '
+                .'استعملها حين يريد العميل سعراً لرحلة طيران أو خدمة بدل طرح الأسئلة واحداً واحداً. الكتابة تبقى ممكنة، وrequest_quote بديلها الحواري.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
         'handoff_to_human' => [
             'label' => 'تحويل لموظف', 'handler' => 'handoff', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => true,
             'escalates' => true, 'disableable' => false,
@@ -272,6 +308,10 @@ class BotTools
             $props = $t['properties'];
             if (isset($props['topics']['description'])) {
                 $props['topics']['description'] = str_replace('{topics}', implode(' | ', array_keys(TopicRouter::TOPICS)), $props['topics']['description']);
+            }
+            // E36: الأدوات التفاعلية بشروط المحادثة (التجربة، والنافذة، ومحادثة الإدارة، ومعرّف الـ Flow)
+            if (in_array($name, InteractiveReply::TOOLS, true) && !InteractiveReply::offerable($conv, $s, $name)) {
+                continue;
             }
             // مفاتيح البطاقات المسموحة للبوت (E33): القائمة نفسها في الإعلان وفي التنفيذ، وبلا بطاقة لا تُعلن الأداة
             if ($name === 'send_contact_card') {
@@ -584,6 +624,23 @@ class BotTools
         return ['sent' => true, 'note' => 'أُرسلت البطاقة. اكتب جملة قصيرة فقط ولا تكرر أي رقم.'];
     }
 
+    // ==================== الاختيارات التفاعلية (E36) ====================
+
+    private static function showOffersMenu(array $in, WaConversation $conv): array
+    {
+        return InteractiveReply::showOffersMenu($in, $conv);
+    }
+
+    private static function presentChoices(array $in, WaConversation $conv): array
+    {
+        return InteractiveReply::presentChoices($in, $conv);
+    }
+
+    private static function sendQuoteForm(array $in, WaConversation $conv): array
+    {
+        return InteractiveReply::sendQuoteForm($in, $conv);
+    }
+
     private static function getBalance(array $in, WaConversation $conv): array
     {
         if (!$conv->financialClientId()) {
@@ -663,33 +720,13 @@ class BotTools
         ];
     }
 
-    /** ★ طلب تسعير → إشعار الموظف + تحويل المحادثة */
+    /** ★ طلب تسعير → إشعار الموظف + تحويل المحادثة. الإنشاء في QuoteRequestFactory (E36) يشترك فيه نموذج واتساب */
     private static function requestQuote(array $in, WaConversation $conv): array
     {
-        ['qr' => $qr, 'duplicate' => $dup] = QuoteRequestGuard::createOrReuse($conv, 'quote', [
-            'conversation_id' => $conv->id,
-            'client_id' => $conv->client_id,
-            // عميل بلا رقم: نص فارغ (العمود NOT NULL)، والهوية من conversation_id
-            'phone' => $conv->phone ?? '',
-            'customer_name' => self::customerName($conv),
-            'type' => $in['type'] ?? 'flight',
-            // كان القصّ عند 8 أحرف (طول رمز مطار) يقطع أسماء المدن: «المدينة المنورة» ← «المدينة»
-            'route_from' => mb_substr((string) ($in['route_from'] ?? ''), 0, 60) ?: null,
-            'route_to' => mb_substr((string) ($in['route_to'] ?? ''), 0, 60) ?: null,
-            'depart_date' => self::date($in['depart_date'] ?? null),
-            'return_date' => self::date($in['return_date'] ?? null),
-            'pax_adults' => max(1, (int) ($in['adults'] ?? 1)),
-            'pax_children' => max(0, (int) ($in['children'] ?? 0)),
-            'pax_infants' => max(0, (int) ($in['infants'] ?? 0)),
-            'details' => mb_substr((string) ($in['details'] ?? ''), 0, 2000),
-            'status' => 'new',
-        ]);
+        ['qr' => $qr, 'duplicate' => $dup] = \App\Services\QuoteRequestFactory::fromInput($conv, $in, 'bot');
         if ($dup) {
             return self::duplicateResult($qr);
         }
-
-        self::auditQuote($qr, $conv);
-        self::escalate($conv, $qr, HandoffReason::Quote);
 
         return [
             'request_number' => $qr->request_number,
@@ -703,7 +740,7 @@ class BotTools
     /** اسم الطلب: العميل المربوط، ثم الاسم المحفوظ، ثم لقب واتساب (غير موثّق) */
     private static function customerName(WaConversation $conv): ?string
     {
-        return $conv->client?->name ?: ($conv->display_name ?: $conv->wa_profile_name);
+        return \App\Services\QuoteRequestFactory::customerName($conv);
     }
 
     /**
@@ -724,6 +761,8 @@ class BotTools
     /** ★ تأكيد حجز عرض → إشعار الموظف + تحويل المحادثة */
     private static function confirmBooking(array $in, WaConversation $conv): array
     {
+        // اختيار العميل المؤكد من أزرارنا (E36) يتقدّم على وسائط النموذج: العرض والخيار والغرفة كما ضغطها العميل
+        $in = ChoiceResolver::applyToBooking($conv, $in);
         $offer = Offer::forBot()->find($in['offer_id'] ?? 0);
         if (!$offer) {
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ العرض غير متاح واعرض البدائل.'];
@@ -845,12 +884,12 @@ class BotTools
         ];
     }
 
-    /** النوع والعرض والمحادثة فقط: اسم العميل ورقمه وتفاصيل طلبه في الطلب نفسه لا في السجل */
-    private static function auditQuote(QuoteRequest $qr, WaConversation $conv): void
+    /** النوع والعرض والمحادثة فقط: اسم العميل ورقمه وتفاصيل طلبه في الطلب نفسه لا في السجل. $extra (E36): مصدر النموذج */
+    public static function auditQuote(QuoteRequest $qr, WaConversation $conv, array $extra = []): void
     {
         AuditLog::safe(AuditAction::QuoteRequestCreate, 'quote_request', $qr->id, $qr->request_number, [
             'type' => $qr->type, 'offer_id' => $qr->offer_id, 'conversation_id' => $conv->id,
-        ]);
+        ] + $extra);
     }
 
     /**
@@ -859,7 +898,7 @@ class BotTools
      * وحارس الادعاء يمرّون كلهم من هنا. والعلم wa_event_bus هو القرار الوحيد للإشعار والتدقيق: مطفأ = مباشرة هنا كما
      * كان، مفعّل = المستمعان NotifyHandoffRecipients وAuditWhatsAppEvents.
      */
-    private static function escalate(WaConversation $conv, ?QuoteRequest $qr, HandoffReason $reason): void
+    public static function escalate(WaConversation $conv, ?QuoteRequest $qr, HandoffReason $reason): void
     {
         // الأولوية: توكيل قائم ← مختصّ الموضوع ← موظف العميل المسؤول
         $assignee = TopicRouter::assigneeFor($conv);

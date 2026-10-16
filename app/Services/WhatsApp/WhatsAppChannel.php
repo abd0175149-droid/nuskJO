@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Cache;
  * whatsapp-web.js أو Baileys أو أي عميل غير رسمي، لأن ذلك يخالف شروط واتساب ويعرّض الرقم الوحيد للحظر.
  *
  * مرفوض عمداً، ويعيد UNSUPPORTED لا نجاحاً وهمياً: القوالب (قرار المالك)، والمجموعات، والحالات (stories).
+ * الكتالوج وFlows بنقطة نهاية خارج النطاق دون قرار مكتوب من المالك (E36، NoCatalogNoFlowEndpointTest): القوائم والأزرار
+ * من ChoiceBuilder، والنموذج الوحيد ثابت بوضع navigate بلا نقطة نهاية ولا مفاتيح تشفير.
  *
  * الأقفال بالترتيب:
  *   0) الموظف يرى المحادثة (لرسائل الموظف وحدها)
@@ -500,61 +502,52 @@ class WhatsAppChannel
             ['send_key' => $sendKey, 'display' => $caption ?: '📷 صورة'] + array_intersect_key($opts, array_flip(['reply_to', 'meta'])));
     }
 
-    /**
-     * إرسال أزرار (حتى 3) — معرّف كل زر يحمل الحالة مثل offer:12
-     * @param array<array{id:string,title:string}> $buttons
-     */
-    public static function sendButtons(WaConversation $conv, string $body, array $buttons, string $source = 'bot', ?string $sendKey = null): array
-    {
-        $rows = [];
-        foreach (array_slice($buttons, 0, 3) as $b) {
-            $rows[] = ['type' => 'reply', 'reply' => [
-                'id' => mb_substr($b['id'], 0, 256),
-                'title' => mb_substr($b['title'], 0, 20),
-            ]];
-        }
+    // ==================== الرسائل التفاعلية (E36) ====================
 
-        return self::dispatch($conv, [
-            'messaging_product' => 'whatsapp',
-            'type' => 'interactive',
-            'interactive' => [
-                'type' => 'button',
-                'body' => ['text' => mb_substr($body, 0, 1024)],
-                'action' => ['buttons' => $rows],
-            ],
-        ], $body, 'interactive', $source, sendKey: $sendKey);
+    /**
+     * أزرار رد (حتى 3، غلاف فوق send()): العنوان 20 حرفاً وغير مكرر («عنوان 2»)، والمعرّف 256، والنص 1024.
+     * المعرّفات من ChoiceBuilder (ch:{nonce}:{key}) أو من كود ثابت (موافقة الملفات، زرّا المساعد الإداري)، لا من النموذج.
+     * $opts: header وfooter (نص حتى 60)، وreply_to وmeta (payload._meta.choice_set_id) وsend_key وcontext.
+     *
+     * @param  array<array{id: string, title: string}>  $buttons
+     */
+    public static function sendButtons(WaConversation $conv, string $body, array $buttons, string $source = 'bot', ?int $staffId = null, array $opts = []): array
+    {
+        $m = Outbound\InteractiveTypes::buttons($body, $buttons, $opts);
+
+        return $m ? self::send($conv, $m, $source, $staffId, self::interactiveOpts($opts))
+            : self::failLocal('BAD_INTERACTIVE', 'رسالة تفاعلية بلا خيارات صالحة.');
     }
 
     /**
-     * إرسال قائمة (حتى 10 صفوف)
-     * @param array<array{id:string,title:string,description?:string}> $items
+     * قائمة (غلاف فوق send()): حتى 10 صفوف في المجموع وحتى 10 أقسام بعناوينها. عنوان الصف والقسم 24، والوصف 72،
+     * والمعرّف 200، والزر 20، والنص 4096. التوقيع القديم (صفوف مسطحة) يُلف في قسم واحد.
+     *
+     * @param  array<array{title?: string, rows: array}>|array<array{id: string, title: string, description?: string}>  $sections
      */
-    public static function sendList(WaConversation $conv, string $body, string $buttonLabel, array $items, string $source = 'bot', ?string $sendKey = null): array
+    public static function sendList(WaConversation $conv, string $body, string $buttonLabel, array $sections, string $source = 'bot', ?int $staffId = null, array $opts = []): array
     {
-        $rows = [];
-        foreach (array_slice($items, 0, 10) as $it) {
-            $row = [
-                'id' => mb_substr($it['id'], 0, 200),
-                'title' => mb_substr($it['title'], 0, 24),
-            ];
-            if (!empty($it['description'])) {
-                $row['description'] = mb_substr($it['description'], 0, 72);
-            }
-            $rows[] = $row;
-        }
+        $m = Outbound\InteractiveTypes::list($body, $buttonLabel, $sections, $opts);
 
-        return self::dispatch($conv, [
-            'messaging_product' => 'whatsapp',
-            'type' => 'interactive',
-            'interactive' => [
-                'type' => 'list',
-                'body' => ['text' => mb_substr($body, 0, 1024)],
-                'action' => [
-                    'button' => mb_substr($buttonLabel, 0, 20),
-                    'sections' => [['title' => 'الخيارات', 'rows' => $rows]],
-                ],
-            ],
-        ], $body, 'interactive', $source, sendKey: $sendKey);
+        return $m ? self::send($conv, $m, $source, $staffId, self::interactiveOpts($opts))
+            : self::failLocal('BAD_INTERACTIVE', 'رسالة تفاعلية بلا خيارات صالحة.');
+    }
+
+    /**
+     * نموذج ثابت (Flow) بوضع navigate بلا نقطة نهاية: flow_message_version=3، وflow_token يولّده الخادم ويربطه بالمحادثة
+     * (WaChoiceSet بالنوع quote_flow)، والزر حتى 30 حرفاً. داخل النافذة كأي رسالة. $opts: mode (draft|published) وsend_key وmeta.
+     */
+    public static function sendFlow(WaConversation $conv, string $body, string $flowId, string $flowToken, string $cta, string $source = 'bot', array $opts = []): array
+    {
+        $m = Outbound\InteractiveTypes::flow($body, $flowId, $flowToken, $cta, (string) ($opts['mode'] ?? 'published'));
+
+        return $m ? self::send($conv, $m, $source, null, self::interactiveOpts($opts))
+            : self::failLocal('BAD_INTERACTIVE', 'نموذج غير صالح (المعرّف أو الرمز).');
+    }
+
+    private static function interactiveOpts(array $opts): array
+    {
+        return array_intersect_key($opts, array_flip(['send_key', 'reply_to', 'meta', 'context']));
     }
 
     /**

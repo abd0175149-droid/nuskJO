@@ -199,4 +199,15 @@ return [
     'staff_reactions' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_STAFF_REACTIONS', '✅,👍,🙏,❤️,👀'))))),
     // ميتا لا تسلّم تفاعلاً على رسالة أقدم من 30 يوماً
     'reaction_max_days' => 30,
+
+    // الاختيارات التفاعلية (E36). المحادثات التجريبية: إن لم تكن القائمة فارغة تُعلن أدوات القوائم والأزرار والنموذج لها وحدها
+    // (رقم المدير الشخصي كعميل قبل التعميم)، بأرقام المحادثات مفصولة بفواصل في WA_INTERACTIVE_PILOT_CONVERSATIONS
+    'interactive_pilot_conversations' => array_values(array_filter(array_map('intval', explode(',', (string) env('WA_INTERACTIVE_PILOT_CONVERSATIONS', ''))))),
+    'interactive' => [
+        // لا تُعلن أداة تفاعلية إن بقي من النافذة أقل من هذا (دقائق)، ولا النموذج إن بقي أقل من الثاني
+        'min_window_minutes' => 10,
+        'flow_min_window_minutes' => 30,
+        // رد الـ Flow (response_json) أكبر من هذا لا يُقرأ
+        'flow_response_max_bytes' => 4096,
+    ],
 ];

@@ -32,6 +32,8 @@ final class WaLog
         'from', 'to', 'writer', 'effect', 'severity',
         // E34: الرسائل الصوتية (المدة، ورمز خروج ffmpeg وstderr مقصوصاً بلا مسار المجلد المؤقت)
         'seconds', 'exit', 'stderr',
+        // E36: نوع مجموعة الاختيارات ورقمها (لا عناوين ولا معرّفات الخيارات ولا flow_token)
+        'kind', 'set_id',
     ];
 
     public static function info(string $event, array $context = []): void

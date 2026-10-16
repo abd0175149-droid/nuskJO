@@ -71,6 +71,12 @@ final class SendKey
         return self::make('consent', $conv->id, $upto ?? self::upto($conv), $kind);
     }
 
+    /** تأكيد وصول نموذج طلب التسعير (E36): واحد لكل رد نموذج وارد */
+    public static function flow(int $messageId): string
+    {
+        return self::make('flow', $messageId);
+    }
+
     /**
      * سعر طلب التسعير: السعر والملاحظة نفسيهما خلال 10 دقائق لا يُرسلان مرتين. $nonce لـ «أعد الإرسال» الصريح.
      */

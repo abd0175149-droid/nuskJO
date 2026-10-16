@@ -76,5 +76,9 @@ return [
         'wa_staff_reactions' => env('WA_FEATURE_WA_STAFF_REACTIONS'),
         'wa_link_preview' => env('WA_FEATURE_WA_LINK_PREVIEW'),
         'wa_share_cards' => env('WA_FEATURE_WA_SHARE_CARDS'),
+        // E36: القوائم والأزرار، وزرّا المساعد الإداري، ونموذج طلب التسعير
+        'interactive_choices' => env('WA_FEATURE_INTERACTIVE_CHOICES'),
+        'admin_confirm_buttons' => env('WA_FEATURE_ADMIN_CONFIRM_BUTTONS'),
+        'quote_flow' => env('WA_FEATURE_QUOTE_FLOW'),
     ],
 ];

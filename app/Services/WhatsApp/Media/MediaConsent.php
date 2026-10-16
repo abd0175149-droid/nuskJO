@@ -78,7 +78,7 @@ final class MediaConsent
         $res = WhatsAppChannel::sendButtons($conv, self::noticeText(), [
             ['id' => self::YES, 'title' => 'موافق'],
             ['id' => self::NO, 'title' => 'احذف ملفاتي'],
-        ], 'system', \App\Services\WhatsApp\SendKey::consent($conv, null, 'notice'));
+        ], 'system', null, ['send_key' => \App\Services\WhatsApp\SendKey::consent($conv, null, 'notice')]);
         if ($res['ok'] ?? false) {
             $conv->forceFill(['media_notice_at' => now()])->save();
         }

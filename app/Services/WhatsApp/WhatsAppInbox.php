@@ -249,9 +249,23 @@ class WhatsAppInbox
             return null;
         }
 
+        // طلب من كتالوج ميتا أو سؤال عن منتج فيه (E36، C043): لا كتالوج عندنا ولا يرى البوت المنتج، فيصل موظفاً بسببه
+        if ($in->type === 'order' || $in->referredProduct) {
+            ReplyState::markUnserved($conv, 'catalog');
+
+            return null;
+        }
+
         // مصدر المحادثة (E38): رمز QR أو رابط أو إعلان، بعد الاعتماد وقبل البوت. لا يكسر الاستقبال أبداً
         if ($stored) {
             EntryRecorder::record($conv, $stored, $in->referral);
+        }
+
+        // ردّ نموذج طلب التسعير (E36): طلب يبنيه الكود من حقول منقّاة وتأكيد نظامي، ولا يصل البوت أبداً
+        if ($in->flowReply !== null && $stored) {
+            FlowResponseHandler::handle($conv, $in, $stored);
+
+            return null;
         }
 
         // بعد الاعتماد: نداء HTTP قد يطول لا يُمسك قفل الكتابة في القاعدة
@@ -333,6 +347,9 @@ class WhatsAppInbox
         $ts = (int) data_get($msg, 'timestamp', 0);
         $metaAt = $ts > 0 ? min(\Illuminate\Support\Carbon::createFromTimestamp($ts, config('app.timezone')), now()) : now();
 
+        // نقرة على خيار أرسله البوت (E36): تُحسم قبل الحفظ (المحادثة وcontext.id والحداثة والصلاحية)، والنتيجة مع الرسالة
+        $choice = ChoiceResolver::resolve($conv, $in);
+
         $message = WaMessage::create([
             'conversation_id' => $conv->id,
             'wamid' => $wamid,
@@ -340,7 +357,7 @@ class WhatsAppInbox
             'source' => 'customer',
             'msg_type' => $type,
             'body' => $body,
-            'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []),
+            'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []) + ($choice ? ['_choice' => $choice] : []),
         ] + $columns + (self::hasMetaAt() ? ['meta_at' => $metaAt] : []));
         // بعد اعتماد المعاملة وحدها (E21)؛ تكرار wamid يرمي قبل هنا فلا حدث له
         EventBus::emit(new WaMessageStored($message->id, $conv->id, (string) $type));

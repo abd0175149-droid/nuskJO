@@ -762,15 +762,42 @@ class AdminTools
         return $conv->messages()->where('direction', 'in')->orderByDesc('id')->first();
     }
 
-    /** يحفظ الإجراء المعلّق ويعيد معاينته — لا يُنفَّذ شيء هنا */
+    /**
+     * يحفظ الإجراء المعلّق ويعيد معاينته — لا يُنفَّذ شيء هنا. لكل معاينة nonce (E36) يربط زرّي «✅ تأكيد» و«✖️ إلغاء»
+     * بها وحدها، وwamid رسالة الأزرار بعد إرسالها: زر قديم لا يؤكد إجراءً أحدث. الـ nonce حتمي من المحادثة والوارد
+     * والإجراء (HMAC بمفتاح التطبيق)، فإعادة الوظيفة تعيد الرسالة نفسها بمفتاح الإرسال نفسه، ولا يُخمَّن من الخارج.
+     */
     private static function stage(WaConversation $conv, WaAdminNumber $a, string $tool, string $action, array $payload, string $preview): array
     {
+        $upto = SendKey::upto($conv);
+        $nonce = substr(hash_hmac('sha256', "admin-confirm|{$conv->id}|{$upto}|{$tool}|{$action}|{$preview}", (string) config('app.key')), 0, 12);
         Cache::put(self::pendingKey($conv), [
             'tool' => $tool, 'action' => $action, 'payload' => $payload, 'preview' => $preview,
             'after' => (int) self::lastInbound($conv)?->id, 'admin' => $a->id,
+            'nonce' => $nonce, 'wamid' => null, 'staged_at' => now()->getTimestamp(),
         ], now()->addMinutes(self::PENDING_TTL_MINUTES));
 
         self::log($a, $conv, $tool, $action, 'preview', $preview, $payload);
+
+        // زرّا التأكيد والإلغاء (E36، العلم admin_confirm_buttons) تحت المعاينة نفسها
+        if (FeatureFlags::on('admin_confirm_buttons')) {
+            $wamid = self::sendConfirmButtons($conv, $tool, $preview, $nonce);
+            if ($wamid !== null) {
+                $p = Cache::get(self::pendingKey($conv));
+                if (is_array($p) && ($p['nonce'] ?? null) === $nonce) {
+                    Cache::put(self::pendingKey($conv), ['wamid' => $wamid] + $p,
+                        now()->addSeconds(max(1, (int) $p['staged_at'] + self::PENDING_TTL_MINUTES * 60 - now()->getTimestamp())));
+                }
+
+                return [
+                    'needs_confirmation' => true,
+                    'preview_sent' => true,
+                    'note' => 'لم يُنفَّذ شيء بعد. أرسل النظام المعاينة للموظف بنفسه مع زرّي «✅ تأكيد» و«✖️ إلغاء»: لا تُعِد صياغتها ولا تلخّصها. '
+                        .'قل في جملة واحدة إنك بانتظار ضغطه أحد الزرين أو ردّه بكلمة «تأكيد» أو «إلغاء». لا تستدعِ الأداة مع confirm=true '
+                        .'قبل ردّه نصاً في رسالة جديدة. المعاينة صالحة '.self::PENDING_TTL_MINUTES.' دقائق.',
+                ];
+            }
+        }
 
         // المعاينة يرسلها النظام بنصها (E15.5)، فلا يصفها النموذج بغير ما سيُنفَّذ
         $sent = WhatsAppChannel::sendText($conv, self::previewMessage($preview), 'system', sendKey: SendKey::admin($conv, null, 'preview:'.substr(sha1($tool.'|'.$preview), 0, 10)));
@@ -796,25 +823,85 @@ class AdminTools
         return "📝 معاينة:\n{$preview}\n\nأرسل «تأكيد» للتنفيذ أو «إلغاء».";
     }
 
+    /** معرّفا الزرّين: adm:{nonce}:y و adm:{nonce}:n (يحلهما الكود قبل النموذج، BotEngine::adminReply) */
+    public const BUTTON_PATTERN = '/^adm:([A-Za-z0-9]{12}):(y|n)$/';
+
+    /**
+     * المعاينة مع الزرّين في رسالة واحدة (حتى 1024 حرفاً)، وإلا المعاينة نصاً ثم الزران بسؤال قصير. wamid رسالة الزرّين أو null.
+     */
+    private static function sendConfirmButtons(WaConversation $conv, string $tool, string $preview, string $nonce): ?string
+    {
+        $buttons = [['id' => "adm:{$nonce}:y", 'title' => '✅ تأكيد'], ['id' => "adm:{$nonce}:n", 'title' => '✖️ إلغاء']];
+        $body = "📝 معاينة:\n{$preview}\n\nاضغط «✅ تأكيد» للتنفيذ أو «✖️ إلغاء»، أو أرسل «تأكيد» نصاً.";
+        $hash = substr(sha1($tool.'|'.$preview), 0, 10);
+        if (mb_strlen($body) <= Outbound\InteractiveTypes::BUTTON_BODY) {
+            $res = WhatsAppChannel::sendButtons($conv, $body, $buttons, 'system', null, ['send_key' => SendKey::admin($conv, null, 'previewbtn:'.$hash)]);
+        } else {
+            $text = WhatsAppChannel::sendText($conv, self::previewMessage($preview), 'system', sendKey: SendKey::admin($conv, null, 'preview:'.$hash));
+            if (!$text['ok']) {
+                return null;
+            }
+            $res = WhatsAppChannel::sendButtons($conv, 'تأكيد الإجراء المعروض أعلاه؟', $buttons, 'system', null, ['send_key' => SendKey::admin($conv, null, 'previewbtn:'.$hash)]);
+        }
+
+        return $res['ok'] && is_string($res['message_id'] ?? null) && $res['message_id'] !== '' ? $res['message_id'] : null;
+    }
+
+    /**
+     * نقرة زر التأكيد أو الإلغاء (E36): تُحل بالكود قبل الحد والنموذج. تنفّذ أو تلغي الإجراء المعلّق نفسه وحده: موجود،
+     * والـ nonce نفسه، والرقم نفسه، وcontext.id هو wamid رسالة الأزرار، ولم تمضِ 10 دقائق، والصلاحية ما زالت قائمة.
+     * أي اختلاف لا يمس الإجراء المعلّق الحالي. كل نقرة في wa_admin_actions. يعيد نص الرد الذي يبنيه الكود.
+     */
+    public static function resolveButton(WaConversation $conv, WaAdminNumber $a, string $nonce, bool $yes, ?string $replyTo): string
+    {
+        $p = Cache::get(self::pendingKey($conv));
+        $matches = is_array($p) && is_string($p['nonce'] ?? null) && hash_equals($p['nonce'], $nonce)
+            && (int) ($p['admin'] ?? 0) === (int) $a->id
+            && is_string($p['wamid'] ?? null) && is_string($replyTo) && hash_equals($p['wamid'], $replyTo)
+            && (int) ($p['staged_at'] ?? 0) + self::PENDING_TTL_MINUTES * 60 >= now()->getTimestamp();
+        if (!$matches) {
+            self::log($a, $conv, 'admin_confirm', $yes ? 'confirm' : 'cancel', 'denied', 'زر لمعاينة سابقة انتهت أو تغيّرت — لم يُنفَّذ شيء');
+
+            return 'هذا الزر لإجراء سابق انتهى أو تغيّر — اطلب الإجراء من جديد.';
+        }
+        if (!$yes) {
+            Cache::forget(self::pendingKey($conv));
+            self::log($a, $conv, $p['tool'], $p['action'], 'denied', 'ألغاه الموظف بالزر', $p['payload']);
+
+            return 'أُلغي الإجراء، ولم يُنفَّذ شيء.';
+        }
+
+        $out = self::executePending($p, $conv, $a, 'بالزر');
+        if (isset($out['done'])) {
+            return 'تم: '.$out['result'];
+        }
+
+        return isset($out['result']) ? 'لم يُنفَّذ: '.$out['result'] : 'لم يُنفَّذ: الصلاحية لم تعد متاحة لهذا الرقم.';
+    }
+
+    /** الوارد الأخير زر من أزرار المعاينة: التأكيد بالزر وحده، فلا يمر عنوانه «✅ تأكيد» عبر isAffirmative أبداً */
+    private static function lastIsButton(WaConversation $conv): bool
+    {
+        return str_starts_with((string) data_get(self::lastInbound($conv)?->payload, '_button_id'), 'adm:');
+    }
+
     /**
      * ينفّذ الإجراء المعلّق — بشرط أن يكون الموظف قد أكّد في رسالة جديدة بعد المعاينة.
      * ما يُنفَّذ هو المحفوظ عند المعاينة، لا ما يرسله النموذج الآن.
      */
     private static function commit(string $tool, WaConversation $conv, WaAdminNumber $a): array
     {
+        if (self::lastIsButton($conv)) {
+            return ['error' => 'use_button', 'note' => 'الموظف ضغط زراً، والنظام يتولى الأزرار بنفسه. لا تستدعِ الأداة مع confirm=true الآن.'];
+        }
         $p = Cache::get(self::pendingKey($conv));
         if (!$p || $p['tool'] !== $tool || (int) $p['admin'] !== $a->id) {
             return ['error' => 'لا يوجد إجراء بانتظار التأكيد', 'note' => 'المعاينة انتهت أو لم تُطلب. ابدأ الطلب من جديد لتظهر معاينة.'];
         }
 
-        // الصلاحية (أو وضع القراءة فقط أو دور المستخدم) قد تتغير بين المعاينة والتأكيد — تُفحص لما سيُنفَّذ فعلاً
-        $fresh = $a->fresh();
-        $gate = $fresh ? self::gate($fresh, $tool, (string) $p['action']) : ['allowed' => false, 'reason' => null, 'would_deny' => null];
+        $gate = self::freshGate($p, $a);
         if (!$gate['allowed']) {
-            Cache::forget(self::pendingKey($conv));
-            self::log($a, $conv, $tool, $p['action'], 'denied', 'سُحبت الصلاحية قبل التأكيد'.($gate['reason'] ? ' — '.$gate['reason'] : ''), $p['payload']);
-
-            return ['error' => 'غير مسموح', 'note' => 'الصلاحية لم تعد متاحة لهذا الرقم، فلم يُنفَّذ شيء.'];
+            return self::executePending($p, $conv, $a);
         }
         self::$wouldDeny = $gate['would_deny'];
 
@@ -829,13 +916,41 @@ class AdminTools
             return ['cancelled' => true, 'note' => 'ردّ الموظف لم يكن تأكيداً صريحاً، فأُلغي الإجراء ولم يُنفَّذ شيء. أخبره بذلك.'];
         }
 
-        Cache::forget(self::pendingKey($conv));
-        // التعديل وصف تدقيقه معاً، منسوبين إلى رقم الإدارة وموظفه لا إلى البوت. الحظر (E31) ينادي ميتا، فلا معاملة
-        // تلف نداء HTTP: BlockService يكتب صفوفه في معاملته بعد قبول ميتا
-        $run = fn () => self::apply($p, $a);
-        $result = AuditActor::as('admin_number', (string) $a->id, $tool === 'block_contact' ? $run : fn () => DB::transaction($run), $a->user_id);
-        $failed = (bool) ($result['failed'] ?? false);
-        self::log($a, $conv, $tool, $p['action'], $failed ? 'error' : 'done', $result['summary'], $result['input'] ?? $p['payload']);
+        return self::executePending($p, $conv, $a);
+    }
+
+    /** الصلاحية (أو وضع القراءة فقط أو دور المستخدم) قد تتغير بين المعاينة والتأكيد — تُفحص لما سيُنفَّذ فعلاً */
+    private static function freshGate(array $p, WaAdminNumber $a): array
+    {
+        $fresh = $a->fresh();
+
+        return $fresh ? self::gate($fresh, (string) $p['tool'], (string) $p['action']) : ['allowed' => false, 'reason' => null, 'would_deny' => null];
+    }
+
+    /** التنفيذ المشترك للتأكيد النصي والزر: الصلاحية من جديد، ثم المحفوظ نفسه منسوباً إلى رقم الإدارة */
+    private static function executePending(array $p, WaConversation $conv, WaAdminNumber $a, string $via = ''): array
+    {
+        $tool = (string) $p['tool'];
+        $gate = self::freshGate($p, $a);
+        if (!$gate['allowed']) {
+            Cache::forget(self::pendingKey($conv));
+            self::log($a, $conv, $tool, $p['action'], 'denied', 'سُحبت الصلاحية قبل التأكيد'.($gate['reason'] ? ' — '.$gate['reason'] : ''), $p['payload']);
+
+            return ['error' => 'غير مسموح', 'note' => 'الصلاحية لم تعد متاحة لهذا الرقم، فلم يُنفَّذ شيء.'];
+        }
+        self::$wouldDeny = $gate['would_deny'];
+
+        try {
+            Cache::forget(self::pendingKey($conv));
+            // التعديل وصف تدقيقه معاً، منسوبين إلى رقم الإدارة وموظفه لا إلى البوت. الحظر (E31) ينادي ميتا، فلا معاملة
+            // تلف نداء HTTP: BlockService يكتب صفوفه في معاملته بعد قبول ميتا
+            $run = fn () => self::apply($p, $a);
+            $result = AuditActor::as('admin_number', (string) $a->id, $tool === 'block_contact' ? $run : fn () => DB::transaction($run), $a->user_id);
+            $failed = (bool) ($result['failed'] ?? false);
+            self::log($a, $conv, $tool, $p['action'], $failed ? 'error' : 'done', $result['summary'].($via !== '' && !$failed ? " ({$via})" : ''), $result['input'] ?? $p['payload']);
+        } finally {
+            self::$wouldDeny = null;
+        }
         if ($failed) {
             return ['error' => 'لم يُنفَّذ', 'result' => $result['summary'], 'note' => 'أبلغ الموظف بالسبب كما هو في جملة قصيرة.'];
         }

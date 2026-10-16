@@ -89,6 +89,10 @@ final class FeatureFlags
         'wa_staff_reactions' => ['label' => 'تفاعل الموظف بإيموجي على رسالة العميل (إقرار لا يُعدّ رداً ولا يوقف البوت)', 'capability' => 'C008', 'available' => true],
         'wa_link_preview' => ['label' => 'معاينة الرابط في رد الموظف بخانة صريحة، للروابط العامة وحدها', 'capability' => 'C002', 'available' => true],
         'wa_share_cards' => ['label' => 'إرسال دبوس الموقع وبطاقات الاتصال من القوائم المعتمدة', 'capability' => 'C006', 'available' => true],
+        // E36: القوائم والأزرار للبوت، وزرّا المساعد الإداري، ونموذج طلب التسعير (Flow ثابت بلا نقطة نهاية، بعد توثيق النشاط)
+        'interactive_choices' => ['label' => 'قائمة العروض وأزرار الاختيار التفاعلية للبوت (معرّفات يولّدها الخادم، ونص البوت والقائمة رسالة واحدة)', 'capability' => 'C027', 'available' => true],
+        'admin_confirm_buttons' => ['label' => 'زرّا «تأكيد» و«إلغاء» تحت معاينة المساعد الإداري (زر قديم لا يؤكد إجراءً أحدث)', 'capability' => 'C027', 'available' => true],
+        'quote_flow' => ['label' => 'نموذج طلب التسعير داخل واتساب (Flow ثابت بلا نقطة نهاية؛ يحتاج معرّف الـ Flow المنشور)', 'capability' => 'C120', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

@@ -34,6 +34,12 @@ final class SettingsSchema
         'send_read_receipts' => ['type' => 'enum', 'values' => 'read_receipt_modes', 'default' => 'off', 'patchable' => true, 'sensitive' => true,
             'group' => 'channel', 'ui' => 'custom', 'label' => 'إشعار القراءة ومؤشر الكتابة',
             'help' => 'off: لا علامة زرقاء ولا «يكتب…» · on_reply: «يكتب…» حين يبدأ البوت، والعلامتان عند رد الموظف · on_open: كالسابق، ويُضاف فتح الموكَّل للمحادثة'],
+        // نموذج طلب التسعير (E36): معرّف الـ Flow الثابت المنشور يدوياً في WhatsApp Manager ووضعه. draft للتجربة برقم الاختبار،
+        // وpublished للعملاء. وفوقهما العلم quote_flow (مطفأ = لا يُعلن النموذج للبوت مهما ضُبطا)
+        'wa_quote_flow_id' => ['type' => 'string', 'regex' => '/^\d{1,32}$/', 'nullable' => true, 'default' => null, 'patchable' => true,
+            'group' => 'channel', 'ui' => 'custom', 'label' => 'معرّف نموذج طلب التسعير (Flow ID)'],
+        'wa_quote_flow_mode' => ['type' => 'enum', 'values' => 'quote_flow_modes', 'default' => 'published', 'patchable' => true,
+            'group' => 'channel', 'ui' => 'custom', 'label' => 'وضع نموذج طلب التسعير'],
         'provider' => ['type' => 'enum', 'values' => 'providers', 'default' => 'google', 'patchable' => true, 'sensitive' => true, 'group' => 'ai', 'ui' => 'custom', 'label' => 'مزوّد الذكاء'],
         // مقطع مسار عند المزوّد: حروف وأرقام و . _ - فقط (E05)
         'model' => ['type' => 'string', 'regex' => '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', 'default' => 'gemini-2.5-flash', 'patchable' => true, 'group' => 'ai', 'ui' => 'custom', 'label' => 'النموذج'],
@@ -187,6 +193,8 @@ final class SettingsSchema
             'breaker_modes' => ['off', 'shadow', 'on'],
             'read_receipt_modes' => \App\Services\WhatsApp\ReadReceipts::MODES,
             'auto_rule_modes' => \App\Services\WhatsApp\AutoRuleEngine::MODES,
+            // E36
+            'quote_flow_modes' => ['draft', 'published'],
             default => [],
         };
     }
