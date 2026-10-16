@@ -33,4 +33,35 @@ describe('MessageBubble', () => {
         expect(staff.text()).toContain('👤 سارة');
         expect(staff.text()).not.toContain('· موظف');
     });
+
+    it('shows the Arabic reason, a coloured category and the action behind ⓘ (E18)', async () => {
+        const w = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'staff', sender: 'سارة', status: 'failed',
+            error: 'رمز ميتا منتهٍ أو مُلغى — الإرسال متوقف.', category: 'auth', action: 'ولّد رمزاً جديداً', fbtrace_id: 'Ax1' }) } });
+        expect(w.text()).toContain('رمز ميتا منتهٍ');
+        const chip = w.find('[data-test="error-category"]');
+        expect(chip.text()).toBe('اعتماد');
+        expect(chip.classes()).toContain('bg-red-100');
+        const action = w.find('[data-test="error-action"]');
+        expect(action.element.tagName).toBe('DETAILS');
+        expect(action.text()).toContain('ماذا أفعل؟');
+        expect(action.text()).toContain('ولّد رمزاً جديداً');
+        expect(action.text()).toContain('Ax1');
+    });
+
+    it('colours the window amber and the request grey, and shows unconfirmed reasons too', () => {
+        const window = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'failed', error: 'انتهت النافذة', category: 'window' }) } });
+        expect(window.find('[data-test="error-category"]').classes()).toContain('bg-amber-100');
+        const caller = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'failed', error: 'تعذّر التسليم', category: 'caller' }) } });
+        expect(caller.find('[data-test="error-category"]').classes()).toContain('bg-gray-100');
+        const timeout = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'staff', status: 'unconfirmed', error: 'انتهت مهلة ميتا — قد تكون الرسالة وصلت.' }) } });
+        expect(timeout.text()).toContain('قد تكون الرسالة وصلت');
+        expect(timeout.find('[data-test="error-action"]').exists()).toBe(false);
+    });
+
+    it('renders a reason carrying markup as text', () => {
+        const w = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'failed', error: '<img src=x onerror=alert(1)>', category: 'unknown', action: '<b>x</b>' }) } });
+        expect(w.find('img').exists()).toBe(false);
+        expect(w.find('b').exists()).toBe(false);
+        expect(w.text()).toContain('<img');
+    });
 });

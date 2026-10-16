@@ -18,7 +18,8 @@ export function errorText(e, fallback) {
     const text = d.error || Object.values(d.errors || {})[0]?.[0] || d.message;
     // رسائل Laravel الافتراضية إنجليزية؛ رسائلنا عربية
     if (e?.response?.status === 403 && !/[؀-ۿ]/.test(text || '')) return 'ليست لديك صلاحية لهذا الإجراء';
-    return text || fallback;
+    // سبب ميتا ثم الإجراء المقترح (E18)
+    return text ? (d.action ? `${text} — ${d.action}` : text) : fallback;
 }
 
 /** @param thread دالة تعيد مكوّن ThreadView (nearBottom وtoBottom وkeepOnPrepend) */
@@ -262,6 +263,10 @@ export function useInbox(props, thread) {
         } catch (e) {
             if (e?.response?.status === 404 && s.activeId === id) return closeOutOfScope();
             s.sendError = errorText(e, 'تعذّر الإرسال');
+            // ميتا أغلقت النافذة (131047): المنشئ يُعطَّل بشرح النافذة نفسه، والمسودة باقية
+            if (e?.response?.data?.category === 'window' && s.activeId === id && s.thread) s.thread.window_open = false;
+            // مهلة ميتا (503): قد تكون وصلت، فالخيط يُحدَّث ليظهر صفها «غير مؤكد»
+            if (e?.response?.status === 503 && s.activeId === id) poll();
         } finally {
             s.sending = false;
         }

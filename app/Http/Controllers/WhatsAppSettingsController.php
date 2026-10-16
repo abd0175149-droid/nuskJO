@@ -57,6 +57,12 @@ class WhatsAppSettingsController extends Controller
             'ops' => app(OpsHealth::class)->snapshot(),
             'meta' => MetaHealth::summary(WaBotSetting::current()),
             'mediaArchive' => rescue(fn () => \App\Services\WhatsApp\Media\MediaArchiver::summary(), null, false),
+            // E18: آخر خطأ قناة من ميتا، وفئات اليوم، ونسبة إثبات سر التطبيق خلال 7 أيام
+            'metaErrors' => [
+                'last' => WaBotSetting::current()->wa_last_error,
+                'today' => \App\Services\WhatsApp\MetaErrorReactor::categoryCounts(),
+                'proof' => \App\Services\WhatsApp\Graph\GraphClient::proofSummary(),
+            ],
         ]);
     }
 

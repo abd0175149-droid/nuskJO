@@ -47,6 +47,9 @@
 - [x] 409 `POLICY_WARN` (E15.9): تأكيد صريح ثم إعادة الإرسال مع `ack_warnings`؛ الرفض يظهر «لم تُرسل الرسالة». — ✅ useInbox.send(ask)
 - [x] رسائل الخطأ عربية؛ 403 بنص إنجليزي من Laravel يصير «ليست لديك صلاحية لهذا الإجراء». — ✅ useInbox.errorText
 - [x] لا صلاحية رد: «لا تملك صلاحية الردّ على المحادثات». — ✅ Composer
+- [x] فشل الإرسال (E18، `meta_error_v2`): السبب العربي ثم « — » ثم الإجراء؛ `category=window` يعطّل المنشئ بشرح النافذة؛ 503 (مهلة ميتا) يحدّث الخيط ليظهر الصف «غير مؤكد». — ✅ useInbox.errorText/send (errorText.test.js)
+- [x] تحت «فشل» في الفقاعة: فئة ملوّنة (اعتماد/تقييد أحمر، النافذة كهرماني، الطلب رمادي) والسبب، و«ⓘ ماذا أفعل؟» يفتح الإجراء، وfbtrace_id لصاحب whatsapp.settings. نص فقط بلا v-html. — ✅ MessageBubble (MessageBubble.test.js)
+- [x] شريط أحمر للمدير عند خطأ اعتماد أو تقييد على القناة خلال 24 ساعة، وسطر عام لغيره. — ✅ InboxStatusBar (InboxStatusBar.test.js)
 
 ## الطوارئ والتوقيت
 - [x] `visibilitychange` إلى ظاهر: استطلاع فوري. — ✅ usePolling (createPoller)

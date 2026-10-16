@@ -122,6 +122,9 @@
                             آخر خطأ اعتماد عند الإرسال: <bdi dir="ltr">[{{ meta.last_account_error.code }}]</bdi> — <bdi dir="ltr">{{ when(meta.last_account_error.at * 1000) }}</bdi>
                         </p>
                     </div>
+
+                    <!-- آخر خطأ من ميتا على مستوى القناة، وفئات اليوم، ونسبة إثبات سر التطبيق (E18) -->
+                    <MetaLastErrorCard :last="metaErrors.last" :today="metaErrors.today" :proof="metaErrors.proof" @cleared="metaErrors.last = null"/>
                 </div>
 
                 <!-- ================= 2. ربط قناة ميتا ================= -->
@@ -458,6 +461,7 @@ import AppLayout from '@/Components/Layout/AppLayout.vue';
 import ConflictBanner from '@/Components/WhatsApp/ConflictBanner.vue';
 import FeatureFlagsPanel from '@/Components/WhatsApp/FeatureFlagsPanel.vue';
 import MediaArchivePanel from '@/Components/WhatsApp/MediaArchivePanel.vue';
+import MetaLastErrorCard from '@/Components/WhatsApp/MetaLastErrorCard.vue';
 import BreakerPanel from '@/Components/WhatsApp/BreakerPanel.vue';
 import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
@@ -493,6 +497,7 @@ const props = defineProps({
     ops: { type: Object, default: () => ({ codes: [], queues: {} }) },
     meta: { type: Object, default: () => ({}) },
     mediaArchive: { type: Object, default: null },
+    metaErrors: { type: Object, default: () => ({ last: null, today: {}, proof: null }) },
     toolMeta: { type: Array, default: () => [] },
 });
 
@@ -684,6 +689,8 @@ const missing = computed(() => {
 
 // ===== صحة النظام والقناة =====
 const meta = ref({ ...props.meta });
+const metaErrors = reactive({ ...props.metaErrors });
+watch(() => props.metaErrors, (v) => Object.assign(metaErrors, v));
 const metaChecking = ref(false);
 const metaMsg = ref('');
 const metaMsgOk = ref(false);

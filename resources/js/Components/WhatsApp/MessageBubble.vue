@@ -23,7 +23,17 @@
           <span v-else-if="m.status === 'unconfirmed'" title="قبلتها ميتا بلا معرّف رسالة: لا دليل على وصولها">· غير مؤكد</span>
         </slot>
       </div>
-      <p v-if="(m.status === 'failed' || m.status === 'blocked') && m.error" class="mt-0.5 text-[10px] leading-4 opacity-80 break-words">{{ m.error }}</p>
+      <!-- سبب الفشل (E18): نص عربي من جدول الرموز، وفئة ملوّنة، وإجراء يُفتح بـ ⓘ. نص فقط بلا v-html -->
+      <div v-if="hasReason" class="mt-1 space-y-1">
+        <p class="text-[10px] leading-4 break-words" :class="m.category ? 'opacity-95' : 'opacity-80'">
+          <span v-if="m.category" class="inline-block me-1 px-1.5 rounded font-bold" :class="chip" data-test="error-category">{{ CATEGORY_LABELS[m.category] || m.category }}</span>{{ m.error }}
+        </p>
+        <details v-if="m.action" class="text-[10px] leading-4" data-test="error-action">
+          <summary class="cursor-pointer font-bold select-none">ⓘ ماذا أفعل؟</summary>
+          <p class="mt-0.5 break-words">{{ m.action }}</p>
+          <p v-if="m.fbtrace_id" class="mt-0.5 opacity-70">للدعم: <bdi dir="ltr" class="font-mono">{{ m.fbtrace_id }}</bdi></p>
+        </details>
+      </div>
     </div>
   </div>
 </template>
@@ -35,6 +45,22 @@ import WaText from './WaText.vue';
 const props = defineProps({ m: { type: Object, required: true } });
 
 const SOURCES = { bot: 'بوت', staff: 'موظف', system: 'نظام', injected: 'محقونة' };
+
+// فئات MetaErrorCatalog (E18)
+const CATEGORY_LABELS = {
+  auth: 'اعتماد', integrity: 'تقييد', window: 'النافذة', throttle: 'خنق', transient: 'مؤقت',
+  quality: 'جودة', caller: 'الطلب', unknown: 'غير معروف',
+};
+
+const hasReason = computed(() => ['failed', 'blocked', 'unconfirmed'].includes(props.m.status) && !!props.m.error);
+
+// الاعتماد والتقييد أحمر، والنافذة كهرماني، والطلب رمادي. خلفية فاتحة ثابتة لتُقرأ فوق أي لون فقاعة
+const chip = computed(() => ({
+  auth: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
+  integrity: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
+  window: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200',
+  caller: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+}[props.m.category] || 'bg-white/80 text-gray-800 dark:bg-gray-900 dark:text-gray-200'));
 
 // الوارد أبيض، والبوت أخضر، والنظام رمادي، والموظف ذهبي، والمحجوبة حمراء (E15)
 const tone = computed(() => {

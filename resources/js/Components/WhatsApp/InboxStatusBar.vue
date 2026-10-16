@@ -25,6 +25,16 @@
       ⛔ القناة متوقفة من جهة ميتا — أبلغ المدير.
     </div>
 
+    <!-- ميتا ترفض الإرسال على مستوى القناة (E18): الوصف والإجراء للمدير، وسطر عام لغيره -->
+    <div v-if="status.meta_error" role="alert" data-test="meta-error-bar"
+         class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3.5 text-sm font-bold text-red-700 dark:text-red-300 break-words">
+      <template v-if="status.meta_error.generic">⛔ تعذّر الإرسال مؤقتاً — أُبلغ المسؤول.</template>
+      <template v-else>
+        ⛔ ميتا ترفض الإرسال: {{ status.meta_error.message }}<template v-if="status.meta_error.action"> — {{ status.meta_error.action }}</template>
+        <a href="/whatsapp/settings#ops" class="ms-1 underline">التفاصيل</a>
+      </template>
+    </div>
+
     <!-- وضع التحويل (E12): مزوّد الذكاء متعطّل -->
     <div v-if="llm.state && llm.state !== 'closed'" role="alert"
          class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm font-bold text-amber-800 dark:text-amber-300">

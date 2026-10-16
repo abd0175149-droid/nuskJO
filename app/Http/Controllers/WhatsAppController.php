@@ -41,6 +41,8 @@ class WhatsAppController extends Controller
                 // شريط عام بلا تفاصيل: التفاصيل في بطاقة صحة القناة لمن يملك whatsapp.settings
                 'meta_blocked' => data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED'
                     || data_get($s->wa_credentials_status, 'state') === 'critical',
+                // ميتا ترفض الإرسال على مستوى القناة (E18): الوصف والإجراء للمدير، وسطر عام لغيره
+                'meta_error' => $this->channelMetaError($s),
             ],
             // وضع التحويل (E12): الحالة والأوقات فقط، بلا سبب تقني
             'llm' => \App\Services\WhatsApp\LlmCircuitBreaker::publicStatus(),
@@ -70,6 +72,20 @@ class WhatsAppController extends Controller
                     ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()->all()
                 : [],
         ]);
+    }
+
+    /** آخر خطأ قناة من فئة auth أو integrity خلال 24 ساعة، مع meta_error_v2 وحده */
+    private function channelMetaError(WaBotSetting $s): ?array
+    {
+        $last = (array) ($s->wa_last_error ?? []);
+        if (!\App\Services\WhatsApp\MetaErrorCatalog::v2() || !in_array($last['category'] ?? null, ['auth', 'integrity'], true)
+            || !rescue(fn () => now()->diffInHours(\Illuminate\Support\Carbon::parse($last['at']), true) < 24, false, false)) {
+            return null;
+        }
+
+        return auth()->user()->can('whatsapp.settings')
+            ? ['message' => $last['message'] ?? null, 'action' => $last['action'] ?? null, 'code' => $last['error_code'] ?? null]
+            : ['generic' => true];
     }
 
     /** بطاقات أعلى الصندوق (E17.6): أعداد محصورة بالنطاق ومخزّنة 60 ثانية، بلا أسماء ولا أرقام ولا نصوص */
@@ -259,6 +275,29 @@ class WhatsAppController extends Controller
         }
         $user = auth()->user();
         $media = fn ($m) => \App\Services\WhatsApp\Media\MediaPresenter::forThread($m, $user);
+        // سبب الفشل وإجراؤه (E18، مع meta_error_v2): الرمز والفئة والإجراء للجميع، وfbtrace_id لصاحب whatsapp.settings
+        $errorCols = [];
+        if ($e11 && \App\Services\WhatsApp\MetaErrorCatalog::v2()) {
+            $errorCols = ['meta_code', 'fbtrace_id', 'error_code'];
+            if (\Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'error_category')) {
+                $errorCols[] = 'error_category';
+            }
+            array_push($columns, ...$errorCols);
+        }
+        $canSupport = $user->can('whatsapp.settings');
+        $failure = function ($m) use ($errorCols, $canSupport): array {
+            if ($errorCols === [] || $m->direction !== 'out' || !in_array($m->status, ['failed', 'unconfirmed', 'blocked'], true)) {
+                return [];
+            }
+            $meaning = \App\Services\WhatsApp\MetaErrorCatalog::forStored($m->meta_code, $m->error_code, $m->error_category ?? null);
+
+            return array_filter([
+                'error_code' => $m->error_code,
+                'category' => $meaning['category'] ?? null,
+                'action' => $meaning['action'] ?? null,
+                'fbtrace_id' => $canSupport ? $m->fbtrace_id : null,
+            ], fn ($v) => $v !== null);
+        };
 
         $hasMore = false;
         $gap = false;
@@ -276,8 +315,8 @@ class WhatsAppController extends Controller
                     ->where('id', '<=', $v['after'])
                     ->where('updated_at', '>=', $v['since'])
                     ->orderByDesc('id')->limit(100)
-                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : []))
-                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
+                    ->get(array_merge(['id', 'status', 'error_message', 'msg_type', 'direction', 'created_at'], $e14 ? ['media_mime', 'media_filename', 'media_status', 'media_size', 'media_id', 'media_error'] : [], $errorCols))
+                    ->map(fn ($m) => ['id' => $m->id, 'status' => $m->status, 'error' => $m->error_message] + $failure($m) + ($e14 && ($md = $media($m)) ? ['media' => $md] : []))
                     ->all();
             }
         } else {
@@ -308,7 +347,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ])->values();
+        ] + $failure($m))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 
