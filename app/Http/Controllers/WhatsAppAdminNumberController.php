@@ -23,7 +23,7 @@ class WhatsAppAdminNumberController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
-        $numbers = WaAdminNumber::with('user:id,name,is_active,role_id')->orderBy('name')->get();
+        $numbers = WaAdminNumber::with('user:id,name,is_active,role_id,two_factor_confirmed_at')->orderBy('name')->get();
 
         return Inertia::render('WhatsApp/AdminNumbers', [
             'title' => 'أرقام الإدارة',
@@ -34,6 +34,10 @@ class WhatsAppAdminNumberController extends Controller
                 'user_id' => $n->user_id,
                 'user_name' => $n->user?->name,
                 'user_inactive' => $n->user && !$n->user->is_active,
+                // E27: يشترط العامل الثاني لمستخدمه، والمساعد موقوف إن لم يفعّله (والعلم admin_number_mfa مفعّل)
+                'require_mfa' => (bool) $n->require_mfa,
+                'user_has_mfa' => (bool) $n->user?->hasSecondFactor(),
+                'mfa_blocked' => $n->mfaBlocked(),
                 'permissions' => $n->permissions ?? [],
                 // ما يدعمه دور المستخدم المرتبط من صلاحيات الرقم، وتحذيرات ما لا يدعمه (E15.5)
                 'effective' => $n->effectivePermissions(),
@@ -63,7 +67,9 @@ class WhatsAppAdminNumberController extends Controller
             'modes' => [
                 'readonly' => FeatureFlags::on('admin_readonly'),
                 'rbacEnforced' => FeatureFlags::on('admin_rbac_enforce'),
+                'mfaRequired' => FeatureFlags::on('admin_number_mfa'),
             ],
+            'isAdmin' => auth()->user()->isAdmin(),
         ]);
     }
 
@@ -75,7 +81,7 @@ class WhatsAppAdminNumberController extends Controller
         $data['created_by'] = auth()->id();
         $n = WaAdminNumber::create($data);
 
-        AuditLog::log(\App\Enums\AuditAction::Create, 'wa_admin_number', $n->id, $n->name, ['permissions' => $n->permissions]);
+        AuditLog::log(\App\Enums\AuditAction::Create, 'wa_admin_number', $n->id, $n->name, ['permissions' => $n->permissions, 'require_mfa' => (bool) $n->require_mfa]);
 
         return back()->with('success', "أُضيف رقم الإدارة «{$n->name}»");
     }
@@ -84,11 +90,11 @@ class WhatsAppAdminNumberController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
-        $before = $adminNumber->only(['phone', 'name', 'permissions', 'is_active']);
-        $adminNumber->update($this->validated($request, $adminNumber->id));
+        $before = $adminNumber->only(['phone', 'name', 'permissions', 'is_active', 'require_mfa']);
+        $adminNumber->update($this->validated($request, $adminNumber));
 
         AuditLog::log(\App\Enums\AuditAction::Update, 'wa_admin_number', $adminNumber->id, $adminNumber->name, [
-            'before' => $before, 'after' => $adminNumber->only(['phone', 'name', 'permissions', 'is_active']),
+            'before' => $before, 'after' => $adminNumber->only(['phone', 'name', 'permissions', 'is_active', 'require_mfa']),
         ]);
 
         return back()->with('success', "حُفظ رقم الإدارة «{$adminNumber->name}»");
@@ -104,8 +110,9 @@ class WhatsAppAdminNumberController extends Controller
         return back()->with('success', 'حُذف رقم الإدارة — صار صاحبه يُخدم كأي عميل');
     }
 
-    private function validated(Request $request, ?int $ignoreId = null): array
+    private function validated(Request $request, ?WaAdminNumber $existing = null): array
     {
+        $ignoreId = $existing?->id;
         $data = $request->validate([
             'phone' => 'required|string|max:32',
             'name' => 'required|string|max:100',
@@ -114,6 +121,7 @@ class WhatsAppAdminNumberController extends Controller
             'permissions.*' => ['string', Rule::in(array_keys(AdminTools::CATALOG))],
             'is_active' => 'boolean',
             'notes' => 'nullable|string|max:1000',
+            'require_mfa' => 'sometimes|boolean',
         ], [
             'phone.required' => 'رقم الهاتف مطلوب.',
             'name.required' => 'اسم صاحب الرقم مطلوب.',
@@ -132,6 +140,21 @@ class WhatsAppAdminNumberController extends Controller
         $data['phone'] = $canonical;
         $data['permissions'] = array_values(array_unique($data['permissions']));
         $data['is_active'] = $request->boolean('is_active', true);
+
+        // E27 (العلم admin_number_mfa): الرقم الذي يعدّل يحتاج حساباً مرتبطاً، ويشترط عامله الثاني تلقائياً.
+        // لا يُطفأ الشرط لرقم يعدّل إلا المدير (ويُدقَّق في صف الحفظ). والعلم مطفأ: الخانة تُحفظ كما هي ولا تُفرض
+        $writes = (bool) array_filter($data['permissions'], fn ($p) => AdminTools::CATALOG[$p]['write'] ?? false);
+        $requested = $request->has('require_mfa') ? $request->boolean('require_mfa') : (bool) ($existing?->require_mfa ?? false);
+        if (FeatureFlags::on('admin_number_mfa') && $writes) {
+            if (empty($data['user_id'])) {
+                back()->withErrors(['user_id' => 'رقم فيه صلاحيات تعديل يحتاج حساب صاحبه في النظام (لشرط التحقق بخطوتين وصلاحيات دوره).'])->throwResponse();
+            }
+            $requested = $requested || !auth()->user()->isAdmin();
+            if (!$request->has('require_mfa') && !$existing) {
+                $requested = true;
+            }
+        }
+        $data['require_mfa'] = $requested;
 
         return $data;
     }

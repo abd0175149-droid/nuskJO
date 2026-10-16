@@ -33,6 +33,18 @@ enum AuditAction: string
     case AuthzDenied = 'authz.denied';
     case AuthzWouldDeny = 'authz.would_deny';
     case AuthzUnmapped = 'authz.unmapped';
+    // العامل الثاني والتحقق المعزّز (E27): لا سر ولا رمز في changes أبداً
+    case AuthMfaEnrolled = 'auth.mfa_enrolled';
+    case AuthMfaDisabled = 'auth.mfa_disabled';
+    case AuthMfaPassed = 'auth.mfa_passed';
+    case AuthMfaFailed = 'auth.mfa_failed';
+    case AuthMfaRecoveryUsed = 'auth.mfa_recovery_used';
+    case AuthMfaCodesRegenerated = 'auth.mfa_codes_regenerated';
+    case AuthMfaReset = 'auth.mfa_reset';
+    case AuthMfaLockout = 'auth.mfa_lockout';
+    case AuthMfaBypassed = 'auth.mfa_bypassed';
+    case AuthStepUp = 'auth.step_up';
+    case AuthStepUpFailed = 'auth.step_up_failed';
 
     // ===== المستخدمون والأدوار والإعدادات =====
     case UserCreate = 'user.create';
@@ -104,6 +116,7 @@ enum AuditAction: string
     case WaQuickReplyDelete = 'wa.quick_reply_delete';
     case WaQuickReplyApprove = 'wa.quick_reply_approve';
     case WaLastErrorCleared = 'wa.last_error_clear';
+    case WaAdminMfaBlocked = 'wa.admin_mfa_blocked';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -145,7 +158,9 @@ enum AuditAction: string
             self::WaSecretSet, self::WaSecretClear, self::WaVerifyRotate, self::WaFlagToggle,
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
-            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay => AuditSeverity::Warn,
+            self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
+            self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed,
+            self::WaAdminMfaBlocked => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -158,11 +173,14 @@ enum AuditAction: string
             self::Reverse, self::PeriodClose, self::PeriodOpen, self::YearClose, self::LineRelocate,
             self::OfferPriceChange, self::QuotePrice, self::ExchangeRateSet => 'money',
             self::AuthLogin, self::AuthLogout, self::AuthLoginFailed, self::AccessDenied,
-            self::WaConversationView, self::WaWebhookBadSignature, self::WaWebhookVerifyFailed => 'noise',
+            self::WaConversationView, self::WaWebhookBadSignature, self::WaWebhookVerifyFailed,
+            self::AuthMfaPassed, self::AuthMfaFailed, self::AuthStepUp, self::AuthStepUpFailed => 'noise',
             self::AuthLockout, self::AuthInactiveBlocked, self::AuthzDenied, self::AuthzWouldDeny, self::AuthzUnmapped,
             self::UserCreate, self::UserUpdate, self::UserRoleChange, self::UserPasswordReset, self::UserPasswordChange,
             self::UserActivate, self::UserDeactivate, self::UserDelete, self::UserRestoreAdmin,
-            self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient => 'access',
+            self::RoleCreate, self::RoleUpdate, self::RoleDelete, self::WaLinkClient, self::WaUnlinkClient,
+            self::AuthMfaEnrolled, self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaCodesRegenerated,
+            self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed => 'access',
             self::SettingsUpdate, self::SettingsDroppedKeys, self::BackupRestoreAck, self::OfferBotVisibility,
             self::WaQuickReplyCreate, self::WaQuickReplyUpdate, self::WaQuickReplyDelete, self::WaQuickReplyApprove => 'config',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
@@ -198,6 +216,17 @@ enum AuditAction: string
             self::AuthzDenied => 'رفض صلاحية',
             self::AuthzWouldDeny => 'رفض صلاحية (تسجيل فقط)',
             self::AuthzUnmapped => 'مسار بلا صلاحية',
+            self::AuthMfaEnrolled => 'تفعيل التحقق بخطوتين',
+            self::AuthMfaDisabled => 'تعطيل التحقق بخطوتين',
+            self::AuthMfaPassed => 'اجتياز التحقق بخطوتين',
+            self::AuthMfaFailed => 'رمز تحقق خاطئ',
+            self::AuthMfaRecoveryUsed => 'استعمال رمز استرداد',
+            self::AuthMfaCodesRegenerated => 'تجديد رموز الاسترداد',
+            self::AuthMfaReset => 'إعادة تعيين التحقق بخطوتين',
+            self::AuthMfaLockout => 'قفل التحقق بخطوتين (محاولات كثيرة)',
+            self::AuthMfaBypassed => 'دخول بلا تحدٍّ (منفذ الطوارئ مفعّل)',
+            self::AuthStepUp => 'تأكيد الهوية قبل فعل حساس',
+            self::AuthStepUpFailed => 'فشل تأكيد الهوية',
             self::UserCreate => 'إنشاء مستخدم',
             self::UserUpdate => 'تعديل مستخدم',
             self::UserRoleChange => 'تغيير دور مستخدم',
@@ -263,6 +292,7 @@ enum AuditAction: string
             self::WaQuickReplyDelete => 'حذف رد جاهز',
             self::WaQuickReplyApprove => 'اعتماد رد جاهز يذكر بيانات دفع',
             self::WaLastErrorCleared => 'تصفير آخر خطأ من ميتا («تمّ الحل»)',
+            self::WaAdminMfaBlocked => 'المساعد الإداري موقوف لرقم مستخدمه بلا تحقق بخطوتين',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -288,7 +318,9 @@ enum AuditAction: string
     {
         return $this->category() === 'money' || in_array($this, [self::AuthLockout, self::WaSuspendAuto, self::WaMediaView, self::WaMediaDownload, self::WaMediaRefetch,
             // إعادة إشعار بعينه بيد مطوّر (نادرة، وقد تتجاوز الميزانية): أثرها دائم
-            self::WaWebhookReplay], true);
+            self::WaWebhookReplay,
+            // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
+            self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked], true);
     }
 
     public function isNoise(): bool

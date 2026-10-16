@@ -24,7 +24,7 @@ Route::view('/data-deletion', 'legal.data-deletion')->name('legal.data-deletion'
 // ويبهوك واتساب في routes/webhooks.php، خارج مجموعة web (بلا جلسة ولا CSRF ولا Inertia)
 
 // Authenticated Routes
-Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(function () {
+Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->group(function () {
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -344,4 +344,28 @@ Route::middleware(['auth', 'auth.session', 'active', 'authz.fence'])->group(func
     Route::get('hr/reports/attendance', [\App\Http\Controllers\HRReportController::class, 'attendance'])->name('hr.reports.attendance')->middleware('perm:hr_reports.view');
     Route::get('hr/reports/payroll', [\App\Http\Controllers\HRReportController::class, 'payrollSummary'])->name('hr.reports.payroll')->middleware('perm:hr_reports.view');
     Route::get('hr/reports/employee-statement/{employee}', [\App\Http\Controllers\HRReportController::class, 'employeeStatement'])->name('hr.reports.employee-statement')->middleware('perm:hr_reports.view');
+
+    // ===== العامل الثاني والتحقق المعزّز (E27) =====
+    // التحدّي وتأكيد الهوية وصفحة الأمان: للمستخدم نفسه (authz.allowlist)، والتحدّي مستثنى بالاسم من الوسيط mfa
+    Route::get('two-factor/challenge', [\App\Http\Controllers\Auth\TwoFactorChallengeController::class, 'show'])->name('two-factor.challenge');
+    Route::post('two-factor/challenge', [\App\Http\Controllers\Auth\TwoFactorChallengeController::class, 'verify'])->name('two-factor.verify')->middleware('throttle:mfa');
+    Route::get('security/confirm', [\App\Http\Controllers\Auth\ConfirmStepUpController::class, 'show'])->name('security.confirm');
+    Route::post('security/confirm', [\App\Http\Controllers\Auth\ConfirmStepUpController::class, 'store'])->name('security.confirm.store')->middleware('throttle:mfa');
+    Route::get('profile/security', [\App\Http\Controllers\ProfileSecurityController::class, 'show'])->name('profile.security');
+    Route::post('profile/two-factor', [\App\Http\Controllers\ProfileSecurityController::class, 'enable'])->name('profile.two-factor.enable')->middleware(['stepup:always', 'throttle:6,1']);
+    Route::post('profile/two-factor/confirm', [\App\Http\Controllers\ProfileSecurityController::class, 'confirm'])->name('profile.two-factor.confirm')->middleware('throttle:mfa');
+    Route::post('profile/two-factor/recovery-codes', [\App\Http\Controllers\ProfileSecurityController::class, 'regenerateCodes'])->name('profile.two-factor.recovery-codes')->middleware(['stepup:always', 'throttle:6,1']);
+    Route::delete('profile/two-factor', [\App\Http\Controllers\ProfileSecurityController::class, 'disable'])->name('profile.two-factor.disable')->middleware('stepup:always');
+    // إعادة تعيين عامل موظف فقد هاتفه: المدير وحده بسبب (والطوارئ الكاملة: security:mfa-reset من الخادم)
+    Route::post('users/{user}/two-factor/reset', [\App\Http\Controllers\UserController::class, 'resetTwoFactor'])->name('users.two-factor.reset')->middleware(['perm:admin', 'stepup:always']);
 });
+
+// التحقق المعزّز (E27): الأفعال الحساسة في config('security.stepup.routes') بأسمائها (أو «الطريقة المسار» لمسار بلا اسم)،
+// ويُلحق وسيطها بعد صلاحية المسار، فلا يُسأل عن هويته من لا يملك الفعل أصلاً. يعمل بالعلم step_up
+foreach (Route::getRoutes()->getRoutes() as $route) {
+    $methods = array_values(array_diff($route->methods(), ['HEAD']));
+    $key = $route->getName() ?? ($methods[0] ?? '').' '.$route->uri();
+    if (in_array($key, config('security.stepup.routes', []), true)) {
+        $route->middleware('stepup');
+    }
+}

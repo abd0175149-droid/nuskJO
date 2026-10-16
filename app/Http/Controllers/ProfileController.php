@@ -11,8 +11,15 @@ class ProfileController extends Controller
 {
     public function index()
     {
+        $user = auth()->user();
+
         return Inertia::render('Profile', [
             'title' => 'إعدادات الحساب',
+            // رابط «الأمان والتحقق بخطوتين» (E27): حين يُفتح التسجيل، أو لمن سجّل قبل إغلاقه
+            'security' => [
+                'available' => \App\Services\Security\Mfa::enrollmentOpen() || $user->hasTwoFactor(),
+                'enabled' => $user->hasTwoFactor(),
+            ],
         ]);
     }
 

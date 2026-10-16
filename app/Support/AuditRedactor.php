@@ -9,7 +9,8 @@ namespace App\Support;
  */
 final class AuditRedactor
 {
-    private const KEY = '/(pass(word)?|token|secret|api_?key|passport|national_?id|^body$|caption|transcript|^phone$|_phone$|wa_id|recipient_id|^text$)/i';
+    // E27: رموز التحقق بخطوتين ورموز الاسترداد (احتياط؛ لا تُمرَّر أصلاً)
+    private const KEY = '/(pass(word)?|token|secret|api_?key|passport|national_?id|^body$|caption|transcript|^phone$|_phone$|wa_id|recipient_id|^text$|recovery_code|^code$|^otp$|^totp$|^pin$)/i';
 
     public static function clean(?array $changes): ?array
     {

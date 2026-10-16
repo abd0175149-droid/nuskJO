@@ -26,5 +26,10 @@ return [
         'send_ledger' => env('WA_FEATURE_SEND_LEDGER'),
         'send_retry' => env('WA_FEATURE_SEND_RETRY'),
         'outbound_policy_enforce' => env('WA_FEATURE_OUTBOUND_POLICY_ENFORCE'),
+        // E27: العامل الثاني والتحقق المعزّز وأرقام الإدارة وتقرير الخمول
+        'staff_mfa' => env('WA_FEATURE_STAFF_MFA'),
+        'step_up' => env('WA_FEATURE_STEP_UP'),
+        'admin_number_mfa' => env('WA_FEATURE_ADMIN_NUMBER_MFA'),
+        'idle_report' => env('WA_FEATURE_IDLE_REPORT'),
     ],
 ];

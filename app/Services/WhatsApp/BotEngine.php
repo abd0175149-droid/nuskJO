@@ -119,8 +119,13 @@ TXT;
             return self::skip('merged');
         }
 
-        // أرقام الإدارة يخدمها المساعد الإداري بأدواتها المسموحة وحدها — حتى لو كان بوت العملاء موقوفاً
-        if ($admin = WaAdminNumber::forPhone($conv->phone)) {
+        // أرقام الإدارة يخدمها المساعد الإداري بأدواتها المسموحة وحدها — حتى لو كان بوت العملاء موقوفاً.
+        // رقم يشترط العامل الثاني ومستخدمه لم يفعّله (E27): لا مساعد ولا بوت عملاء، بل رسالة نظام مرة في اليوم
+        $resolved = WaAdminNumber::resolveForPhone($conv->phone);
+        if ($resolved['blocked'] === 'mfa') {
+            return self::adminMfaBlocked($conv, $s, $resolved['number'], $run);
+        }
+        if ($admin = $resolved['number']) {
             return self::adminReply($conv, $s, $admin, $run);
         }
 
@@ -628,6 +633,34 @@ TXT;
 
             return ['sent' => true, 'reason' => 'admin-fail'];
         }
+    }
+
+    /**
+     * رقم إدارة يشترط التحقق بخطوتين لمستخدمه المرتبط، ولم يفعّله (E27). الموظف ليس عميلاً، فلا يُخدم ببوت العملاء
+     * ولا أدواته. رسالة ثابتة يبنيها الكود مرة في اليوم للمحادثة (داخل النافذة)، وصف تدقيق وإشعار للمدراء مرة في اليوم
+     * بلا نص الرسالة. الوارد يُعلَّم مُعالَجاً فلا يتراكم.
+     */
+    private static function adminMfaBlocked(WaConversation $conv, WaBotSetting $s, WaAdminNumber $admin, ReplyRun $run): array
+    {
+        if (!self::hasPendingInbound($conv, $s)) {
+            return self::skip('لا وارد من الموظف بعد آخر رد');
+        }
+        ReplyState::advanceToNewest($conv);
+        $day = now()->format('Ymd');
+        if (!Cache::add("wa:admin-mfa:{$conv->id}:{$day}", 1, now()->addDay())) {
+            return self::skip('admin_mfa_blocked');
+        }
+
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaAdminMfaBlocked, 'wa_admin_number', $admin->id, $admin->name, ['conversation_id' => $conv->id]);
+        if (Cache::add("wa:admin-mfa:notify:{$admin->id}:{$day}", 1, now()->addDay())) {
+            WhatsAppInbox::notifyAdmins('🔐 المساعد الإداري موقوف لرقم', "رقم الإدارة «{$admin->name}» يشترط التحقق بخطوتين، وحساب صاحبه لم يفعّله بعد.", '/whatsapp/admin-numbers');
+        }
+        if (!$conv->isWindowOpen()) {
+            return self::skip('admin_mfa_blocked');
+        }
+        $res = WhatsAppChannel::sendText($conv, 'المساعد الإداري موقوف لهذا الرقم حتى يفعّل صاحبه التحقق بخطوتين في نُسك.', 'system', sendKey: SendKey::admin($conv, $run->uptoId, 'mfa'));
+
+        return ['sent' => (bool) $res['ok'], 'reason' => 'admin_mfa_blocked'];
     }
 
     /** المساعد الإداري أثناء العطل: نص ثابت واحد لكل حادثة ومحادثة، بلا «تدخّل» (محادثة موظف لا عميل) */

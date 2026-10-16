@@ -31,6 +31,11 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E27: العامل الثاني للموظفين. admin_only: لا يبدّله من الإعدادات إلا المدير (إطفاؤه يُضعف حماية الجميع)
+        'staff_mfa' => ['label' => 'التحقق بخطوتين للموظفين: صفحة «الأمان» للتسجيل بتطبيق مصادقة (من سجّل يُتحدّى عند الدخول دائماً)', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
+        'step_up' => ['label' => 'تأكيد الهوية قبل الأفعال الحساسة (اعتماد، إعدادات، أسرار، مستخدمون…) مرة كل ربع ساعة', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
+        'admin_number_mfa' => ['label' => 'أرقام الإدارة التي تعدّل: حساب مرتبط إلزامي، والمساعد موقوف حتى يفعّل صاحبه التحقق بخطوتين', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
+        'idle_report' => ['label' => 'تقرير أسبوعي للمدراء بالحسابات وأرقام الإدارة الخاملة (تنبيه بلا تعطيل)', 'capability' => 'C162', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */
@@ -42,7 +47,7 @@ final class FeatureFlags
         self::$fake = $definitions;
     }
 
-    /** @return array<string, array{label: string, capability: string, available: bool}> */
+    /** @return array<string, array{label: string, capability: string, available: bool, admin_only?: bool}> */
     public static function definitions(): array
     {
         return self::$fake ?? self::DEFINITIONS;

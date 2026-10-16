@@ -20,6 +20,8 @@ final class ConversationCacheKeys
         'wa:rate:{id}:%', 'wa:rate:admin:{id}:%', 'wa:winrem:{id}:%', 'wa:recon:{id}:%', 'wa:outage-notice:{id}:%',
         'wa:llm:outage:%:{id}', 'wa:llm:admin-outage:%:{id}', 'wa:identity:conflict:{id}:%', 'wa:identity:conflict:%:{id}',
         'audit:view:%:{id}',
+        // E27: رسالة «المساعد موقوف حتى يفعّل التحقق بخطوتين» مرة في اليوم للمحادثة
+        'wa:admin-mfa:{id}:%',
     ];
 
     /** @return int عدد المفاتيح المحذوفة من كاش القاعدة (المفاتيح الدقيقة تُنسى في أي مخزن) */

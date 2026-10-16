@@ -90,6 +90,12 @@ return [
     'SettingController@savePrintLayout' => 'settings.update',
     'BackupController@runNow' => 'none: backup_runs.triggered_by يحفظ من شغّلها ومتى',
     'BackupController@acknowledgeRestore' => 'backup.restore_ack',
+    // E27: العامل الثاني للمستخدم نفسه، وإعادة تعيينه من المدير
+    'ProfileSecurityController@enable' => 'none: سر معلّق في الجلسة وحدها؛ التأكيد يُدقَّق',
+    'ProfileSecurityController@confirm' => 'auth.mfa_enrolled',
+    'ProfileSecurityController@regenerateCodes' => 'auth.mfa_codes_regenerated',
+    'ProfileSecurityController@disable' => 'auth.mfa_disabled',
+    'UserController@resetTwoFactor' => 'auth.mfa_reset',
 
     // ===== الواتساب =====
     'WhatsAppSettingsController@update' => 'wa.settings_update',
@@ -182,6 +188,8 @@ return [
     // ===== الدخول والإطار =====
     'Auth\LoginController@login' => 'auth.login',
     'Auth\LoginController@logout' => 'auth.logout',
+    'Auth\TwoFactorChallengeController@verify' => 'auth.mfa_passed',
+    'Auth\ConfirmStepUpController@store' => 'auth.step_up',
     'Illuminate\Broadcasting\BroadcastController@authenticate' => 'none: تفويض قناة بث للقراءة',
     'PUT storage/{path}' => 'none: رفع مؤقت موقَّع من الإطار للقرص المحلي',
 ];
