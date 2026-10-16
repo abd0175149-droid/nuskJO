@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <template #header>المواقع وبطاقات الاتصال المعتمدة</template>
+    <template #header>المواقع والبطاقات</template>
 
     <div class="space-y-6 pb-4">
       <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300">✅ {{ $page.props.flash.success }}</div>

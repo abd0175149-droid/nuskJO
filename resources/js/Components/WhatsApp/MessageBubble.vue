@@ -6,10 +6,10 @@
     </div>
     <div v-else class="group relative max-w-[85%] sm:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-shadow" :class="[tone, flash ? FLASH : '']"
          v-on="actionable ? press.handlers : {}" :data-actionable="actionable ? '' : null">
-      <!-- إجراءات الرسالة (E33): ⋯ بالمرور على سطح المكتب، وضغط مطوّل 500ms على الجوال -->
+      <!-- إجراءات الرسالة (E33): ⋯ بالمرور أو التركيز من عرض sm فما فوق، وضغط مطوّل 500ms على الجوال -->
       <button v-if="actionable" type="button" data-test="message-actions" aria-label="إجراءات الرسالة" title="رد أو تفاعل أو تصحيح"
               @click="$emit('actions', m)"
-              class="absolute -top-2 end-1 hidden [@media(hover:hover)]:flex items-center justify-center w-7 h-7 rounded-full text-xs bg-white text-gray-700 dark:bg-gray-800 dark:text-gray-100 shadow border border-black/10 dark:border-white/10 opacity-0 group-hover:opacity-100 focus:opacity-100">⋯</button>
+              class="absolute -top-2 end-1 hidden sm:flex items-center justify-center w-7 h-7 rounded-full text-xs bg-white text-gray-700 dark:bg-gray-800 dark:text-gray-100 shadow border border-black/10 dark:border-white/10 opacity-0 group-hover:opacity-100 focus:opacity-100">⋯</button>
       <p v-if="m.sender" dir="auto" class="text-[10px] font-bold opacity-80 mb-0.5 break-words">👤 {{ m.sender }}</p>
       <!-- الاقتباس (E11، ويكمله E33) -->
       <slot name="quote">
