@@ -61,6 +61,11 @@ final class FeatureFlags
         'step_up' => ['label' => 'تأكيد الهوية قبل الأفعال الحساسة (اعتماد، إعدادات، أسرار، مستخدمون…) مرة كل ربع ساعة', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'admin_number_mfa' => ['label' => 'أرقام الإدارة التي تعدّل: حساب مرتبط إلزامي، والمساعد موقوف حتى يفعّل صاحبه التحقق بخطوتين', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'idle_report' => ['label' => 'تقرير أسبوعي للمدراء بالحسابات وأرقام الإدارة الخاملة (تنبيه بلا تعطيل)', 'capability' => 'C162', 'available' => true],
+        // E33: الاقتباس والتصحيح، وتفاعل الموظف، ومعاينة الرابط، والموقع والبطاقات. عرض التفاعل الوارد ونص unsupported بلا علم
+        'wa_reply_quote' => ['label' => 'الرد المقتبس على رسالة بعينها ورسالة التصحيح المقتبسة (لا يتغيّر نص الأصل)', 'capability' => 'C004', 'available' => true],
+        'wa_staff_reactions' => ['label' => 'تفاعل الموظف بإيموجي على رسالة العميل (إقرار لا يُعدّ رداً ولا يوقف البوت)', 'capability' => 'C008', 'available' => true],
+        'wa_link_preview' => ['label' => 'معاينة الرابط في رد الموظف بخانة صريحة، للروابط العامة وحدها', 'capability' => 'C002', 'available' => true],
+        'wa_share_cards' => ['label' => 'إرسال دبوس الموقع وبطاقات الاتصال من القوائم المعتمدة', 'capability' => 'C006', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

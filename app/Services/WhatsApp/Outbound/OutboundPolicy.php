@@ -33,6 +33,9 @@ final class OutboundPolicy
         'trace' => 'أثر خطأ تقني',
         'opted_out' => 'العميل أوقف الرسائل',
         'error' => 'تعذّر فحص الرسالة',
+        // E33: الدبوس والبطاقة من الجدولين المعتمدين وحدهما
+        'place_mismatch' => 'موقع غير معتمد',
+        'card_mismatch' => 'بطاقة اتصال غير معتمدة',
     ];
 
     public static function enforced(): bool
@@ -64,6 +67,45 @@ final class OutboundPolicy
             // مغلق عند الفشل للآلي (حين يُفرض)، ومفتوح للموظف
             return $source === 'staff' ? new Decision : new Decision(reasons: ['error']);
         }
+    }
+
+    /**
+     * الدبوس والبطاقة (E33): رسالة location مسموحة فقط إن أشار _meta.place_id إلى موقع فعّال بإحداثيات الحمولة نفسها
+     * حرفياً، ورسالة contacts فقط إن طابق كل رقم فيها (phone وwa_id) بطاقة فعّالة من _meta.card_ids. فلا يمر موقع أو رقم
+     * يختلقه النموذج أو كود آخر. لكل مصدر، وأياً كان outbound_policy_enforce. null: مسموح أو ليست من النوعين.
+     */
+    public static function structured(array $payload, array $meta): ?string
+    {
+        $type = $payload['type'] ?? null;
+        if ($type === 'location') {
+            $place = isset($meta['place_id']) ? \App\Models\WaPlace::active()->find((int) $meta['place_id']) : null;
+            $loc = (array) ($payload['location'] ?? []);
+
+            return $place && (string) ($loc['latitude'] ?? '') === (string) $place->latitude && (string) ($loc['longitude'] ?? '') === (string) $place->longitude
+                ? null : 'place_mismatch';
+        }
+        if ($type === 'contacts') {
+            $ids = array_map('intval', (array) ($meta['card_ids'] ?? []));
+            $contacts = (array) ($payload['contacts'] ?? []);
+            if ($ids === [] || $contacts === [] || count($contacts) > \App\Models\WaContactCard::MAX_PER_MESSAGE) {
+                return 'card_mismatch';
+            }
+            $cards = \App\Models\WaContactCard::active()->whereIn('id', $ids)->get();
+            $phones = $cards->pluck('phone_e164')->map(fn ($p) => (string) $p)->all();
+            $waIds = $cards->pluck('wa_id')->filter()->map(fn ($p) => (string) $p)->all();
+            foreach ($contacts as $c) {
+                foreach ((array) data_get($c, 'phones', []) as $ph) {
+                    if (!in_array((string) data_get($ph, 'phone'), $phones, true)
+                        || (data_get($ph, 'wa_id') !== null && !in_array((string) data_get($ph, 'wa_id'), $waIds, true))) {
+                        return 'card_mismatch';
+                    }
+                }
+            }
+
+            return $cards->count() === count(array_unique($ids)) ? null : 'card_mismatch';
+        }
+
+        return null;
     }
 
     /** نص الأسباب للموظف: «رقم بطاقة، رقم جواز» */

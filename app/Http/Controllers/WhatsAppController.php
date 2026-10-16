@@ -73,6 +73,11 @@ class WhatsAppController extends Controller
                 'thread_pins' => \App\Services\WhatsApp\ThreadPins::enabled(),
                 'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
             ],
+            // E33: الاقتباس والتفاعل والمعاينة والمشاركة، وقائمة تفاعل الموظف، والمواقع والبطاقات المعتمدة لمنتقيي المنشئ (الأسماء وحدها، والخادم يعيد الفحص)
+            'richFeatures' => \App\Services\WhatsApp\RichThread::features(),
+            'staffReactions' => (array) config('whatsapp.staff_reactions', []),
+            'shareItems' => \App\Support\FeatureFlags::on('wa_share_cards') && auth()->user()->can('whatsapp.reply')
+                ? \App\Http\Controllers\WhatsAppSharedItemsController::pickerItems() : null,
             'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
             // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص
             'messageSearch' => \App\Services\WhatsApp\Search\MessageSearch::enabledFor(auth()->user()),
@@ -297,7 +302,8 @@ class WhatsAppController extends Controller
         };
         $syncedAt = now()->subSeconds(5)->format('Y-m-d H:i:s');   // تداخل مقصود؛ تطبيق التحديثات بالمعرّف idempotent
         $limit = min((int) ($v['limit'] ?? 100), 100);
-        $columns = ['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'staff_id', 'created_at'];
+        // wamid وpayload للحقول الغنية (E33) في الخادم وحده، ولا يخرجان للواجهة
+        $columns = ['id', 'direction', 'source', 'msg_type', 'body', 'status', 'error_message', 'staff_id', 'created_at', 'wamid', 'payload'];
         // الاقتباس والوسائط (E11): بعد الهجرة 000012 وحدها
         $e11 = \Illuminate\Support\Facades\Schema::hasColumns('wa_messages', ['reply_to_wamid', 'media_mime', 'media_filename']);
         if ($e11) {
@@ -426,6 +432,9 @@ class WhatsAppController extends Controller
         $quoted = $e11 && ($ids = $rows->pluck('reply_to_wamid')->filter()->unique()->values()->all())
             ? $conversation->messages()->whereIn('wamid', $ids)->pluck('body', 'wamid')->map(fn ($b) => mb_substr(trim((string) $b), 0, 80))->all()
             : [];
+        // E33: الاقتباس بمعرّفنا، والتفاعلات على أهدافها (صف التفاعل الذي هدفه في الصفحة لا يُعاد فقاعة)، والتصحيح والموقع والبطاقات
+        $rich = \App\Services\WhatsApp\RichThread::prepare($conversation, $rows, $user);
+        $rows = $rows->filter(fn ($m) => $rich->keep($m))->values();
 
         // staff_id كان يُحفظ ولا يُرسل للواجهة، فلم يكن يظهر من أرسل الرسالة
         $msgs = $rows->map(fn ($m) => [
@@ -433,7 +442,7 @@ class WhatsAppController extends Controller
             'direction' => $m->direction,
             'source' => $m->source,
             'type' => $m->msg_type,
-            'body' => $m->body,
+            'body' => $rich->body($m),
             'status' => $m->status,
             'error' => $m->error_message,
             'sender' => $m->source === 'staff' ? ($m->staff?->name ?: 'موظف') : null,
@@ -442,7 +451,7 @@ class WhatsAppController extends Controller
             'reply_to' => $m->reply_to_wamid ? ($quoted[$m->reply_to_wamid] ?? null) : null,
             // حالة المرفق وما يُسمح به (E14). لا مسار ولا رابط ولا معرّف ميتا
             'media' => $e14 ? $media($m) : ($m->media_mime ? ['mime' => $m->media_mime, 'name' => $m->media_filename, 'status' => null] : null),
-        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []))->values();
+        ] + $failure($m) + $ledgerFields($m) + $delivery($m) + ($translate ? \App\Services\WhatsApp\MessageTranslator::threadFields($m) : []) + $rich->fields($m))->values();
 
         $first = !isset($v['before']) && !isset($v['after']);
 
@@ -483,6 +492,8 @@ class WhatsAppController extends Controller
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
                 'assigned_to' => $conversation->assigned_to,
+                // E33: الاقتباس والتفاعل والمعاينة والمشاركة
+                'features' => \App\Services\WhatsApp\RichThread::features(),
             ] + (\App\Services\WhatsApp\LabelService::enabled() ? ['labels' => \App\Services\WhatsApp\LabelService::chipsFor([$conversation->id])[$conversation->id] ?? []] : [])
               + (\App\Services\WhatsApp\ReadReceipts::available() ? [
                 // الشفافية (E35): ما أُبلغ العميل بقراءته (👁 على الوارد حتى هذا المعرّف)، والوضع، وتنبيه الموكَّل في on_open
@@ -644,7 +655,28 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.reply'), 403);
 
-        $data = $request->validate(['body' => 'required|string|max:4000', 'ack_warnings' => 'sometimes|boolean']);
+        $data = $request->validate(['body' => 'required|string|max:4000', 'ack_warnings' => 'sometimes|boolean',
+            // E33: رسالة بعينها من المحادثة نفسها (معرّفنا لا wamid)، ومعاينة الرابط بخانة صريحة
+            'reply_to_id' => 'nullable|integer|min:1', 'preview_url' => 'sometimes|boolean']);
+
+        $opts = [];
+        if (!empty($data['reply_to_id'])) {
+            if (!\App\Support\FeatureFlags::on('wa_reply_quote')) {
+                return response()->json(['ok' => false, 'code' => 'FEATURE_OFF', 'error' => 'الرد المقتبس غير مفعّل.'], 422);
+            }
+            $target = $conversation->messages()->whereKey($data['reply_to_id'])->first();
+            if (!WhatsAppChannel::canQuote($conversation, $target)) {
+                return response()->json(['ok' => false, 'code' => 'BAD_REPLY_TARGET', 'error' => 'لا يمكن الاقتباس من هذه الرسالة.'], 422);
+            }
+            $opts['reply_to'] = $target;
+        }
+        $previewRefused = null;
+        if ($request->boolean('preview_url') && \App\Support\FeatureFlags::on('wa_link_preview')) {
+            // القرار النهائي في dispatch؛ هنا السبب للواجهة إن رُفضت المعاينة (تُرسل الرسالة بلا معاينة)
+            $check = \App\Services\WhatsApp\LinkPreviewPolicy::check($data['body']);
+            $opts['preview_url'] = $check['allowed'];
+            $previewRefused = $check['allowed'] ? null : $check['reason'];
+        }
 
         // متغير رد جاهز لم يُملأ (E17.7): لا يصل {{…}} إلى عميل أبداً، ولو تجاوز أحد الواجهة. يعمل بلا علم
         if ($unfilled = \App\Services\WhatsApp\QuickReplyText::unfilled($data['body'])) {
@@ -662,19 +694,19 @@ class WhatsAppController extends Controller
             ], 409);
         }
 
-        $res = WhatsAppChannel::sendText($conversation, $data['body'], 'staff', auth()->id(), sendKey: self::staffSendKey($request));
+        $res = WhatsAppChannel::sendText($conversation, $data['body'], 'staff', auth()->id(), sendKey: self::staffSendKey($request), opts: $opts);
         if ($warnings && $res['ok'] && empty($res['replayed'])) {
             \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaPolicyOverride, 'wa_conversation', $conversation->id, null, ['reasons' => $warnings]);
         }
 
-        return response()->json($res, self::sendStatus($res));
+        return response()->json($res + ($previewRefused !== null ? ['preview_refused_reason' => $previewRefused] : []), self::sendStatus($res));
     }
 
     /**
      * مفتاح منع التكرار لرسالة الموظف (E19): Idempotency-Key (UUID) من المنشئ، ثابت لإعادة المسودة نفسها.
      * ملف JS قديم بلا ترويسة: مفتاح جديد ويُعدّ (يظهر في whatsapp:doctor).
      */
-    private static function staffSendKey(Request $request): string
+    public static function staffSendKey(Request $request): string
     {
         $key = \App\Services\WhatsApp\SendKey::staff((string) $request->header('Idempotency-Key', ''));
         if ($key === null) {

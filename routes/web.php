@@ -244,6 +244,19 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/conversational-automation/sync', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'syncAutomation'])->middleware(['perm:whatsapp.settings', 'throttle:3,1,wa-conv-sync']);
     // ملف من الصندوق (E32): الربط المقيّد وحد wa-files، والرفع إلى ميتا مؤجل في الطابور. لكتلة nginx الخاصة بالمسار حدها (20m)
     Route::post('api/whatsapp/conversations/{conversation}/send-file', [\App\Http\Controllers\WhatsAppFileController::class, 'store'])->middleware(['perm:whatsapp.reply', 'throttle:wa-files']);
+    // الرسائل الغنية (E33): التصحيح المقتبس والتفاعل والدبوس والبطاقات، كلٌّ بعلمه في المتحكم وبالربط المسيّج. {message} من
+    // المحادثة نفسها (فحص صريح لأن Route::bind('message') يسبق scopeBindings). والمواقع والبطاقات المعتمدة للمدير
+    Route::post('api/whatsapp/conversations/{conversation}/messages/{message}/correct', [\App\Http\Controllers\WhatsAppRichMessageController::class, 'correct'])->middleware('perm:whatsapp.reply')->scopeBindings();
+    Route::post('api/whatsapp/conversations/{conversation}/messages/{message}/react', [\App\Http\Controllers\WhatsAppRichMessageController::class, 'react'])->middleware(['perm:whatsapp.reply', 'throttle:60,1,wa-react'])->scopeBindings();
+    Route::post('api/whatsapp/conversations/{conversation}/send-location', [\App\Http\Controllers\WhatsAppRichMessageController::class, 'sendLocation'])->middleware('perm:whatsapp.reply');
+    Route::post('api/whatsapp/conversations/{conversation}/send-contact', [\App\Http\Controllers\WhatsAppRichMessageController::class, 'sendContact'])->middleware('perm:whatsapp.reply');
+    Route::get('whatsapp/shared-items', [\App\Http\Controllers\WhatsAppSharedItemsController::class, 'index'])->name('whatsapp.shared-items')->middleware('perm:whatsapp.settings');
+    Route::post('whatsapp/shared-items/places', [\App\Http\Controllers\WhatsAppSharedItemsController::class, 'storePlace'])->name('whatsapp.shared-items.places.store')->middleware('perm:whatsapp.settings');
+    Route::put('whatsapp/shared-items/places/{place}', [\App\Http\Controllers\WhatsAppSharedItemsController::class, 'updatePlace'])->name('whatsapp.shared-items.places.update')->middleware('perm:whatsapp.settings');
+    Route::delete('whatsapp/shared-items/places/{place}', [\App\Http\Controllers\WhatsAppSharedItemsController::class, 'destroyPlace'])->name('whatsapp.shared-items.places.destroy')->middleware('perm:whatsapp.settings');
+    Route::post('whatsapp/shared-items/cards', [\App\Http\Controllers\WhatsAppSharedItemsController::class, 'storeCard'])->name('whatsapp.shared-items.cards.store')->middleware('perm:whatsapp.settings');
+    Route::put('whatsapp/shared-items/cards/{card}', [\App\Http\Controllers\WhatsAppSharedItemsController::class, 'updateCard'])->name('whatsapp.shared-items.cards.update')->middleware('perm:whatsapp.settings');
+    Route::delete('whatsapp/shared-items/cards/{card}', [\App\Http\Controllers\WhatsAppSharedItemsController::class, 'destroyCard'])->name('whatsapp.shared-items.cards.destroy')->middleware('perm:whatsapp.settings');
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');

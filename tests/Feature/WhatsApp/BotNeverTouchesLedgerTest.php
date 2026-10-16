@@ -110,6 +110,11 @@ class BotNeverTouchesLedgerTest extends TestCase
     public function test_customer_bot_tools_never_write_to_the_ledger(): void
     {
         $optionRef = $this->offer->sellOptions()->first()->ref;
+        // E33: الدبوس والبطاقة من الجدولين المعتمدين، خلف العلم wa_share_cards
+        config(['features.env.wa_share_cards' => true]);
+        \App\Models\WaPlace::create(['name' => 'المكتب', 'latitude' => 31.9539, 'longitude' => 35.9106, 'kind' => 'office', 'is_default' => true, 'bot_allowed' => true]);
+        $card = \App\Models\WaContactCard::create(['label' => 'المكتب', 'formatted_name' => 'مكتب نسك', 'phone_e164' => '+16505553333',
+            'consent_note' => 'موافقة مكتوبة', 'consented_at' => now(), 'bot_allowed' => true]);
         $args = [
             'get_offers' => [],
             'get_offer_details' => ['offer_id' => $this->offer->id],
@@ -123,6 +128,8 @@ class BotNeverTouchesLedgerTest extends TestCase
             'confirm_booking' => ['offer_id' => $this->offer->id, 'option_ref' => $optionRef, 'room_type' => 'ثنائية',
                 'adults' => 2, 'details' => 'أريد الحجز'],
             'save_note' => ['note' => 'يفضّل غرفة ثنائية'],
+            'send_office_location' => [],
+            'send_contact_card' => ['card_key' => 'card_'.$card->id],
             'handoff_to_human' => ['reason' => 'طلب موظفاً'],
         ];
         $this->assertEqualsCanonicalizing(BotTools::names(), array_keys($args), 'أداة جديدة في BotTools بلا حالة هنا');

@@ -37,6 +37,8 @@ final class ReplyState
         'media_refused' => '🗂️ رفض حفظ الملفات',
         'policy_block' => '🛡️ حُجبت رسالة آلية',
         'snooze_due' => '⏰ موعد متابعة',
+        // E33: تعديل أو استطلاع أو نوع لا تعرضه منصة ميتا
+        'unsupported' => '🧩 رسالة غير مدعومة',
     ];
 
     private static ?bool $available = null;

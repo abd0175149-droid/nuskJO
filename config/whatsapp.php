@@ -141,4 +141,12 @@ return [
     'export' => [
         'max_rows' => 20000,
     ],
+
+    // الرسائل الغنية (E33). معاينة الرابط لرد الموظف وحده: مضيفات لا تُعاين أبداً (مضيف APP_URL دائماً، وهذه ونطاقاتها
+    // الفرعية: خوادمنا المشتركة)، بفواصل في WA_PREVIEW_BLOCK_HOSTS
+    'preview_block_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_PREVIEW_BLOCK_HOSTS', 'grade.sbs'))))),
+    // القائمة البيضاء لتفاعل الموظف (قرار المالك)، والسلسلة الفارغة تزيل التفاعل دائماً
+    'staff_reactions' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_STAFF_REACTIONS', '✅,👍,🙏,❤️,👀'))))),
+    // ميتا لا تسلّم تفاعلاً على رسالة أقدم من 30 يوماً
+    'reaction_max_days' => 30,
 ];

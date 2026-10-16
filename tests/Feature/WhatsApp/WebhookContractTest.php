@@ -289,7 +289,7 @@ class WebhookContractTest extends TestCase
 
         $message = WaMessage::sole();
         $this->assertSame('unsupported', $message->msg_type);
-        $this->assertSame('⚠️ رسالة غير مدعومة', $message->body);
+        $this->assertSame('⚠️ رسالة لا تدعمها منصة ميتا', $message->body);
         $this->assertSame(131051, data_get($message->payload, 'errors.0.code'));
     }
 

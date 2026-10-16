@@ -70,7 +70,7 @@ class InboundTypesTest extends TestCase
             ['type' => 'sticker', 'sticker' => ['id' => 'm1', 'mime_type' => 'image/webp', 'sha256' => 'abc']],
             ['type' => 'something_new'],
         ];
-        $expected = ['📍 المكتب، عمّان https://maps.google.com/?q=31.95,35.91', '👤 جهة اتصال: سائق الحافلة — +1 650-555-3333',
+        $expected = ['📍 المكتب، عمّان https://maps.google.com/?q=31.95,35.91', '👤 بطاقة جهة اتصال: سائق الحافلة',
             '🛒 طلب من الكتالوج: 2 أصناف — للعائلة', '📝 نموذج: flow — {"pax":"3"}', '↩️ أزال التفاعل', '🏷️ ملصق', '[something_new]'];
 
         foreach ($cases as $i => $message) {

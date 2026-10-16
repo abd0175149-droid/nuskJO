@@ -64,6 +64,11 @@ class ConversationScopeTest extends TestCase
         'export' => ['GET', ['format' => 'txt', 'reason' => 'طلب اطّلاع من العميل'], [], ['whatsapp.export']],
         // ملف من الصندوق (E32): داخل النطاق بلا Idempotency-Key يرد 422 (الربط قبل التحقق)، وخارجه 404
         'send-file' => ['POST', [], [], [], 422],
+        // الرسائل الغنية (E33): التصحيح لرسالة واردة يُرفض 422 داخل النطاق، والتفاعل ينجح، والدبوس والبطاقة بلا صف معتمد 422
+        'messages/{message}/correct' => ['POST', ['body' => 'تصحيح: السعر للفرد'], [], [], 422],
+        'messages/{message}/react' => ['POST', ['emoji' => '✅']],
+        'send-location' => ['POST', ['place_id' => 999], [], [], 422],
+        'send-contact' => ['POST', ['card_ids' => [999]], [], [], 422],
     ];
 
     protected function setUp(): void
@@ -74,7 +79,8 @@ class ConversationScopeTest extends TestCase
         \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
         config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true,
             'features.env.wa_labels' => true, 'features.env.thread_pins' => true, 'features.env.staff_translation' => true,
-            'features.env.conversation_export' => true, 'features.env.staff_file_send' => true]);
+            'features.env.conversation_export' => true, 'features.env.staff_file_send' => true,
+            'features.env.wa_reply_quote' => true, 'features.env.wa_staff_reactions' => true, 'features.env.wa_share_cards' => true]);
     }
 
     public static function routes(): array

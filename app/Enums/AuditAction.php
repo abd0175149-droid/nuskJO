@@ -142,6 +142,12 @@ enum AuditAction: string
     case WaInvoiceSent = 'wa.invoice_sent';
     case WaMediaRemoteDelete = 'wa.media_remote_delete';
     case WaAdminMfaBlocked = 'wa.admin_mfa_blocked';
+    // E33: رسالة التصحيح المقتبسة (الأصل لا يتغيّر)، وتفاعل الموظف، وإرسال بطاقة اتصال، وإدارة المواقع والبطاقات المعتمدة
+    case WaMsgCorrect = 'wa.msg_correct';
+    case WaReactionSend = 'wa.reaction_send';
+    case WaShareCard = 'wa.share_card';
+    case WaPlaceChange = 'wa.place_change';
+    case WaCardChange = 'wa.card_change';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -193,6 +199,7 @@ enum AuditAction: string
             self::WaConversationExport, self::WaSearchIndexRepair => AuditSeverity::Warn,
             self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed,
             self::WaAdminMfaBlocked => AuditSeverity::Warn,
+            self::WaMsgCorrect => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -218,6 +225,8 @@ enum AuditAction: string
             self::WaLabelCreate, self::WaLabelUpdate, self::WaLabelDelete, self::WaLlmTermsConfirm => 'config',
             self::WaAutoRuleCreate, self::WaAutoRuleUpdate, self::WaAutoRuleDelete, self::WaAutoRuleToggle, self::WaAutoRuleReorder,
             self::WaConvAutomationSync => 'config',
+            self::WaPlaceChange, self::WaCardChange => 'config',
+            self::WaReactionSend => 'noise',
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
@@ -350,6 +359,11 @@ enum AuditAction: string
             self::WaInvoiceSent => 'إرسال فاتورة PDF على واتساب',
             self::WaMediaRemoteDelete => 'حذف ملفات مرسلة من خوادم واتساب',
             self::WaAdminMfaBlocked => 'المساعد الإداري موقوف لرقم مستخدمه بلا تحقق بخطوتين',
+            self::WaMsgCorrect => 'إرسال تصحيح مقتبس لرسالة سابقة',
+            self::WaReactionSend => 'تفاعل موظف على رسالة عميل',
+            self::WaShareCard => 'إرسال بطاقة اتصال معتمدة لعميل',
+            self::WaPlaceChange => 'تعديل موقع معتمد للدبوس',
+            self::WaCardChange => 'تعديل بطاقة اتصال معتمدة',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -384,7 +398,9 @@ enum AuditAction: string
             // كل ملف خرج لعميل (قد يحمل رقم جواز) وكل فاتورة على واتساب (E32)
             self::WaFileSent, self::WaInvoiceSent,
             // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
-            self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked], true);
+            self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked,
+            // E33: التصحيح دليل عند نزاع على سعر
+            self::WaMsgCorrect], true);
     }
 
     public function isNoise(): bool
