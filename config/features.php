@@ -65,5 +65,13 @@ return [
         'channel_health' => env('WA_FEATURE_CHANNEL_HEALTH'),
         'channel_health_block_on_token' => env('WA_FEATURE_CHANNEL_HEALTH_BLOCK_ON_TOKEN'),
         'integrity_breaker_lock' => env('WA_FEATURE_INTEGRITY_BREAKER_LOCK'),
+        // E24
+        'ops_alerts' => env('WA_FEATURE_OPS_ALERTS'),
+        'failures_center' => env('WA_FEATURE_FAILURES_CENTER'),
+        'failures_redrive' => env('WA_FEATURE_FAILURES_REDRIVE'),
+        'analytics_v2' => env('WA_FEATURE_ANALYTICS_V2'),
+        'quote_export' => env('WA_FEATURE_QUOTE_EXPORT'),
+        'meta_analytics_reconcile' => env('WA_FEATURE_META_ANALYTICS_RECONCILE'),
+        'ops_tick' => env('WA_FEATURE_OPS_TICK'),
     ],
 ];

@@ -123,3 +123,13 @@ health_available.json         [health] § GET /{phone-number-id}?fields=health_s
 health_limited.json           [health] § LIMITED على الرقم مع additional_info، وجودة YELLOW.
 health_blocked.json           [health] § BLOCKED على WABA مع errors (error_code 141010 وerror_description وpossible_solution
                               كما في المرجع)، وجودة RED. وخطأ الرمز 190 في error_190.json (E18) نفسه، لا نسخة ثانية.
+E24 (المراقبة التشغيلية وحفظ pricing وحمولات ميتا التعاقدية). مكتوبة من المرجع لا من أداة Test، وwamid مولَّد يرمّز
+16505551234 وحده، ومعرّف المحادثة في كائن conversation مصنوع:
+status_sent_pricing_v21.json  [messages] § statuses (sent) بالشكل القديم: كائن conversation (origin=service) ومعه pricing
+                              (billable=true وPMP وcategory=service وtype=regular كما في تسعير الرسائل غير القالبية منذ 2026-10-01).
+status_delivered_pricing_v24.json [messages] § statuses (delivered) بشكل v24.0: pricing بلا كائن conversation. يعطي أعمدة pricing نفسها.
+status_failed_368.json        [messages] § statuses (failed) بشكل status_failed_131047.json مع code=368 (Temporarily blocked
+                              for policies violations). [errors] § 368: تقييد حساب لا يُعاد إرساله.
+status_read_no_delivered.json [messages] § statuses (read) يصل بلا delivered قبله (ميتا لا تضمن الترتيب ولا كل الحالات)،
+                              مع pricing مجاني (free_customer_service).
+                              [pricing] https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages

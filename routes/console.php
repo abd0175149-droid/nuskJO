@@ -284,6 +284,13 @@ Schedule::command('whatsapp:health-expiry')
     ->everyFifteenMinutes()
     ->withoutOverlapping(5);
 
+// المراقبة التشغيلية (E24): لقطة المقاييس كل 5 دقائق في مخزن ops (file) وقواعد التنبيه (العلم ops_alerts؛ مطفأ = سجل perf
+// فقط). قراءات مجمّعة وحدها، ولا رسالة واتساب. القائمة الموحدة للمهام وميزانية الحمل في docs/ops/load-budget.md
+Schedule::command('whatsapp:ops-check')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5)
+    ->name('wa:ops-check');
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');

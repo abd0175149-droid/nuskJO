@@ -517,6 +517,10 @@ class WhatsAppInbox
             }
         }
         $m->update($update);
+        // كائن pricing (E24): أول ظهور هو المعتمد، كما في StatusApplier
+        if ($m->direction === 'out') {
+            StatusApplier::capturePricing($st, (int) $m->id);
+        }
         if ($pendingBefore && $advances && $status !== 'failed') {
             self::clearSendUnknown((int) $m->conversation_id);
         }

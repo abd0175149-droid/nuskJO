@@ -94,6 +94,17 @@ return [
             'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05/E06)
         ],
 
+        // الطلبات البطيئة و5xx وانتقالات قواعد whatsapp:ops-check (E24): بقالب المسار، بلا رابط كامل ولا query ولا IP.
+        // المستوى warning فيُكتب رغم LOG_LEVEL المرفوع إلى warning (E06)
+        'perf' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/perf.log'),
+            'level' => 'warning',
+            'days' => 14,
+            'permission' => 0640,
+            'tap' => [App\Logging\RedactSecrets::class],
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

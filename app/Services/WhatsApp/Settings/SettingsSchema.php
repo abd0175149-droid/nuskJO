@@ -11,7 +11,7 @@ use Illuminate\Validation\Rule;
  * سجل حقول إعدادات البوت (E10): منه وحده تُشتق القيم الافتراضية (WaBotSetting::current) وقواعد الحفظ
  * الجزئي والحقول الرقمية في صفحة الإعدادات، وفرق التدقيق. حقل جديد يُضاف هنا أولاً.
  *
- * type: bool|int|string|text|enum|map|secret|readonly
+ * type: bool|int|decimal|string|text|enum|map|secret|readonly
  * patchable: يُقبل في PATCH /whatsapp/settings. الأسرار والإيقاف لها مساراتها، والقراءة فقط لا تُكتب من الصفحة.
  * sensitive: يتطلب confirm=true، ويُدقَّق بخطورة warn (كل حفظ إعدادات warn أصلاً).
  * env: مفتاح config الذي تتقدّم قيمته على المحفوظ (config/services.php هو المكان الوحيد لقراءة env)، وenv_var للعرض.
@@ -70,6 +70,14 @@ final class SettingsSchema
         // الردود الحتمية (E37): shadow يقيّم ويعدّ ولا يرسل، وlive يرسل. فوقه العلم auto_rules. يغيّر ما يصل العملاء فهو حساس
         'auto_rules_mode' => ['type' => 'enum', 'values' => 'auto_rule_modes', 'default' => 'shadow', 'patchable' => true, 'sensitive' => true,
             'group' => 'rules', 'ui' => 'custom', 'label' => 'وضع الردود الحتمية'],
+        // حدود الصادر (E24): تنبيه يومي للمدراء، وسقف صلب للإرسال الذي يبدؤه النظام وحده (لا يمس ردود البوت والموظفين
+        // داخل النافذة)، وسعر رسالة الخدمة لتقدير فاتورة ميتا. تُعرض في قسم «📊 حدود الصادر وتكلفة ميتا»
+        'wa_daily_alert_threshold' => ['type' => 'int', 'min' => 10, 'max' => 100000, 'default' => 300, 'patchable' => true, 'group' => 'limits', 'ui' => 'auto',
+            'label' => 'حد تنبيه الصادر اليومي', 'help' => 'إشعار للمدراء مرة في اليوم إن بلغ صادر اليوم هذا العدد'],
+        'wa_system_daily_cap' => ['type' => 'int', 'min' => 0, 'max' => 10000, 'default' => 50, 'patchable' => true, 'group' => 'limits', 'ui' => 'auto',
+            'label' => 'السقف اليومي للإرسال المبادر', 'help' => 'للإرسال الذي يبدؤه النظام وحده؛ لا يمس ردود البوت والموظفين داخل النافذة'],
+        'wa_service_rate_usd' => ['type' => 'decimal', 'min' => 0, 'max' => 1, 'step' => 0.00001, 'nullable' => true, 'default' => null, 'patchable' => true,
+            'group' => 'limits', 'ui' => 'auto', 'label' => 'سعر رسالة الخدمة بالدولار (اختياري)', 'help' => 'للتقدير فقط؛ الفاتورة في Business Manager هي المرجع'],
         'model_prices' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'أسعار النموذج (صفحة التحليلات)'],
         'cache_discount' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'خصم الكاش (صفحة التحليلات)'],
 
@@ -171,6 +179,7 @@ final class SettingsSchema
         return match ($f['type']) {
             'bool' => ['boolean'],
             'int' => ['integer', 'min:'.$f['min'], 'max:'.$f['max']],
+            'decimal' => ['numeric', 'min:'.$f['min'], 'max:'.$f['max']],
             'string' => array_values(array_filter(['string', 'max:64', isset($f['regex']) ? 'regex:'.$f['regex'] : null])),
             'text' => ['string', 'max:'.$f['max']],
             'enum' => [Rule::in(self::enumValues($key))],
@@ -197,7 +206,7 @@ final class SettingsSchema
         $out = [];
         foreach (self::FIELDS as $key => $f) {
             if (($f['ui'] ?? null) === 'auto') {
-                $out[] = array_intersect_key($f, array_flip(['type', 'min', 'max', 'default', 'label', 'help', 'group'])) + ['key' => $key];
+                $out[] = array_intersect_key($f, array_flip(['type', 'min', 'max', 'step', 'default', 'label', 'help', 'group'])) + ['key' => $key];
             }
         }
 

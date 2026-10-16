@@ -12,6 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             // ويبهوك ميتا بلا وسيط مجموعة: لا جلسة ولا CSRF ولا Inertia (routes/webhooks.php)
             \Illuminate\Support\Facades\Route::group([], base_path('routes/webhooks.php'));
+            // مقاييس Prometheus (E24): بلا جلسة، ومغلقة ما لم يُضبط OPS_METRICS_TOKEN (routes/internal.php)
+            \Illuminate\Support\Facades\Route::group([], base_path('routes/internal.php'));
         },
     )
     // تفويض القنوات الخاصة (E28): جلسة نشطة اجتازت العامل الثاني (E27) وحارس المسارات وحد معدّل، كبقية المسارات
@@ -28,6 +30,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // رقم مرجعي لكل طلب (بعد TrustProxies): الويبهوك و/up والصفحات
         $middleware->append(\App\Http\Middleware\AssignRequestId::class);
+        // E24: سطر في perf.log للطلب البطيء أو 5xx بقالب المسار (وسيط منتهٍ، يغطي الويبهوك خارج مجموعة web)
+        $middleware->append(\App\Http\Middleware\RecordSlowRequests::class);
 
         // الوكلاء الموثوقون من config/trustedproxy.php (TRUSTED_PROXIES) وقت الطلب، لا ثابتاً هنا:
         // env() في bootstrap لا يصل بعد config:cache

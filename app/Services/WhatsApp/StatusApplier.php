@@ -108,6 +108,7 @@ final class StatusApplier
         } catch (\Throwable $e) {
             WaLog::error('wa.status.history_failed', ['message_id' => $row->id, 'type' => class_basename($e)]);
         }
+        self::capturePricing($st, $row->id);
 
         if ($affected > 0) {
             EventBus::emit(new WaMessageStatusChanged($row->id, (int) $row->conversation_id, $status, $metaAt->getTimestamp(), $err?->metaCode ?? $code));
@@ -164,6 +165,38 @@ final class StatusApplier
         return WaMessage::whereKey($row->id)
             ->where(fn ($w) => $w->whereNull('status')->orWhereIn('status', $from))
             ->update($cols);
+    }
+
+    private static ?bool $hasPricing = null;
+
+    /**
+     * كائن pricing من ويبهوك الحالة (E24): جملة مستقلة بعد تحديث الحالة، وأول ظهور هو المعتمد (whereNull)، فلا تكتب
+     * الإعادات ولا حالة لاحقة بفئة أخرى فوقه. يصل مع sent ومع delivered أو read، وبالشكل نفسه قبل v24.0 وبعده (كائن
+     * conversation يُحذف ولا نحتاجه). لا تُحفظ الحمولة الخام هنا (هي في wa_webhook_events، E20). فشلها لا يمس الحالة.
+     * يستدعيه المسار القديم في WhatsAppInbox أيضاً.
+     */
+    public static function capturePricing(array $st, int $messageId): void
+    {
+        $pricing = data_get($st, 'pricing');
+        if (!is_array($pricing) || $pricing === [] || !(self::$hasPricing ??= Schema::hasColumn('wa_messages', 'pricing_category'))) {
+            return;
+        }
+        $text = fn (string $key, int $max) => is_scalar($v = data_get($pricing, $key)) && (string) $v !== ''
+            ? mb_substr(preg_replace('/[^A-Za-z0-9_\-]/', '', (string) $v) ?? '', 0, $max) : null;
+        $cols = [
+            'pricing_billable' => array_key_exists('billable', $pricing) ? filter_var($pricing['billable'], FILTER_VALIDATE_BOOL) : null,
+            'pricing_model' => $text('pricing_model', 16),
+            'pricing_category' => $text('category', 32),
+            'pricing_type' => $text('type', 32),
+        ];
+        if ($cols['pricing_category'] === null && $cols['pricing_billable'] === null) {
+            return;
+        }
+        try {
+            WaMessage::whereKey($messageId)->where('direction', 'out')->whereNull('pricing_category')->whereNull('pricing_billable')->update($cols);
+        } catch (\Throwable $e) {
+            WaLog::error('wa.status.pricing_failed', ['message_id' => $messageId, 'type' => class_basename($e)]);
+        }
     }
 
     /** عنصر {s, t, c} يُلحق بلا تكرار (الحالة نفسها بوقت ميتا نفسه)، بسقف whatsapp.status.history_max */

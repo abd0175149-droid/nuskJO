@@ -78,6 +78,14 @@ final class FeatureFlags
         'channel_health' => ['label' => 'صحة القناة كآلة حالات: أحداث ميتا بتصنيف صحيح وسجل دائم، والحجب BLOCKED بدل الإيقاف الآلي، ولا قفل على رفع الحظر ولا على قيود رسائل الشركة', 'capability' => 'C232', 'available' => true],
         'channel_health_block_on_token' => ['label' => 'منع الإرسال وتوليد الردود عند رمز ميتا غير صالح (بدل التنبيه وحده)', 'capability' => 'C260', 'available' => true],
         'integrity_breaker_lock' => ['label' => 'قاطع النزاهة يحجب الإرسال عند تكرار 131031 أو 131048 (بدل التنبيه والفحص)', 'capability' => 'C244', 'available' => true],
+        // E24: المراقبة التشغيلية ومركز الإخفاقات والتحليلات
+        'ops_alerts' => ['label' => 'تنبيهات التشغيل كل 5 دقائق للمدراء (الطابور والمهام والإرسال والويبهوك والصادر؛ مطفأ = تسجيل فقط)', 'capability' => 'C226', 'available' => true],
+        'failures_center' => ['label' => 'صفحة «الإخفاقات والطابور»: رسائل لم تصل، ومهام خلفية فاشلة، وويبهوك فاشل، والطابور الآن', 'capability' => 'C255', 'available' => true],
+        'failures_redrive' => ['label' => 'زر «إعادة الإرسال» في صفحة الإخفاقات (الفشل العابر داخل النافذة وحده، بالرسالة نفسها)', 'capability' => 'C255', 'available' => true],
+        'analytics_v2' => ['label' => 'تحليلات بفترات 24 ساعة و7 و30 يوماً: الحركة وساعات الذروة وأول رد بشري وتحوّل الطلب إلى فاتورة وتكلفة ميتا', 'capability' => 'C209', 'available' => true],
+        'quote_export' => ['label' => 'تصدير طلبات التسعير CSV بحقول بلا هاتف ولا اسم عميل (لمن يملك quotes.export)', 'capability' => 'C097', 'available' => true],
+        'meta_analytics_reconcile' => ['label' => 'مطابقة يومية مع تحليلات ميتا للحساب (أُرسل وسُلّم) للمقارنة فقط', 'capability' => 'C209', 'available' => true],
+        'ops_tick' => ['label' => 'دمج مهام الدقيقة (إعادة الويبهوك والمُصالِح) في أمر واحد ops:tick لتخفيف الحمل', 'capability' => 'C226', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */
