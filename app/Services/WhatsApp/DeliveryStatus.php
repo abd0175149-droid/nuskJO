@@ -48,10 +48,12 @@ final class DeliveryStatus
         return in_array($new, self::POSITIVE, true) ? [...$lower, self::FAILED] : $lower;
     }
 
-    /** هل تكتب $new فوق $current؟ (الفراغ null) — للاختبار الشامل وللمسار غير الذري */
+    /** هل تكتب $new فوق $current؟ (الفراغ null). الرتبة 0 لا تُكتب من ميتا ولو فوق فراغ */
     public static function advances(?string $current, string $new): bool
     {
-        return self::isKnown($new) && ($current === null || in_array($current, self::allowedFrom($new), true));
+        $from = self::isKnown($new) ? self::allowedFrom($new) : [];
+
+        return $from !== [] && ($current === null || in_array($current, $from, true));
     }
 
     public static function label(string $status): string

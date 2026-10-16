@@ -119,6 +119,11 @@ final class StatusApplier
     /** التحديث الذري المشروط. @return int الصفوف المتأثرة (0: الحالة لم تتقدّم) */
     private static function advance(WaMessage $row, string $wamid, string $status, Carbon $metaAt, ?MetaError $err, ?int $code, bool $byOpaque, array $st): int
     {
+        // queued وunknown لا تأتيان من ميتا: لا تُكتبان ولو فوق فراغ
+        $from = DeliveryStatus::allowedFrom($status);
+        if ($from === []) {
+            return 0;
+        }
         $cols = ['status' => $status, 'status_at' => $metaAt];
         if ($byOpaque) {
             $cols['wamid'] = $wamid;
@@ -153,7 +158,7 @@ final class StatusApplier
         }
 
         return WaMessage::whereKey($row->id)
-            ->where(fn ($w) => $w->whereNull('status')->orWhereIn('status', DeliveryStatus::allowedFrom($status)))
+            ->where(fn ($w) => $w->whereNull('status')->orWhereIn('status', $from))
             ->update($cols);
     }
 
