@@ -27,7 +27,7 @@
                     :followup="followup" :can-reprocess="canReprocess" :quick-replies="quickReplies" @action="(n, p) => inbox.followAction(n, p, confirm)"
                     @back="inbox.back" @link="linkOpen = true" @unlink="unlink" @resolve="inbox.resolve" @toggle-bot="inbox.toggleBot"
                     @set-topic="inbox.setTopic" @assign="inbox.assignTo" @load-older="inbox.loadOlder" @jump-to-new="inbox.jumpToNew"
-                    @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="inbox.send(ask)" @request-phone="inbox.requestPhone"
+                    @reached-bottom="inbox.reachedBottom" @view-media="openViewer" @send="(extra) => inbox.send(ask, extra)" @request-phone="inbox.requestPhone"
                     @resend="(m) => inbox.copyToDraft(m, askResend)"
                     :flags="flags" :labels="labels" :can-manage-labels="canManageLabels" :translate-targets="translateTargets"
                     @labels-changed="onLabels" @translated-sent="onTranslatedSent"
@@ -36,7 +36,8 @@
                     @load-newer="inbox.loadNewer" @back-to-latest="inbox.backToLatest" @set-filters="inbox.setThreadFilters"
                     @clear-filters="inbox.clearThreadFilters" @export="exportOpen = true"
                     :media-policy="mediaPolicy" :recipient="inbox.recipient.value" :outbox="inbox.outboxItems.value"
-                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"/>
+                    @send-file="(p) => inbox.sendFile(p, ask)" @outbox-retry="(i) => inbox.retryFile(i, ask)" @outbox-dismiss="inbox.dismissFile"
+                    :staff-reactions="staffReactions" :share-items="shareItems" :rich-features="richFeatures" @rich-sent="inbox.poll"/>
       </div>
     </div>
 
@@ -96,6 +97,10 @@ const props = defineProps({
   canExport: Boolean,
   // E32: إرسال الملفات (الأنواع والحدود والعلم)
   mediaPolicy: { type: Object, default: null },
+  // E33: أعلام الاقتباس والتفاعل والمعاينة والمشاركة، وقائمة التفاعل، والمواقع والبطاقات المعتمدة
+  richFeatures: { type: Object, default: () => ({}) },
+  staffReactions: { type: Array, default: () => [] },
+  shareItems: { type: Object, default: null },
 });
 
 const threadView = ref(null);

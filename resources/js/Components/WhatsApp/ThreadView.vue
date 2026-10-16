@@ -35,13 +35,20 @@
             </button>
           </div>
           <p v-if="jumpMiss" class="text-center text-[11px] text-amber-700 dark:text-amber-400" role="status">الرسالة المثبتة أقدم من المعروض — حمّل الرسائل الأقدم ثم أعد المحاولة.</p>
-          <MessageBubble v-for="m in messages" :key="m.id" :m="m" :data-msg-id="m.id" :flash="flashId === m.id" :read-upto="thread.read_receipt_upto_id || null" @resend="(msg) => $emit('resend', msg)">
+          <MessageBubble v-for="m in visibleMessages" :key="m.id" :m="m" :data-msg-id="m.id" :flash="flashId === m.id" :read-upto="thread.read_receipt_upto_id || null" @resend="(msg) => $emit('resend', msg)"
+                         :actionable="canReply && !!(m.can_quote || m.can_react || m.can_correct)" @actions="openActions">
+            <!-- الاقتباس بمعرّفنا والتنقل إلى الأصل (E33) -->
+            <template #quote>
+              <QuoteBlock :quote="m.reply_ref || null" :text="m.reply_to || ''" :dropped="!!m.quote_dropped" @jump="jumpTo"/>
+            </template>
             <template v-if="m.media" #media>
               <MediaChip :message-id="m.id" :media="m.media" @view="$emit('viewMedia', m)" @updated="(media) => (m.media = media)"/>
             </template>
-            <template v-if="flags.staff_translation || flags.thread_pins" #extras>
-              <BubbleExtras :m="m" :conversation-id="thread.id" :can-reply="canReply" :translate="!!flags.staff_translation" :pins="!!flags.thread_pins"
+            <template #extras>
+              <BubbleExtras v-if="flags.staff_translation || flags.thread_pins" :m="m" :conversation-id="thread.id" :can-reply="canReply" :translate="!!flags.staff_translation" :pins="!!flags.thread_pins"
                             :pinned="pinnedIds.has(m.id)" @translated="(t) => (m.translation = t)" @pinned="(p) => factCard?.setPinned(p)"/>
+              <!-- الموقع والبطاقات وشارات التفاعل والتصحيح (E33) -->
+              <MessageRich :m="m" :reactions="reactionsById[m.id] || null" :corrected-by-id="correctionsById[m.id] || null" @jump="jumpTo"/>
             </template>
           </MessageBubble>
           <p v-if="!messages.length && !outbox.length" class="text-center text-gray-400 text-sm py-10">{{ filtered ? 'لا رسائل تطابق الفلتر' : 'لا رسائل' }}</p>
@@ -71,6 +78,10 @@
 
       <!-- «اكتب بالعربية وأترجم» (E29): «إرسال» يفتح معاينة الترجمة -->
       <TranslateReplyBar v-if="translateBar" class="shrink-0" v-model="translateMode" v-model:target="translateTarget" :targets="translateTargets"/>
+      <!-- «ترد على…» ومعاينة الرابط والموقع والبطاقة (E33) -->
+      <ComposerExtras v-if="canReply" class="shrink-0" :conversation-id="thread.id" :features="features" :reply-to="currentReply" :draft="draft"
+                      v-model:preview="preview" :notice="previewNotice" :share-items="shareItems" :recipient="recipient" :window-open="!!thread.window_open"
+                      :can-reply="canReply" @cancel-reply="replyTargets.clear(thread.id)" @shared="onRichSent"/>
       <Composer class="shrink-0" :model-value="draft" @update:model-value="(v) => $emit('update:draft', v)" @submit="onSubmit"
                 @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
                 :sending="sending" :error="error" :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
@@ -78,6 +89,10 @@
                 :media-policy="mediaPolicy" :recipient="recipient" @send-file="(p) => $emit('sendFile', p)"/>
       <TranslateReplyPanel :open="translateOpen" :conversation-id="thread.id" :source-text="draft" :target="translateTarget" :targets="translateTargets"
                            @close="translateOpen = false" @sent="onTranslatedSent"/>
+      <MessageActionMenu :open="!!actionMsg" :message="actionMsg" :emojis="staffReactions" :current="currentReaction" :busy="actionBusy" :error="actionError"
+                         @close="closeActions" @reply="startReply" @react="sendReaction" @correct="startCorrection"/>
+      <CorrectionDialog :open="!!correctionMsg" :message="correctionMsg" :conversation-id="thread.id" :confirm-fn="askPolicy"
+                        @close="correctionMsg = null" @sent="onCorrectionSent"/>
     </template>
 
     <div v-else class="flex-1 grid place-items-center py-24 text-center">
@@ -103,7 +118,15 @@ import MessageBubble from './MessageBubble.vue';
 import ThreadFilters from './ThreadFilters.vue';
 import PendingBubble from './PendingBubble.vue';
 import ThreadHeader from './ThreadHeader.vue';
+import ComposerExtras from './ComposerExtras.vue';
+import CorrectionDialog from './CorrectionDialog.vue';
+import MessageActionMenu from './MessageActionMenu.vue';
+import MessageRich from './MessageRich.vue';
+import QuoteBlock from './QuoteBlock.vue';
 import { isNearBottom, preserveOnPrepend, scrollToBottom } from '@/composables/whatsapp/useStickToBottom.js';
+import { createReplyTarget } from '@/composables/whatsapp/useReplyTarget.js';
+import { hasLink, react as postReaction } from '@/composables/whatsapp/useRichSend.js';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({
   thread: { type: Object, default: null },
@@ -147,10 +170,14 @@ const props = defineProps({
   mediaPolicy: { type: Object, default: null },
   recipient: { type: Object, default: () => ({}) },
   outbox: { type: Array, default: () => [] },
+  // E33: قائمة تفاعل الموظف، والمواقع والبطاقات المعتمدة، والأعلام قبل وصول الخيط
+  staffReactions: { type: Array, default: () => [] },
+  shareItems: { type: Object, default: null },
+  richFeatures: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'loadOlder', 'jumpToNew',
   'reachedBottom', 'viewMedia', 'update:draft', 'send', 'requestPhone', 'action', 'resend', 'labelsChanged', 'translatedSent',
-  'loadNewer', 'backToLatest', 'setFilters', 'clearFilters', 'export', 'sendFile', 'outboxRetry', 'outboxDismiss']);
+  'loadNewer', 'backToLatest', 'setFilters', 'clearFilters', 'export', 'sendFile', 'outboxRetry', 'outboxDismiss', 'richSent']);
 
 const scroller = ref(null);
 const filtersOpen = ref(false);
@@ -194,7 +221,7 @@ watch(() => props.thread?.id, () => {
   translateTarget.value = lastSource.value || 'en';
 });
 watch(lastSource, (src) => { if (src && !translateMode.value) translateTarget.value = src; });
-const onSubmit = () => (translateMode.value && translateBar.value ? (translateOpen.value = true) : emit('send'));
+const onSubmit = () => (translateMode.value && translateBar.value ? (translateOpen.value = true) : emit('send', sendExtras()));
 function onTranslatedSent(res) {
   translateOpen.value = false;
   emit('translatedSent', res);
@@ -208,6 +235,92 @@ const onScroll = () => {
   // الوضع المنفصل: النزول إلى آخر النافذة يحمّل ما بعدها (لا يقفز إلى الأحدث)
   if (props.detached && !props.loadingNewer && isNearBottom(el, 80)) emit('loadNewer');
 };
+
+// ===== E33: الاقتباس والتفاعل والتصحيح والمشاركة =====
+const features = computed(() => props.thread?.features || props.richFeatures || {});
+// صف تفاعل وصل في الاستطلاع وهدفه محمّل: لا فقاعة، وشارته على الهدف بحالته الأحدث
+const loadedIds = computed(() => new Set(props.messages.map((m) => m.id)));
+const visibleMessages = computed(() => props.messages.filter((m) => !(m.type === 'reaction' && m.target_id && loadedIds.value.has(m.target_id))));
+const reactionsById = computed(() => {
+  const out = {};
+  for (const m of props.messages) if (m.type === 'reaction' && m.target_id && m.target_reactions) out[m.target_id] = m.target_reactions;
+  return out;
+});
+const correctionsById = computed(() => {
+  const out = {};
+  for (const m of props.messages) if (m.corrects_id) out[m.corrects_id] = m.id;
+  return out;
+});
+
+const replyTargets = createReplyTarget();
+const currentReply = computed(() => (props.thread ? replyTargets.get(props.thread.id) : null));
+const preview = ref(false);
+const previewNotice = ref('');
+watch(() => props.thread?.id, () => {
+  preview.value = false;
+  previewNotice.value = '';
+  closeActions();
+  correctionMsg.value = null;
+});
+
+/** مع الرد: الرسالة المقتبسة والمعاينة المطلوبة، وما يُفعل بعد النجاح (الخادم يقرر المعاينة ويعيد سبب رفضها) */
+function sendExtras() {
+  const id = props.thread?.id;
+  const out = { ...(features.value.quote ? replyTargets.payload(id) : {}) };
+  if (features.value.preview && preview.value && hasLink(props.draft)) out.preview_url = true;
+  out.onSent = (data) => {
+    replyTargets.clear(id);
+    preview.value = false;
+    previewNotice.value = data?.preview_refused_reason ? `أُرسلت بلا معاينة للرابط: ${data.preview_refused_reason}` : '';
+  };
+  return out;
+}
+
+const actionMsg = ref(null);
+const actionBusy = ref(false);
+const actionError = ref('');
+const correctionMsg = ref(null);
+const currentReaction = computed(() => (actionMsg.value ? (reactionsById.value[actionMsg.value.id] || actionMsg.value.reactions || {}).business || '' : ''));
+function openActions(m) {
+  if (!props.canReply) return;
+  actionError.value = '';
+  actionMsg.value = m;
+}
+function closeActions() {
+  actionMsg.value = null;
+  actionBusy.value = false;
+}
+function startReply(m) {
+  if (props.thread) replyTargets.set(props.thread.id, m);
+  closeActions();
+}
+async function sendReaction(m, emoji) {
+  const id = props.thread?.id;
+  actionBusy.value = true;
+  actionError.value = '';
+  const res = await postReaction(id, m.id, emoji);
+  actionBusy.value = false;
+  if (!res.ok) {
+    actionError.value = res.error;
+    return;
+  }
+  closeActions();
+  emit('richSent', id);
+}
+function startCorrection(m) {
+  closeActions();
+  correctionMsg.value = m;
+}
+const { confirm } = useConfirm();
+const askPolicy = (message) => confirm({ title: 'تحذير قبل الإرسال', message, confirmLabel: 'إرسال رغم التحذير', danger: true });
+function onCorrectionSent() {
+  correctionMsg.value = null;
+  emit('richSent', props.thread?.id);
+}
+function onRichSent() {
+  if (props.thread) replyTargets.clear(props.thread.id);
+  emit('richSent', props.thread?.id);
+}
 
 /** يوسّط رسالة القفز ويبرزها 3 ثوانٍ (E30) */
 async function scrollToMessage(id) {
