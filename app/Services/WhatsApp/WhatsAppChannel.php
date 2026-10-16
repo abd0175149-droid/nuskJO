@@ -2,6 +2,8 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Events\WhatsApp\WaMessageFailed;
+use App\Events\WhatsApp\WaMessageSent;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
@@ -636,6 +638,7 @@ class WhatsAppChannel
             [$code, $shown] = self::shown($err);
             $row = self::store($conv, null, $displayBody, $msgType, $source, 'failed', $shown, $staffId, $stored + ['_meta_error' => $err->forPayload()],
                 $err->metaCode, $err->fbtraceId, $err->code, $s->phoneNumberId(), $err->category);
+            self::emitFailed($row, $err, $source, $staffId);
             WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source, 'type' => $msgType,
                 'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category, 'fbtrace_id' => $err->fbtraceId,
                 'http' => $res->status(), 'attempt' => 1]);
@@ -648,11 +651,12 @@ class WhatsAppChannel
         // 200 بلا معرّف رسالة: قبلتها ميتا ولا دليل على الإرسال، فلا تُعرض «أُرسلت» (E12.8)
         $wamid = data_get($json, 'messages.0.id');
         $status = is_string($wamid) && $wamid !== '' ? 'sent' : WaMessage::STATUS_UNKNOWN;
-        self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $stored, phoneNumberId: $s->phoneNumberId());
+        $row = self::store($conv, $status === 'sent' ? $wamid : null, $displayBody, $msgType, $source, $status, null, $staffId, $stored, phoneNumberId: $s->phoneNumberId());
         if ($status === WaMessage::STATUS_UNKNOWN) {
             WaLog::warning('wa.send.unknown', ['conv_id' => $conv->id, 'source' => $source, 'type' => $msgType]);
         } else {
             WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType]);
+            self::afterWamid($row, (string) $wamid, $source, $staffId);
         }
 
         self::afterSent($conv, $s, $source, $displayBody);
@@ -861,6 +865,7 @@ class WhatsAppChannel
             WaMessage::whereKey($row->id)->whereNull('wamid')->update(['wamid' => $wamid, 'sent_at' => now()]);
         }
         WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'message_id' => $row->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType, 'attempt' => $attempt]);
+        self::afterWamid($row, $wamid, $source, $row->staff_id !== null ? (int) $row->staff_id : null);
         self::afterSent($conv, $s, $source, $displayBody);
 
         return ['ok' => true, 'error' => null, 'code' => null, 'message_id' => $wamid, 'meta_code' => null,
@@ -878,11 +883,14 @@ class WhatsAppChannel
         // الحمولة من القاعدة الآن: ويبهوك قد أضاف statusHistory أثناء النداء
         $payload = (array) (WaMessage::find($row->id)?->payload ?? []);
         $payload = $extra + ['_meta_error' => $err->forPayload()] + ($sendKey !== null ? ['_released_key' => $sendKey] : []) + $payload;
-        WaMessage::whereKey($row->id)->where('status', WaMessage::STATUS_QUEUED)->update([
+        $moved = WaMessage::whereKey($row->id)->where('status', WaMessage::STATUS_QUEUED)->update([
             'status' => WaMessage::STATUS_FAILED, 'send_key' => null, 'error_message' => $shown,
             'meta_code' => $err->metaCode, 'fbtrace_id' => $err->fbtraceId, 'error_code' => mb_substr($err->code, 0, 32), 'error_category' => $err->category,
             'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
         ]);
+        if ($moved > 0) {
+            self::emitFailed($row, $err, $source, $row->staff_id !== null ? (int) $row->staff_id : null);
+        }
         WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $msgType,
             'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category, 'fbtrace_id' => $err->fbtraceId,
             'http' => $http, 'attempt' => $attempt, 'status' => 'failed']);
@@ -957,6 +965,9 @@ class WhatsAppChannel
             $text = $v2 ? "{$err->staffMessage} رقم المرجع: {$ref}" : "لم يصل رد ميتا (مهلة أو شبكة). رقم المرجع: {$ref}";
             $row = self::store($conv, null, $displayBody, $msgType, $source, $status, $text, $staffId, $stored + ['_meta_error' => $err->forPayload()],
                 errorCode: $err->code, phoneNumberId: $phoneNumberId, category: $err->category);
+            if ($status === 'failed') {
+                self::emitFailed($row, $err, $source, $staffId);
+            }
         }
         WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source, 'type' => $msgType,
             'error_code' => $err->code, 'category' => $err->category, 'attempt' => 1]);
@@ -983,6 +994,33 @@ class WhatsAppChannel
         ReplyState::markUnserved($conv, 'policy_block');
 
         return self::failLocal('POLICY_BLOCKED', 'حُجبت الرسالة قبل الإرسال بسياسة المحتوى الصادر.');
+    }
+
+    // ==================== الأحداث الداخلية (E21) ====================
+
+    /**
+     * بعد كتابة wamid على الصف: إيصال سبقه في الكاش يُطبَّق الآن (OrphanStatus، مع delivery_status_v2)، ثم WaMessageSent.
+     * لا يرمي: الرسالة خرجت فعلاً، وما بعدها لا يغيّر نتيجة الإرسال.
+     */
+    private static function afterWamid(?WaMessage $row, string $wamid, string $source, ?int $staffId): void
+    {
+        if ($row === null || $wamid === '') {
+            return;
+        }
+        try {
+            OrphanStatus::drain($wamid);
+        } catch (\Throwable $e) {
+            WaLog::error('wa.status.orphan_failed', ['message_id' => $row->id, 'type' => class_basename($e)]);
+        }
+        EventBus::emit(new WaMessageSent($row->id, (int) $row->conversation_id, $source, $staffId));
+    }
+
+    /** صف صار failed داخل dispatch (رفض ميتا المتزامن أو تعذّر الاتصال). قفل محلي قبل ميتا بلا صف، فلا حدث */
+    private static function emitFailed(?WaMessage $row, MetaError $err, string $source, ?int $staffId): void
+    {
+        if ($row !== null) {
+            EventBus::emit(new WaMessageFailed($row->id, (int) $row->conversation_id, $source, $err->metaCode, $err->category, $err->scope, 'send', $staffId));
+        }
     }
 
     private static ?bool $hasMetaColumns = null;

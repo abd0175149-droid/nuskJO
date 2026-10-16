@@ -31,6 +31,10 @@ final class FeatureFlags
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
+        // E21: حالات التسليم والناقل الداخلي وتفضيلات واتساب
+        'delivery_status_v2' => ['label' => 'حالات التسليم الذرية: لا تتراجع، بوقت ميتا وتاريخ بلا تكرار، والإيصال المبكر لا يضيع، وعلامات ✓ و✓✓ في الصندوق', 'capability' => 'C050', 'available' => true],
+        'wa_event_bus' => ['label' => 'ناقل الأحداث الداخلي: إشعار التحويل و«لم تصل رسالتك» وتدقيقهما من المستمعين بدل الإشعار المباشر', 'capability' => 'C087', 'available' => true],
+        'user_preferences_optout' => ['label' => 'تسجيل إيقاف العميل للتسويق من إعدادات واتساب (user_preferences) في قائمة الرافضين', 'capability' => 'C087', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

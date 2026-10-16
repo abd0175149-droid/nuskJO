@@ -402,6 +402,9 @@ final class MetaErrorCatalog
             'wa_suspended_source' => $source, 'wa_suspended_reason' => 'رمز ميتا '.$metaCode,
         ], null, \App\Enums\AuditAction::WaSuspendAuto, ['meta_code' => $metaCode], audit: 'safe', label: 'رمز '.$metaCode));
         WaLog::error('graph.autosuspend', ['meta_code' => $metaCode]);
+        // E21: تغيّر فعلي في صحة القناة (E22 تنقله إلى ChannelHealth::transition)
+        EventBus::emit(new \App\Events\WhatsApp\ChannelHealthChanged(\App\Events\WhatsApp\ChannelHealthChanged::AVAILABLE,
+            \App\Events\WhatsApp\ChannelHealthChanged::SUSPENDED_AUTO, $source, (string) $metaCode));
         WhatsAppInbox::notifyAdmins('⛔ إيقاف إرسال الواتساب', "ردّت ميتا بالرمز {$metaCode} (تقييد الحساب)، فأُوقف كل الإرسال تلقائياً. راجع حالة الحساب قبل إعادة التشغيل.", '/whatsapp/settings');
 
         return true;

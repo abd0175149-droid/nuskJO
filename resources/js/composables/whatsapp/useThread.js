@@ -17,7 +17,11 @@ export function mergeOlder(messages, older) {
     return [...(older || []).filter((m) => !known.has(m.id)).sort((a, b) => a.id - b.id), ...messages];
 }
 
-/** حالات المرسَل منذ آخر مزامنة (status وerror والمرفق) تُطبَّق في مكانها */
+// حقول الحالة التي يعيدها الاستطلاع كاملة لكل رسالة تغيّرت: سبب E18، ومحاولات E19، وعلامات E21.
+// ما غاب منها في التحديث يُمحى (فاشلة صارت مُسلّمة لا تُبقي سببها)
+const STATUS_FIELDS = ['error_code', 'category', 'action', 'fbtrace_id', 'attempts', 'can_resend', 'status_at', 'multi_fail', 'meta_code'];
+
+/** حالات المرسَل منذ آخر مزامنة (status وerror وحقولهما والمرفق) تُطبَّق في مكانها */
 export function applyUpdates(messages, updates) {
     const byId = new Map(messages.map((m) => [m.id, m]));
     for (const u of updates || []) {
@@ -25,6 +29,10 @@ export function applyUpdates(messages, updates) {
         if (!m) continue;
         m.status = u.status;
         m.error = u.error;
+        for (const k of STATUS_FIELDS) {
+            if (k in u) m[k] = u[k];
+            else delete m[k];
+        }
         if (u.media) m.media = u.media;
     }
     return messages;

@@ -314,7 +314,8 @@ export function useInbox(props, thread) {
         }
     }
 
-    const toggleBot = () => act('toggle-bot', {}, (d) => { s.thread.bot_enabled = d.bot_enabled; }, 'تعذّر تغيير حالة البوت');
+    // القيمة المطلوبة صراحة (E21): نقرتان على زر قديم الحالة لا تعكسان النتيجة
+    const toggleBot = () => act('toggle-bot', { enabled: !s.thread?.bot_enabled }, (d) => { s.thread.bot_enabled = d.bot_enabled; }, 'تعذّر تغيير حالة البوت');
     const resolve = () => act('resolve', {}, () => { s.thread.needs_attention = false; s.thread.attention_reason = null; }, 'تعذّر حفظ المعالجة');
     // إزالة وسم اختصاصك قد تخرج المحادثة من نطاقك: استطلاع فوري
     const setTopic = (key, attach) => key && act('topic', { topic: key, attach }, (d) => { s.thread.topics = d.topics; if (!attach) poll(); }, 'تعذّر تعديل الوسم');

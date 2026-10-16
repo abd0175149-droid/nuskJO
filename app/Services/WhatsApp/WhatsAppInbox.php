@@ -4,6 +4,10 @@ namespace App\Services\WhatsApp;
 
 use App\Enums\AuditAction;
 use App\Enums\AuditSeverity;
+use App\Events\WhatsApp\ChannelHealthChanged;
+use App\Events\WhatsApp\WaMessageFailed;
+use App\Events\WhatsApp\WaMessageStatusChanged;
+use App\Events\WhatsApp\WaMessageStored;
 use App\Models\AuditLog;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
@@ -71,6 +75,12 @@ class WhatsAppInbox
         }
         if (in_array($field, WebhookFields::COEXISTENCE, true)) {
             WebhookFields::coexistence($field);
+
+            return;
+        }
+        // إيقاف التسويق من تفضيلات واتساب (E21، العلم user_preferences_optout): إلى wa_optouts بدل صف التدقيق بالأعداد
+        if ($field === 'user_preferences' && UserPreferencesHandler::enabled()) {
+            UserPreferencesHandler::handle($value, $ownId);
 
             return;
         }
@@ -275,11 +285,12 @@ class WhatsAppInbox
 
         // التفاعلات (reaction) مسار منفصل: تُخزَّن ولا تفتح نافذة ولا تُمرَّر للبوت
         if ($in->isReaction()) {
-            WaMessage::create([
+            $reaction = WaMessage::create([
                 'conversation_id' => $conv->id, 'wamid' => $wamid, 'direction' => 'in',
                 'source' => 'customer', 'msg_type' => 'reaction',
                 'body' => $in->body, 'payload' => $msg + ($in->reactionTo ? ['_reaction_to' => $in->reactionTo] : []),
             ] + $columns);
+            EventBus::emit(new WaMessageStored($reaction->id, $conv->id, 'reaction'));
 
             return [null, false];
         }
@@ -305,6 +316,8 @@ class WhatsAppInbox
             'body' => $body,
             'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []),
         ] + $columns + (self::hasMetaAt() ? ['meta_at' => $metaAt] : []));
+        // بعد اعتماد المعاملة وحدها (E21)؛ تكرار wamid يرمي قبل هنا فلا حدث له
+        EventBus::emit(new WaMessageStored($message->id, $conv->id, (string) $type));
         // أرشفة المرفق (E14) بعد الاعتماد، خلف العلم media_archive
         Media\MediaIntake::onInbound($message, $conv, $msg);
 
@@ -334,6 +347,8 @@ class WhatsAppInbox
             WaOptout::updateOrCreate(
                 $conv->hasPhone() ? ['phone' => $conv->phone] : ['wa_user_id' => $conv->wa_user_id],
                 ['reason' => 'طلب العميل', 'created_at' => now()]
+                    // مصدر الإيقاف (E21): زر optout أو كلمة إيقاف. بين النشر والهجرة لا عمود بعد
+                    + ((self::$optoutSource ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_optouts', 'source')) ? ['source' => $buttonId === 'optout' ? 'button' : 'text'] : [])
             );
             // إشعار النظام هو الرد: لا يجيب البوت عنها لاحقاً (المُصالِح أو مكرر من ميتا)
             ReplyState::advance($conv, $message->id);
@@ -372,6 +387,8 @@ class WhatsAppInbox
         ], fn ($v) => $v !== null);
     }
 
+    private static ?bool $optoutSource = null;
+
     private static function isOptOut(?string $body, ?string $buttonId): bool
     {
         if ($buttonId === 'optout') return true;
@@ -394,35 +411,27 @@ class WhatsAppInbox
      */
     private static function byOpaque(array $st, string $wamid): ?WaMessage
     {
-        $opaque = (string) data_get($st, 'biz_opaque_callback_data', '');
-        if ($opaque === '' || !preg_match('/^([a-z0-9]+):m:(\d+)$/', $opaque, $m)) {
-            return null;
-        }
-        if ($m[1] !== config('whatsapp.send.opaque_prefix', 'nj')) {
-            WaLog::info('wa.status.foreign_opaque', ['wamid' => $wamid]);
-
-            return null;
-        }
-
-        return WaMessage::where('id', (int) $m[2])->where('direction', 'out')
-            ->where(fn ($q) => $q->whereNull('wamid')->orWhere('wamid', $wamid))->first();
+        return StatusApplier::byOpaque($st, $wamid);
     }
 
     /** لم يبق في المحادثة صف مشكوك فيه: تُرفع شارة send_unknown وحدها، ولا يُمس أي سبب آخر */
     private static function clearSendUnknown(int $convId): void
     {
-        $conv = WaConversation::find($convId);
-        if (!$conv || !ReplyState::available() || !$conv->needs_attention || $conv->attention_reason !== 'send_unknown') {
-            return;
-        }
-        $pending = WaMessage::where('conversation_id', $convId)->where('direction', 'out')->whereIn('status', WaMessage::PENDING_STATES)->exists();
-        if (!$pending) {
-            $conv->forceFill(['needs_attention' => false, 'attention_reason' => null])->save();
-        }
+        StatusApplier::clearSendUnknown($convId);
     }
 
+    /**
+     * مع العلم delivery_status_v2 (E21): StatusApplier بالتحديث الذري المشروط ووقت ميتا والتاريخ بلا تكرار والإيصال اليتيم.
+     * بدونه المسار القديم أدناه كما هو (E07 وE18 وE19 وE20)، ويطلق الأحداث نفسها عند التقدّم.
+     */
     private static function handleStatus(array $st): void
     {
+        if (StatusApplier::enabled()) {
+            StatusApplier::apply($st);
+
+            return;
+        }
+
         $wamid = data_get($st, 'id');
         $status = data_get($st, 'status');
         if (!$wamid || !$status) return;
@@ -489,6 +498,15 @@ class WhatsAppInbox
         if ($pendingBefore && $advances && $status !== 'failed') {
             self::clearSendUnknown((int) $m->conversation_id);
         }
+        // الأحداث عند التقدّم الفعلي وحده (E21)، بعد اعتماد ما يحيط بها
+        if ($advances && $m->direction === 'out') {
+            $ts = is_numeric(data_get($st, 'timestamp')) ? (int) data_get($st, 'timestamp') : now()->getTimestamp();
+            EventBus::emit(new WaMessageStatusChanged($m->id, (int) $m->conversation_id, (string) $status, min($ts, now()->getTimestamp()), $err?->metaCode ?? $code));
+            if ($status === 'failed') {
+                EventBus::emit(new WaMessageFailed($m->id, (int) $m->conversation_id, (string) $m->source, $err?->metaCode ?? $code,
+                    $err?->category, $err?->scope, 'webhook', $m->staff_id !== null ? (int) $m->staff_id : null));
+            }
+        }
 
         // حالة فيها الرقم والمعرّف معاً تملأ معرّف محادثة رقمها معروف
         if ($m->direction === 'out' && filled(data_get($st, 'recipient_user_id')) && ($c = WaConversation::find($m->conversation_id))) {
@@ -503,12 +521,9 @@ class WhatsAppInbox
             }
             // الويبهوك المكرر لا يعيد التنبيه ولا العدّ (المفتاح يحمل wamid)
             MetaErrorReactor::react($err, ['conv_id' => $m->conversation_id, 'message_id' => $m->id, 'wamid' => (string) $wamid, 'source' => 'webhook']);
-            // رسالة موظف لم تصل لسبب عند العميل: يُبلَّغ مرسلها مرة واحدة، بلا نص الرسالة
-            if ($v2 && $advances && $m->source === 'staff' && $m->staff_id && $err->scope === 'recipient'
-                && \Illuminate\Support\Facades\Cache::add("wa:delivery-failed:notify:{$m->id}", 1, now()->addDays(2))) {
-                $name = optional(WaConversation::find($m->conversation_id))->noticeLabel() ?? 'العميل';
-                \App\Services\NotificationService::send((int) $m->staff_id, '⚠️ لم تصل رسالتك', "لم تصل رسالتك إلى {$name}: {$err->staffMessage}",
-                    ['type' => 'whatsapp', 'icon' => '⚠️', 'action_url' => "/whatsapp/inbox?conv={$m->conversation_id}"]);
+            // رسالة موظف لم تصل لسبب عند العميل: يُبلَّغ مرسلها مرة واحدة، بلا نص الرسالة (مع wa_event_bus: المستمع)
+            if ($advances) {
+                StatusApplier::notifySenderDirect($m->id, (int) $m->conversation_id, $m->source, $m->staff_id !== null ? (int) $m->staff_id : null, $err);
             }
         } elseif ($code !== null && !$v2) {
             MetaErrorCatalog::react($code);
@@ -611,6 +626,7 @@ class WhatsAppInbox
                     'wa_suspended' => true, 'wa_suspended_at' => now(), 'wa_suspended_by' => null,
                     'wa_suspended_source' => 'meta_event', 'wa_suspended_reason' => $event,
                 ], null, AuditAction::WaSuspendAuto, ['field' => $field, 'event' => $event], audit: 'safe', label: $event));
+                EventBus::emit(new ChannelHealthChanged(ChannelHealthChanged::AVAILABLE, ChannelHealthChanged::SUSPENDED_AUTO, 'meta_event', mb_substr($event, 0, 40)));
             }
             self::notifyAdmins('⛔ إيقاف إرسال الواتساب', "وصل حدث «{$event}» من ميتا، فأُوقف كل الإرسال تلقائياً. راجع صحّة الحساب قبل إعادة التشغيل.");
         } elseif ($event === 'ACCOUNT_OFFBOARDED') {

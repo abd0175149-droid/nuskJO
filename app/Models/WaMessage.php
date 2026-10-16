@@ -19,6 +19,8 @@ class WaMessage extends Model
         'error_category',
         // E19: دفتر الإرسال
         'attempts', 'answers_in_id', 'sent_at',
+        // E21: وقت ميتا للحالة الحالية (statuses[].timestamp)، غير sent_at (وقت قبول ميتا للطلب)
+        'status_at',
         'media_id', 'media_mime', 'media_sha256', 'media_filename', 'media_size', 'media_path', 'referral',
         // E14: حالة الأرشفة (pending|stored|too_large|failed|expired|rejected|purged|missing|skipped_quota|skipped_consent)
         'media_status', 'media_error', 'media_archived_at',
@@ -29,7 +31,7 @@ class WaMessage extends Model
 
     // meta_at: وقت ميتا للوارد (timestamp الويبهوك)، لا وقت وصوله إلينا
     protected $casts = ['payload' => 'array', 'meta_at' => 'datetime', 'referral' => 'array', 'media_archived_at' => 'datetime', 'media_size' => 'integer',
-        'sent_at' => 'datetime', 'attempts' => 'integer', 'answers_in_id' => 'integer'];
+        'sent_at' => 'datetime', 'attempts' => 'integer', 'answers_in_id' => 'integer', 'status_at' => 'datetime'];
 
     // ===== حالات الصادر (دفتر الإرسال E19) =====
     // queued: حُجز الصف قبل نداء ميتا · sent فما فوقها: قبلتها ميتا · failed: رُفضت (المفتاح محرَّر)

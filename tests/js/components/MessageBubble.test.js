@@ -73,6 +73,28 @@ describe('MessageBubble', () => {
         expect(unknown.find('[data-test="status-unknown"]').classes()).toContain('bg-amber-100');
     });
 
+    it('shows delivery ticks for outgoing messages only when the server sends them (E21)', () => {
+        const read = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'staff', status: 'read', status_at: '14:06', multi_fail: false }) } });
+        expect(read.find('[data-test="delivery-ticks"]').exists()).toBe(true);
+        expect(read.find('[role="img"][data-status]').attributes('aria-label')).toBe('قُرئت 14:06');
+
+        const flagOff = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'read' }) } });
+        expect(flagOff.find('[data-test="delivery-ticks"]').exists()).toBe(false);
+        const incoming = mount(MessageBubble, { props: { m: msg({ status: 'read', multi_fail: false }) } });
+        expect(incoming.find('[data-test="delivery-ticks"]').exists()).toBe(false);
+    });
+
+    it('keeps E19 states and adds the multi-device warning beside the ticks', () => {
+        const failed = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'failed', error: 'x', multi_fail: false }) } });
+        expect(failed.text()).toContain('❌ فشل');
+        expect(failed.find('[data-test="delivery-ticks"]').exists()).toBe(false);
+        const queued = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'staff', status: 'queued', multi_fail: false }) } });
+        expect(queued.find('[data-test="status-queued"]').exists()).toBe(true);
+
+        const multi = mount(MessageBubble, { props: { m: msg({ direction: 'out', source: 'bot', status: 'delivered', multi_fail: true }) } });
+        expect(multi.find('[data-test="multi-fail"]').exists()).toBe(true);
+    });
+
     it('offers copy-to-composer only when the server allows a resend, and emits the message', async () => {
         const m = msg({ direction: 'out', source: 'staff', status: 'failed', error: 'تعذّر التسليم', can_resend: true, body: 'موعدك غداً' });
         const w = mount(MessageBubble, { props: { m } });

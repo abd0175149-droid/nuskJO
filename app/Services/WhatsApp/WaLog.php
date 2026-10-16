@@ -18,6 +18,8 @@ final class WaLog
         'error_code', 'category', 'attempt', 'scope',
         // E20: استقبال الويبهوك (أنواع أحداث المكالمات ببصمة مقتطعة، ورقم الصف والعنصر، وأعداد المحو والإعادة)
         'events', 'item', 'event_id', 'wiped', 'deleted', 'overdue', 'processed', 'failed', 'dead',
+        // E21: اسم صنف المستمع الذي فشل (fail-open)
+        'listener',
     ];
 
     public static function info(string $event, array $context = []): void

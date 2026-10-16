@@ -75,3 +75,13 @@ batch_mixed.json              [messages] § change واحد فيه حالتان 
 calls_event.json              [calling] § حقل calls (connect) بشكل وثيقة المكالمات، وsdp مختصر مصنوع. لا نشترك فيه: يُسجَّل نوع الحدث فقط. E20.
 smb_message_echoes.json       [coexistence] § حقل smb_message_echoes (message_echoes) بشكل وثيقة التعايش. يُنبّه ولا يصل للبوت. E20.
 unknown_field.json            حقل مصنوع brand_new_field بجانب change رسائل عادي: الحقل المجهول لا يُسقط الرسالة. E20.
+status_delivered_with_biz_opaque.json [messages] § statuses (delivered) مع biz_opaque_callback_data='nj:m:1' وpricing بلا conversation،
+                              بشكل status_sent_with_opaque.json. الاختبار يستبدل رقم الصف. E21.
+status_read_v24_no_conversation.json [messages] § statuses (read) بلا كائن conversation (يُحذف من v24.0 إلا لنافذة نقطة الدخول
+                              المجانية) ومعه pricing. wamid مولَّد يرمّز 16505551234 وحده. E21.
+user_preferences_stop.json    [user_preferences] § الحقل user_preferences: wa_id وdetail وcategory=marketing_messages وvalue=stop
+                              وtimestamp، مع metadata وcontacts بشكل حقل messages. مكتوب من المرجع لا من أداة Test. E21.
+user_preferences_resume.json  الحمولة نفسها بالقيمة resume ووقت أحدث. E21.
+user_preferences_foreign_phone.json  الحمولة نفسها لرقم آخر في التطبيق نفسه (phone_number_id=199999999999999 مصنوع، والرقم
+                              المعروض 16505553333)، كما تصل من زر Test أو من رقم آخر: تُتجاهل وتُعدّ. E21.
+                              [user_preferences] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/user_preferences

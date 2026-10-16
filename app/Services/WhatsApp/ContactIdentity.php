@@ -214,11 +214,13 @@ final class ContactIdentity
             return null;
         }
 
-        WaMessage::create([
+        $stored = WaMessage::create([
             'conversation_id' => $conv->id, 'wamid' => $in->wamid, 'direction' => 'in', 'source' => 'system',
             'msg_type' => 'system', 'body' => $in->body, 'phone_number_id' => $in->phoneNumberId ?: null,
             'payload' => ['system' => $in->system],
         ]);
+        // بعد اعتماد معاملة المستدعي وحدها (E21)
+        EventBus::emit(new \App\Events\WhatsApp\WaMessageStored($stored->id, $conv->id, 'system'));
 
         $update = [];
         $note = null;
