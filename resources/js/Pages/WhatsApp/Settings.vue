@@ -89,6 +89,7 @@
                         <template v-if="ops.search_index.secure_delete === false"> · المحذوف يُمحى من الفهرس بإعادة كتابته</template>
                     </p>
                     <SecurityScanLine :scan="props.securityScan"/>
+                    <IntegrationsHealthLine :line="ops.integrations"/>
 
                     <!-- رمز ميتا -->
                     <p class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">رمز ميتا</p>
@@ -497,6 +498,7 @@ import IdentityModePanel from '@/Components/WhatsApp/IdentityModePanel.vue';
 import KillSwitchPanel from '@/Components/WhatsApp/KillSwitchPanel.vue';
 import LlmTermsCard from '@/Components/WhatsApp/LlmTermsCard.vue';
 import OneTimeSecretModal from '@/Components/WhatsApp/OneTimeSecretModal.vue';
+import IntegrationsHealthLine from '@/Components/WhatsApp/IntegrationsHealthLine.vue';
 import ReadReceiptsField from '@/Components/WhatsApp/ReadReceiptsField.vue';
 import SecretCard from '@/Components/WhatsApp/SecretCard.vue';
 import SettingField from '@/Components/WhatsApp/SettingField.vue';

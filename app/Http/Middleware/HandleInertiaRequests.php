@@ -43,6 +43,9 @@ class HandleInertiaRequests extends Middleware
             // مزايا خلف أعلام: القائمة تُخفي ما لم يُفعَّل بعد
             'features' => [
                 'audit_page' => (bool) config('audit.page'),
+                // E40: «🔌 التكاملات» لمن يملك صلاحيتها وأحد العلمين مفعّل (لا استعلام لغيره)
+                'integrations' => (bool) rescue(fn () => $user && ($user->can('integrations.manage') || $user->can('mcp.use'))
+                    && (\App\Support\FeatureFlags::on('integration_outbox') || \App\Support\FeatureFlags::on('mcp_server')), false, false),
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);

@@ -340,7 +340,8 @@ onUnmounted(() => {
 
 const can = (permission) => {
     const perms = page.props.auth?.permissions || [];
-    return page.props.auth?.isAdmin || perms.includes(permission);
+    // قائمة = يكفي أيٌّ منها (E40: التكاملات لمن يدير الوجهات أو يملك رموز MCP)
+    return page.props.auth?.isAdmin || [].concat(permission).some((p) => perms.includes(p));
 };
 
 const currentPath = computed(() => page.url?.split('?')[0] || '/');
@@ -414,6 +415,7 @@ const menuGroups = [
         { icon: '⚙️', label: 'إعدادات النظام', route: '/settings', permission: 'settings.view' },
         { icon: '🛟', label: 'النسخ الاحتياطي', route: '/settings/backups', permission: 'backups.view' },
         { icon: '🧾', label: 'سجل التدقيق', route: '/audit-logs', permission: 'audit.view', feature: 'audit_page' },
+        { icon: '🔌', label: 'التكاملات', route: '/settings/integrations', permission: ['integrations.manage', 'mcp.use'], feature: 'integrations' },
     ]},
 ];
 

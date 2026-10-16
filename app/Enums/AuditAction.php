@@ -182,11 +182,7 @@ enum AuditAction: string
     case McpAuthFailed = 'mcp.auth_failed';
 
     /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [
-        'IntegrationEndpointCreate' => 'E40 قيد البناء', 'IntegrationEndpointUpdate' => 'E40 قيد البناء', 'IntegrationEndpointDelete' => 'E40 قيد البناء',
-        'IntegrationEndpointRotate' => 'E40 قيد البناء', 'IntegrationEndpointToggle' => 'E40 قيد البناء', 'IntegrationDeliveryRedrive' => 'E40 قيد البناء',
-        'McpTokenCreate' => 'E40 قيد البناء', 'McpTokenRevoke' => 'E40 قيد البناء',
-    ];
+    public const INTENTIONALLY_UNEMITTED = [];
 
     public function severity(): AuditSeverity
     {
