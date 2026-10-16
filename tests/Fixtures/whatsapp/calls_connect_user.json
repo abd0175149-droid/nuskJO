@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Sheena Nelson"
+                },
+                "wa_id": "16505551234"
+              }
+            ],
+            "calls": [
+              {
+                "id": "wacid.FIXTURE.call.2",
+                "to": "15550783881",
+                "from": "16505551234",
+                "event": "connect",
+                "timestamp": "1760425740",
+                "direction": "USER_INITIATED",
+                "session": {
+                  "sdp_type": "offer",
+                  "sdp": "v=0 o=- 0 0 IN IP4 127.0.0.1 s=- t=0 0"
+                }
+              }
+            ]
+          },
+          "field": "calls"
+        }
+      ]
+    }
+  ]
+}

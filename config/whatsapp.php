@@ -168,4 +168,24 @@ return [
         // الأحداث المعلوماتية تُقلَّم بعدها (الحرج والتحذير يبقيان)
         'info_retention_days' => 180,
     ],
+
+    // المكالمات (E39، docs/whatsapp/calls.md): كلها خلف العلمين calls_webhook وcalls_followup المطفأين
+    'calls' => [
+        // إشعار المكالمة الفائتة: مرة لكل محادثة في هذه المدة (دقائق)
+        'notify_minutes' => 10,
+        // المتابعة النصية بعد الفائتة: مرة لكل محادثة في هذه المدة (ساعات)
+        'followup_hours' => (int) env('WA_CALLS_FOLLOWUP_HOURS', 6),
+        // توقيت ما يُكتب في الخيط والإشعار
+        'timezone' => 'Asia/Amman',
+    ],
+
+    // التعايش مع تطبيق الأعمال (E39، docs/whatsapp/coexistence.md): خلف الأعلام coexistence_* المطفأة
+    'coexistence' => [
+        // الحارس المبكر يوقف البوت مدة لا تقل عن هذه (دقائق)
+        'guard_pause_minutes' => 60,
+        // سجل history المحفوظ مشفّراً بانتظار قرار المالك (أيام)، ثم يُمحى كل ساعة
+        'history_hold_days' => (int) env('WA_COEX_HISTORY_HOLD_DAYS', 30),
+        // رسائل الاستيراد في المعاملة الواحدة
+        'import_batch' => 500,
+    ],
 ];

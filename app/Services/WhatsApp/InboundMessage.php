@@ -42,6 +42,10 @@ final class InboundMessage
     public static function fromWebhook(array $msg, ?array $contact, string $phoneNumberId): self
     {
         $type = (string) (data_get($msg, 'type') ?: 'text');
+        // رد العميل على طلب إذن الاتصال (E39، العلم calls_webhook): نوع مستقل لا يصل البوت. بدون العلم يبقى interactive
+        if ($type === 'interactive' && data_get($msg, 'interactive.type') === 'call_permission_reply' && CallEventHandler::enabled()) {
+            $type = 'call_permission';
+        }
         $from = data_get($msg, 'from');
         $userId = data_get($msg, 'from_user_id');
         [$body, $buttonId] = self::body($msg, $type);
@@ -98,6 +102,7 @@ final class InboundMessage
         return match ($type) {
             'text' => [(string) data_get($msg, 'text.body', ''), null],
             'interactive' => self::interactive($msg),
+            'call_permission' => [self::callPermission($msg), null],
             'button' => [(string) data_get($msg, 'button.text', ''), self::str(data_get($msg, 'button.payload'), 256)],
             'image' => ['📷 صورة'.$caption('image'), null],
             'video' => ['🎬 مقطع فيديو'.$caption('video'), null],
@@ -129,6 +134,21 @@ final class InboundMessage
         }
 
         return ['[interactive]', null];
+    }
+
+    /** «وافق العميل على أن نتصل به حتى …» بتوقيت عمّان، أو الرفض */
+    private static function callPermission(array $msg): string
+    {
+        $reply = (array) data_get($msg, 'interactive.call_permission_reply', []);
+        if (strtolower((string) ($reply['response'] ?? '')) !== 'accept') {
+            return '📞 رفض العميل طلب الاتصال';
+        }
+        $exp = $reply['expiration_timestamp'] ?? null;
+        $until = is_numeric($exp) && (int) $exp > 0
+            ? ' حتى '.\Illuminate\Support\Carbon::createFromTimestamp((int) $exp)->setTimezone((string) config('whatsapp.calls.timezone', 'Asia/Amman'))->format('Y-m-d H:i')
+            : '';
+
+        return '📞 وافق العميل على أن نتصل به'.$until;
     }
 
     private static function location(array $msg): string

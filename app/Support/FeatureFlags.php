@@ -78,6 +78,12 @@ final class FeatureFlags
         'channel_health' => ['label' => 'صحة القناة كآلة حالات: أحداث ميتا بتصنيف صحيح وسجل دائم، والحجب BLOCKED بدل الإيقاف الآلي، ولا قفل على رفع الحظر ولا على قيود رسائل الشركة', 'capability' => 'C232', 'available' => true],
         'channel_health_block_on_token' => ['label' => 'منع الإرسال وتوليد الردود عند رمز ميتا غير صالح (بدل التنبيه وحده)', 'capability' => 'C260', 'available' => true],
         'integrity_breaker_lock' => ['label' => 'قاطع النزاهة يحجب الإرسال عند تكرار 131031 أو 131048 (بدل التنبيه والفحص)', 'capability' => 'C244', 'available' => true],
+        // E39: المكالمات والتعايش، جاهزية مشروطة. لا يُفعَّل أي منها قبل قرار المالك المكتوب في CHANGELOG
+        'calls_webhook' => ['label' => 'المكالمات: سجل المكالمة ورسالة في الخيط والفائتة إلى «تدخّل» وإذن الاتصال (بقرار المالك المكتوب)', 'capability' => 'C046', 'available' => true],
+        'calls_followup' => ['label' => 'رسالة نصية بعد المكالمة الفائتة بنص يعتمده المالك (داخل النافذة، مرة كل 6 ساعات)', 'capability' => 'C046', 'available' => true],
+        'coexistence_guard' => ['label' => 'حارس التعايش: أي رسالة من تطبيق الأعمال على الهاتف توقف البوت في محادثتها فوراً، بلا تخزين', 'capability' => 'C011', 'available' => true],
+        'coexistence_echoes' => ['label' => 'التعايش: رسائل هاتف الوكالة تُحفظ في الصندوق وتوقف البوت (بقرار المالك المكتوب)', 'capability' => 'C011', 'available' => true],
+        'coexistence_history_hold' => ['label' => 'حفظ سجل المحادثات السابق (history) مشفّراً بانتظار قرار الاستيراد، ثم يُمحى بعد مدته', 'capability' => 'C012', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

@@ -18,6 +18,8 @@ final class ConversationCacheKeys
         'wa:rr:open:{id}',
         // E31: قفل الحظر (30 ثانية)
         'wa:block:{id}',
+        // E39: إشعار المكالمة الفائتة (10 دقائق) والمتابعة النصية بعدها (6 ساعات)
+        'wa:call:notify:{id}', 'wa:call:fu:{id}',
     ];
 
     public const PATTERNS = [

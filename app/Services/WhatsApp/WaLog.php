@@ -30,6 +30,8 @@ final class WaLog
         'qr_link_id', 'channel',
         // E22: انتقالات صحة القناة (الحالتان والكاتب ورمز السبب) وعدّاد الفشل المتتالي
         'from', 'to', 'writer', 'effect', 'severity',
+        // E39: بصمة مقتطعة لمعرّف المكالمة (لا رقم المتصل ولا SDP)، ووضع التعايش، ورقم دفعة السجل السابق
+        'call', 'mode', 'chunk',
     ];
 
     public static function info(string $event, array $context = []): void

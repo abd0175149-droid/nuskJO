@@ -123,3 +123,12 @@ health_available.json         [health] § GET /{phone-number-id}?fields=health_s
 health_limited.json           [health] § LIMITED على الرقم مع additional_info، وجودة YELLOW.
 health_blocked.json           [health] § BLOCKED على WABA مع errors (error_code 141010 وerror_description وpossible_solution
                               كما في المرجع)، وجودة RED. وخطأ الرمز 190 في error_190.json (E18) نفسه، لا نسخة ثانية.
+E39 (المكالمات والتعايش، جاهزية مشروطة). مكتوبة من المراجع لا من أداة Test ولا من الإنتاج، بأرقام الأمثلة وحدها:
+                              [calling]     https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/user-initiated-calls
+                              [permissions] https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/user-call-permissions
+calls_connect_user.json       [calling] § webhook connect: مكالمة من العميل (USER_INITIATED) مع session بعرض SDP مختصر مصنوع
+                              (127.0.0.1)، ومعرّف wacid مصنوع. الاختبار يستبدل timestamp بوقت قريب.
+calls_terminate_failed.json   [calling] § webhook terminate بحالة FAILED بلا start_time ولا duration (لم يُرد): فائتة.
+calls_terminate_completed.json [calling] § webhook terminate بحالة COMPLETED مع start_time وend_time وduration=135.
+call_permission_reply_accept.json [permissions] § رد العميل في حقل messages: interactive.type=call_permission_reply
+                              وresponse=accept وexpiration_timestamp وresponse_source. wamid مصنوع لا يرمّز رقماً.

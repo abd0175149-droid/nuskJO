@@ -68,7 +68,12 @@ class WhatsAppInbox
             return;
         }
         if ($field === 'calls') {
-            WebhookFields::calls($value);
+            // E39 (العلم calls_webhook): سجل المكالمة والفائتة. بدونه نوع الحدث وعدده فقط (E20). لا رد للبوت في الحالين
+            if (CallEventHandler::enabled()) {
+                CallEventHandler::handle($value, $ownId, $result);
+            } else {
+                WebhookFields::calls($value);
+            }
 
             return;
         }
@@ -256,6 +261,20 @@ class WhatsAppInbox
         if ($after === 'consent:yes') {
             return null;
         }
+        // رد العميل على طلب إذن الاتصال (E39): لا يصل البوت. الموافقة «تدخّل» بسببها وإشعار، والرفض للسجل وحده
+        if ($after === 'call_permission:accept') {
+            ReplyState::markUnserved($conv, 'call_permission');
+
+            return null;
+        }
+        if ($after === 'call_permission:reject') {
+            // لا وارد آخر ينتظر: العلامة تتقدّم فلا يعدّه المُصالِح ولا «العالقة» ولا قواعد النص
+            if (ReplyState::newestPending($conv) === null) {
+                ReplyState::advance($conv, $stored->id);
+            }
+
+            return null;
+        }
         if ($after === 'optout') {
             WhatsAppChannel::sendText($conv, 'تم إيقاف الرسائل التسويقية. يمكنك مراسلتنا في أي وقت لأي استفسار.', 'system', sendKey: SendKey::optout((string) $in->wamid));
 
@@ -353,6 +372,11 @@ class WhatsAppInbox
         $conv->refresh();
         if ($blocked) {
             ReplyState::advance($conv, $message->id);
+        }
+
+        // إذن الاتصال (E39، العلم calls_webhook): القرار بعد الاعتماد
+        if ($type === 'call_permission') {
+            return [$conv, strtolower((string) data_get($msg, 'interactive.call_permission_reply.response')) === 'accept' ? 'call_permission:accept' : 'call_permission:reject', $message];
         }
 
         // زرّا إشعار حفظ الملفات (E14): اختيار مسجّل لا يصل للبوت، والحذف بعد الاعتماد

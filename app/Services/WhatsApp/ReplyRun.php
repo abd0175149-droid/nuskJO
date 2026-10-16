@@ -109,8 +109,9 @@ final class ReplyRun
             return 'stale_gone';
         }
 
+        // staff_phone (E39): رسالة من تطبيق الأعمال على الهاتف (صدى التعايش) استلامٌ كرد الموظف من الصندوق
         $staffReplied = WaMessage::where('conversation_id', $conv->id)
-            ->where('source', 'staff')->where('status', '!=', 'failed')
+            ->whereIn('source', ['staff', 'staff_phone'])->where('status', '!=', 'failed')
             ->where('id', '>', $this->startMaxMsgId)->exists();
         if ($staffReplied) {
             return 'stale_takeover';

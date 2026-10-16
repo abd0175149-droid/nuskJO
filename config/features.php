@@ -65,5 +65,11 @@ return [
         'channel_health' => env('WA_FEATURE_CHANNEL_HEALTH'),
         'channel_health_block_on_token' => env('WA_FEATURE_CHANNEL_HEALTH_BLOCK_ON_TOKEN'),
         'integrity_breaker_lock' => env('WA_FEATURE_INTEGRITY_BREAKER_LOCK'),
+        // E39: المكالمات والتعايش (كلها مطفأة حتى قرار المالك)
+        'calls_webhook' => env('WA_FEATURE_CALLS_WEBHOOK'),
+        'calls_followup' => env('WA_FEATURE_CALLS_FOLLOWUP'),
+        'coexistence_guard' => env('WA_FEATURE_COEXISTENCE_GUARD'),
+        'coexistence_echoes' => env('WA_FEATURE_COEXISTENCE_ECHOES'),
+        'coexistence_history_hold' => env('WA_FEATURE_COEXISTENCE_HISTORY_HOLD'),
     ],
 ];
