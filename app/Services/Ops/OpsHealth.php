@@ -125,6 +125,8 @@ final class OpsHealth
             // فهرس البحث في الرسائل (E30): آخر فحص يومي، أو null قبل أول فحص
             'search_index' => \App\Services\WhatsApp\Search\FtsSchema::lastCheck(),
             'last_inbound_minutes' => InboundSilence::minutesSinceLast(),
+            // التكاملات الصادرة (E40): المعلّق وأقدمه والفاشل خلال 24 ساعة والوجهات الموقوفة، أو null قبل الحاجة
+            'integrations' => \App\Services\Integrations\IntegrationsHealth::summary(),
         ];
     }
 

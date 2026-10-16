@@ -266,6 +266,16 @@ Schedule::command('users:idle-report')
     ->weeklyOn(0, '08:47')
     ->withoutOverlapping();
 
+// التكاملات الصادرة (E40): المُصالِح كل 5 دقائق (لا يعمل إلا بالعلم integration_outbox)، والتقليم يومياً بعد النسخة
+// (المُسلَّم 30 يوماً والفاشل 90، يعمل والعلم مطفأ: تقليص لا حماية)
+Schedule::command('integrations:redrive')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5);
+Schedule::command('integrations:prune')
+    ->timezone('Asia/Amman')
+    ->dailyAt('04:20')
+    ->withoutOverlapping();
+
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {
     $mode = $this->argument('mode');
