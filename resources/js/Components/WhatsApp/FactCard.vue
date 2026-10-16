@@ -10,7 +10,7 @@
       <span class="ms-auto shrink-0 text-gray-500" aria-hidden="true">{{ collapsed ? '▾' : '▴' }}</span>
     </button>
 
-    <div v-if="!collapsed" class="px-3 sm:px-4 pb-2 space-y-2 max-h-60 overflow-y-auto">
+    <div v-if="!collapsed" class="px-3 sm:px-4 pb-2 space-y-2 max-h-44 lg:max-h-60 overflow-y-auto">
       <p v-if="loading && !facts" class="text-xs text-gray-500">جارٍ التحميل...</p>
       <p v-else-if="loadError" class="text-xs text-red-600" role="alert">❌ {{ loadError }}</p>
 
@@ -94,9 +94,14 @@ const saving = ref(false);
 const noteError = ref('');
 let seq = 0;
 
-// الطي تفضيل للمتصفح وحده
+// الطي تفضيل للمتصفح وحده؛ بلا اختيار سابق تبدأ مطويّة على الجوال فتبقى الرسائل ظاهرة
+const narrow = () => !!window.matchMedia?.('(max-width: 1023.98px)').matches;
 const readCollapsed = () => {
-  try { return localStorage.getItem(STORE) === '1'; } catch { return false; }
+  try {
+    const saved = localStorage.getItem(STORE);
+    if (saved !== null) return saved === '1';
+  } catch { /* التخزين غير متاح */ }
+  return narrow();
 };
 const collapsed = ref(readCollapsed());
 function toggleCollapsed() {
