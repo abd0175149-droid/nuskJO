@@ -74,6 +74,10 @@ final class FeatureFlags
         // E28: البث اللحظي الآمن للصندوق، وشريط الانقطاع والتعافي بعد النشر
         'inbox_realtime' => ['label' => 'الصندوق اللحظي: الرسالة والحالة تظهران خلال ثانيتين لمن يرى المحادثة (والاستطلاع احتياطي كل 60 ثانية)', 'capability' => 'C138', 'available' => true],
         'connection_resilience' => ['label' => 'شريط انقطاع واحد، وبطاقة «خطأ في الصفحة»، وإعادة تحميل واحدة بعد النشر، و«قد تكون أُرسلت» للإرسال مجهول النتيجة', 'capability' => 'C277', 'available' => true],
+        // E22: صحة القناة كآلة حالات (مطفأ = الإيقاف الآلي القديم في wa_suspended كما هو)
+        'channel_health' => ['label' => 'صحة القناة كآلة حالات: أحداث ميتا بتصنيف صحيح وسجل دائم، والحجب BLOCKED بدل الإيقاف الآلي، ولا قفل على رفع الحظر ولا على قيود رسائل الشركة', 'capability' => 'C232', 'available' => true],
+        'channel_health_block_on_token' => ['label' => 'منع الإرسال وتوليد الردود عند رمز ميتا غير صالح (بدل التنبيه وحده)', 'capability' => 'C260', 'available' => true],
+        'integrity_breaker_lock' => ['label' => 'قاطع النزاهة يحجب الإرسال عند تكرار 131031 أو 131048 (بدل التنبيه والفحص)', 'capability' => 'C244', 'available' => true],
     ];
 
     /** @var array<string, array>|null بديل DEFINITIONS في الاختبارات وحدها (fake) */

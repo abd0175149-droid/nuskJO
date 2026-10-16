@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Console\Commands\BackupSafeMode;
 use App\Enums\AuditAction;
-use App\Events\WhatsApp\ChannelHealthChanged;
 use App\Exceptions\StaleSettingsException;
 use App\Models\AuditLog;
 use App\Models\Setting;
@@ -15,6 +14,7 @@ use App\Services\Ops\OpsHealth;
 use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\ChannelDoctor;
+use App\Services\WhatsApp\ChannelHealth;
 use App\Services\WhatsApp\GraphVersions;
 use App\Services\WhatsApp\IdentityMode;
 use App\Services\WhatsApp\LlmCircuitBreaker;
@@ -62,6 +62,8 @@ class WhatsAppSettingsController extends Controller
             'webhookIntake' => rescue(fn () => \App\Services\WhatsApp\WebhookStats::summary(), null, false),
             // E26: آخر فحص أمني للصورة (التاريخ والأعداد فقط)
             'securityScan' => rescue(fn () => \App\Services\Ops\SecurityScan::summary(), null, false),
+            // E22: صحة القناة كآلة حالات (بلا رمز ولا معرّفات كيانات ولا حمولة خام)
+            'channelHealth' => rescue(fn () => ChannelHealth::available() ? ChannelHealth::panel() : null, null, false),
             // E18: آخر خطأ قناة من ميتا، وفئات اليوم، ونسبة إثبات سر التطبيق خلال 7 أيام
             'metaErrors' => [
                 'last' => WaBotSetting::current()->wa_last_error,
@@ -194,11 +196,8 @@ class WhatsAppSettingsController extends Controller
                 'wa_suspended' => $on, 'wa_suspended_at' => now(), 'wa_suspended_by' => $user->id,
                 'wa_suspended_source' => $on ? 'manual' : null, 'wa_suspended_reason' => $data['reason'],
             ], null, AuditAction::WaSuspendManual, ['on' => $on, 'reason' => $data['reason']] + ($on ? [] : ['previous_source' => $previous]), label: 'قفل الإرسال الطارئ');
-            // E21: تغيّر فعلي في صحة القناة بيد مستخدم (السبب نص المدير فلا يُحمل في الحدث)
-            $suspended = $previous === 'manual' ? ChannelHealthChanged::SUSPENDED_MANUAL : ChannelHealthChanged::SUSPENDED_AUTO;
-            \App\Services\WhatsApp\EventBus::emit($on
-                ? new ChannelHealthChanged(ChannelHealthChanged::AVAILABLE, ChannelHealthChanged::SUSPENDED_MANUAL, 'manual', null)
-                : new ChannelHealthChanged($suspended, ChannelHealthChanged::AVAILABLE, 'manual', $previous));
+            // E21/E22: تغيّر فعلي في حالة القناة بيد مستخدم؛ الحدث من ChannelHealth وحدها (السبب نص المدير فلا يُحمل فيه)
+            ChannelHealth::manualSwitched($on, $previous);
 
             WhatsAppInbox::notifyAdmins(
                 $on ? '⛔ أُوقف إرسال الواتساب' : '✅ استُؤنف إرسال الواتساب',
@@ -226,6 +225,10 @@ class WhatsAppSettingsController extends Controller
 
         $fresh = SettingsWriter::apply([$secret => $data['value'], "{$secret}_rotated_at" => now()], null, AuditAction::WaSecretSet,
             ['field' => $secret, 'reason' => $data['reason'], 'note' => $data['note'] ?? null], label: self::SECRETS[$secret]);
+        // رمز ميتا جديد (E22): فحص بشري المنشأ يمسح TOKEN_INVALID فوراً إن عاد الرمز يعمل
+        if ($secret === 'wa_token' && ChannelHealth::enabled()) {
+            \App\Jobs\RefreshChannelHealth::dispatch(humanInitiated: true);
+        }
         // مفتاح جديد: قد يكون سبب الحادثة نفسه (E12)
         if ($secret === 'api_key') {
             LlmCircuitBreaker::forceClose((string) $fresh->provider, auth()->id(), 'settings_changed');

@@ -6,9 +6,12 @@ use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * تغيّرت حالة قناة الإرسال فعلاً. اليوم: AVAILABLE وSUSPENDED_AUTO وSUSPENDED_MANUAL. source بمفردات
- * wa_suspended_source: meta_event (حدث حساب أو رمز ميتا مع meta_error_v2) أو graph_error (المسار القديم) أو manual.
- * reasonCode رمز ميتا أو اسم الحدث، بلا نص. E22 تنقل الإطلاق إلى ChannelHealth::transition.
+ * تغيّرت حالة قناة الإرسال فعلاً. يُطلق من App\Services\WhatsApp\ChannelHealth وحدها (E22)، مرة لكل تغيّر:
+ * - انتقال آلة الحالات (العلم channel_health): from وto من WaHealth (AVAILABLE وLIMITED وBLOCKED وTOKEN_INVALID وUNKNOWN)،
+ *   وsource من HealthWriter (webhook أو poll أو send_error أو token_check أو manual).
+ * - المفتاح اليدوي (E10): SUSPENDED_MANUAL في طرف، وفي الآخر حالة الآلة (أو AVAILABLE والعلم مطفأ)، وsource=manual.
+ * - الإيقاف الآلي القديم (العلم مطفأ): AVAILABLE إلى SUSPENDED_AUTO، وsource meta_event أو graph_error.
+ * reasonCode رمز داخلي بلا نص (ban:DISABLE، integrity:368، token:190، رمز ميتا، أو المصدر السابق عند الاستئناف).
  */
 final class ChannelHealthChanged implements ShouldDispatchAfterCommit
 {

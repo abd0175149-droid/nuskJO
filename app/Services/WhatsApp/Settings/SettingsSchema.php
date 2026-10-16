@@ -92,6 +92,8 @@ final class SettingsSchema
         'wa_last_error' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'آخر خطأ من ميتا'],
         // المكوّنات الرسمية (E37): المحفوظ وآخر مزامنة وآخر قراءة من ميتا وآخر خطأ. تكتبه مزامنة صفحة الردود الحتمية وحدها
         'conversational_automation' => ['type' => 'readonly', 'default' => null, 'ui' => 'none', 'label' => 'الأوامر والأسئلة المقترحة في واتساب'],
+        // E22: حالة القناة عند ميتا (AVAILABLE وLIMITED وBLOCKED وTOKEN_INVALID وUNKNOWN)، يكتبها ChannelHealth وحده
+        'wa_health' => ['type' => 'readonly', 'default' => null, 'ui' => 'custom', 'label' => 'حالة قناة الإرسال'],
     ];
 
     /** أعمدة يكتبها الكاتب نفسه مع فعلها (تدوير سر، إيقاف، علم)، لا حقول إعدادات تُعرض أو تُحفظ من الصفحة */
@@ -101,6 +103,9 @@ final class SettingsSchema
         'fallback_api_key_rotated_at', 'wa_waba_id_source', 'wa_display_phone',
         // E29: تأكيد الطبقة المدفوعة لمزوّد الذكاء (مساره الخاص، ويُمسح عند تغيير المزوّد أو المفتاح)
         'llm_terms_confirmed_at', 'llm_terms_confirmed_by', 'llm_terms_fp',
+        // E22: تفاصيل حالة القناة (السبب والمصدر والانتهاء والفحص واقتراح الرفع والملخص)
+        'wa_health_reason', 'wa_health_source', 'wa_health_until', 'wa_health_checked_at', 'wa_health_changed_at',
+        'wa_health_unblock_suggested', 'wa_health_meta',
     ];
 
     /** النصوص الطويلة: طولها وبصمتها في التدقيق لا نصها */

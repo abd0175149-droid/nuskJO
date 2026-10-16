@@ -279,6 +279,10 @@ Schedule::command('whatsapp:qr-sync')
     ->timezone('Asia/Amman')
     ->weeklyOn(0, '04:25')
     ->withoutOverlapping(10);
+// صحة القناة (E22): مرور انتهاء قيد ميتا يطلق فحصاً (LIMITED تعود آلياً، وBLOCKED اقتراح رفع فقط). يعمل بالعلم channel_health
+Schedule::command('whatsapp:health-expiry')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(5);
 
 // عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
 Artisan::command('whatsapp:identity-mode {mode?}', function () {

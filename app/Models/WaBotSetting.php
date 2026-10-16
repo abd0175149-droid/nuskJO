@@ -30,6 +30,9 @@ class WaBotSetting extends Model
         'send_read_receipts',
         // E37: وضع الردود الحتمية (shadow | live) والمكوّنات الرسمية في واتساب
         'auto_rules_mode', 'conversational_automation',
+        // E22: صحة القناة كآلة حالات (يكتبها ChannelHealth وحده عبر SettingsWriter)
+        'wa_health', 'wa_health_reason', 'wa_health_source', 'wa_health_until', 'wa_health_checked_at', 'wa_health_changed_at',
+        'wa_health_unblock_suggested', 'wa_health_meta',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
@@ -67,6 +70,11 @@ class WaBotSetting extends Model
         // E29
         'llm_terms_confirmed_at' => 'datetime',
         'conversational_automation' => 'array',
+        'wa_health_until' => 'datetime',
+        'wa_health_checked_at' => 'datetime',
+        'wa_health_changed_at' => 'datetime',
+        'wa_health_unblock_suggested' => 'boolean',
+        'wa_health_meta' => 'array',
     ];
 
     protected static function booted(): void

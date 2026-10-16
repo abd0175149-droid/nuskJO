@@ -188,6 +188,11 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/test-key', [\App\Http\Controllers\WhatsAppController::class, 'testKey'])->middleware('perm:whatsapp.settings');
     // فحص ميتا يدوياً (رمز الوصول وصحة القناة): 6 في الدقيقة
     Route::post('api/whatsapp/meta-check', [\App\Http\Controllers\WhatsAppController::class, 'metaCheck'])->middleware(['perm:whatsapp.settings', 'throttle:6,1']);
+    // صحة القناة كآلة حالات (E22): العرض والرفع اليدوي بسبب و«تم الاطلاع» وحمولة حدث واحد (whatsapp.settings)
+    Route::get('api/whatsapp/channel-health', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'show'])->middleware('perm:whatsapp.settings');
+    Route::get('api/whatsapp/channel-health/events/{event}', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'event'])->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
+    Route::post('api/whatsapp/channel-health/unblock', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'unblock'])->middleware(['perm:whatsapp.settings', 'throttle:6,1']);
+    Route::post('api/whatsapp/channel-health/acknowledge', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'acknowledge'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
 
     // أرقام الإدارة: المساعد الإداري على واتساب وصلاحيات كل رقم
     Route::get('whatsapp/admin-numbers', [\App\Http\Controllers\WhatsAppAdminNumberController::class, 'index'])->name('whatsapp.admin-numbers')->middleware('perm:whatsapp.settings');

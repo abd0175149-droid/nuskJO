@@ -154,6 +154,9 @@ enum AuditAction: string
     case WaQrDelete = 'wa.qr_delete';
     case WaQrCardToggle = 'wa.qr_card';
     case OfferStoryGenerate = 'offer.story';
+    // E22: رفع حجب القناة يدوياً بسبب، وتأكيد الاطلاع على اقتراح الرفع
+    case WaHealthUnblock = 'wa.health_unblock';
+    case WaHealthAck = 'wa.health_ack';
 
     // ===== ميتا =====
     case WaAccountUpdate = 'wa.account_update';
@@ -170,6 +173,8 @@ enum AuditAction: string
     case WaOptoutMeta = 'wa.optout_meta';
     case WaOptinMeta = 'wa.optin_meta';
     case WaHealthChange = 'wa.health_change';
+    // E22: حدث حساب حرج من ميتا (طلب إعادة ضبط PIN)
+    case WaAccountEventCritical = 'wa.account_event_critical';
 
     // ===== النظام =====
     case AuditExport = 'audit.export';
@@ -186,7 +191,7 @@ enum AuditAction: string
     public function severity(): AuditSeverity
     {
         return match ($this) {
-            self::WaSuspendAuto, self::SystemReset => AuditSeverity::Error,
+            self::WaSuspendAuto, self::SystemReset, self::WaAccountEventCritical => AuditSeverity::Error,
             self::Delete, self::Reject, self::StartEdit, self::Settle, self::Reverse,
             self::PeriodOpen, self::YearClose, self::LineRelocate,
             self::AuthLockout, self::AuthInactiveBlocked, self::AuthzDenied,
@@ -200,7 +205,7 @@ enum AuditAction: string
             self::WaSettingsFinalize, self::AppKeyReencrypt, self::WaMerge, self::WaLinkClient, self::WaUnlinkClient, self::WaBackfillIdentity, self::WaBreakerManual,
             self::WaErasureVerify, self::WaErasureReject, self::WaDataErase, self::ClientDataExport, self::ConfigExport,
             self::WaMediaDownload, self::WaPolicyOverride, self::WaReprocess, self::WaQuickReplyApprove, self::WaWebhookReplay,
-            self::WaHealthChange => AuditSeverity::Warn,
+            self::WaHealthChange, self::WaHealthUnblock => AuditSeverity::Warn,
             self::WaLlmTermsConfirm => AuditSeverity::Warn,
             self::WaConversationExport, self::WaSearchIndexRepair => AuditSeverity::Warn,
             self::AuthMfaDisabled, self::AuthMfaRecoveryUsed, self::AuthMfaReset, self::AuthMfaLockout, self::AuthMfaBypassed,
@@ -237,7 +242,7 @@ enum AuditAction: string
             self::QuoteRequestCreate, self::WaHandoff => 'agent',
             self::WaAccountUpdate, self::WaAccountAlert, self::WaSecurity, self::WaQualityUpdate, self::WaReviewUpdate,
             self::WaCapabilityUpdate, self::WaWebhookOther, self::WaSuspendAuto, self::WaIdentityChange, self::WaLastErrorCleared,
-            self::WaOptoutMeta, self::WaOptinMeta, self::WaHealthChange => 'meta',
+            self::WaOptoutMeta, self::WaOptinMeta, self::WaHealthChange, self::WaAccountEventCritical => 'meta',
             self::AuditExport, self::SystemReset, self::AuditPruned, self::AppKeyReencrypt, self::WaBackfillIdentity,
             self::RetentionPruned, self::ConfigExport, self::WaWebhookReplay, self::WaSearchIndexRepair, self::WaMediaRemoteDelete => 'system',
             default => 'whatsapp',
@@ -376,6 +381,8 @@ enum AuditAction: string
             self::WaQrDelete => 'حذف رمز QR ورابط قصير',
             self::WaQrCardToggle => 'رمز QR على بطاقة العرض',
             self::OfferStoryGenerate => 'توليد بطاقة الحالة 9:16',
+            self::WaHealthUnblock => 'رفع حجب القناة يدوياً',
+            self::WaHealthAck => 'الاطلاع على اقتراح رفع الحجب',
             self::RetentionPruned => 'تقليم بحسب مدة الاحتفاظ',
             self::ClientDataExport => 'تصدير بيانات عميل',
             self::ConfigExport => 'تصدير إعدادات البوت',
@@ -392,6 +399,7 @@ enum AuditAction: string
             self::WaOptoutMeta => 'إيقاف التسويق من تفضيلات واتساب',
             self::WaOptinMeta => 'استئناف التسويق من تفضيلات واتساب',
             self::WaHealthChange => 'تغيّر حالة قناة الإرسال',
+            self::WaAccountEventCritical => 'حدث حساب حرج من ميتا',
             self::AuditExport => 'تصدير سجل التدقيق',
             self::SystemReset => 'مسح بيانات النظام',
             self::AuditPruned => 'تقليم سجل التدقيق',
@@ -410,7 +418,9 @@ enum AuditAction: string
             // كل ملف خرج لعميل (قد يحمل رقم جواز) وكل فاتورة على واتساب (E32)
             self::WaFileSent, self::WaInvoiceSent,
             // E27: قفل التحدّي، والدخول بمنفذ الطوارئ، وإيقاف المساعد لرقم بلا عامل ثانٍ (مرة في اليوم)
-            self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked], true);
+            self::AuthMfaLockout, self::AuthMfaBypassed, self::WaAdminMfaBlocked,
+            // E22: انتقال صحة القناة (بديل صف الإيقاف التلقائي) وحدث الحساب الحرج: «من حجب الإرسال؟» له جواب دائماً
+            self::WaHealthChange, self::WaAccountEventCritical, self::WaHealthUnblock], true);
     }
 
     public function isNoise(): bool

@@ -43,7 +43,8 @@ class WhatsAppController extends Controller
                     || data_get($s->wa_credentials_status, 'state') === 'critical',
                 // ميتا ترفض الإرسال على مستوى القناة (E18): الوصف والإجراء للمدير، وسطر عام لغيره
                 'meta_error' => $this->channelMetaError($s),
-            ],
+            // صحة القناة (E22): الحالة والتسمية والانتهاء وهل تمنع، بلا سبب ولا رمز (التفاصيل في البطاقة لصاحب whatsapp.settings)
+            ] + \App\Services\WhatsApp\ChannelHealth::publicStatus($s),
             // وضع التحويل (E12): الحالة والأوقات فقط، بلا سبب تقني
             'llm' => \App\Services\WhatsApp\LlmCircuitBreaker::publicStatus(),
             'canReply' => auth()->user()->can('whatsapp.reply'),
@@ -880,16 +881,22 @@ class WhatsAppController extends Controller
 
     // ==================== الإعدادات ====================
 
-    /** «افحص الآن» في بطاقة صحة القناة: الفحصان معاً، ويُرجع الملخص المحفوظ فقط */
+    /**
+     * «افحص الآن» في بطاقة صحة القناة: الفحصان معاً، ويُرجع الملخص المحفوظ فقط. فحص بدأه إنسان (E22): يمسح
+     * TOKEN_INVALID إن عاد الرمز يعمل، ولا يرفع BLOCKED (الرفع بزره وسببه)
+     */
     public function metaCheck()
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
 
         $health = app(\App\Services\WhatsApp\MetaHealth::class);
         $health->credentials();
-        $health->channel();
+        $health->channel(humanInitiated: true);
 
-        return response()->json(['meta' => \App\Services\WhatsApp\MetaHealth::summary(WaBotSetting::current()->fresh())]);
+        return response()->json([
+            'meta' => \App\Services\WhatsApp\MetaHealth::summary(WaBotSetting::current()->fresh()),
+            'channelHealth' => \App\Services\WhatsApp\ChannelHealth::available() ? \App\Services\WhatsApp\ChannelHealth::panel() : null,
+        ]);
     }
 
     // ==================== التحليلات ====================

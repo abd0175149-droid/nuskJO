@@ -28,6 +28,8 @@ final class WaLog
         'mime', 'sha12',
         // E38: رقم صف الرمز وقناة الدخول (لا الرمز ولا الرابط ولا الرسالة المعبأة)
         'qr_link_id', 'channel',
+        // E22: انتقالات صحة القناة (الحالتان والكاتب ورمز السبب) وعدّاد الفشل المتتالي
+        'from', 'to', 'writer', 'effect', 'severity',
     ];
 
     public static function info(string $event, array $context = []): void

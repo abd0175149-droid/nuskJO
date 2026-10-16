@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Cache;
  * الأقفال بالترتيب:
  *   0) الموظف يرى المحادثة (لرسائل الموظف وحدها)
  *   1) القناة مهيّأة (رمز + معرّف رقم)
- *   2) قفل الإرسال الطارئ (wa_suspended)
+ *   2) قفل الإرسال الطارئ (wa_suspended)، ثم حجب ميتا (wa_health=BLOCKED دائماً، وTOKEN_INVALID بعلم؛ E22)
  *   3) نافذة 24 ساعة من آخر رسالة واردة — لا استثناء لأحد
  *   3ب) المحظور رسمياً (E31): لا شيء يُرسل له
  *
@@ -57,6 +57,8 @@ class WhatsAppChannel
     public const ERR_MEDIA_INTEGRITY = 'MEDIA_INTEGRITY';
     public const ERR_NO_RECIPIENT = 'NO_RECIPIENT';
     public const ERR_BLOCKED = 'BLOCKED';
+    // E22: ميتا تحجب الإرسال (wa_health=BLOCKED)، مستقل عن الإيقاف اليدوي SENDING_SUSPENDED
+    public const ERR_CHANNEL_BLOCKED = 'CHANNEL_BLOCKED';
 
     /** نص الزر المعروض في الصندوق (الجسم المرسل للعميل غيره) */
     public const CONTACT_REQUEST_LABEL = '📱 طلب مشاركة رقم الهاتف';
@@ -1576,6 +1578,7 @@ class WhatsAppChannel
                 'http' => $res->status(), 'attempt' => 1]);
             self::legacyReact($err);
             MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source]);
+            SendHealthMonitor::recordFailure($err);
 
             return self::failWith($err, $code, $shown);
         }
@@ -1589,6 +1592,7 @@ class WhatsAppChannel
         } else {
             WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType]);
             self::afterWamid($row, (string) $wamid, $source, $staffId);
+            SendHealthMonitor::recordSuccess($s);
         }
 
         self::afterSent($conv, $s, $source, $displayBody);
@@ -1618,6 +1622,10 @@ class WhatsAppChannel
         }
         if ($s->sendingSuspended()) {
             return [self::failLocal(self::ERR_SUSPENDED, 'الإرسال موقوف حالياً (قفل طارئ).'), null];
+        }
+        // حجب ميتا (E22): BLOCKED يمنع دائماً، وTOKEN_INVALID بالعلم channel_health_block_on_token. LIMITED لا يمنع شيئاً
+        if ($blocked = ChannelHealth::gateError($s)) {
+            return [self::failLocal(...$blocked), null];
         }
         if (!$conv->isWindowOpen()) {
             return [self::failLocal(self::ERR_WINDOW, 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.'), null];
@@ -1820,6 +1828,7 @@ class WhatsAppChannel
         }
         WaLog::info('wa.send.ok', ['conv_id' => $conv->id, 'message_id' => $row->id, 'wamid' => $wamid, 'source' => $source, 'type' => $msgType, 'attempt' => $attempt]);
         self::afterWamid($row, $wamid, $source, $row->staff_id !== null ? (int) $row->staff_id : null);
+        SendHealthMonitor::recordSuccess($s);
         self::afterSent($conv, $s, $source, $displayBody);
         // إشعار القراءة عند رد الموظف (E35): ما وصل قبل صف الرد وحده (الصف كُتب قبل النداء)
         ReadReceipts::queueAfterReply($conv, ReadReceipts::replyUpto($conv, $source, $msgType, $row->id));
@@ -1853,6 +1862,7 @@ class WhatsAppChannel
         if ($err->metaCode !== null || str_starts_with($err->code, 'HTTP_') || $err->code === self::ERR_PROOF) {
             self::legacyReact($err);
             MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source]);
+            SendHealthMonitor::recordFailure($err);
         }
 
         return self::failWith($err, $code, $shown) + ['status' => 'failed', 'row_id' => $row->id, 'replayed' => false];
@@ -1869,6 +1879,7 @@ class WhatsAppChannel
         WaLog::warning('wa.send.unknown', ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source, 'type' => $msgType,
             'error_code' => $err->code, 'http' => $http, 'attempt' => $attempt, 'status' => 'unknown']);
         MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row->id, 'source' => $source]);
+        SendHealthMonitor::recordFailure($err);
         if ($source === 'staff') {
             self::afterSent($conv, $s, $source, $displayBody);
         }
@@ -1928,6 +1939,7 @@ class WhatsAppChannel
         WaLog::warning('wa.send_failed', ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source, 'type' => $msgType,
             'error_code' => $err->code, 'category' => $err->category, 'attempt' => 1]);
         MetaErrorReactor::react($err, ['conv_id' => $conv->id, 'message_id' => $row?->id, 'source' => $source]);
+        SendHealthMonitor::recordFailure($err);
 
         return $v2
             ? self::failWith($err, $err->code, "{$err->staffMessage} رقم المرجع: {$ref}")

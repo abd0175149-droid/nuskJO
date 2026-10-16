@@ -62,5 +62,8 @@ return [
         'offer_story_card' => env('WA_FEATURE_OFFER_STORY_CARD'),
         'inbox_realtime' => env('WA_FEATURE_INBOX_REALTIME'),
         'connection_resilience' => env('WA_FEATURE_CONNECTION_RESILIENCE'),
+        'channel_health' => env('WA_FEATURE_CHANNEL_HEALTH'),
+        'channel_health_block_on_token' => env('WA_FEATURE_CHANNEL_HEALTH_BLOCK_ON_TOKEN'),
+        'integrity_breaker_lock' => env('WA_FEATURE_INTEGRITY_BREAKER_LOCK'),
     ],
 ];

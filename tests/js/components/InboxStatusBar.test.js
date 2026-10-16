@@ -36,4 +36,15 @@ describe('InboxStatusBar', () => {
 
         expect(mount(InboxStatusBar, { props: base }).find('[data-test="meta-error-bar"]').exists()).toBe(false);
     });
+
+    it('shows a generic channel-health badge and drops the duplicate Meta bar (E22)', () => {
+        const blocked = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, meta_blocked: true, health: 'BLOCKED', health_label: 'محجوبة من ميتا', health_until: null, health_blocks: true } } });
+        expect(blocked.find('[data-test="health-badge"]').text()).toBe('⛔ ميتا تحجب الإرسال — أبلغ المدير.');
+        expect(blocked.text()).not.toContain('القناة متوقفة من جهة ميتا');
+
+        const limited = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, health: 'LIMITED', health_blocks: false } } });
+        expect(limited.find('[data-test="health-badge"]').text()).toBe('قيد جزئي من ميتا — الردود تعمل');
+
+        expect(mount(InboxStatusBar, { props: { ...base, status: { ...base.status, health: 'AVAILABLE' } } }).find('[data-test="health-badge"]').exists()).toBe(false);
+    });
 });

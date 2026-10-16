@@ -118,6 +118,28 @@ final class WebhookFence
         return $account !== '' && $entryId !== '' && $entryId !== $account;
     }
 
+    /**
+     * E22: حدث على مستوى الرقم (security واسم الرقم والجودة) لرقم آخر في الحساب نفسه: الرقم المعروض أو metadata.phone_number_id
+     * غير رقمنا، وaccount_alerts عن رقم (entity_type=PHONE_NUMBER) بمعرّف غير معرّفنا. يُكمل otherAccountEvent ولا يغيّره.
+     */
+    public static function otherNumberEvent(string $field, array $value, WaBotSetting $settings): bool
+    {
+        $ownPnid = (string) $settings->phoneNumberId();
+        if ($field === 'account_alerts') {
+            $entity = (string) data_get($value, 'entity_id', '');
+
+            return strtoupper((string) data_get($value, 'entity_type')) === 'PHONE_NUMBER' && $ownPnid !== '' && $entity !== '' && $entity !== $ownPnid;
+        }
+        if (!in_array($field, ['security', 'phone_number_name_update', 'phone_number_quality_update'], true)) {
+            return false;
+        }
+        $ours = (string) $settings->wa_display_phone;
+        $theirs = PhoneNormalizer::digits((string) data_get($value, 'display_phone_number', ''));
+        $pnid = (string) data_get($value, 'metadata.phone_number_id', '');
+
+        return ($ours !== '' && $theirs !== '' && $theirs !== $ours) || ($ownPnid !== '' && $pnid !== '' && $pnid !== $ownPnid);
+    }
+
     private static function pnidReason(mixed $change, string $ownPnid): ?string
     {
         $field = self::field($change);
