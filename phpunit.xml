@@ -18,6 +18,8 @@
         </include>
     </source>
     <php>
+        <!-- حاوية بوابة النشر على الافتراضي 128M (وحدّها 1g): الحزمة كاملة في عملية واحدة تبلغ نحو 500M -->
+        <ini name="memory_limit" value="768M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
