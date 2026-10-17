@@ -1,5 +1,6 @@
 <template>
-  <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden flex flex-col min-h-0" aria-label="المحادثة">
+  <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden flex min-h-0" aria-label="المحادثة">
+    <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <template v-if="thread">
       <ThreadHeader :thread="thread" :topics="topics" :staff="staff" :attention-reasons="attentionReasons"
                     :can-link-client="canLinkClient" :can-toggle-bot="canToggleBot" :can-assign="canAssign" show-back
@@ -8,7 +9,8 @@
                     @toggle-bot="$emit('toggleBot')" @set-topic="(k, a) => $emit('setTopic', k, a)" @assign="(el) => $emit('assign', el)"
                     :can-filter="canFilter" :filters-open="filtersOpen || filtered" :can-export="canExport"
                     @toggle-filters="filtersOpen = !filtersOpen" @export="$emit('export')"
-                    :can-block="canBlock" @block="$emit('block')" :calls="calls"/>
+                    :can-block="canBlock" @block="$emit('block')" :calls="calls"
+                    :panel="panelOn" :panel-open="panelShown" :panel-badge="panelBadge" @toggle-panel="togglePanel"/>
       <!-- المحادثة المحظورة (E31): من حظر ومتى ولماذا، وفك الحظر بسبب لمن يملك الصلاحية -->
       <div v-if="thread.blocked" role="status" data-test="blocked-banner"
            class="px-3 sm:px-4 py-2 border-b border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 text-xs text-red-800 dark:text-red-200 flex flex-wrap items-center gap-2 shrink-0">
@@ -22,9 +24,9 @@
       </div>
 
       <!-- التصنيفات والملاحظة المثبتة وبطاقة الحقائق (E29): داخلية لا يراها العميل -->
-      <ThreadLabels v-if="flags.wa_labels" :conversation-id="thread.id" :current="thread.labels || []" :all="labels" :can-reply="canReply"
+      <ThreadLabels v-if="flags.wa_labels && !panelOn" :conversation-id="thread.id" :current="thread.labels || []" :all="labels" :can-reply="canReply"
                     :can-manage="canManageLabels" @changed="(l) => $emit('labelsChanged', thread.id, l)"/>
-      <FactCard v-if="flags.thread_pins" ref="factCard" :conversation-id="thread.id" :can-reply="canReply" @jump="jumpTo" @pins="(ids) => (pinnedIds = new Set(ids))"/>
+      <FactCard v-if="flags.thread_pins && !panelOn" ref="factCard" :conversation-id="thread.id" :can-reply="canReply" @jump="jumpTo" @pins="(ids) => (pinnedIds = new Set(ids))"/>
 
       <!-- فلاتر الخيط (E30): تُطوى بزر «تصفية» فتتسع الرسائل على الجوال، وشريط «عرض مفلتر» باقٍ ما دام فلتر -->
       <ThreadFilters v-if="canFilter && filtersOpen" :filters="filters" @apply="(f) => $emit('setFilters', f)" @clear="$emit('clearFilters')"/>
@@ -61,7 +63,7 @@
             </template>
             <template #extras>
               <BubbleExtras v-if="flags.staff_translation || flags.thread_pins" :m="m" :conversation-id="thread.id" :can-reply="canReply" :translate="!!flags.staff_translation" :pins="!!flags.thread_pins"
-                            :pinned="pinnedIds.has(m.id)" @translated="(t) => (m.translation = t)" @pinned="(p) => factCard?.setPinned(p)"/>
+                            :pinned="pinnedIds.has(m.id)" @translated="(t) => (m.translation = t)" @pinned="(p) => (panelOn ? panel?.setPinned(p) : factCard?.setPinned(p))"/>
               <!-- الموقع والبطاقات وشارات التفاعل والتصحيح (E33) -->
               <MessageRich :m="m" :reactions="reactionsById[m.id] || null" :corrected-by-id="correctionsById[m.id] || null" @jump="jumpTo"/>
               <!-- ما عُرض من خيارات وما اختاره العميل ورد نموذج التسعير (E36) -->
@@ -89,7 +91,7 @@
         </button>
       </div>
 
-      <div v-if="notes.length" class="px-4 py-2 border-t border-gray-100 dark:border-gray-800 bg-amber-50/50 dark:bg-amber-900/10 shrink-0">
+      <div v-if="notes.length && !panelOn" class="px-4 py-2 border-t border-gray-100 dark:border-gray-800 bg-amber-50/50 dark:bg-amber-900/10 shrink-0">
         <p dir="auto" class="text-[11px] text-gray-500 dark:text-gray-400 [unicode-bidi:plaintext]">📝 {{ notes.join(' · ') }}</p>
       </div>
 
@@ -121,6 +123,22 @@
         <p v-if="error" class="mt-2 text-xs text-red-600">❌ {{ error }}</p>
       </div>
     </div>
+    </div>
+
+    <!-- اللوحة الجانبية (C128): عمود ثابت على الشاشات العريضة يُطوى ويُحفظ، ودرج فوق المحادثة على الأصغر -->
+    <template v-if="thread && panelOn">
+      <aside v-if="wide" v-show="panelOpen" class="w-[22rem] 2xl:w-[24rem] shrink-0 min-h-0 flex flex-col border-s border-gray-200 dark:border-gray-700" aria-label="لوحة العميل">
+        <CustomerPanel ref="panel" v-bind="panelProps" v-on="panelEvents"/>
+      </aside>
+      <Teleport v-else to="body">
+        <div v-show="drawerOpen" class="fixed inset-0 z-[60] flex" @keydown.escape.stop="drawerOpen = false" data-test="panel-drawer">
+          <div class="absolute inset-0 bg-black/40" aria-hidden="true" @click="drawerOpen = false"></div>
+          <aside role="dialog" aria-modal="true" aria-label="لوحة العميل" class="relative ms-auto h-full w-full sm:w-[24rem] shadow-2xl flex flex-col">
+            <CustomerPanel ref="panel" drawer v-bind="panelProps" v-on="panelEvents"/>
+          </aside>
+        </div>
+      </Teleport>
+    </template>
   </section>
 </template>
 
@@ -131,6 +149,7 @@ import ChoiceChips from './ChoiceChips.vue';
 import Composer from './Composer.vue';
 import VoiceNote from './VoiceNote.vue';
 import FactCard from './FactCard.vue';
+import CustomerPanel from './Panel/CustomerPanel.vue';
 import ThreadLabels from './ThreadLabels.vue';
 import TranslateReplyBar from './TranslateReplyBar.vue';
 import TranslateReplyPanel from './TranslateReplyPanel.vue';
@@ -217,6 +236,58 @@ const flashId = ref(null);
 let flashTimer = null;
 watch(() => props.thread?.id, () => { filtersOpen.value = false; });
 onBeforeUnmount(() => clearTimeout(flashTimer));
+
+// ===== C128: اللوحة الجانبية =====
+const PANEL_STORE = 'wa:panel:open';
+const panelOn = computed(() => !!props.flags.conversation_panel);
+const panel = ref(null);
+const panelBadge = ref('');
+const wideQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(min-width: 1280px)') : null;
+const wide = ref(!!wideQuery?.matches);
+const onWide = (e) => { wide.value = e.matches; };
+wideQuery?.addEventListener?.('change', onWide);
+onBeforeUnmount(() => wideQuery?.removeEventListener?.('change', onWide));
+const readPanelOpen = () => {
+  try { return localStorage.getItem(PANEL_STORE) !== '0'; } catch { return true; }
+};
+const panelOpen = ref(readPanelOpen());
+const drawerOpen = ref(false);
+const panelShown = computed(() => (wide.value ? panelOpen.value : drawerOpen.value));
+async function togglePanel() {
+  if (wide.value) {
+    panelOpen.value = !panelOpen.value;
+    try { localStorage.setItem(PANEL_STORE, panelOpen.value ? '1' : '0'); } catch { /* التخزين غير متاح */ }
+    return;
+  }
+  drawerOpen.value = !drawerOpen.value;
+  if (drawerOpen.value) {
+    await nextTick();
+    panel.value?.focus();
+  }
+}
+/** على الدرج: الإجراء الذي يفتح حواراً أو يقفز في الخيط يغلق الدرج أولاً */
+const closeDrawer = () => { if (!wide.value) drawerOpen.value = false; };
+watch(() => props.thread?.id, () => { drawerOpen.value = false; panelBadge.value = ''; });
+const panelProps = computed(() => ({
+  thread: props.thread, flags: props.flags, staff: props.staff, topics: props.topics, labels: props.labels, canManageLabels: props.canManageLabels,
+  canReply: props.canReply, canAssign: props.canAssign, canToggleBot: props.canToggleBot, canLinkClient: props.canLinkClient,
+  canReprocess: props.canReprocess, canBlock: props.canBlock, canExport: props.canExport, followup: props.followup,
+}));
+const panelEvents = {
+  close: togglePanel,
+  action: (n, p) => emit('action', n, p),
+  link: () => { closeDrawer(); emit('link'); },
+  unlink: () => { closeDrawer(); emit('unlink'); },
+  block: () => { closeDrawer(); emit('block'); },
+  export: () => { closeDrawer(); emit('export'); },
+  toggleBot: () => emit('toggleBot'),
+  setTopic: (k, a) => emit('setTopic', k, a),
+  assign: (el) => emit('assign', el),
+  labelsChanged: (id, l) => emit('labelsChanged', id, l),
+  jump: (id) => { closeDrawer(); jumpTo(id); },
+  pins: (ids) => { pinnedIds.value = new Set(ids); },
+  badge: (v) => { panelBadge.value = v; },
+};
 
 // ===== E29: التثبيت داخل الخيط وترجمة الرد =====
 const factCard = ref(null);

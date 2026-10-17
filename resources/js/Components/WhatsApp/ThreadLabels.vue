@@ -1,6 +1,6 @@
 <template>
   <!-- تصنيفات المحادثة في رأس الخيط (E29): داخلية، لا تغيّر من يرى المحادثة. الاختيار من القائمة وحدها -->
-  <div class="px-3 sm:px-4 py-1.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-1.5 shrink-0" data-test="thread-labels">
+  <div class="flex flex-wrap items-center gap-1.5 shrink-0" :class="embedded ? '' : 'px-3 sm:px-4 py-1.5 border-b border-gray-100 dark:border-gray-800'" data-test="thread-labels">
     <span class="text-[11px] text-gray-400 dark:text-gray-500">🏷️ التصنيفات:</span>
     <span v-for="l in current" :key="l.id" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] leading-4 ring-1"
           :class="labelClass(l.color, l.active)" :title="l.active === false ? 'تصنيف معطّل' : 'تصنيف داخلي'">
@@ -29,6 +29,8 @@ const props = defineProps({
   all: { type: Array, default: () => [] },
   canReply: Boolean,
   canManage: Boolean,
+  // داخل اللوحة الجانبية (C128): بلا حشوة الرأس وحدّه
+  embedded: Boolean,
 });
 const emit = defineEmits(['changed']);
 

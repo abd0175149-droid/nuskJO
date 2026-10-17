@@ -1,7 +1,8 @@
 <template>
   <!-- الملاحظة المثبتة وبطاقة الحقائق (E29): داخلية لا يراها العميل ولا البوت. تُحمَّل عند فتح المحادثة وبعد كل تعديل، لا مع الاستطلاع -->
-  <section class="shrink-0 border-b border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-900/10" aria-label="الملاحظة المثبتة وحقائق العميل" data-test="fact-card">
-    <button type="button" @click="toggleCollapsed" :aria-expanded="collapsed ? 'false' : 'true'"
+  <!-- embedded (C128): داخل اللوحة الجانبية بلا شريط طي ولا سطر حقائق، فاللوحة تعرض الحقائق مفصّلة -->
+  <section :class="embedded ? '' : 'shrink-0 border-b border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-900/10'" aria-label="الملاحظة المثبتة وحقائق العميل" data-test="fact-card">
+    <button v-if="!embedded" type="button" @click="toggleCollapsed" :aria-expanded="collapsed ? 'false' : 'true'"
             class="w-full min-h-9 px-3 sm:px-4 py-1.5 flex items-center gap-1.5 text-start text-[11px]">
       <span aria-hidden="true">📌</span>
       <span class="font-bold text-amber-900 dark:text-amber-200 shrink-0">ملاحظة مثبتة</span>
@@ -10,7 +11,7 @@
       <span class="ms-auto shrink-0 text-gray-500" aria-hidden="true">{{ collapsed ? '▾' : '▴' }}</span>
     </button>
 
-    <div v-if="!collapsed" class="px-3 sm:px-4 pb-2 space-y-2 max-h-44 lg:max-h-60 overflow-y-auto">
+    <div v-if="embedded || !collapsed" :class="embedded ? 'space-y-2' : 'px-3 sm:px-4 pb-2 space-y-2 max-h-44 lg:max-h-60 overflow-y-auto'">
       <p v-if="loading && !facts" class="text-xs text-gray-500">جارٍ التحميل...</p>
       <p v-else-if="loadError" class="text-xs text-red-600" role="alert">❌ {{ loadError }}</p>
 
@@ -55,7 +56,7 @@
         </ul>
 
         <!-- حقائق من النظام: كل تفصيل بصلاحيته في الخادم -->
-        <div v-if="line.length || facts.hint" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-700 dark:text-gray-300" data-test="facts-line">
+        <div v-if="!embedded && (line.length || facts.hint)" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-700 dark:text-gray-300" data-test="facts-line">
           <template v-for="(f, i) in line" :key="f.key">
             <span v-if="i" aria-hidden="true" class="text-gray-400">·</span>
             <a v-if="f.url" :href="f.url" class="hover:underline"><bdi dir="auto">{{ f.text }}</bdi></a>
@@ -76,8 +77,9 @@ import { errorText } from '@/composables/whatsapp/useInbox.js';
 const props = defineProps({
   conversationId: { type: Number, required: true },
   canReply: Boolean,
+  embedded: Boolean,
 });
-const emit = defineEmits(['jump', 'pins']);
+const emit = defineEmits(['jump', 'pins', 'summary']);
 
 const MAX = 500;
 const STORE = 'wa:factcard:collapsed';
@@ -112,6 +114,8 @@ function toggleCollapsed() {
 const note = computed(() => facts.value?.pinned?.note || null);
 const pinnedMessages = computed(() => facts.value?.pinned?.messages || []);
 const summary = computed(() => note.value?.text || (pinnedMessages.value.length ? `${pinnedMessages.value.length} رسائل مثبتة` : ''));
+
+watch(summary, (v) => emit('summary', v), { immediate: true });
 
 const line = computed(() => {
   const f = facts.value || {};

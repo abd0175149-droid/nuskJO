@@ -117,7 +117,7 @@ class LabelAttachScopeTest extends TestCase
         $this->actingAs($manager)->get('/whatsapp/inbox')->assertOk()->assertInertia(fn ($page) => $page
             ->where('labels', [['id' => 1, 'name' => 'VIP', 'color' => 'blue']])
             ->where('canManageLabels', true)
-            ->where('flags', ['wa_labels' => true, 'thread_pins' => true, 'staff_translation' => false])
+            ->where('flags', ['wa_labels' => true, 'thread_pins' => true, 'staff_translation' => false, 'conversation_panel' => false])
             ->where('translateTargets', []));
     }
 }

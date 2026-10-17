@@ -101,5 +101,7 @@ return [
         'quote_flow' => env('WA_FEATURE_QUOTE_FLOW'),
         // E25
         'alert_runbook_refs' => env('WA_FEATURE_ALERT_RUNBOOK_REFS'),
+        // اللوحة الجانبية للمحادثة: الإجراءات والتنظيم والملاحظات والرحلات والفواتير
+        'conversation_panel' => env('WA_FEATURE_CONVERSATION_PANEL'),
     ],
 ];

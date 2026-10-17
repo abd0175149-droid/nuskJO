@@ -57,6 +57,8 @@ class ConversationScopeTest extends TestCase
         'pin-note' => ['PUT', ['note' => 'يفضّل غرفة ثلاثية قريبة من الحرم']],
         'messages/{message}/pin' => ['POST', []],
         'facts' => ['GET', []],
+        // C128: اللوحة الجانبية
+        'panel' => ['GET', []],
         'messages/{message}/translate' => ['POST', [], [], [], 409],
         'translate-reply' => ['POST', ['text' => 'السعر 150 دينار للشخص', 'target' => 'en'], [], [], 409],
         'send-translated' => ['POST', ['body' => 'Price 150 JOD', 'translation' => ['source_text' => 'السعر 150 دينار', 'target' => 'en', 'check_token' => 'x']], [], [], 422],
@@ -82,7 +84,8 @@ class ConversationScopeTest extends TestCase
         config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true,
             'features.env.wa_labels' => true, 'features.env.thread_pins' => true, 'features.env.staff_translation' => true,
             'features.env.conversation_export' => true, 'features.env.staff_file_send' => true, 'features.env.wa_block' => true,
-            'features.env.wa_reply_quote' => true, 'features.env.wa_staff_reactions' => true, 'features.env.wa_share_cards' => true]);
+            'features.env.wa_reply_quote' => true, 'features.env.wa_staff_reactions' => true, 'features.env.wa_share_cards' => true,
+            'features.env.conversation_panel' => true]);
     }
 
     public static function routes(): array

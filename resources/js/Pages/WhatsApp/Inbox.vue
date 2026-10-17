@@ -10,7 +10,8 @@
       <InboxCards v-if="followup && s.summary" :class="s.view === 'thread' ? 'hidden lg:flex' : ''" class="shrink-0"
                   :summary="s.summary" :active="s.filter" @filter="(f) => { s.filter = f; inbox.refilter(); }"/>
 
-      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- مع اللوحة الجانبية (C128) تضيق القائمة على الشاشات العريضة فيتسع الخيط واللوحة معاً -->
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4" :class="flags.conversation_panel ? 'xl:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]' : ''">
         <ConversationList :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-1"
                           :visible="s.view === 'list'" :items="s.list" :active-id="s.activeId" :has-more="s.listHasMore" :loading-more="s.loadingMore"
                           :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
@@ -19,7 +20,7 @@
                           :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"
                           :message-search="messageSearch" @jump="(h) => inbox.openFromSearch(h.conversation_id, h.message_id)"/>
 
-        <ThreadView ref="threadView" :class="s.view === 'list' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-2"
+        <ThreadView ref="threadView" :class="[s.view === 'list' ? 'hidden lg:flex' : 'flex', flags.conversation_panel ? 'xl:col-span-1' : '']" class="lg:col-span-2"
                     :thread="s.thread" :messages="s.messages" :notes="s.notes" :has-more="s.hasMore" :loading-older="s.loadingOlder" :new-below="s.newBelow"
                     v-model:draft="inbox.draft.value" :sending="s.sending" :error="s.sendError" :requesting="s.requesting"
                     :send-notice="s.sendNotice" :send-cooldown="s.sendCooldown"

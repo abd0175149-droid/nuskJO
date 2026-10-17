@@ -80,6 +80,7 @@ class WhatsAppController extends Controller
             'flags' => [
                 'wa_labels' => \App\Services\WhatsApp\LabelService::enabled(),
                 'thread_pins' => \App\Services\WhatsApp\ThreadPins::enabled(),
+                'conversation_panel' => \App\Services\WhatsApp\ConversationPanel::enabled(),
                 'staff_translation' => \App\Services\WhatsApp\MessageTranslator::enabled(),
             ],
             // E33: الاقتباس والتفاعل والمعاينة والمشاركة، وقائمة تفاعل الموظف، والمواقع والبطاقات المعتمدة لمنتقيي المنشئ (الأسماء وحدها، والخادم يعيد الفحص)

@@ -235,6 +235,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/conversations/{conversation}/labels/{label}', [\App\Http\Controllers\WhatsAppConversationLabelController::class, 'attach'])->middleware('perm:whatsapp.reply');
     Route::delete('api/whatsapp/conversations/{conversation}/labels/{label}', [\App\Http\Controllers\WhatsAppConversationLabelController::class, 'detach'])->middleware('perm:whatsapp.reply');
     Route::get('api/whatsapp/conversations/{conversation}/facts', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'facts'])->middleware('perm:whatsapp.view');
+    // اللوحة الجانبية للمحادثة: الرحلات والفواتير والطلبات والملاحظات (العلم conversation_panel)
+    Route::get('api/whatsapp/conversations/{conversation}/panel', [\App\Http\Controllers\WhatsAppConversationPanelController::class, 'show'])->middleware('perm:whatsapp.view');
     Route::put('api/whatsapp/conversations/{conversation}/pin-note', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'saveNote'])->middleware('perm:whatsapp.reply');
     Route::delete('api/whatsapp/conversations/{conversation}/pin-note', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'clearNote'])->middleware('perm:whatsapp.reply');
     Route::post('api/whatsapp/conversations/{conversation}/messages/{message}/pin', [\App\Http\Controllers\WhatsAppThreadPinController::class, 'pinMessage'])->middleware('perm:whatsapp.reply')->scopeBindings();

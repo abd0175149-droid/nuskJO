@@ -11,10 +11,10 @@
           <p v-if="thread.phone" class="text-xs text-gray-400"><bdi dir="ltr" class="font-mono">{{ formatPhone(thread.phone) }}</bdi><span v-if="thread.client"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
           <!-- عميل باسم مستخدم واتساب بلا رقم ظاهر (E11a) -->
           <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<template v-if="thread.username"> · <bdi dir="ltr" class="font-mono">@{{ thread.username }}</bdi></template><span v-if="thread.client" class="text-gray-500 dark:text-gray-400"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
-          <p v-if="thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
+          <p v-if="!panel && thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
              title="اسم يضعه العميل بنفسه — غير موثّق">اسم واتساب: <bdi dir="auto">{{ thread.profile_name }}</bdi></p>
           <!-- مصدر المحادثة (E38): رمز أو رابط أو إعلان، قياس داخلي تقريبي -->
-          <p v-if="thread.entry" data-test="entry-badge" class="text-[11px] text-sky-700 dark:text-sky-300 truncate"
+          <p v-if="!panel && thread.entry" data-test="entry-badge" class="text-[11px] text-sky-700 dark:text-sky-300 truncate"
              title="مصدر بدء المحادثة (قياس داخلي تقريبي)">
             <template v-if="thread.entry.channel === 'ad'">📣 من إعلان<template v-if="thread.entry.headline">: <bdi dir="auto">{{ thread.entry.headline }}</bdi></template></template>
             <template v-else>{{ thread.entry.channel === 'qr' ? '📷 من رمز' : '🔗 من رابط' }}<template v-if="thread.entry.title">: <bdi dir="auto">{{ thread.entry.title }}</bdi></template></template>
@@ -23,7 +23,8 @@
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <!-- ربط بعميل (E11.8) -->
-        <template v-if="canLinkClient && !thread.is_admin">
+        <!-- مع اللوحة الجانبية (C128) تنتقل الإجراءات والتنظيم إليها، ويبقى هنا ما يُستعمل كل دقيقة -->
+        <template v-if="!panel && canLinkClient && !thread.is_admin">
           <button type="button" @click="$emit('link')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300">
             {{ thread.client_id ? '🔗 تغيير الربط' : '🔗 ربط بعميل' }}
           </button>
@@ -33,7 +34,7 @@
         <CallFromAgencyPhone v-if="calls && canReply && thread.phone" :phone="thread.phone"/>
         <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ attentionReasons[thread.attention_reason] || thread.attention_reason }}</span>
         <!-- الحظر الرسمي (E31): بجانب «تجاوز الحد» لحظة المشكلة، ومعطّل خارج نافذة الـ24 ساعة (شرط ميتا) -->
-        <button v-if="blockable" type="button" data-test="block-btn" @click="$emit('block')" :disabled="!thread.window_open"
+        <button v-if="blockable && (!panel || urgentBlock)" type="button" data-test="block-btn" @click="$emit('block')" :disabled="!thread.window_open"
                 :title="thread.window_open ? 'حظر هذا الرقم عند واتساب' : 'ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
                 :aria-label="thread.window_open ? 'حظر هذا الرقم' : 'الحظر غير متاح: ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
                 class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed"
@@ -52,12 +53,20 @@
         <button v-if="canFilter" type="button" @click="$emit('toggleFilters')" :aria-pressed="filtersOpen ? 'true' : 'false'" data-test="toggle-filters"
                 class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border"
                 :class="filtersOpen ? 'border-gold-400 text-gold-700 dark:text-gold-400 bg-gold-50 dark:bg-gold-900/20' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'">⏷ تصفية</button>
-        <button v-if="canExport" type="button" @click="$emit('export')" data-test="open-export"
+        <button v-if="!panel && canExport" type="button" @click="$emit('export')" data-test="open-export"
                 class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">⬇️ تصدير</button>
-        <ThreadActionsMenu v-if="followup" :thread="thread" :can-reply="canReply" :can-reprocess="canReprocess" @action="(n, p) => $emit('action', n, p)"/>
+        <ThreadActionsMenu v-if="!panel && followup" :thread="thread" :can-reply="canReply" :can-reprocess="canReprocess" @action="(n, p) => $emit('action', n, p)"/>
+        <button v-if="panel" type="button" @click="$emit('togglePanel')" :aria-pressed="panelOpen ? 'true' : 'false'" data-test="panel-toggle"
+                aria-label="لوحة العميل: الإجراءات والملاحظات والرحلات والفواتير" title="لوحة العميل"
+                class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border inline-flex items-center gap-1"
+                :class="panelOpen ? 'border-gold-400 text-gold-800 dark:text-gold-300 bg-gold-50 dark:bg-gold-900/20' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'">
+          <span aria-hidden="true">ℹ️</span> العميل
+          <span v-if="panelBadge" class="px-1.5 rounded-full text-[10px] bg-gold-500 text-black" data-test="panel-badge">{{ panelBadge }}</span>
+        </button>
       </div>
     </div>
 
+    <template v-if="!panel">
     <!-- المواضيع -->
     <div class="flex flex-wrap items-center gap-1.5">
       <span class="text-[11px] text-gray-400 dark:text-gray-500">المواضيع:</span>
@@ -92,6 +101,7 @@
       </select>
       <span v-else class="text-[11px] text-gray-500 dark:text-gray-400">{{ thread.assignee || '— بلا توكيل' }}</span>
     </div>
+    </template>
   </div>
 </template>
 
@@ -125,9 +135,15 @@ const props = defineProps({
   canBlock: Boolean,
   // E39: زر «اتصل من هاتف الوكالة» مع العلم calls_webhook
   calls: Boolean,
+  // C128: اللوحة الجانبية مفعّلة، وحالتها، وشارة الرحلة القادمة على زرها
+  panel: Boolean,
+  panelOpen: Boolean,
+  panelBadge: { type: String, default: '' },
 });
-const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'toggleFilters', 'export', 'block']);
+const emit = defineEmits(['back', 'link', 'unlink', 'resolve', 'toggleBot', 'setTopic', 'assign', 'action', 'toggleFilters', 'export', 'block', 'togglePanel']);
 const blockable = computed(() => props.canBlock && !props.thread.blocked && !props.thread.is_admin && !props.thread.is_staff);
+// الحظر يبقى في الرأس مع اللوحة لحظة «تجاوز الحد» وحدها
+const urgentBlock = computed(() => props.thread.attention_reason === 'rate_limit' && !!props.thread.needs_attention);
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
 // مصدر الوسم: يدوي، أو قاعدة، أو البوت، أو رمز QR ورابط، أو إعلان (E38)
 
