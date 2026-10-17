@@ -1,0 +1,13 @@
+# يتقدّم على .dockerignore عند البناء بـ -f Dockerfile.test
+# لا أسرار ولا بيانات؛ والاختبارات مطلوبة هنا (عكس صورة الإنتاج).
+# لا تستثنِ docs/ ولا *.md ولا SECURITY.md ولا public/.well-known: اختبارات التوثيق (E25) تقرؤها داخل حاوية البوابة.
+.env
+.env.*
+!.env.example
+storage/app/firebase-auth.json
+database/database.sqlite
+database/*.sqlite
+node_modules/
+vendor/
+public/build/
+.git/

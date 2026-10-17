@@ -185,6 +185,9 @@ class AccountingController extends Controller
                     $acc->save();
                 }
             }
+
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::LineRelocate, 'journal_entry_line', $line->id, $entry?->entry_number,
+                ['from_account' => (int) $oldAccountId, 'to_account' => (int) $target->id, 'amount' => (float) ($line->debit + $line->credit)]);
         });
 
         return back()->with('success', "تم نقل القيد إلى حساب «{$target->code} - {$target->name}» وإعادة احتساب الأرصدة بنجاح.");
@@ -292,6 +295,7 @@ class AccountingController extends Controller
         $validated['balance'] = 0;
 
         $account = Account::create($validated);
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::Create, 'account', $account->id, "{$account->code} - {$account->name}");
 
         // === مزامنة مباشرة: إذا الحساب تحت "الوكلاء" (2110) — أنشئ وكيل ===
         $parent = Account::find($validated['parent_id']);
@@ -373,7 +377,12 @@ class AccountingController extends Controller
             $validated['code'] = $codeValidation['code'];
         }
 
-        $account->update($validated);
+        DB::transaction(function () use ($account, $validated) {
+            $account->fill($validated);
+            $changed = array_keys($account->getDirty());
+            $account->save();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Update, 'account', $account->id, "{$account->code} - {$account->name}", ['changed' => $changed]);
+        });
 
         return redirect()->back()->with('success', 'تم تحديث الحساب بنجاح');
     }
@@ -396,7 +405,10 @@ class AccountingController extends Controller
             return back()->with('error', 'لا يمكن حذف حساب لديه قيود محاسبية مسجلة');
         }
 
-        $account->delete();
+        DB::transaction(function () use ($account) {
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'account', $account->id, "{$account->code} - {$account->name}");
+            $account->delete();
+        });
         return redirect()->back()->with('success', 'تم حذف الحساب بنجاح');
     }
 
@@ -487,6 +499,8 @@ class AccountingController extends Controller
                     }
                 }
             }
+
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Create, 'journal_entry', $entry->id, $entry->entry_number, ['total' => (float) $totalDebit, 'lines' => count($validated['lines'])]);
         });
 
         return redirect()->back()->with('success', 'تم إنشاء القيد اليدوي بنجاح');
@@ -578,6 +592,8 @@ class AccountingController extends Controller
                     $acc->increment('balance', $delta);
                 }
             }
+
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Update, 'journal_entry', $entry->id, $entry->entry_number, ['total' => (float) $totalDebit, 'lines' => count($validated['lines'])]);
         });
 
         return redirect()->back()->with('success', "تم تعديل القيد {$entry->entry_number} بنجاح");
@@ -602,8 +618,9 @@ class AccountingController extends Controller
 
         $entryNumber = $entry->entry_number;
 
-        DB::transaction(function () use ($entry) {
+        DB::transaction(function () use ($entry, $entryNumber) {
             $entry->load('lines');
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'journal_entry', $entry->id, $entryNumber, ['total' => (float) $entry->total_debit, 'lines' => $entry->lines->count()]);
 
             // عكس أثر السطور على الرصيد المخبأ (نفس منطق تعديل القيد)
             foreach ($entry->lines as $line) {
@@ -621,8 +638,6 @@ class AccountingController extends Controller
             $entry->delete();
         });
 
-        \App\Models\AuditLog::log('delete', 'journal_entry', $entry->id, $entryNumber);
-
         return back()->with('success', "تم حذف القيد {$entryNumber} وعكس أثره على الأرصدة بنجاح");
     }
 
@@ -633,7 +648,12 @@ class AccountingController extends Controller
     public function reverseEntry(JournalEntry $entry)
     {
         try {
-            $reversal = AccountingService::reverseEntry($entry, 'عكس يدوي');
+            $reversal = DB::transaction(function () use ($entry) {
+                $reversal = AccountingService::reverseEntry($entry, 'عكس يدوي');
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::Reverse, 'journal_entry', $entry->id, $entry->entry_number, ['reversal' => $reversal->entry_number, 'total' => (float) $entry->total_debit]);
+
+                return $reversal;
+            });
             return back()->with('success', "تم عكس القيد — القيد العكسي: {$reversal->entry_number}");
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());
@@ -669,7 +689,8 @@ class AccountingController extends Controller
         ]);
 
         $validated['created_by'] = auth()->id();
-        FiscalYear::create($validated);
+        $fiscalYear = FiscalYear::create($validated);
+        \App\Models\AuditLog::log(\App\Enums\AuditAction::Create, 'fiscal_year', $fiscalYear->id, (string) $validated['year']);
 
         return back()->with('success', "تم إنشاء السنة المالية {$validated['year']} بنجاح");
     }
@@ -680,43 +701,57 @@ class AccountingController extends Controller
             return back()->with('error', 'لا يمكن حذف سنة مالية مقفلة');
         }
 
-        $fiscalYear->delete();
+        DB::transaction(function () use ($fiscalYear) {
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'fiscal_year', $fiscalYear->id, (string) $fiscalYear->year);
+            $fiscalYear->delete();
+        });
         return back()->with('success', 'تم حذف السنة المالية');
     }
 
     public function closePeriod(Request $request)
     {
+        abort_unless(auth()->user()->can('accounting.close'), 403);
+
         $validated = $request->validate([
             'year' => 'required|integer|min:2020|max:2099',
             'month' => 'required|integer|min:0|max:12',
         ]);
 
-        $period = AccountingPeriod::updateOrCreate(
-            ['year' => $validated['year'], 'month' => $validated['month']],
-            [
-                'status' => 'closed',
-                'closed_by' => auth()->id(),
-                'closed_at' => now(),
-            ]
-        );
-
         $label = $validated['month'] == 0
             ? "السنة {$validated['year']} كاملة"
             : "شهر {$validated['month']}/{$validated['year']}";
+
+        DB::transaction(function () use ($validated, $label) {
+            $period = AccountingPeriod::updateOrCreate(
+                ['year' => $validated['year'], 'month' => $validated['month']],
+                [
+                    'status' => 'closed',
+                    'closed_by' => auth()->id(),
+                    'closed_at' => now(),
+                ]
+            );
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::PeriodClose, 'accounting_period', $period->id, $label);
+        });
 
         return back()->with('success', "تم إقفال {$label}");
     }
 
     public function openPeriod(Request $request)
     {
+        abort_unless(auth()->user()->can('accounting.close'), 403);
+
         $validated = $request->validate([
             'year' => 'required|integer',
             'month' => 'required|integer|min:0|max:12',
         ]);
 
-        AccountingPeriod::where('year', $validated['year'])
-            ->where('month', $validated['month'])
-            ->update(['status' => 'open', 'closed_by' => null, 'closed_at' => null]);
+        DB::transaction(function () use ($validated) {
+            $period = AccountingPeriod::where('year', $validated['year'])->where('month', $validated['month'])->first();
+            AccountingPeriod::where('year', $validated['year'])
+                ->where('month', $validated['month'])
+                ->update(['status' => 'open', 'closed_by' => null, 'closed_at' => null]);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::PeriodOpen, 'accounting_period', $period?->id, "{$validated['month']}/{$validated['year']}");
+        });
 
         return back()->with('success', 'تم فتح الفترة');
     }
@@ -727,10 +762,17 @@ class AccountingController extends Controller
 
     public function closeYear(Request $request)
     {
+        abort_unless(auth()->user()->can('accounting.close'), 403);
+
         $validated = $request->validate(['year' => 'required|integer|min:2020|max:2099']);
 
         try {
-            $result = AccountingService::closeYear($validated['year']);
+            $result = DB::transaction(function () use ($validated) {
+                $result = AccountingService::closeYear($validated['year']);
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::YearClose, 'fiscal_year', null, (string) $validated['year'], ['net_income' => (float) $result['net_income'], 'entry' => $result['entry']->entry_number]);
+
+                return $result;
+            });
             return back()->with('success',
                 "تم إقفال السنة {$validated['year']} — صافي الربح: " .
                 number_format($result['net_income'], 3) . ' JOD — قيد: ' .

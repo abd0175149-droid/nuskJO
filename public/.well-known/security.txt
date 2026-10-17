@@ -1,0 +1,6 @@
+# nuskJO security contact (RFC 9116). Policy: SECURITY.md in the repository, summary at /privacy#security
+Contact: mailto:info@nusuk-jo.com
+Expires: 2027-09-30T00:00:00.000Z
+Preferred-Languages: ar, en
+Policy: https://nuskjo.grade.sbs/privacy#security
+Canonical: https://nuskjo.grade.sbs/.well-known/security.txt

@@ -69,6 +69,7 @@
 </template>
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue';
+import { renderTemplate } from '@/composables/usePdfTemplate';
 const props = defineProps({ entity: Object, entries: Array, summary: Object, filters: Object, type: String, templateUrl: String, layout: Object });
 const decimals = props.type === 'agent' ? 2 : 3;
 const fmt = (v) => Number(v||0).toLocaleString('en', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -115,13 +116,19 @@ const replaceVars = (text) => {
 
 const canvasRefs = {};
 const setCanvas = (el, idx) => { if (el) canvasRefs[idx] = el; };
-const renderPdf = async () => { if(!props.templateUrl) return; try { const pdfjsLib=await loadPdfJs(); const pdf=await pdfjsLib.getDocument(props.templateUrl).promise; const page=await pdf.getPage(1); const vp=page.getViewport({scale:2}); for(const[,canvas] of Object.entries(canvasRefs)){canvas.width=vp.width;canvas.height=vp.height;await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;} }catch(e){console.error(e);} };
-const loadPdfJs = () => new Promise((resolve,reject) => { if(window.pdfjsLib){resolve(window.pdfjsLib);return;} const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';resolve(window.pdfjsLib);}; s.onerror=reject; document.head.appendChild(s); });
+// قالب PDF من pdf.js المحلي بلا eval (usePdfTemplate، E26)
+const renderPdf = async () => { try { await renderTemplate(props.templateUrl, canvasRefs); } catch (e) { console.error(e); } };
 onMounted(async () => { await nextTick(); setTimeout(renderPdf, 400); });
 const doPrint = () => window.print();
 </script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+/* خطوط محلية (E16.8) بدل Google Fonts */
+@import '@fontsource/cairo/400.css';
+@import '@fontsource/cairo/600.css';
+@import '@fontsource/cairo/700.css';
+@import '@fontsource/cairo/900.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
 .a4-landscape{width:297mm;height:210mm;position:relative;margin:0 auto;overflow:hidden;background:white;font-family:'Cairo',sans-serif;page-break-after:always}
 .a4-landscape:last-child{page-break-after:auto}
 .pdf-bg{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none}.fallback-bg{position:absolute;inset:0;background:white;z-index:0}

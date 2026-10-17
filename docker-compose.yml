@@ -8,15 +8,34 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # VITE_* لمرحلة الواجهة دون خبز .env.production في الصورة
+      secrets:
+        - vite_env
     container_name: nuskjo-app
     restart: unless-stopped
+    # يتسع لـ stopwaitsecs=130 لعامل الطابور: وظيفة رد جارية تكتمل بدل أن تُقتل عند كل نشر
+    stop_grace_period: 140s
+    # تقوية الحاوية (E26.8). no-new-privileges: supervisord وphp-fpm وnginx يُسقطون الصلاحيات من root ولا يرفعونها،
+    # وكروميوم يعمل بـ --no-sandbox. الحدود في /opt/nuskJO/.env (تعويض compose) بعد قياس scripts/security/measure-memory.sh
+    # وops:smoke-card: الذاكرة ضعف القمة ولا تقل عن 2g، وpids يعدّ الخيوط (كروميوم وحده عشرات، و20 عامل php-fpm والطوابير وReverb).
+    # 0 يرفع الحد في الطوارئ. مؤجل عمداً: read_only وcap_drop [ALL]، لأن الإقلاع ينفّذ chown وconfig:cache بـ root
+    # وsupervisord يبدأ بـ root؛ تغيير ذلك مشروع مستقل يمس قالب كل المشاريع
+    security_opt:
+      - "no-new-privileges:true"
+    mem_limit: ${NUSKJO_MEM_LIMIT:-3g}
+    memswap_limit: ${NUSKJO_MEM_LIMIT:-3g}
+    pids_limit: ${NUSKJO_PIDS_LIMIT:-1024}
+    cpus: ${NUSKJO_CPUS:-2.0}
     ports:
-      - "4020:4020"
+      # NUSKJO_BIND_ADDRESS=127.0.0.1 (في /opt/nuskJO/.env لتعويض compose) يقصر المنفذ على المضيف بعد تحويل قاعدة النفق
+      # إلى http://127.0.0.1:4020 (docs/RELEASE.md «ربط المنفذ»). بلا قيمة: كل الواجهات كما اليوم
+      - "${NUSKJO_BIND_ADDRESS:-}${NUSKJO_BIND_ADDRESS:+:}4020:4020"
     volumes:
       # Persist storage (uploads, logs)
       - nuskjo-storage:/var/www/html/storage
-      # Persist SQLite database
-      - nuskjo-database:/var/www/html/database
+      # القاعدة وحدها في حجمها (database/data)، فتصل هجرات الصورة الجديدة بالبناء دون docker cp.
+      # الانتقال من الحجم القديم بـ scripts/backup/move-db-volume.sh (docs/RELEASE.md)، لا بإعادة التشغيل.
+      - nuskjo-dbdata:/var/www/html/database/data
     environment:
       - APP_NAME=NUSKJO
       - APP_ENV=production
@@ -24,23 +43,92 @@ services:
       - APP_URL=https://nuskjo.grade.sbs
       - APP_LOCALE=ar
       - LOG_CHANNEL=stack
-      - LOG_LEVEL=error
+      # warning لا error: تحذيرات الواتساب (حدث حساب، توقيع خاطئ) كانت تسقط. يومي بـ 14 يوماً
+      - LOG_LEVEL=warning
+      - LOG_STACK=daily
+      - LOG_DAILY_DAYS=14
+      # أحداث الواتساب في storage/logs/whatsapp-*.log (JSON، بلا بيانات عملاء)
+      - WA_LOG_LEVEL=info
       - DB_CONNECTION=sqlite
+      - DB_DATABASE=/var/www/html/database/data/database.sqlite
+      # E07.11: WAL ومهلة القفل 60 ثانية (صريحة هنا لا في الافتراضي وحده)؛ IMMEDIATE بعد تجربته على نسخة
+      - DB_JOURNAL_MODE=wal
+      - DB_BUSY_TIMEOUT=60000
+      - DB_SYNCHRONOUS=normal
+      - DB_TRANSACTION_MODE=DEFERRED
+      # E08: فحص /up الحقيقي وفحوص ميتا. مطفآن حتى يُضبطا في /opt/nuskJO/.env (تعويض compose)، مرحلةً مرحلة (docs/RELEASE.md)
+      - OPS_HEALTH_CHECKS=${OPS_HEALTH_CHECKS:-false}
+      - WA_META_CHECKS=${WA_META_CHECKS:-false}
+      # E09: أحداث التدقيق غير المالية وصفحة /audit-logs (مطفآن حتى يُضبطا في /opt/nuskJO/.env)
+      - AUDIT_EXTENDED=${AUDIT_EXTENDED:-false}
+      - AUDIT_PAGE=${AUDIT_PAGE:-false}
+      # E13: مدة الاحتفاظ بالمحادثات (0 = لا تقليم) حتى يقرّرها المالك في /opt/nuskJO/.env
+      - WA_RETENTION_DAYS=${WA_RETENTION_DAYS:-0}
+      # E26: سياسة أمن المحتوى (report افتراضياً: تقارير بلا حجب؛ enforce بعد أسبوع نظيف؛ off للطوارئ)،
+      # وصلاحيات storage (legacy حتى يُتحقق من ضم nginx إلى مجموعة www-data، ثم strict: 750/640)
+      - CSP_MODE=${CSP_MODE:-report}
+      - CSP_CONNECT_EXTRA=${CSP_CONNECT_EXTRA:-}
+      - NUSKJO_STORAGE_PERMS=${NUSKJO_STORAGE_PERMS:-legacy}
       - SESSION_DRIVER=database
       - QUEUE_CONNECTION=database
       - CACHE_STORE=database
       - SAR_TO_JOD=0.19
+      # E28: الخادم ينشر إلى Reverb داخل الحاوية مباشرة (لا عبر النفق و/apps)، بمهلة ثانيتين. المتصفح على VITE_REVERB_*.
+      # أصل المقبس بالمضيف وحده؛ '*' مؤقتاً في /opt/nuskJO/.env للتراجع (docs/RELEASE.md «البث اللحظي الآمن»)
+      - REVERB_PUBLISH_HOST=${REVERB_PUBLISH_HOST:-127.0.0.1}
+      - REVERB_PUBLISH_PORT=${REVERB_PUBLISH_PORT:-8080}
+      - REVERB_PUBLISH_SCHEME=${REVERB_PUBLISH_SCHEME:-http}
+      - REVERB_ALLOWED_ORIGINS=${REVERB_ALLOWED_ORIGINS:-nuskjo.grade.sbs}
     env_file:
       - .env.production
+    # سجلات الحاوية مدوّرة: 5 ملفات × 10MB (nginx وphp-fpm يكتبان إلى stdout/stderr)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4020/"]
+      # /up يفحص القاعدة والمجدول والعاملين (OPS_HEALTH_CHECKS)؛ / كان ينجح بمجرد التحويل إلى صفحة الدخول.
+      # start_period: أول نبضة بعد الإقلاع. unhealthy للرؤية والتنبيه فقط، لا إعادة تشغيل آلية
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "-H", "Accept: application/json", "http://localhost:4020/up"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 120s
+
+  # تمرين الاستعادة المعزول (scripts/backup/drill.sh): لا شبكة، ولا أي حجم إنتاجي، ونظام ملفات للقراءة فقط.
+  # لا يعمل مع «docker compose up»؛ فقط: docker compose --profile drill run --rm -T nuskjo-drill
+  nuskjo-drill:
+    image: ${DRILL_IMAGE:-nuskjo-nuskjo-app:latest}
+    profiles: [drill]
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+      - /var/www/html/storage:size=256m
+      - /var/www/html/bootstrap/cache:size=16m
+    env_file:
+      - .env.production
+    environment:
+      - APP_ENV=production
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/tmp/drill/database.sqlite
+      - CACHE_STORE=array
+      - QUEUE_CONNECTION=sync
+      - SESSION_DRIVER=array
+      - BROADCAST_CONNECTION=null
+      - BACKUP_PRE_MIGRATE=false
+      - LOG_CHANNEL=stderr
+    entrypoint: ["/bin/sh", "/var/www/html/docker/drill-inside.sh"]
+
+secrets:
+  vite_env:
+    file: ./.env.production
 
 volumes:
   nuskjo-storage:
     driver: local
-  nuskjo-database:
+  nuskjo-dbdata:
     driver: local
+  # الحجم القديم nuskjo_nuskjo-database غير معلن هنا عن قصد: يبقى كما هو للرجوع، ولا يحذفه «docker compose down -v».
+  # حذفه يدوياً بعد 30 يوماً على الأقل وبقرار المالك.

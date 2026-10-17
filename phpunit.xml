@@ -23,8 +23,12 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="CACHE_LIMITER" value="array"/>
+        <env name="OPS_CACHE_STORE" value="array"/>
+        <env name="OPS_HEALTH_CHECKS" value="false"/>
+        <env name="AUDIT_SAMPLER_STORE" value="array"/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
@@ -32,5 +36,27 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- لا اتصال حقيقي بميتا أو مزوّدي الذكاء الاصطناعي أو Firebase أثناء الاختبار -->
+        <env name="WA_TOKEN" value="" force="true"/>
+        <env name="WA_PHONE_NUMBER_ID" value="" force="true"/>
+        <env name="WA_APP_SECRET" value="" force="true"/>
+        <env name="WA_WEBHOOK_VERIFY_TOKEN" value="" force="true"/>
+        <env name="WA_SUSPENDED" value="false" force="true"/>
+        <env name="WA_GRAPH_VERSION" value="v25.0" force="true"/>
+        <env name="WA_WEBHOOK_VERSION" value="" force="true"/>
+        <env name="WA_APPSECRET_PROOF" value="false" force="true"/>
+        <env name="WA_GRAPH_COUNTER_STORE" value="array" force="true"/>
+        <env name="WA_MEDIA_HOST_MODE" value="log" force="true"/>
+        <env name="BACKUP_DISK_MIN_FREE_MB" value="0" force="true"/>
+        <!-- أرشيف المرفقات لا يتوقف لامتلاء قرص المضيف أثناء الاختبار (كحد النسخ أعلاه) -->
+        <env name="WA_MEDIA_MIN_FREE_PCT" value="0" force="true"/>
+        <env name="GOOGLE_API_KEY" value="" force="true"/>
+        <env name="GEMINI_API_KEY" value="" force="true"/>
+        <env name="ANTHROPIC_API_KEY" value="" force="true"/>
+        <env name="FIREBASE_CREDENTIALS" value="" force="true"/>
+        <env name="GOOGLE_APPLICATION_CREDENTIALS" value="" force="true"/>
+        <env name="FLIGHTS_DRIVER" value="demo" force="true"/>
+        <env name="TF_LOGIN_ID" value="" force="true"/>
+        <env name="CHROMIUM_PATH" value="" force="true"/>
     </php>
 </phpunit>

@@ -2,6 +2,10 @@
 
 namespace App\Services\WhatsApp\Llm;
 
+use App\Support\UrlPath;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -21,11 +25,46 @@ class GeminiProvider implements LlmProvider
         return 'google';
     }
 
-    public function models(string $apiKey): array
+    /** المفتاح في الترويسة لا في الرابط (الرابط يصل إلى السجلات ورسائل الأخطاء)، ولا تحويل يحمله لمضيف آخر */
+    private function client(#[\SensitiveParameter] string $apiKey, int $timeout): PendingRequest
     {
-        $res = Http::timeout(20)->acceptJson()->get(self::BASE . '/models', ['key' => $apiKey]);
+        return Http::withHeaders(['x-goog-api-key' => $apiKey])
+            ->withoutRedirecting()
+            ->connectTimeout(5)
+            ->timeout($timeout)
+            ->acceptJson();
+    }
+
+    /** POST واحد: كل فشل يُصنَّف (LlmErrorClassifier)، ورسالته بلا رابط ولا مفتاح ولا تفاصيل cURL */
+    private function post(#[\SensitiveParameter] string $apiKey, int $timeout, string $url, array $body): Response
+    {
+        try {
+            $res = $this->client($apiKey, $timeout)->post($url, $body);
+        } catch (ConnectionException $e) {
+            throw LlmErrorClassifier::fromThrowable('google', $e);
+        }
+
         if (!$res->successful()) {
-            throw new \RuntimeException('Google: ' . data_get($res->json(), 'error.message', 'HTTP ' . $res->status()));
+            throw LlmErrorClassifier::fromResponse('google', $res);
+        }
+
+        return $res;
+    }
+
+    private function generateUrl(string $model): string
+    {
+        return self::BASE.'/models/'.UrlPath::segment($model).':generateContent';
+    }
+
+    public function models(#[\SensitiveParameter] string $apiKey): array
+    {
+        try {
+            $res = $this->client($apiKey, 20)->get(self::BASE.'/models');
+        } catch (ConnectionException $e) {
+            throw LlmErrorClassifier::fromThrowable('google', $e);
+        }
+        if (!$res->successful()) {
+            throw LlmErrorClassifier::fromResponse('google', $res);
         }
 
         $out = [];
@@ -64,7 +103,7 @@ class GeminiProvider implements LlmProvider
         return $h;
     }
 
-    public function generate(string $apiKey, string $model, array $system, array $history, array $tools): array
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, ?int $timeout = null): array
     {
         $body = [
             'systemInstruction' => ['parts' => array_map(fn ($t) => ['text' => $t], $system)],
@@ -79,13 +118,7 @@ class GeminiProvider implements LlmProvider
             $body['tools'] = [['functionDeclarations' => array_map([$this, 'declaration'], $tools)]];
         }
 
-        $res = Http::timeout(40)->acceptJson()
-            ->post(self::BASE . "/models/{$model}:generateContent?key=" . urlencode($apiKey), $body);
-
-        if (!$res->successful()) {
-            throw new \RuntimeException('Gemini HTTP ' . $res->status() . ': '
-                . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300));
-        }
+        $res = $this->post($apiKey, $timeout ?? 40, $this->generateUrl($model), $body);
 
         $json = $res->json() ?? [];
         $parts = (array) data_get($json, 'candidates.0.content.parts', []);
@@ -100,7 +133,7 @@ class GeminiProvider implements LlmProvider
             if (isset($p['functionCall'])) {
                 $calls[] = [
                     // Gemini لا يرسل معرّفاً — نولّده للمطابقة الداخلية
-                    'id' => 'g' . (++$i),
+                    'id' => 'g'.(++$i),
                     'name' => (string) data_get($p, 'functionCall.name'),
                     'input' => (array) data_get($p, 'functionCall.args', []),
                 ];
@@ -129,7 +162,7 @@ class GeminiProvider implements LlmProvider
      *
      * @return array{text:string, usage:array{in:int,out:int}}
      */
-    public function transcribe(string $apiKey, string $model, string $bytes, string $mime): array
+    public function transcribe(#[\SensitiveParameter] string $apiKey, string $model, string $bytes, string $mime, ?int $timeout = null): array
     {
         $body = [
             'contents' => [[
@@ -137,20 +170,14 @@ class GeminiProvider implements LlmProvider
                 'parts' => [
                     ['inlineData' => ['mimeType' => $mime, 'data' => base64_encode($bytes)]],
                     ['text' => 'فرّغ هذه الرسالة الصوتية نصّاً حرفياً بلغتها الأصلية (غالباً عربية بلهجة أردنية). '
-                        . 'اكتب النصّ المنطوق فقط، بلا مقدّمة ولا شرح ولا ترجمة. '
-                        . 'إن كانت صامتة أو غير مفهومة فاكتب: [غير مفهومة]'],
+                        .'اكتب النصّ المنطوق فقط، بلا مقدّمة ولا شرح ولا ترجمة. '
+                        .'إن كانت صامتة أو غير مفهومة فاكتب: [غير مفهومة]'],
                 ],
             ]],
             'generationConfig' => ['temperature' => 0, 'maxOutputTokens' => 1024],
         ];
 
-        $res = Http::timeout(60)->acceptJson()
-            ->post(self::BASE . "/models/{$model}:generateContent?key=" . urlencode($apiKey), $body);
-
-        if (!$res->successful()) {
-            throw new \RuntimeException('Gemini transcribe HTTP ' . $res->status() . ': '
-                . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300));
-        }
+        $res = $this->post($apiKey, $timeout ?? 60, $this->generateUrl($model), $body);
 
         $text = '';
         foreach ((array) data_get($res->json(), 'candidates.0.content.parts', []) as $p) {
@@ -173,7 +200,7 @@ class GeminiProvider implements LlmProvider
         // («Proto field is not repeating»). نعيدها كائناً — وباقي الجزء كما وصل حرفياً.
         $parts = array_map(function ($p) {
             if (is_array($p) && isset($p['functionCall']) && empty($p['functionCall']['args'])) {
-                $p['functionCall']['args'] = new \stdClass();
+                $p['functionCall']['args'] = new \stdClass;
             }
 
             return $p;

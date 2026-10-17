@@ -102,6 +102,7 @@ import { ref, computed, h, defineComponent } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import { useRealtimeUpdates } from '@/composables/useRealtimeUpdates';
+import { useConfirm } from '@/composables/useConfirm';
 useRealtimeUpdates(['account', 'agent', 'client', 'service']);
 
 const props = defineProps({ accounts: Array });
@@ -185,8 +186,10 @@ const submitForm = () => {
     }
 };
 
-const deleteAccount = (account) => {
-    if (confirm(`حذف الحساب "${account.name}"؟`)) {
+// تأكيد موحّد (E16.9)
+const { confirm } = useConfirm();
+const deleteAccount = async (account) => {
+    if (await confirm({ title: 'حذف الحساب', message: `حذف الحساب «${account.name}»؟`, confirmLabel: '🗑️ حذف', danger: true })) {
         router.delete('/accounting/accounts/' + account.id);
     }
 };
@@ -268,14 +271,21 @@ const AccountRow = defineComponent({
                         class: 'px-1.5 py-0.5 text-xs text-purple-600 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded',
                         href: '/accounting/accounts/' + a.id + '/details',
                         title: 'كشف حساب',
+                        'aria-label': 'كشف حساب',
                         onClick: (e) => e.stopPropagation(),
                     }, '📊'),
                     h('button', {
+                        type: 'button',
                         class: 'px-1.5 py-0.5 text-xs text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded',
+                        title: 'تعديل',
+                        'aria-label': 'تعديل',
                         onClick: (e) => { e.stopPropagation(); emit('edit', a); },
                     }, '✏️'),
                     !a.is_system ? h('button', {
+                        type: 'button',
                         class: 'px-1.5 py-0.5 text-xs text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded',
+                        title: 'حذف',
+                        'aria-label': 'حذف',
                         onClick: (e) => { e.stopPropagation(); emit('delete', a); },
                     }, '🗑️') : null,
                 ]),

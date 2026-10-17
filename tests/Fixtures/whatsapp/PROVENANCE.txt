@@ -1,0 +1,170 @@
+مصدر حمولات ويبهوك واتساب في هذا المجلد
+=========================================
+
+كل الملفات تتبع شكل الأمثلة في المرجع الرسمي لويبهوك WhatsApp Cloud API،
+وتُستعمل مع Graph v25.0 (الإصدار الافتراضي في config/services.php وphpunit.xml).
+كُتبت في 2026-10-14. لم يُنسخ أي شيء من الإنتاج.
+
+المراجع:
+  [messages]  https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages
+  [account]   https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update
+  [quality]   https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/phone_number_quality_update
+  [errors]    https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes
+  [overview]  https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview
+
+قواعد التجهيل (يفرضها tests/Feature/Infra/FixturePiiGuardTest.php):
+  - phone_number_id = 106540352242922، وdisplay_phone_number = 15550783881 (أرقام أمثلة ميتا).
+  - wa_id وfrom وrecipient_id = 16505551234 (رقم أمثلة ميتا). والرقم الآخر في الحساب نفسه 16505553333.
+  - معرّف الحساب (entry.id) = 102290129340398 من أمثلة ميتا.
+  - wamid مولَّد بصيغة ميتا (base64) ولا يرمّز إلا 16505551234.
+  - الأسماء من أمثلة ميتا (Sheena Nelson) أو «عميل تجريبي».
+  - ممنوع نسخ wa_messages.payload أو أي حمولة حقيقية من الإنتاج: المستودع عام.
+
+الملفات:
+
+text.json                     [messages] § text. رسالة نصية واردة.
+text_arabic_escaped.json      [messages] § text. سطر واحد كما يصل على السلك: العربي والإيموجي
+                              مكتوبان \uXXXX (وأزواج surrogate). يثبت أن التوقيع يُحسب على البايتات الخام. [overview] § X-Hub-Signature-256.
+audio.json                    [messages] § audio. رسالة صوتية (voice=true) بمعرّف وسائط.
+interactive_button_reply.json [messages] § interactive (button_reply)، مع context للرسالة الصادرة.
+interactive_list_reply.json   [messages] § interactive (list_reply)، مع context.
+reaction.json                 [messages] § reaction. الإيموجي مكتوب \uXXXX كما ترسله ميتا.
+unsupported.json              [messages] § unsupported. نوع غير مدعوم مع errors (131051).
+optout_iqaf.json              [messages] § text، والنص «إيقاف».
+cancel_ilgha.json             [messages] § text، والنص «إلغاء» وحده.
+foreign_phone_number_id.json  [messages] § text، لكن metadata.phone_number_id لرقم آخر في التطبيق نفسه.
+status_sent.json              [messages] § statuses (sent)، مع pricing بنموذج PMP.
+status_delivered.json         [messages] § statuses (delivered)، مع pricing بنموذج PMP.
+status_read.json              [messages] § statuses (read).
+status_played.json            [messages] § statuses (played) لرسالة صوتية صادرة.
+status_failed_131047.json     [messages] § statuses (failed)، منسوخ شكله من المثال الرسمي مع code=131047
+                              (Re-engagement message). [errors] § 131047.
+account_update_ban.json       [account] § DISABLED_UPDATE مع ban_info (waba_ban_state=DISABLE).
+account_update_benign.json    [account] § PARTNER_ADDED مع waba_info. حدث عادي يصل عند ربط الحساب.
+quality_update_other_number.json [quality] § FLAGGED لرقم آخر في الحساب نفسه (16505553333)، لا لرقمنا.
+username_only.json            [bsuid] § Webhooks: عميل فعّل اسم مستخدم ولا تواصل خلال 30 يوماً: لا from ولا wa_id،
+                              والمعرّف الخاص بنشاطنا في messages[].from_user_id وcontacts[].user_id، واسم المستخدم
+                              في contacts[].profile.username. المعرّف US.13491208655302741918 بصيغة المرجع (رمز الدولة ثم نقطة).
+username_with_phone.json      [bsuid] § Webhooks: العميل نفسه والرقم ظاهر: from وwa_id مع from_user_id وuser_id.
+                              [bsuid] https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids
+                              مكتوبان من المرجع لا من أداة Test: تُستبدلان بحمولات أداة Test في App Dashboard (OWNER_ACTIONS 25).
+image_with_sha.json           [messages] § image مع caption وmime_type وsha256 (base64) وid، بلا url (يُطرح منذ 2025-11-12). E14.
+document_pdf.json             [messages] § document مع filename (booking.pdf) وmime_type وsha256 (hex) وid. E14.
+media_131052.json             [messages] § رسالة unsupported تحمل errors[0].code=131052 (Media download error: ملف أكبر من
+                              100MB أو تعذّر تنزيله عند ميتا). [errors] § 131052. E14.
+error_190.json …                E18: أجسام أخطاء Graph المتزامنة بشكل المرجع (error.code/type/message/error_data.details/fbtrace_id)
+  error_0.json                  [errors] § 0 و190 و131026 و131056 و133010 و131042 و100 (appsecret_proof) ورمز مجهول 999999.
+  error_131026.json             fbtrace_id قيم صنعناها (Ax…)، والنصوص الإنجليزية كما في جدول الرموز. لا رقم عميل فيها.
+  error_131056.json
+  error_133010.json
+  error_131042.json
+  error_100_appsecret_proof.json  [securing-requests] رفض الإثبات: code=100 مع ذكر appsecret_proof في الرسالة.
+  error_unknown_999999.json     رمز لا يعرفه الجدول: يصنَّف unknown/META_ERROR.
+status_failed_131026.json     [messages] § statuses (failed) بشكل status_failed_131047.json مع code=131026 (Message undeliverable). E18.
+value_errors_130429.json      [messages] § value.errors على مستوى الحمولة (130429 Rate limit hit) بلا statuses ولا messages. E18.
+status_sent_with_opaque.json  [messages] § statuses (sent) مع biz_opaque_callback_data='nj:m:1' (يعيدها ميتا كما أرسلناها،
+  status_read_with_opaque.json [messages-ref] § biz_opaque_callback_data) وconversation/pricing بشكل المرجع. الاختبار يستبدل رقم الصف. E19.
+status_failed_no_opaque.json  [messages] § statuses (failed) بلا biz_opaque_callback_data كما في أمثلة المرجع (131047). E19.
+send_ok.json                  [send] § رد POST /messages الناجح: contacts وmessages[0].id وmessage_status=accepted. E19.
+send_ok_no_wamid.json         [send] رد 200 بلا messages: قبول بلا معرّف (يُحفظ «غير مؤكد»). مصنوع للاختبار. E19.
+error_130429.json             [errors] § 130429 Rate limit hit (خنق، إعادة 4^X). E19.
+error_131000.json             [errors] § 131000 Something went wrong (عابر، إعادة واحدة). E19.
+foreign_waba.json             [webhooks-override] entry.id لحساب أعمال غير حسابنا (109999999999999، مصنوع) برقمنا: السياج waba_mismatch. E20.
+missing_pnid.json             [messages] § حمولة messages بلا metadata.phone_number_id (مصنوعة): السياج pnid_missing. E20.
+batch_mixed.json              [messages] § change واحد فيه حالتان (delivered وread) ورسالتان نصيتان، بشكل المرجع. الاختبار يحقن فشلاً في الثانية. E20.
+calls_event.json              [calling] § حقل calls (connect) بشكل وثيقة المكالمات، وsdp مختصر مصنوع. لا نشترك فيه: يُسجَّل نوع الحدث فقط. E20.
+smb_message_echoes.json       [coexistence] § حقل smb_message_echoes (message_echoes) بشكل وثيقة التعايش. يُنبّه ولا يصل للبوت. E20.
+unknown_field.json            حقل مصنوع brand_new_field بجانب change رسائل عادي: الحقل المجهول لا يُسقط الرسالة. E20.
+status_delivered_with_biz_opaque.json [messages] § statuses (delivered) مع biz_opaque_callback_data='nj:m:1' وpricing بلا conversation،
+                              بشكل status_sent_with_opaque.json. الاختبار يستبدل رقم الصف. E21.
+status_read_v24_no_conversation.json [messages] § statuses (read) بلا كائن conversation (يُحذف من v24.0 إلا لنافذة نقطة الدخول
+                              المجانية) ومعه pricing. wamid مولَّد يرمّز 16505551234 وحده. E21.
+user_preferences_stop.json    [user_preferences] § الحقل user_preferences: wa_id وdetail وcategory=marketing_messages وvalue=stop
+                              وtimestamp، مع metadata وcontacts بشكل حقل messages. مكتوب من المرجع لا من أداة Test. E21.
+user_preferences_resume.json  الحمولة نفسها بالقيمة resume ووقت أحدث. E21.
+user_preferences_foreign_phone.json  الحمولة نفسها لرقم آخر في التطبيق نفسه (phone_number_id=199999999999999 مصنوع، والرقم
+                              المعروض 16505553333)، كما تصل من زر Test أو من رقم آخر: تُتجاهل وتُعدّ. E21.
+                              [user_preferences] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/user_preferences
+block_users_ok.json           [block] § رد POST /{pnid}/block_users الناجح: block_users.added_users[{input, wa_id}]. E31.
+block_users_removed.json      [block] § رد DELETE /{pnid}/block_users (فك الحظر): block_users.removed_users بالشكل نفسه. E31.
+block_users_partial.json      [block] § فشل جزئي: error.code=139100 مع block_users.failed_users[].errors[] (131047 لمن لم يراسلنا
+                              خلال 24 ساعة). fbtrace_id مصنوع. E31.
+block_users_list.json         [block] § رد GET /{pnid}/block_users: data[{messaging_product, wa_id}] وpaging.cursors وnext
+                              (رابط next مستبدل بمضيف example.invalid). E31.
+business_profile.json         [profile] § رد GET /{pnid}/whatsapp_business_profile: data[0] بالحقول about وaddress وdescription
+                              وemail وprofile_picture_url وwebsites وvertical. القيم مصنوعة (example.com). E31.
+                              ملاحظة: input في المرجع يُكتب «+رقم»؛ هنا بلا + لأن الحارس يطابق القائمة البيضاء حرفياً، والكود يقارن الأرقام وحدها.
+                              [block]   https://developers.facebook.com/documentation/business-messaging/whatsapp/block-users/
+                              [profile] https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/business-profiles
+text_with_referral.json       [messages-text] § رسالة نصية من إعلان انقر للواتساب: كائن referral بالحقول source_url وsource_id
+                              وsource_type=ad وheadline (فيه محرف اتجاه مزروع) وbody وmedia_type وimage_url وctwa_clid. القيم مصنوعة،
+                              والنص يحمل مرجع عرض [N-45]. wamid مصنوع بالرقم المسموح. E38.
+                              [messages-text] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/text/
+                              [account_alerts] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_alerts/
+                              [security]  https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/security
+                              [capability] https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/business_capability_update/
+                              [health]    https://developers.facebook.com/documentation/business-messaging/whatsapp/support/health-status/
+E22 (صحة القناة كآلة حالات). مكتوبة من المراجع لا من أداة Test، ومعرّف الحساب 102290129340398 إلا ما ذُكر:
+account_update_ban_disable.json   [account] § DISABLED_UPDATE مع ban_info.waba_ban_state=DISABLE.
+account_update_ban_reinstate.json [account] § DISABLED_UPDATE مع waba_ban_state=REINSTATE (رفع الحظر: لا يقفل).
+account_update_ban_schedule.json  [account] § DISABLED_UPDATE مع waba_ban_state=SCHEDULE_FOR_DISABLE وwaba_ban_date.
+account_update_restriction_customer.json [account] § ACCOUNT_RESTRICTION بنوع RESTRICTED_CUSTOMER_INITIATED_MESSAGING وexpiration (Unix).
+account_update_restriction_biz.json [account] § ACCOUNT_RESTRICTION بنوعين لا يمسان الردود (RESTRICTED_BIZ_INITIATED_MESSAGING
+                              وRESTRICTED_ADD_PHONE_NUMBER_ACTION) وانتهاءين.
+account_update_violation.json [account] § ACCOUNT_VIOLATION مع violation_info.violation_type.
+account_update_offboarded.json [account] § ACCOUNT_OFFBOARDED.
+account_update_foreign_waba.json [account] § DISABLED_UPDATE لحساب أعمال غير حسابنا (109999999999999 مصنوع)، كعيّنات زر Test.
+account_alerts_info.json      [account_alerts] § تنبيه INFORMATIONAL (أهلية رفع الحد) بحقول alert_type وalert_severity وentity_type.
+security_pin_reset.json       [security] § PIN_RESET_REQUEST لرقمنا المعروض 15550783881، وrequester قيمة مصنوعة.
+business_capability_update.json [capability] § max_daily_conversations_per_business=TIER_1K.
+quality_update_throughput.json [quality] § THROUGHPUT_UPGRADE لرقمنا المعروض.
+name_update_rejected.json     [overview] § phone_number_name_update بقرار REJECTED (الاسم المطلوب مصنوع).
+health_available.json         [health] § GET /{phone-number-id}?fields=health_status: AVAILABLE لكل الكيانات (معرّفا التطبيق والنشاط مصنوعان).
+health_limited.json           [health] § LIMITED على الرقم مع additional_info، وجودة YELLOW.
+health_blocked.json           [health] § BLOCKED على WABA مع errors (error_code 141010 وerror_description وpossible_solution
+                              كما في المرجع)، وجودة RED. وخطأ الرمز 190 في error_190.json (E18) نفسه، لا نسخة ثانية.
+reaction_removed.json         [messages] § reaction بلا حقل emoji: هكذا تصل إزالة العميل لتفاعله (الحقل محذوف لا فارغ)، على
+                              هدف reaction.json نفسه وبطابع أحدث. E33.
+unsupported_edit.json         [messages] § unsupported مع unsupported.type=edit و errors (131051): تعديل العميل لرسالة سابقة
+                              (ويبهوك edit لأرقام التعايش وحدها). [unsupported] و[edit] في المرجع. E33.
+unsupported_poll.json         الحمولة نفسها بالقيمة poll_creation (استطلاع لا تعرضه منصة ميتا). E33.
+location.json                 [messages] § location: latitude وlongitude ونص name وaddress مصنوعان (Sample Place). E33.
+contacts.json                 [messages] § contacts: بطاقة بالاسم (Sheena Nelson من أمثلة ميتا) والرقم الآخر في الحساب
+                              نفسه 16505553333 بـ phone وwa_id. E33.
+error_131009_context.json     [errors] § 131009 بشكل أجسام E18، وerror_data.details مصنوع يذكر context وmessage_id. الرمز
+                              والتفاصيل الفعلية لاقتباس غير صالح تُسجَّل في تجربة قبل التفعيل ويُضبط الشرط عليها. E33.
+E39 (المكالمات والتعايش، جاهزية مشروطة). مكتوبة من المراجع لا من أداة Test ولا من الإنتاج، بأرقام الأمثلة وحدها:
+                              [calling]     https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/user-initiated-calls
+                              [permissions] https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/user-call-permissions
+calls_connect_user.json       [calling] § webhook connect: مكالمة من العميل (USER_INITIATED) مع session بعرض SDP مختصر مصنوع
+                              (127.0.0.1)، ومعرّف wacid مصنوع. الاختبار يستبدل timestamp بوقت قريب.
+calls_terminate_failed.json   [calling] § webhook terminate بحالة FAILED بلا start_time ولا duration (لم يُرد): فائتة.
+calls_terminate_completed.json [calling] § webhook terminate بحالة COMPLETED مع start_time وend_time وduration=135.
+call_permission_reply_accept.json [permissions] § رد العميل في حقل messages: interactive.type=call_permission_reply
+                              وresponse=accept وexpiration_timestamp وresponse_source. wamid مصنوع لا يرمّز رقماً.
+                              [echoes]   https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/smb_message_echoes
+                              [coex]     https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users
+smb_message_echoes_image.json [echoes] § صدى صورة أرسلها الموظف من تطبيق الأعمال (mime_type وsha256 وid مصنوعة).
+smb_message_echoes_edit.json  [echoes] § صدى تعديل (type=edit) يشير إلى wamid.FIXTURE.echo.1 في smb_message_echoes.json، والنص الجديد
+                              رسالة كاملة في edit.message. الشكل مكتوب من المرجع بتقريب: المعالج يقبل original_message_id أو message_id أو context.id.
+smb_message_echoes_revoke.json [echoes] § صدى حذف (type=revoke) للرسالة نفسها.
+smb_message_echoes_bsuid.json [echoes] + [bsuid] § صدى لعميل باسم مستخدم: المعرّف في to_user_id بلا رقم. حالة to=BSUID يصنعها
+                              الاختبار وقت التشغيل (الحارس يعدّ to حقل رقم).
+account_update_partner_removed.json [coex] § account_update بحدث PARTNER_REMOVED وdisconnection_info.reason=PRIMARY_INACTIVITY.
+history_batch.json            [coex] § حقل history: دفعة واحدة (phase 0، chunk_order 1، progress 100) بخيطين وثلاث رسائل وhistory_context.
+                              الخيط الثاني بالرقم 16505553333 من القائمة البيضاء. النصوص مصنوعة.
+smb_app_state_sync.json       [coex] § حقل smb_app_state_sync: جهتا اتصال (add وremove) بأسماء الأمثلة وأرقام القائمة البيضاء.
+E24 (المراقبة التشغيلية وحفظ pricing وحمولات ميتا التعاقدية). مكتوبة من المرجع لا من أداة Test، وwamid مولَّد يرمّز
+16505551234 وحده، ومعرّف المحادثة في كائن conversation مصنوع:
+status_sent_pricing_v21.json  [messages] § statuses (sent) بالشكل القديم: كائن conversation (origin=service) ومعه pricing
+                              (billable=true وPMP وcategory=service وtype=regular كما في تسعير الرسائل غير القالبية منذ 2026-10-01).
+status_delivered_pricing_v24.json [messages] § statuses (delivered) بشكل v24.0: pricing بلا كائن conversation. يعطي أعمدة pricing نفسها.
+status_failed_368.json        [messages] § statuses (failed) بشكل status_failed_131047.json مع code=368 (Temporarily blocked
+                              for policies violations). [errors] § 368: تقييد حساب لا يُعاد إرساله.
+status_read_no_delivered.json [messages] § statuses (read) يصل بلا delivered قبله (ميتا لا تضمن الترتيب ولا كل الحالات)،
+                              مع pricing مجاني (free_customer_service).
+                              [pricing] https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages
+nfm_reply_quote.json          [messages] § interactive (nfm_reply) لنموذج Flow: response_json نص JSON فيه flow_token (قيمة
+                              مكانية تستبدلها الاختبارات) وحقول نموذج طلب التسعير الثابت (resources/whatsapp/flows/quote_request_v1.json)
+                              بقيم مصنوعة، وbody=Sent وname=flow، مع context لرسالة النموذج. مكتوبة من المرجع لا من تجربة: تُستبدل
+                              بحمولة حقيقية من تجربة النموذج بوضع draft قبل تفعيل quote_flow (OWNER_ACTIONS E36). E36.

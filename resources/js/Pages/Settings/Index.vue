@@ -4,6 +4,14 @@
         <div class="space-y-8">
             <div v-if="$page.props.flash?.success" class="p-4 rounded-xl border text-sm bg-green-50 border-green-200 text-green-700">✅ {{ $page.props.flash.success }}</div>
 
+            <Link v-if="lastBackup" href="/settings/backups"
+                  class="flex items-center gap-2 p-3 rounded-xl border text-sm"
+                  :class="backupAgeHours !== null && backupAgeHours <= 26 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-800'">
+                🛟 <span v-if="backupAgeHours !== null">آخر نسخة احتياطية قبل {{ backupAgeHours }} ساعة</span>
+                <span v-else>لا توجد نسخة احتياطية ناجحة بعد</span>
+                <span class="mr-auto underline text-xs">النسخ الاحتياطي</span>
+            </Link>
+
             <!-- سعر الصرف (ثابت) -->
             <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">💱 سعر الصرف</h3>
@@ -23,13 +31,13 @@
             </div>
 
             <!-- الإعدادات العامة -->
-            <div v-for="(items, group) in settings" :key="group" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <div v-for="(items, group) in settings" v-show="editable(items).length" :key="group" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                     {{ {company:'🏢 بيانات الشركة',printing:'🖨️ الطباعة',notifications:'🔔 الإشعارات',financial:'💰 المالية'}[group]||('⚙️ '+group) }}
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <!-- إعدادات الصور تُدار من قسم «هوية بطاقات العروض» لا كمسار نصّي -->
-                    <div v-for="item in items.filter(i => i.type !== 'image')" :key="item.key">
+                    <div v-for="item in editable(items)" :key="item.key">
                         <label class="block text-sm font-medium text-gray-700 mb-1">{{ item.description || item.key }}</label>
                         <template v-if="item.type==='boolean'">
                             <label class="flex items-center gap-2"><input v-model="settingsData[item.key]" type="checkbox" true-value="1" false-value="0" class="w-4 h-4 rounded text-gold-500"/><span class="text-sm text-gray-600">تفعيل</span></label>
@@ -40,6 +48,12 @@
                         <template v-else>
                             <input v-model="settingsData[item.key]" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
                         </template>
+                        <!-- ملف واتساب للأعمال (E31): عدّاد بحد ميتا الرسمي وشرح الحقل -->
+                        <p v-if="LIMITS[item.key]" class="mt-1 text-[11px] tabular-nums" :class="lengthOf(settingsData[item.key]) > LIMITS[item.key] ? 'font-bold text-red-600' : 'text-gray-400'">
+                            <bdi dir="ltr">{{ lengthOf(settingsData[item.key]) }}/{{ LIMITS[item.key] }}</bdi>
+                        </p>
+                        <p v-if="HINTS[item.key]" class="mt-1 text-[11px] text-gray-500">{{ HINTS[item.key] }}</p>
+                        <p v-if="$page.props.errors?.['values.' + item.key]" class="mt-1 text-xs text-red-600">{{ $page.props.errors['values.' + item.key] }}</p>
                     </div>
                 </div>
             </div>
@@ -156,10 +170,31 @@
     </AppLayout>
 </template>
 <script setup>
-import { ref, reactive } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { ref, reactive, computed } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
-const props = defineProps({ settings: Object, templates: Object, brand: Object });
+const props = defineProps({
+    settings: Object, templates: Object, brand: Object, lastBackup: Object,
+    editableKeys: { type: Array, default: () => [] },
+});
+
+// حدود ملف واتساب للأعمال (E31) بالمحارف كما تعدّها ميتا، وشرح الحقول الجديدة
+const LIMITS = { wa_profile_about: 139, wa_profile_description: 512 };
+const lengthOf = (v) => [...String(v ?? '')].length;
+const HINTS = {
+    wa_profile_about: 'النبذة في ملف واتساب للأعمال. بلا تنسيق (* _ ` ~)، والروابط فيها لا تكون قابلة للنقر.',
+    wa_profile_description: 'الوصف في ملف واتساب للأعمال.',
+    company_website: 'يبدأ بـ https://. ملف واتساب يقبل رابطين: هذا وصفحة فيسبوك.',
+};
+
+// الحقول القابلة للتعديل من هنا فقط (الخادم يُسقط غيرها)؛ الصور تُدار من «هوية بطاقات العروض»
+const editable = (items) => items.filter(i => i.type !== 'image' && props.editableKeys.includes(i.key));
+
+// عمر آخر نسخة احتياطية ناجحة بالساعات (null = لا نسخة بعد)
+const backupAgeHours = computed(() => {
+    const at = props.lastBackup?.at;
+    return at ? Math.floor((Date.now() - new Date(at).getTime()) / 3600000) : null;
+});
 
 const logoFile = ref(null);
 const heroFile = ref(null);
@@ -184,7 +219,9 @@ if (props.settings) {
 const saving = ref(false);
 const saveSettings = () => {
     saving.value = true;
-    const payload = Object.entries(settingsData).map(([key, value]) => ({ key, value }));
+    const payload = Object.entries(settingsData)
+        .filter(([key]) => props.editableKeys.includes(key))
+        .map(([key, value]) => ({ key, value }));
     router.put('/settings', { settings: payload }, {
         preserveScroll: true,
         onFinish: () => { saving.value = false; },

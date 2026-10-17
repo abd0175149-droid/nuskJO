@@ -32,13 +32,23 @@ class LoginController extends Controller
 
         if (!$user->is_active) {
             Auth::logout();
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::AuthInactiveBlocked, 'User', $user->id, $user->name);
             return back()->withErrors([
                 'email' => 'تم تعطيل حسابك. تواصل مع المدير.',
             ]);
         }
 
-        $user->update(['last_login_at' => now()]);
+        // آخر عنوان فقط، ويُعرض لصاحبه ولمن يملك تعديل المستخدمين (E27)
+        $user->forceFill(['last_login_at' => now(), 'last_login_ip' => $request->ip()])->save();
         $request->session()->regenerate();
+        $request->session()->forget(\App\Services\Security\Mfa::SESSION_KEY);
+
+        // له عامل ثانٍ: لا شيء قبل التحدّي (الوسيط mfa يحرس كل مسار، والوجهة الأصلية تبقى في الجلسة)
+        if (\App\Services\Security\Mfa::challengePending($user)) {
+            return redirect()->route('two-factor.challenge');
+        }
+        // كلمة المرور الآن تأكيد هوية: نافذة التحقق المعزّز الأولى
+        \App\Services\Security\StepUp::confirm($request);
 
         return redirect()->intended('/');
     }

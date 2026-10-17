@@ -12,7 +12,7 @@ class SettingController extends Controller
 {
     public function index()
     {
-        $settings = Setting::all()->groupBy('group_name');
+        $settings = Setting::whereNotIn('key', [...Setting::INTERNAL_KEYS, 'reconcile_signature'])->get()->groupBy('group_name');
 
         // قوالب الطباعة
         $financialTemplate = Setting::where('key', 'print_template_financial')->first();
@@ -21,10 +21,15 @@ class SettingController extends Controller
         return Inertia::render('Settings/Index', [
             'title' => 'الإعدادات',
             'settings' => $settings,
+            'editableKeys' => array_keys(\App\Http\Requests\UpdateSettingsRequest::EDITABLE),
             'templates' => [
                 'financial' => $financialTemplate?->value ? Storage::url($financialTemplate->value) : null,
                 'accounting' => $accountingTemplate?->value ? Storage::url($accountingTemplate->value) : null,
             ],
+            // شارة «آخر نسخة» لمن يرى صفحة النسخ الاحتياطي
+            'lastBackup' => auth()->user()->can('backups.view') && \Illuminate\Support\Facades\Schema::hasTable('backup_runs')
+                ? ['at' => ($at = \App\Models\BackupRun::where('status', 'ok')->max('finished_at')) ? \Illuminate\Support\Carbon::parse($at)->toIso8601String() : null]
+                : null,
             // هوية بطاقات العروض
             'brand' => [
                 'logo' => ($v = Setting::get('company_logo')) ? Storage::url($v) : null,
@@ -34,16 +39,21 @@ class SettingController extends Controller
         ]);
     }
 
-    public function update(Request $request)
+    public function update(\App\Http\Requests\UpdateSettingsRequest $request)
     {
-        $validated = $request->validate([
-            'settings' => 'required|array',
-            'settings.*.key' => 'required|string',
-            'settings.*.value' => 'nullable|string',
-        ]);
-
-        foreach ($validated['settings'] as $setting) {
-            Setting::where('key', $setting['key'])->update(['value' => $setting['value']]);
+        // المفاتيح المسموحة فقط (UpdateSettingsRequest::EDITABLE)، وعلى الصفوف الموجودة وحدها
+        $changed = [];
+        foreach ($request->validated()['values'] ?? [] as $key => $value) {
+            $old = Setting::where('key', $key)->value('value');
+            $new = $value === null ? null : (string) $value;
+            Setting::where('key', $key)->update(['value' => $new]);
+            if ($old !== $new) {
+                // مقصوصة، ومفاتيح الأسرار تُحجب في AuditRedactor
+                $changed[$key] = ['before' => $old === null ? null : mb_substr($old, 0, 200), 'after' => $new === null ? null : mb_substr($new, 0, 200)];
+            }
+        }
+        if ($changed) {
+            \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, null, ['changed' => $changed]);
         }
 
         return redirect()->back()->with('success', 'تم تحديث الإعدادات بنجاح');
@@ -64,8 +74,8 @@ class SettingController extends Controller
 
         // حذف الملف القديم
         $old = Setting::where('key', $key)->first();
-        if ($old?->value && Storage::exists($old->value)) {
-            Storage::delete($old->value);
+        if (self::ownedUpload($old?->value, 'templates/')) {
+            Storage::disk('public')->delete($old->value);
         }
 
         // رفع الملف الجديد
@@ -76,6 +86,7 @@ class SettingController extends Controller
             ['key' => $key],
             ['value' => $path, 'group_name' => 'templates', 'label' => $type === 'financial' ? 'قالب مالي' : 'قالب محاسبي']
         );
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, $key, ['key' => $key]);
 
         return redirect()->back()->with('success', 'تم رفع القالب بنجاح');
     }
@@ -87,7 +98,8 @@ class SettingController extends Controller
     public function uploadBrandAsset(Request $request)
     {
         $request->validate([
-            'asset' => 'required|image|mimes:png,jpg,jpeg,webp,svg|max:5120',
+            // بلا svg (E26): قاعدة image ترفضه أصلاً، وحذفه هنا يمنع فتحه يوماً بـ allow_svg بالخطأ
+            'asset' => 'required|image|mimes:png,jpg,jpeg,webp|max:5120',
             'type' => 'required|in:logo,hero,letterhead',
         ]);
 
@@ -100,7 +112,7 @@ class SettingController extends Controller
         };
 
         $old = Setting::where('key', $key)->first();
-        if ($old?->value && Storage::disk('public')->exists($old->value)) {
+        if (self::ownedUpload($old?->value, 'brand/')) {
             Storage::disk('public')->delete($old->value);
         }
 
@@ -133,6 +145,8 @@ class SettingController extends Controller
             }
         }
 
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, "brand_{$type}", ['key' => "brand_{$type}"]);
+
         return redirect()->back()->with('success', match ($type) {
             'logo' => 'تم رفع الشعار',
             'letterhead' => 'تم رفع ورقة الشركة — اضبط النسب ثم أعد توليد البطاقات',
@@ -151,10 +165,19 @@ class SettingController extends Controller
         $validated['jod_to_sar'] = round(1 / $validated['sar_to_jod'], 6);
         $validated['set_by'] = auth()->id();
 
-        ExchangeRate::updateOrCreate(
-            ['rate_date' => $validated['rate_date']],
-            $validated
-        );
+        // سعر الصرف يدخل حساب كل فاتورة: صف تحذير في المعاملة نفسها
+        \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
+            // whereDate: العمود يُخزَّن بوقت (00:00:00)، فمطابقة النص وحده لا تجد سعر اليوم وتصطدم بالقيد الفريد
+            $rate = ExchangeRate::whereDate('rate_date', $validated['rate_date'])->first();
+            $before = $rate?->sar_to_jod;
+            if ($rate) {
+                $rate->update($validated);
+            } else {
+                $rate = ExchangeRate::create($validated);
+            }
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::ExchangeRateSet, 'exchange_rate', $rate->id, (string) $validated['rate_date'],
+                ['date' => (string) $validated['rate_date'], 'from' => $before === null ? null : (float) $before, 'to' => (float) $validated['sar_to_jod']]);
+        });
 
         return redirect()->back()->with('success', 'تم تحديث سعر الصرف بنجاح');
     }
@@ -206,7 +229,18 @@ class SettingController extends Controller
                 'label' => "تخطيط طباعة {$request->type}",
             ]
         );
+        \App\Models\AuditLog::safe(\App\Enums\AuditAction::SettingsUpdate, 'Setting', null, $key, ['key' => $key]);
 
         return redirect()->back()->with('success', 'تم حفظ التخطيط بنجاح');
+    }
+
+    /** مسار مخزّن رفعناه نحن: داخل مجلده المتوقع، بلا صعود، وموجود. غير ذلك لا يُحذف أبداً. */
+    private static function ownedUpload(?string $path, string $prefix): bool
+    {
+        return $path
+            && str_starts_with($path, $prefix)
+            && !str_contains($path, '..')
+            && !str_contains($path, '\\')
+            && Storage::disk('public')->exists($path);
     }
 }

@@ -97,6 +97,23 @@ class BotAnalytics
             $totCost += $c;
         }
 
+        // ما قُلّم خامه (أقدم من 12 شهراً، E13): يُضاف من التجميع الشهري، فلا تتغيّر الإجماليات بعد التقليم
+        $rawMonths = $rows->map(fn ($r) => Carbon::parse($r->created_at)->format('Y-m'))->unique()->flip();
+        $rolledUp = 0;
+        if (\Illuminate\Support\Facades\Schema::hasTable('wa_bot_usage_monthly')) {
+            foreach (\App\Models\WaBotUsageMonthly::where('source', 'live')->get() as $m) {
+                if ($rawMonths->has($m->month)) {
+                    continue;
+                }
+                $rolledUp++;
+                $totIn += (int) $m->prompt_tokens;
+                $totOut += (int) $m->output_tokens;
+                $totCache += (int) $m->cache_read_tokens;
+                $totCost += self::rowCost($m, $prices, $disc);
+                $extraReplies = ($extraReplies ?? 0) + (int) $m->replies;
+            }
+        }
+
         // سلسلة 30 يوماً متّصلة (أيام بلا نشاط = صفر)
         $series = [];
         for ($i = 29; $i >= 0; $i--) {
@@ -138,7 +155,7 @@ class BotAnalytics
             ];
         }
 
-        $replies = $rows->count();
+        $replies = $rows->count() + ($extraReplies ?? 0);
         $playground = WaBotUsage::where('source', 'playground')->get()
             ->sum(fn ($r) => self::rowCost($r, $prices, $disc));
 
@@ -158,6 +175,8 @@ class BotAnalytics
                 'median_conv' => round($median, 6),      // الروتينية (وسيط)
                 'mean_conv' => round($meanConv, 6),
                 'playground_cost' => round($playground, 6),
+                // أشهر قديمة مجمّعة بلا تفاصيل يومية ولا لكل محادثة
+                'rolled_up_months' => $rolledUp,
             ],
             'series' => $series,
             'top_conversations' => $top,
@@ -172,7 +191,11 @@ class BotAnalytics
     // ==================================================================
     public static function quality(): array
     {
-        $msgs = WaMessage::orderBy('id')->get(['id', 'conversation_id', 'direction', 'source', 'msg_type', 'body', 'created_at']);
+        // دفتر الإرسال (E19.9): غير المسلَّم خارج الأتمتة وزمن الرد و«بلا جواب»، ومؤشران منفصلان له أدناه
+        $ledger = \App\Support\FeatureFlags::on('send_ledger');
+        // الإرسال التجريبي (E23، source=test) خارج الجودة والأتمتة (E24)
+        $msgs = WaMessage::where('source', '!=', 'test')->when($ledger, fn ($q) => $q->excludeUndelivered())
+            ->orderBy('id')->get(['id', 'conversation_id', 'direction', 'source', 'msg_type', 'body', 'created_at']);
         $byConv = $msgs->groupBy('conversation_id');
 
         // ── قمع الحجز (يُقاس من الرسائل نفسها فيعمل على كل التاريخ)
@@ -202,11 +225,13 @@ class BotAnalytics
             ['key' => 'closed',   'label' => 'حُسم (تمّ الحجز)',  'value' => $closed],
         ];
 
-        // ── مؤشّرات الردود
-        $botReplies = $msgs->where('source', 'bot')->count();
+        // ── مؤشّرات الردود: ردود القواعد الحتمية (E37) آلية كالبوت، ولها مؤشرها المنفصل
+        $ruleReplies = $msgs->where('source', 'rule')->count();
+        $botReplies = $msgs->where('source', 'bot')->count() + $ruleReplies;
         $staffReplies = $msgs->where('source', 'staff')->count();
         $systemMsgs = $msgs->where('source', 'system')->count();
-        $voice = $msgs->where('msg_type', 'audio')->count();
+        // صوتيات العملاء وحدها: رسائل الموظف الصوتية (E34) ردود موظف لا مؤشر صوت
+        $voice = $msgs->where('msg_type', 'audio')->where('direction', 'in')->count();
 
         // زمن الاستجابة: من رسالة العميل إلى أول ردّ بعدها
         $latencies = [];
@@ -221,7 +246,8 @@ class BotAnalytics
                     if ($arr[$j]->direction === 'in') break;   // رسالة أخرى قبل الردّ
                 }
                 if ($reply) {
-                    $latencies[] = Carbon::parse($reply->created_at)->diffInSeconds(Carbon::parse($arr[$i]->created_at));
+                    // من الوارد إلى الرد (Carbon 3 يعيد فرقاً بإشارة: الاتجاه المعكوس كان يعطي زمناً سالباً)
+                    $latencies[] = (int) Carbon::parse($arr[$i]->created_at)->diffInSeconds(Carbon::parse($reply->created_at));
                 } else {
                     // بلا جواب فقط إن لم تكن آخر رسالة في المحادثة الآن
                     if ($i < $arr->count() - 1) $unanswered++;
@@ -233,7 +259,8 @@ class BotAnalytics
         $medianLat = $ln ? ($ln % 2 ? $latencies[intdiv($ln, 2)] : ($latencies[$ln / 2 - 1] + $latencies[$ln / 2]) / 2) : 0;
         $p90Lat = $ln ? $latencies[min($ln - 1, (int) floor($ln * 0.9))] : 0;
 
-        $usage = WaBotUsage::where('source', 'live')->get();
+        // صفوف القواعد (model=rule) بلا نداء ولا أداة: خارج مؤشرات الأدوات
+        $usage = WaBotUsage::where('source', 'live')->where('model', '!=', 'rule')->get();
         $withTools = $usage->filter(fn ($u) => !empty($u->tools_used))->count();
         $leaks = $usage->where('leaked', true)->count();
 
@@ -244,6 +271,7 @@ class BotAnalytics
 
         $metrics = [
             ['key' => 'automation', 'label' => 'نسبة الأتمتة',       'value' => $totalReplies ? round($botReplies * 100 / $totalReplies) : 0, 'unit' => '%', 'good' => 'high'],
+            ['key' => 'rule_replies', 'label' => 'ردود القواعد',     'value' => $ruleReplies, 'unit' => '', 'good' => 'neutral'],
             ['key' => 'median',     'label' => 'وسيط زمن الردّ',     'value' => $medianLat, 'unit' => 'ث', 'good' => 'low'],
             ['key' => 'p90',        'label' => 'p90 لزمن الردّ',     'value' => $p90Lat, 'unit' => 'ث', 'good' => 'low'],
             ['key' => 'unanswered', 'label' => 'رسائل بلا جواب',     'value' => $unanswered, 'unit' => '', 'good' => 'low'],
@@ -252,6 +280,21 @@ class BotAnalytics
             ['key' => 'leaks',      'label' => 'تسريب أدوات',        'value' => $leaks, 'unit' => '', 'good' => 'low'],
             ['key' => 'voice',      'label' => 'رسائل صوتية',        'value' => $voice, 'unit' => '', 'good' => 'neutral'],
             ['key' => 'tool_rate',  'label' => 'ردود استعملت أداة',  'value' => $usage->count() ? round($withTools * 100 / $usage->count()) : 0, 'unit' => '%', 'good' => 'high'],
+            // قاطع المزوّد (E12): ما حُوِّل لموظف لأن مزوّد الذكاء تعطّل، وعدد الحوادث (المراقبة shadow معها)
+            ['key' => 'llm_outage', 'label' => 'تحويلات بسبب تعطّل المزوّد', 'value' => \App\Models\WaBotUsage::where('source', 'outage')->count(), 'unit' => '', 'good' => 'low'],
+            ['key' => 'llm_incidents', 'label' => 'حوادث المزوّد (30 يوماً)', 'value' => rescue(fn () => \App\Models\WaLlmIncident::where('opened_at', '>=', now()->subDays(30))->count(), 0, false), 'unit' => '', 'good' => 'low'],
+            // سجل الأدوات (E15): أداة لم تُعلن أو أطفأها المالك، وأداة أعادت خطأ
+            ['key' => 'tools_denied', 'label' => 'استدعاءات أدوات مرفوضة', 'value' => self::toolStatusCount($usage, 'denied'), 'unit' => '', 'good' => 'low'],
+            ['key' => 'tools_failed', 'label' => 'أدوات فشلت', 'value' => self::toolStatusCount($usage, 'failed'), 'unit' => '', 'good' => 'low'],
+            ...self::toolBytesMetrics($usage),
+            ...($ledger ? [
+                ['key' => 'send_unknown', 'label' => 'إرسال غير مؤكد', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_UNKNOWN)->count(), 'unit' => '', 'good' => 'low'],
+                ['key' => 'send_failed', 'label' => 'فشل إرسال', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->count(), 'unit' => '', 'good' => 'low'],
+            ] : []),
+            // الترجمة عند الطلب (E29): نداءات المزوّد للموظفين، خارج كلفة ردود البوت
+            ...(MessageTranslator::enabled() ? [
+                ['key' => 'translations', 'label' => 'ترجمات للموظفين (30 يوماً)', 'value' => WaBotUsage::where('source', 'translate')->where('created_at', '>=', now()->subDays(30))->count(), 'unit' => '', 'good' => 'neutral'],
+            ] : []),
         ];
 
         // ── ما يحتاج نظرك: آخر 40 موضعاً عجز فيه البوت أو حوّل أو تعطّل
@@ -275,11 +318,12 @@ class BotAnalytics
             ];
         }
 
-        // ── أكثر الأدوات استعمالاً
+        // ── أكثر الأدوات استعمالاً (E15: «الحالة:الاسم»، والصفوف القديمة بالاسم وحده)
         $toolCounts = [];
         foreach ($usage as $u) {
             foreach ((array) $u->tools_used as $t) {
-                $toolCounts[$t] = ($toolCounts[$t] ?? 0) + 1;
+                $name = str_contains((string) $t, ':') ? explode(':', (string) $t, 2)[1] : (string) $t;
+                $toolCounts[$name] = ($toolCounts[$name] ?? 0) + 1;
             }
         }
         arsort($toolCounts);
@@ -304,6 +348,81 @@ class BotAnalytics
             'attention' => array_slice($attention, 0, 40),
             'tools' => $tools,
             'weekly' => $weeks,
+        ];
+    }
+
+    // ==================================================================
+    //  مصادر المحادثات (E38): رمز QR أو رابط أو إعلان — أعداد فقط، بلا أسماء ولا أرقام
+    // ==================================================================
+
+    public const ENTRIES_NOTE = 'قياس داخلي تقريبي: لا تحليلات من ميتا للرموز، والعميل الذي حذف المرجع لا يُحسب.';
+
+    /**
+     * لكل قناة وعرض ورمز وإعلان: المحادثات المميزة، وطلبات التسعير التي أُنشئت للمحادثة نفسها بعد صف الدخول (لعرضه
+     * أو بلا عرض)، ومنها المحسومة (won). تجميع SQL لا في الذاكرة.
+     *
+     * @return array{days: int, note: string, channels: array<string, int>, rows: list<array>}
+     */
+    public static function entries(int $days = 30): array
+    {
+        $days = in_array($days, [7, 30, 90], true) ? $days : 30;
+        $empty = ['days' => $days, 'note' => self::ENTRIES_NOTE, 'channels' => [], 'rows' => []];
+        if (!\Illuminate\Support\Facades\Schema::hasTable('wa_conversation_entries')) {
+            return $empty;
+        }
+        $since = now()->subDays($days);
+        $db = \Illuminate\Support\Facades\DB::class;
+
+        $channels = $db::table('wa_conversation_entries')->where('created_at', '>=', $since)
+            ->groupBy('channel')->selectRaw('channel, COUNT(DISTINCT conversation_id) as n')->pluck('n', 'channel')
+            ->map(fn ($n) => (int) $n)->all();
+
+        $rows = $db::table('wa_conversation_entries as e')
+            ->leftJoin('quote_requests as q', function ($j) {
+                $j->on('q.conversation_id', '=', 'e.conversation_id')->on('q.created_at', '>=', 'e.created_at')
+                    ->where(fn ($w) => $w->whereColumn('q.offer_id', 'e.offer_id')->orWhereNull('q.offer_id')->orWhereNull('e.offer_id'));
+            })
+            ->leftJoin('offers as o', 'o.id', '=', 'e.offer_id')
+            ->leftJoin('wa_qr_links as l', 'l.id', '=', 'e.qr_link_id')
+            ->where('e.created_at', '>=', $since)
+            ->groupBy('e.channel', 'e.offer_id', 'e.qr_link_id', 'e.referral_source_id')
+            ->selectRaw('e.channel, e.offer_id, e.qr_link_id, e.referral_source_id, MAX(o.title) as offer_title, MAX(l.label) as qr_label,
+                MAX(l.channel) as qr_channel, MAX(e.referral_headline) as headline, COUNT(DISTINCT e.conversation_id) as conversations,
+                COUNT(DISTINCT q.id) as quotes, COUNT(DISTINCT CASE WHEN q.status = ? THEN q.id END) as won', ['won'])
+            ->orderByDesc('conversations')->limit(200)->get();
+
+        return ['days' => $days, 'note' => self::ENTRIES_NOTE, 'channels' => $channels, 'rows' => $rows->map(fn ($r) => [
+            'channel' => $r->channel,
+            'offer_id' => $r->offer_id !== null ? (int) $r->offer_id : null,
+            'offer_title' => $r->offer_title,
+            'qr_link_id' => $r->qr_link_id !== null ? (int) $r->qr_link_id : null,
+            'qr_label' => $r->qr_label,
+            'qr_channel' => $r->qr_channel,
+            'source_id' => $r->referral_source_id,
+            'headline' => $r->headline,
+            'conversations' => (int) $r->conversations,
+            'quotes' => (int) $r->quotes,
+            'won' => (int) $r->won,
+        ])->values()->all()];
+    }
+
+    private static function toolStatusCount($usage, string $status): int
+    {
+        return $usage->sum(fn ($u) => count(array_filter((array) $u->tools_used, fn ($t) => str_starts_with((string) $t, $status.':'))));
+    }
+
+    /** حجم نتائج الأدوات (E15.7): المتوسط وp90 بالكيلوبايت للردود التي استعملت أداة */
+    private static function toolBytesMetrics($usage): array
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('wa_bot_usage', 'tool_result_bytes')) {
+            return [];
+        }
+        $bytes = $usage->pluck('tool_result_bytes')->map(fn ($b) => (int) $b)->filter()->sort()->values();
+        $n = $bytes->count();
+
+        return [
+            ['key' => 'tool_bytes_avg', 'label' => 'متوسط حجم نتائج الأدوات', 'value' => $n ? round($bytes->avg() / 1024, 1) : 0, 'unit' => 'KB', 'good' => 'low'],
+            ['key' => 'tool_bytes_p90', 'label' => 'p90 لحجم نتائج الأدوات', 'value' => $n ? round($bytes[min($n - 1, (int) floor($n * 0.9))] / 1024, 1) : 0, 'unit' => 'KB', 'good' => 'low'],
         ];
     }
 }

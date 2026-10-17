@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApprovalConflict;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Agent;
@@ -58,6 +59,35 @@ class InvoiceController extends Controller
             'prefill' => $request->quote ? $this->quotePrefill((int) $request->quote) : null,
             'openOffer' => $request->integer('offer_new') ?: null,
             'offerMode' => $request->boolean('offer_mode'),
+            // فاتورة PDF وإرسالها على واتساب (E32): العلم، والمدير يعاين PDF قبل التفعيل
+            'invoicePdf' => \App\Support\FeatureFlags::on('invoice_whatsapp_send') || auth()->user()->isAdmin(),
+            'invoiceWhatsapp' => \App\Support\FeatureFlags::on('invoice_whatsapp_send') && auth()->user()->can('whatsapp.reply'),
+            // الحالات القابلة للإرسال بقرار المالك (INVOICE_WHATSAPP_STATUSES، المعتمدة وحدها افتراضياً)
+            'invoiceSendStatuses' => (array) config('whatsapp.outbound.invoice_send_statuses', ['approved']),
+        ]);
+    }
+
+    /**
+     * فاتورة PDF للمراجعة قبل الإرسال (E32.8): القالب المستقل بلا تكلفة ولا ربح ولا وكيل. خلف العلم invoice_whatsapp_send،
+     * والمدير يعاينها قبل التفعيل (قرار شكلها للمالك). مرفق بلا تخزين في المتصفح.
+     */
+    public function pdf(Invoice $invoice)
+    {
+        abort_unless(auth()->user()->can('invoices.view'), 403);
+        abort_unless(\App\Support\FeatureFlags::on('invoice_whatsapp_send') || auth()->user()->isAdmin(), 404);
+
+        try {
+            $pdf = \App\Services\Invoices\InvoicePdfService::render($invoice);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('invoice.pdf.failed', ['invoice_id' => $invoice->id, 'type' => class_basename($e), 'message' => mb_substr($e->getMessage(), 0, 200)]);
+
+            return response('تعذّر توليد PDF الفاتورة — أبلغ المدير.', 503)->header('Content-Type', 'text/plain; charset=UTF-8');
+        }
+
+        return \App\Services\WhatsApp\Media\MediaArchiver::disk()->download($pdf['path'], \App\Services\Invoices\InvoicePdfService::filename($invoice), [
+            'Content-Type' => 'application/pdf',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
@@ -149,7 +179,7 @@ class InvoiceController extends Controller
     /** تحويل طلب حجز من البوت إلى فاتورة عرض مملوءة */
     private function quotePrefill(int $id): ?array
     {
-        $q = QuoteRequest::with('offer.groups.options')->find($id);
+        $q = QuoteRequest::query()->visibleTo(auth()->user())->with(['offer.groups.options', 'client:id,name', 'conversation:id,phone'])->find($id);
         if (!$q || !$q->offer) {
             return null;
         }
@@ -160,8 +190,10 @@ class InvoiceController extends Controller
         return [
             'quote_id' => $q->id,
             'number' => $q->request_number,
-            'client_name' => $q->customer_name ?: $q->client?->name ?: '',
-            'client_phone' => $q->phone,
+            // الاسم الموثّق قبل لقب واتساب (E11.7)؛ والرقم من المحادثة إن عُرف بعد الطلب. client_phone يبقى
+            // مطلوباً في الفاتورة: طلب من عميل بلا رقم لا يصير فاتورة قبل أن يشارك رقمه
+            'client_name' => $q->client?->name ?: ($q->customer_name ?: ''),
+            'client_phone' => $q->phone ?: ($q->conversation?->phone ? '+'.$q->conversation->phone : ''),
             'offer_id' => $o->id,
             'trip_date' => $o->is_ready ? $o->trip_date?->toDateString() : ($q->depart_date?->toDateString() ?: now()->addWeek()->toDateString()),
             'lines' => [[
@@ -181,6 +213,10 @@ class InvoiceController extends Controller
     {
         $invoice->load(['items.agent:id,name,code', 'client:id,name,code,phone']);
         $out = $invoice->toArray();
+        // الفاتورة الناتجة عن طلب واتساب تشير إليه، فيُتتبَّع أثرها من المحادثة إلى المال
+        $out['quote_request_number'] = $invoice->quote_request_id
+            ? \App\Models\QuoteRequest::whereKey($invoice->quote_request_id)->value('request_number')
+            : null;
         if ($invoice->offer_id && $invoice->offer) {
             $out['offer_form'] = self::posOffer($invoice->offer, $invoice->id);
         }
@@ -302,6 +338,15 @@ class InvoiceController extends Controller
      */
     private function saveOfferInvoice(array $v, ?Invoice $invoice): Invoice
     {
+        // طلب خارج نطاق الموظف لا يُربط بفاتورته (المرتبط بهذه الفاتورة أصلاً يبقى)
+        if (!empty($v['quote_request_id'])
+            && !QuoteRequest::query()->visibleTo(auth()->user())->whereKey($v['quote_request_id'])->exists()
+            && !($invoice && QuoteRequest::whereKey($v['quote_request_id'])->where('invoice_id', $invoice->id)->exists())) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'quote_request_id' => 'طلب التسعير خارج نطاقك',
+            ]);
+        }
+
         return DB::transaction(function () use ($v, $invoice) {
             DB::table('offers')->where('id', $v['offer_id'])->increment('seats_version');
 
@@ -448,11 +493,21 @@ class InvoiceController extends Controller
             }
 
             if (!empty($v['quote_request_id'])) {
-                QuoteRequest::whereKey($v['quote_request_id'])->update([
-                    'status' => 'won',
-                    'invoice_id' => $invoice->id,
-                    'client_id' => $client->id,
-                ]);
+                // ذري: الطلب يُربط بفاتورة واحدة؛ فاتورة ثانية للطلب نفسه تُلغى معاملتها كلها
+                $linked = QuoteRequest::whereKey($v['quote_request_id'])
+                    ->where(fn ($q) => $q->whereNull('invoice_id')->orWhere('invoice_id', $invoice->id))
+                    ->update([
+                        'status' => 'won',
+                        'invoice_id' => $invoice->id,
+                        'client_id' => $client->id,
+                    ]);
+                if ($linked === 0) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'quote_request_id' => 'الطلب مرتبط بفاتورة أخرى',
+                    ]);
+                }
+                // E40: الصندوق الصادر في المعاملة نفسها (العلم integration_outbox؛ الحفظ الثاني لا يكرره)
+                \App\Services\Integrations\IntegrationOutbox::quoteConverted((int) $v['quote_request_id'], $invoice);
             }
 
             return $invoice;
@@ -467,7 +522,7 @@ class InvoiceController extends Controller
             $v = $request->validate($this->offerRules(), $this->offerMessages());
             $invoice = $this->saveOfferInvoice($v, null);
             try { \App\Services\NotificationService::invoiceCreated($invoice); } catch (\Throwable $e) {}
-            AuditLog::log('create', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::Create, 'invoice', $invoice->id, $invoice->invoice_number);
 
             return redirect()->back()->with('success', "تم إنشاء فاتورة العرض {$invoice->invoice_number} وحُجزت مقاعدها ({$invoice->offer_seats})");
         }
@@ -563,6 +618,8 @@ class InvoiceController extends Controller
 
     public function approve(Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('invoices.approve'), 403);
+
         if (!$invoice->isPending()) {
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
         }
@@ -571,13 +628,14 @@ class InvoiceController extends Controller
             return back()->with('error', "لا تُعتمد الفاتورة {$invoice->invoice_number}: تكاليفها ناقصة ({$missing} " . ($missing >= 3 && $missing <= 10 ? 'بنود' : 'بند') . ' بلا وكيل أو تكلفة). أكملها من «تعديل» ثم اعتمدها.');
         }
 
+        if (!$invoice->approvableBy(auth()->user())) {
+            return back()->with('error', 'لا يعتمد المنشئ مستنده إلا المدير');
+        }
+
         try {
             DB::transaction(function () use ($invoice) {
-                $invoice->update([
-                    'status' => 'approved',
-                    'approved_by' => auth()->id(),
-                    'approved_at' => now(),
-                ]);
+                // أول كتابة: انتقال ذري من pending، فلا تتكرر حركات الذمم ولا القيد مع نقرة مزدوجة
+                $invoice->approve(auth()->user());
 
                 $invoice->load('items');
                 $rate = self::rate();
@@ -612,32 +670,37 @@ class InvoiceController extends Controller
 
                 // قيد محاسبي — إلزامي: فشله يُلغي الاعتماد بالكامل (لا تباعد بين الدفترين)
                 AccountingService::recordInvoice($invoice);
+                // ولا اعتماد بلا صف تدقيق في المعاملة نفسها
+                AuditLog::log(\App\Enums\AuditAction::Approve, 'invoice', $invoice->id, $invoice->invoice_number, ['total_sell_jod' => (float) $invoice->total_sell_jod, 'items' => $invoice->items->count()]);
+                // E40: الصندوق الصادر في المعاملة نفسها، فاعتماد تراجع لا يُرسل شيئاً (العلم integration_outbox)
+                \App\Services\Integrations\IntegrationOutbox::invoiceApproved($invoice);
 
                 // إشعار
                 if ($invoice->created_by && $invoice->created_by !== auth()->id()) {
                     try { \App\Services\NotificationService::send($invoice->created_by, '✅ تم اعتماد فاتورتك', "تم اعتماد الفاتورة {$invoice->invoice_number}", ['type' => 'invoice', 'icon' => '✅', 'action_url' => '/invoices']); } catch (\Throwable $e) {}
                 }
             });
+        } catch (ApprovalConflict $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             AccountingService::notifyFailure("اعتماد الفاتورة {$invoice->invoice_number}", $e);
             return back()->with('error', 'تعذّر اعتماد الفاتورة محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
         }
 
-        AuditLog::log('approve', 'invoice', $invoice->id, $invoice->invoice_number);
         return back()->with('success', "تم اعتماد الفاتورة {$invoice->invoice_number}");
     }
 
     public function reject(Request $request, Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('invoices.reject'), 403);
+
         if (!$invoice->isPending()) {
             return back()->with('error', 'هذه الفاتورة ليست معلقة');
         }
-        $invoice->update([
-            'status' => 'rejected',
-            'rejection_reason' => $request->input('reason', ''),
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+        DB::transaction(function () use ($invoice, $request) {
+            $invoice->reject(auth()->user(), (string) $request->input('reason', ''));
+            AuditLog::log(\App\Enums\AuditAction::Reject, 'invoice', $invoice->id, $invoice->invoice_number, ['total_sell_jod' => (float) $invoice->total_sell_jod]);
+        });
 
         try { \App\Services\NotificationService::operationRejected($invoice, 'فاتورة', $invoice->invoice_number); } catch (\Throwable $e) {}
 
@@ -646,11 +709,16 @@ class InvoiceController extends Controller
 
     public function startEdit(Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$invoice->isApproved()) {
             return back()->with('error', 'يمكن تعديل الفواتير المعتمدة فقط');
         }
 
         DB::transaction(function () use ($invoice) {
+            // أول كتابة: approved → editing ذرياً، فلا يتكرر عكس الذمم مع نقرة مزدوجة
+            $invoice->startEditing(auth()->user());
+
             $invoice->load('items');
             $rate = self::rate();
 
@@ -681,8 +749,7 @@ class InvoiceController extends Controller
                 ->where('reference_id', $invoice->id)->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل الفاتورة'); } catch (\Exception $e) {}
 
-            $invoice->startEditing(auth()->user());
-            AuditLog::log('start_edit', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::StartEdit, 'invoice', $invoice->id, $invoice->invoice_number);
         });
 
         return back()->with('success', "تم فتح الفاتورة {$invoice->invoice_number} للتعديل");
@@ -697,7 +764,7 @@ class InvoiceController extends Controller
         if ($invoice->offer_id) {
             $v = $request->validate($this->offerRules(), $this->offerMessages());
             $this->saveOfferInvoice($v, $invoice);
-            AuditLog::log('update', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::Update, 'invoice', $invoice->id, $invoice->invoice_number);
 
             return redirect()->back()->with('success', "تم تعديل الفاتورة {$invoice->invoice_number} وإرسالها للاعتماد");
         }
@@ -778,7 +845,7 @@ class InvoiceController extends Controller
                 ]);
             }
 
-            AuditLog::log('update', 'invoice', $invoice->id, $invoice->invoice_number);
+            AuditLog::log(\App\Enums\AuditAction::Update, 'invoice', $invoice->id, $invoice->invoice_number);
         });
 
         return redirect()->back()->with('success', "تم تعديل الفاتورة {$invoice->invoice_number} وإرسالها للاعتماد");
@@ -786,11 +853,16 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if ($invoice->isApproved()) {
             return back()->with('error', 'لا يمكن حذف فاتورة معتمدة');
         }
-        $invoice->items()->delete();
-        $invoice->delete();
+        DB::transaction(function () use ($invoice) {
+            AuditLog::log(\App\Enums\AuditAction::Delete, 'invoice', $invoice->id, $invoice->invoice_number, ['status' => $invoice->status, 'total_sell_jod' => (float) $invoice->total_sell_jod, 'items' => $invoice->items()->count()]);
+            $invoice->items()->delete();
+            $invoice->delete();
+        });
         return back()->with('success', 'تم حذف الفاتورة' . ($invoice->offer_id ? '، وعادت مقاعدها للمتاح' : ''));
     }
 }

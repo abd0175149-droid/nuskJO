@@ -194,6 +194,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import { renderTemplate } from '@/composables/usePdfTemplate';
 
 const props = defineProps({ title: String, templateUrl: String, accountingTemplateUrl: String, layouts: Object });
 
@@ -583,32 +584,12 @@ const onKeyDown = (e) => {
 };
 
 // تحميل PDF كخلفية
+// من pdf.js المحلي بلا eval (usePdfTemplate، E26)، بمقياس يملأ عرض الصفحة في المحرر
 const renderPdf = async () => {
-    const url = activeTemplateUrl.value;
-    if (!url || !pdfCanvas.value) return;
     try {
-        const pdfjsLib = await loadPdfJs();
-        const pdf = await pdfjsLib.getDocument(url).promise;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: pageW.value / page.getViewport({ scale: 1 }).width });
-        const canvas = pdfCanvas.value;
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        await renderTemplate(activeTemplateUrl.value, [pdfCanvas.value], { scale: (width) => pageW.value / width });
     } catch (e) { console.error('PDF error:', e); }
 };
-
-const loadPdfJs = () => new Promise((resolve, reject) => {
-    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload = () => {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        resolve(window.pdfjsLib);
-    };
-    s.onerror = reject;
-    document.head.appendChild(s);
-});
 
 onMounted(() => {
     loadLayout();

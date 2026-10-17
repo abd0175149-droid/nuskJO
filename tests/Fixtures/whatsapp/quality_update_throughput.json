@@ -1,0 +1,19 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "time": 1760431000,
+      "changes": [
+        {
+          "value": {
+            "display_phone_number": "15550783881",
+            "event": "THROUGHPUT_UPGRADE",
+            "max_daily_conversations_per_business": "TIER_10K"
+          },
+          "field": "phone_number_quality_update"
+        }
+      ]
+    }
+  ]
+}

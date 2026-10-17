@@ -113,6 +113,7 @@
 <script setup>
 import { reactive, computed } from 'vue';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import { toCsv } from '@/utils/csv.js';
 
 const props = defineProps({ title: String, data: Object });
 const D = props.data;
@@ -193,10 +194,7 @@ function applyPreset(p) { const [a, b] = p.fn(); S.from = a; S.to = b; S.preset 
 function printReport() { window.print(); }
 
 // ---- تصدير CSV (يفتحه Excel) — يحترم المحور والأعمدة والفلاتر الحالية ----
-function csvCell(v) {
-  const s = String(v == null ? '' : v);
-  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
+// الأسماء تصل من واتساب (اسم الملف الشخصي ← اسم العميل): toCsv يمنع أن تصير صيغة في Excel
 function exportCsv() {
   const rows = filtered();
   const agg = aggregate(rows);
@@ -256,7 +254,7 @@ function exportCsv() {
   typeCols.forEach(() => totRow.push(''));
   lines.push(totRow);
 
-  const csv = '﻿' + lines.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const csv = toCsv(lines);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -1,0 +1,119 @@
+[
+    {
+        "name": "get_daily_summary",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "get_sales_report",
+        "required": [],
+        "properties": [
+            "from",
+            "to"
+        ],
+        "enums": []
+    },
+    {
+        "name": "get_travelers",
+        "required": [],
+        "properties": [
+            "date"
+        ],
+        "enums": []
+    },
+    {
+        "name": "get_pending_approvals",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "get_open_quotes",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "get_attention_queue",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "find_client",
+        "required": [
+            "query"
+        ],
+        "properties": [
+            "query"
+        ],
+        "enums": []
+    },
+    {
+        "name": "manage_knowledge",
+        "required": [
+            "action"
+        ],
+        "properties": [
+            "action",
+            "id",
+            "query",
+            "title",
+            "content",
+            "is_active",
+            "confirm"
+        ],
+        "enums": {
+            "action": [
+                "list",
+                "view",
+                "search",
+                "add",
+                "update",
+                "delete"
+            ]
+        }
+    },
+    {
+        "name": "manage_bot_tools",
+        "required": [
+            "action"
+        ],
+        "properties": [
+            "action",
+            "tool",
+            "confirm"
+        ],
+        "enums": {
+            "action": [
+                "list",
+                "enable",
+                "disable"
+            ]
+        }
+    },
+    {
+        "name": "set_customer_bot",
+        "required": [
+            "action"
+        ],
+        "properties": [
+            "action",
+            "confirm"
+        ],
+        "enums": {
+            "action": [
+                "status",
+                "on",
+                "off"
+            ]
+        }
+    },
+    {
+        "name": "get_channel_status",
+        "required": [],
+        "properties": [],
+        "enums": []
+    }
+]

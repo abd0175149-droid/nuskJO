@@ -106,6 +106,7 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue';
+import { renderTemplate } from '@/composables/usePdfTemplate';
 
 const props = defineProps({ invoice: Object, templateUrl: String, layout: Object, roomTypes: { type: Object, default: () => ({}) } });
 
@@ -281,42 +282,27 @@ const sigPos = (page, pi) => {
 const canvases = {};
 const setCanvas = (el, idx) => { if (el) canvases[idx] = el; };
 
+// قالب PDF من pdf.js المحلي بلا eval (usePdfTemplate، E26)
 const renderPdf = async () => {
     if (!props.templateUrl) return;
     try {
-        const pdfjsLib = await loadPdfJs();
-        const pdf = await pdfjsLib.getDocument(props.templateUrl).promise;
-        const pdfPage = await pdf.getPage(1);
-        const scale = 2;
-        const viewport = pdfPage.getViewport({ scale });
-
         await nextTick();
-        for (const [idx, canvas] of Object.entries(canvases)) {
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            await pdfPage.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        }
+        await renderTemplate(props.templateUrl, canvases);
     } catch (e) { console.error('PDF error:', e); }
 };
-
-const loadPdfJs = () => new Promise((resolve, reject) => {
-    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload = () => {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        resolve(window.pdfjsLib);
-    };
-    s.onerror = reject;
-    document.head.appendChild(s);
-});
 
 onMounted(() => { setTimeout(renderPdf, 300); });
 const doPrint = () => window.print();
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+/* خطوط محلية (E16.8) بدل Google Fonts */
+@import '@fontsource/cairo/400.css';
+@import '@fontsource/cairo/600.css';
+@import '@fontsource/cairo/700.css';
+@import '@fontsource/cairo/900.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
 
 .a4-page {
     width: 210mm; height: 297mm;

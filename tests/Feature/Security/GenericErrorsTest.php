@@ -1,0 +1,45 @@
+<?php
+
+namespace Tests\Feature\Security;
+
+use App\Models\AuditLog;
+use App\Models\User;
+use App\Models\WaBotSetting;
+use App\Support\ErrorRef;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Context;
+use RuntimeException;
+use Tests\Concerns\CapturesLogs;
+use Tests\TestCase;
+
+/** نص الاستثناء الخام لا يصل المستخدم: يُسجَّل كاملاً ويُعرض رقم مرجعي. */
+class GenericErrorsTest extends TestCase
+{
+    use CapturesLogs;
+    use RefreshDatabase;
+
+    public function test_error_ref_logs_the_exception_and_returns_the_request_prefix(): void
+    {
+        $this->captureLogs();
+        Context::add('request_id', 'abcdef12-3456');
+
+        $ref = ErrorRef::log(new RuntimeException('SQLSTATE[HY000] details'), 'thing.failed', ['conv_id' => 3]);
+
+        $this->assertSame('abcdef12', $ref);
+        $this->assertSame('thing.failed', $this->logged[0]['message']);
+        $this->assertSame('abcdef12', $this->logged[0]['context']['ref']);
+        $this->assertInstanceOf(RuntimeException::class, $this->logged[0]['context']['exception']);
+    }
+
+    public function test_saving_whatsapp_settings_is_audited_by_field_name_only(): void
+    {
+        $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
+
+        $this->actingAs($owner)->postJson('/api/whatsapp/settings/secrets/wa_token', ['value' => 'EAAG-very-secret-token-1', 'reason' => 'setup'])->assertOk();
+        $this->actingAs($owner)->patchJson('/whatsapp/settings', ['version' => (int) WaBotSetting::current()->settings_version, 'changes' => ['model' => 'gemini-2.5-pro']])->assertOk();
+
+        $this->assertSame(['model'], array_keys(AuditLog::where('action', 'wa.settings_update')->sole()->changes['changed']));
+        $this->assertSame('wa_token', AuditLog::where('action', 'wa.secret_set')->sole()->changes['credentials'][0]['field']);
+        $this->assertStringNotContainsString('very-secret', json_encode(AuditLog::all()->toArray()));
+    }
+}

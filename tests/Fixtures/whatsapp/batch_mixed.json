@@ -1,0 +1,62 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Sheena Nelson"
+                },
+                "wa_id": "16505551234"
+              }
+            ],
+            "statuses": [
+              {
+                "id": "wamid.FIXTURE.out.1",
+                "status": "delivered",
+                "timestamp": "1760425741",
+                "recipient_id": "16505551234"
+              },
+              {
+                "id": "wamid.FIXTURE.out.2",
+                "status": "read",
+                "timestamp": "1760425742",
+                "recipient_id": "16505551234"
+              }
+            ],
+            "messages": [
+              {
+                "from": "16505551234",
+                "id": "wamid.FIXTURE.batch.1",
+                "timestamp": "1760425740",
+                "text": {
+                  "body": "First message in the batch."
+                },
+                "type": "text"
+              },
+              {
+                "from": "16505551234",
+                "id": "wamid.FIXTURE.batch.2",
+                "timestamp": "1760425740",
+                "text": {
+                  "body": "Second message in the batch."
+                },
+                "type": "text"
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

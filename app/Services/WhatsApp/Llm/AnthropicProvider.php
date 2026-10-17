@@ -2,6 +2,8 @@
 
 namespace App\Services\WhatsApp\Llm;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -11,6 +13,7 @@ use Illuminate\Support\Facades\Http;
 class AnthropicProvider implements LlmProvider
 {
     private const API = 'https://api.anthropic.com/v1';
+
     private const VERSION = '2023-06-01';
 
     public function key(): string
@@ -18,15 +21,24 @@ class AnthropicProvider implements LlmProvider
         return 'anthropic';
     }
 
-    public function models(string $apiKey): array
+    /** ترويسة المفتاح لا تتبع تحويلاً إلى مضيف آخر */
+    private function client(#[\SensitiveParameter] string $apiKey, int $timeout): PendingRequest
     {
-        $res = Http::withHeaders([
+        return Http::withHeaders([
             'x-api-key' => $apiKey,
             'anthropic-version' => self::VERSION,
-        ])->timeout(20)->acceptJson()->get(self::API . '/models', ['limit' => 50]);
+        ])->withoutRedirecting()->connectTimeout(5)->timeout($timeout)->acceptJson();
+    }
 
+    public function models(#[\SensitiveParameter] string $apiKey): array
+    {
+        try {
+            $res = $this->client($apiKey, 20)->get(self::API.'/models', ['limit' => 50]);
+        } catch (ConnectionException $e) {
+            throw LlmErrorClassifier::fromThrowable('anthropic', $e);
+        }
         if (!$res->successful()) {
-            throw new \RuntimeException('Anthropic: ' . data_get($res->json(), 'error.message', 'HTTP ' . $res->status()));
+            throw LlmErrorClassifier::fromResponse('anthropic', $res);
         }
 
         $out = [];
@@ -49,7 +61,7 @@ class AnthropicProvider implements LlmProvider
         ], $messages);
     }
 
-    public function generate(string $apiKey, string $model, array $system, array $history, array $tools): array
+    public function generate(#[\SensitiveParameter] string $apiKey, string $model, array $system, array $history, array $tools, ?int $timeout = null): array
     {
         // أول كتلة (الشخصية + قاعدة المعرفة) تُخزَّن مؤقتاً
         $systemBlocks = [];
@@ -72,15 +84,14 @@ class AnthropicProvider implements LlmProvider
             $body['tools'] = $tools;
         }
 
-        $res = Http::withHeaders([
-            'x-api-key' => $apiKey,
-            'anthropic-version' => self::VERSION,
-            'content-type' => 'application/json',
-        ])->timeout(40)->post(self::API . '/messages', $body);
+        try {
+            $res = $this->client($apiKey, $timeout ?? 40)->asJson()->post(self::API.'/messages', $body);
+        } catch (ConnectionException $e) {
+            throw LlmErrorClassifier::fromThrowable('anthropic', $e);
+        }
 
         if (!$res->successful()) {
-            throw new \RuntimeException('Claude HTTP ' . $res->status() . ': '
-                . mb_substr((string) data_get($res->json(), 'error.message', $res->body()), 0, 300));
+            throw LlmErrorClassifier::fromResponse('anthropic', $res);
         }
 
         $json = $res->json() ?? [];

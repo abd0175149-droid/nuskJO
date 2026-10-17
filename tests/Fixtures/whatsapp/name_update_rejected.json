@@ -1,0 +1,20 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "time": 1760431100,
+      "changes": [
+        {
+          "value": {
+            "display_phone_number": "15550783881",
+            "decision": "REJECTED",
+            "requested_verified_name": "Test Travel",
+            "rejection_reason": "NAME_FORMAT_UNACCEPTABLE"
+          },
+          "field": "phone_number_name_update"
+        }
+      ]
+    }
+  ]
+}

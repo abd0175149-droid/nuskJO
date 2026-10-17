@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\SellOption;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -18,6 +19,8 @@ use Illuminate\Support\Collection;
  */
 class Offer extends Model
 {
+    use HasFactory;
+
     /** التصنيفات وتسمياتها */
     public const CATEGORIES = [
         'package' => 'باقة',
@@ -66,6 +69,8 @@ class Offer extends Model
         'hero_path', 'card_path', 'card_generated_at', 'custom_card_path',
         'is_ready', 'trip_date', 'return_date', 'travel_mode', 'destination', 'total_seats',
         'base_sell_pp', 'pricing_mode', 'settlement_status',
+        // E38: بطاقة الحالة 9:16 والرمز المطبوع على بطاقة A4
+        'story_card_path', 'story_generated_at', 'card_qr_link_id',
     ];
 
     protected $casts = [
@@ -81,6 +86,8 @@ class Offer extends Model
         'total_seats' => 'integer',
         'base_sell_pp' => 'float',
         'card_generated_at' => 'datetime',
+        'story_generated_at' => 'datetime',
+        'card_qr_link_id' => 'integer',
     ];
 
     // ==================== شكل النموذج حسب التصنيف ====================
@@ -384,15 +391,43 @@ class Offer extends Model
             return true;
         }
 
+        return $this->touchedAfter($this->card_generated_at);
+    }
+
+    /** بطاقة الحالة 9:16 (E38): غير مولّدة، أو أقدم من آخر تعديل على العرض أو خياراته (الفحص نفسه) */
+    public function storyIsStale(): bool
+    {
+        if (!$this->story_card_path || !$this->story_generated_at) {
+            return true;
+        }
+
+        return $this->touchedAfter($this->story_generated_at);
+    }
+
+    /** آخر تعديل على العرض أو خياراته أو إقاماته أو مجموعاته */
+    private function touchedAt(): ?\Carbon\CarbonInterface
+    {
         $this->loadMissing(['options.stays', 'groups']);
-        $touched = collect([
+
+        return collect([
             $this->updated_at,
             $this->options->max('updated_at'),
             $this->options->flatMap->stays->max('updated_at'),
             $this->groups->max('updated_at'),
-        ])->filter();
+        ])->filter()->max();
+    }
 
-        return $touched->contains(fn ($t) => $this->card_generated_at->lt($t));
+    private function touchedAfter(\Carbon\CarbonInterface $generatedAt): bool
+    {
+        $touched = $this->touchedAt();
+
+        return $touched !== null && $generatedAt->lt($touched);
+    }
+
+    /** الرمز المطبوع على بطاقة A4 (E38) */
+    public function cardQrLink(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(WaQrLink::class, 'card_qr_link_id');
     }
 
     /** مدن أعمدة البطاقة: مسار العمرة، أو مدن مجموعات الفنادق في نمط المدن */
@@ -437,6 +472,26 @@ class Offer extends Model
      * ما يُعاد للبوت. لا يوجد أي حقل داخلي (وكيل، تكلفة، عدد مقاعد) إطلاقاً،
      * والحمولة تتبع شكل التصنيف فلا تُرسل حقولاً لا معنى لها.
      */
+    /**
+     * ملخص العرض في قائمة get_offers (E15.7): قائمة بيضاء مضغوطة. الخيارات والإقامات والإضافات في
+     * get_offer_details وحده، فلا تُقصّ قائمة طويلة فيظن النموذج عرضاً موجوداً غير متاح.
+     */
+    public function toBotSummary(): array
+    {
+        $isVisa = $this->isVisa();
+
+        return array_filter([
+            'id' => $this->id,
+            'title' => $this->title,
+            'category' => $this->categoryLabel(),
+            'price_from_per_person_jod' => $this->priceFrom(),
+            'trip_date' => $this->is_ready ? $this->trip_date?->toDateString() : null,
+            'nights' => $isVisa ? null : $this->nights,
+            'availability' => $this->is_ready ? $this->availabilityLabel() : null,
+            'pricing_note' => $isVisa ? 'السعر للفرد الواحد.' : $this->pricingNote($this->sellOptions(), $this->supplements()),
+        ], fn ($v) => $v !== null && $v !== '');
+    }
+
     public function toBotArray(): array
     {
         $base = [

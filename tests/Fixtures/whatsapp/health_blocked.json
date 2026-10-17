@@ -1,0 +1,27 @@
+{
+  "health_status": {
+    "can_send_message": "BLOCKED",
+    "entities": [
+      {
+        "entity_type": "PHONE_NUMBER",
+        "id": "106540352242922",
+        "can_send_message": "AVAILABLE"
+      },
+      {
+        "entity_type": "WABA",
+        "id": "102290129340398",
+        "can_send_message": "BLOCKED",
+        "errors": [
+          {
+            "error_code": 141010,
+            "error_description": "The Business has not passed business verification.",
+            "possible_solution": "Visit business settings and start or resolve the business verification request."
+          }
+        ]
+      }
+    ]
+  },
+  "quality_rating": "RED",
+  "verified_name": "Test Travel",
+  "id": "106540352242922"
+}

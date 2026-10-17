@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApprovalConflict;
 use App\Models\Receipt;
 use App\Models\Client;
 use App\Services\NumberingService;
@@ -66,8 +67,13 @@ class ReceiptController extends Controller
 
     public function approve(Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('receipts.approve'), 403);
+
         if (!$receipt->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
+        }
+        if (!$receipt->approvableBy(auth()->user())) {
+            return back()->with('error', 'لا يعتمد المنشئ مستنده إلا المدير');
         }
 
         try {
@@ -81,8 +87,12 @@ class ReceiptController extends Controller
                 );
                 // قيد محاسبي إلزامي — فشله يُلغي الاعتماد بالكامل
                 AccountingService::recordReceipt($receipt);
+                // ولا اعتماد بلا صف تدقيق: فشله يلغي الاعتماد أيضاً
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::Approve, 'receipt', $receipt->id, $receipt->receipt_number, ['amount_jod' => (float) $receipt->amount_jod]);
                 try { \App\Services\NotificationService::receiptApproved($receipt); } catch (\Exception $e) {}
             });
+        } catch (ApprovalConflict $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             AccountingService::notifyFailure("اعتماد سند القبض {$receipt->receipt_number}", $e);
             return back()->with('error', 'تعذّر اعتماد سند القبض محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
@@ -93,12 +103,17 @@ class ReceiptController extends Controller
 
     public function reject(Request $request, Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('receipts.reject'), 403);
+
         if (!$receipt->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
 
         $request->validate(['rejection_reason' => 'required|string|max:500']);
-        $receipt->reject(auth()->user(), $request->rejection_reason);
+        DB::transaction(function () use ($receipt, $request) {
+            $receipt->reject(auth()->user(), $request->rejection_reason);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Reject, 'receipt', $receipt->id, $receipt->receipt_number, ['amount_jod' => (float) $receipt->amount_jod]);
+        });
 
         try { \App\Services\NotificationService::operationRejected($receipt, 'سند قبض', $receipt->receipt_number); } catch (\Exception $e) {}
 
@@ -110,11 +125,16 @@ class ReceiptController extends Controller
      */
     public function startEdit(Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$receipt->isApproved()) {
             return back()->with('error', 'يمكن تعديل السندات المعتمدة فقط');
         }
 
         DB::transaction(function () use ($receipt) {
+            // أول كتابة: approved → editing ذرياً، فلا يتكرر عكس الذمة مع نقرة مزدوجة
+            $receipt->startEditing(auth()->user());
+
             // عكس تسديد ذمة العميل
             BalanceService::reverseClientCredit($receipt->client, $receipt->amount_jod, 'receipt', $receipt->id);
             // عكس القيد المحاسبي
@@ -122,8 +142,7 @@ class ReceiptController extends Controller
                 ->where('reference_id', $receipt->id)->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل سند القبض'); } catch (\Exception $e) {}
 
-            $receipt->startEditing(auth()->user());
-            \App\Models\AuditLog::log('start_edit', 'receipt', $receipt->id, $receipt->receipt_number);
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::StartEdit, 'receipt', $receipt->id, $receipt->receipt_number);
         });
 
         return back()->with('success', "تم فتح سند القبض {$receipt->receipt_number} للتعديل");
@@ -134,6 +153,8 @@ class ReceiptController extends Controller
      */
     public function updateApproved(Request $request, Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$receipt->isEditing()) {
             return back()->with('error', 'هذا السند ليس في وضع التعديل');
         }
@@ -155,18 +176,26 @@ class ReceiptController extends Controller
             $validated['bank_commission'] = $validated['bank_commission'] ?? 0;
         }
 
-        $receipt->update($validated);
-        $receipt->resubmitForApproval();
+        DB::transaction(function () use ($receipt, $validated) {
+            $receipt->resubmitForApproval();   // ذري: editing → pending
+            $receipt->update($validated);
+        });
 
         return back()->with('success', "تم تعديل سند القبض وإرساله للاعتماد");
     }
 
     public function destroy(Receipt $receipt)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$receipt->isPending()) {
             return back()->with('error', 'لا يمكن حذف سند معتمد');
         }
-        $receipt->delete();
+        // سند معلّق بلا أثر مالي، لكن حذفه لا يترك أثراً في الجدول نفسه
+        DB::transaction(function () use ($receipt) {
+            $receipt->delete();
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Delete, 'receipt', $receipt->id, $receipt->receipt_number, ['amount_jod' => (float) $receipt->amount_jod]);
+        });
         return redirect()->route('receipts.index')->with('success', 'تم حذف سند القبض');
     }
 

@@ -34,6 +34,26 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+                // E27: فعل حساس رُدّ لانتهاء نافذة التحقق المعزّز؛ نافذة التأكيد تعيده بعد النجاح
+                'stepup_required' => fn () => (bool) $request->session()->get('stepup_required'),
+            ],
+            // E27: شريط «فعّل التحقق بخطوتين قبل…» وطريقة تأكيد الهوية (لا سر هنا). مفتاح mfa لا security: صفحتا
+            // الملف الشخصي والأمان لهما prop باسم security يغلب المشترك
+            'mfa' => fn () => \App\Services\Security\Mfa::shared($user),
+            // مزايا خلف أعلام: القائمة تُخفي ما لم يُفعَّل بعد
+            'features' => [
+                'audit_page' => (bool) config('audit.page'),
+                // E31: رابط «المحظورون» لمن يملك whatsapp.block والعلم مفعّل (القراءة لهؤلاء وحدهم)
+                'wa_block' => $user?->can('whatsapp.block') ? rescue(fn () => \App\Support\FeatureFlags::on('wa_block'), false, false) : false,
+                // شريط الانقطاع والتعافي بعد النشر و«قد تكون أُرسلت» (E28، العلم connection_resilience)
+                'resilience' => \App\Services\WhatsApp\SendOutcome::enabled(),
+                // E40: «🔌 التكاملات» لمن يملك صلاحيتها وأحد العلمين مفعّل (لا استعلام لغيره)
+                'integrations' => (bool) rescue(fn () => $user && ($user->can('integrations.manage') || $user->can('mcp.use'))
+                    && (\App\Support\FeatureFlags::on('integration_outbox') || \App\Support\FeatureFlags::on('mcp_server')), false, false),
+                // E23: رابط «حالة النظام» لمن يملك ops.view والعلم مفعّل
+                'ops_status' => $user?->can('ops.view') ? rescue(fn () => \App\Support\FeatureFlags::on('ops_status_page'), false, false) : false,
+                // E24: رابط «الإخفاقات» لمن يملك whatsapp.settings والعلم failures_center مفعّل
+                'failures_center' => $user?->can('whatsapp.settings') ? rescue(fn () => \App\Support\FeatureFlags::on('failures_center'), false, false) : false,
             ],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);

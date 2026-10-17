@@ -43,11 +43,10 @@ class NotificationController extends Controller
                 'unread_count' => Notification::where('user_id', auth()->id())->where('is_read', false)->count(),
             ]);
         } catch (\Exception $e) {
-            \Log::error('NotificationController@index: ' . $e->getMessage() . ' | ' . $e->getTraceAsString());
+            \App\Support\ErrorRef::log($e, 'notifications.index.failed');
             return response()->json([
                 'notifications' => [],
                 'unread_count' => 0,
-                'error' => $e->getMessage(),
             ], 200); // إرجاع 200 مع بيانات فاضية بدل 500
         }
     }

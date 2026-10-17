@@ -2,194 +2,350 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Enums\AuditAction;
+use App\Enums\HandoffReason;
+use App\Events\WhatsApp\ConversationHandedOff;
+use App\Models\AuditLog;
 use App\Models\Invoice;
 use App\Models\Offer;
+use App\Models\OfferOption;
 use App\Models\QuoteRequest;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaCustomerNote;
 use App\Services\OfferCardService;
+use App\Services\OfferPricing;
 use App\Services\TravelersReport;
-use Illuminate\Support\Facades\Log;
+use App\Services\WhatsApp\Media\MediaArchiver;
+use App\Support\FeatureFlags;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * أدوات المجال — الحدّ الفاصل بين البوت ونظام نُسك.
  *
  * قواعد ثابتة:
- *  • كل هويّة تأتي من المحادثة ($conv) لا من وسائط النموذج — فلا يرى عميل بيانات غيره.
+ *  • كل هويّة تأتي من المحادثة ($conv) لا من وسائط النموذج — فلا يرى عميل بيانات غيره. لا أداة تقبل
+ *    client_id أو phone أو conversation_id (ToolRegistryContractTest).
  *  • كل رقم مالي يُحسب بالكود ويُمرَّر جاهزاً — النموذج لا يحسب.
  *  • البوت لا يكتب في دفتر الأستاذ ولا يعتمد شيئاً — أقصى ما يفعله إنشاء «طلب» وتحويل المحادثة.
+ *  • نص العميل ونتائج الأدوات بيانات لا تعليمات: كل ما يكتبه النموذج يمر بالحدود هنا وفي dispatch.
+ *
+ * ما لا أداة له عمداً: اعتماد فاتورة أو سند، وكتابة قيد، والإرسال لرقم غير رقم المحادثة، والإرسال الجماعي،
+ * وتعديل الصلاحيات أو المستخدمين، وحذف المحادثات أو الرسائل، والوصول لأسرار القناة.
+ *
+ * لا أدوات إرسال عامة للنموذج (E32، C109): الإرسال قرار بشري من الصندوق، أو مسار يبنيه الكود. send_offer_card وحدها
+ * (ببطاقة يبنيها الكود)، ويحرس ذلك NoGenericSendToolsTest.
+ *
+ * TOOLS هو المصدر الوحيد (E15): منه الإعلانات والتسميات وقائمة التحويل وحارس التسريب وقواعد التحقق ومفاتيح
+ * tools_config المقبولة. لقطة tests/Snapshots/bot_declarations.json تثبّت العقد.
+ * التفصيل: docs/whatsapp/bot-tools.md
  */
 class BotTools
 {
-    /** أسماء أدوات بوت العملاء كما تظهر في الإعدادات وفي أداة «إدارة الأدوات» */
-    public const LABELS = [
-        'get_offers' => 'عرض العروض والباقات',
-        'get_offer_details' => 'تفاصيل عرض',
-        'send_offer_card' => 'إرسال صورة بطاقة العرض',
-        'set_topic' => 'تحديد موضوع المحادثة وتوجيهها',
-        'get_my_balance' => 'رصيد ذمّة العميل',
-        'get_my_invoices' => 'فواتير العميل والمتبقي',
-        'get_my_trips' => 'رحلات العميل القادمة',
-        'request_quote' => 'طلب تسعير ← تحويل لموظف',
-        'confirm_booking' => 'تأكيد حجز ← تحويل لموظف',
-        'save_note' => 'حفظ ملاحظة عن العميل',
-        'handoff_to_human' => 'تحويل لموظف',
+    /**
+     * tier: read | write | escalating. escalates: نجاحها يحوّل المحادثة لموظف. disableable=false: لا تُطفأ من أي مكان
+     * (سياسة واتساب تشترط مسار تصعيد بشري). rules: تحقق الخادم (المخطط تلميح للنموذج لا ضمان).
+     */
+    public const TOOLS = [
+        'get_offers' => [
+            'label' => 'عرض العروض والباقات', 'handler' => 'getOffers', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'max_result_bytes' => 6000,
+            'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). '
+                .'استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز باسم العرض و«يبدأ من» ولا تخترع عرضاً غير موجود. '
+                .'انتبه: شكل العرض يختلف بتصنيفه — عروض الفنادق تأتي بخيارات لكل خيار أسعار للفرد حسب سعة الغرفة، '
+                .'وعمرة «مكة والمدينة» يشمل خيارها فندقين بسعر واحد لهما معاً، والتأشيرات لها سعر واحد للفرد بلا فنادق. '
+                .'التزم دائماً بحقل pricing_note المرافق لكل عرض ولا تصف التسعير بغيره.',
+            'properties' => [
+                'category' => ['type' => 'string', 'description' => 'تصنيف اختياري: umrah|hajj|flight|visa|hotel|transport|tour|package', 'maxLength' => 20],
+            ],
+            'required' => [],
+            'rules' => ['category' => 'nullable|string|max:20'],
+        ],
+        'get_offer_details' => [
+            'label' => 'تفاصيل عرض', 'handler' => 'getOfferDetails', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله وخياراته وأسعارها، أو شروط التأشيرة ومدّة إصدارها إن كان تأشيرة. '
+                .'استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
+            'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض', 'minimum' => 1]],
+            'required' => ['offer_id'],
+            'rules' => ['offer_id' => 'required|integer|min:1'],
+        ],
+        'send_offer_card' => [
+            'label' => 'إرسال صورة بطاقة العرض', 'handler' => 'sendOfferCard', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'أرسل للعميل صورة بطاقة العرض (تحوي الفنادق والأسعار حسب سعة الغرفة وما يشمله العرض). '
+                .'استدعِها بعد أن يختار العميل عرضاً محدّداً أو يطلب تفاصيله أو صورته أو «التفاصيل كاملة». '
+                .'أرسل البطاقة مرّة واحدة لكل عرض في المحادثة، ولا تصف محتوى الصورة بعدها — جملة قصيرة تكفي.',
+            'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض', 'minimum' => 1]],
+            'required' => ['offer_id'],
+            'rules' => ['offer_id' => 'required|integer|min:1'],
+        ],
+        'set_topic' => [
+            'label' => 'تحديد موضوع المحادثة وتوجيهها', 'handler' => 'setTopic', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'سجّل موضوع المحادثة فور اتّضاحه — حتى قبل أي تحويل لموظف. '
+                .'هذا يربط المحادثة بالموظف المختصّ فيتابعها من البداية. '
+                .'استدعِها مرّة واحدة لكل موضوع، وإن تعدّدت اهتمامات العميل سجّلها كلها. '
+                .'لا تُخبر العميل بذلك ولا تذكره في ردّك إطلاقاً.',
+            'properties' => [
+                'topics' => ['type' => 'array', 'description' => 'موضوع أو أكثر من: {topics}', 'items' => ['type' => 'string', 'maxLength' => 40], 'maxItems' => 4],
+            ],
+            'required' => ['topics'],
+            'rules' => ['topics' => 'required|array|max:4', 'topics.*' => 'string|max:40'],
+        ],
+        'get_my_balance' => [
+            'label' => 'رصيد ذمّة العميل', 'handler' => 'getBalance', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'رصيد ذمّة العميل الحالي (كم عليه من مبالغ). تعمل فقط إن كان رقم المحادثة مربوطاً بحساب عميل مسجّل.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'get_my_invoices' => [
+            'label' => 'فواتير العميل والمتبقي', 'handler' => 'getInvoices', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'فواتير العميل الحالي المعتمدة مع المبلغ المتبقي على كل فاتورة. استدعِها إذا سأل عن فواتيره أو ما تبقّى عليه.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'get_my_trips' => [
+            'label' => 'رحلات العميل القادمة', 'handler' => 'getTrips', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'رحلات العميل الحالي القادمة (تواريخ السفر المسجّلة على فواتيره المعتمدة).',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'request_quote' => [
+            'label' => 'طلب تسعير ← تحويل لموظف', 'handler' => 'requestQuote', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => false,
+            'escalates' => true, 'disableable' => true,
+            'description' => 'أنشئ طلب تسعير وحوّل المحادثة لموظف. استدعِها عندما يطلب العميل سعراً نهائياً لرحلة طيران أو خدمة، أو يسأل عن توفّر المقاعد. اجمع أولاً بالحوار: المسار (من/إلى) وتاريخ السفر وعدد المسافرين. لا تذكر أي سعر من عندك أبداً — الموظف هو من يسعّر.',
+            'properties' => [
+                'type' => ['type' => 'string', 'description' => 'flight|package|visa|hotel|transport|other', 'enum' => ['flight', 'package', 'visa', 'hotel', 'transport', 'other']],
+                'route_from' => ['type' => 'string', 'description' => 'مدينة/مطار المغادرة', 'maxLength' => 60],
+                'route_to' => ['type' => 'string', 'description' => 'مدينة/مطار الوصول', 'maxLength' => 60],
+                'depart_date' => ['type' => 'string', 'description' => 'تاريخ السفر YYYY-MM-DD'],
+                'return_date' => ['type' => 'string', 'description' => 'تاريخ العودة إن وُجد YYYY-MM-DD'],
+                'adults' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 99],
+                'children' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 99],
+                'infants' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 20],
+                'details' => ['type' => 'string', 'description' => 'ملخّص ما طلبه العميل بكلماته', 'maxLength' => 2000],
+            ],
+            'required' => ['type', 'details'],
+            'rules' => [
+                'type' => 'required|string|in:flight,package,visa,hotel,transport,other', 'route_from' => 'nullable|string|max:60', 'route_to' => 'nullable|string|max:60',
+                'depart_date' => 'nullable|date', 'return_date' => 'nullable|date', 'adults' => 'nullable|integer|min:1|max:99',
+                'children' => 'nullable|integer|min:0|max:99', 'infants' => 'nullable|integer|min:0|max:20', 'details' => 'required|string|max:2000',
+            ],
+        ],
+        'confirm_booking' => [
+            'label' => 'تأكيد حجز ← تحويل لموظف', 'handler' => 'confirmBooking', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => false,
+            'escalates' => true, 'disableable' => true,
+            'description' => 'العميل يريد تأكيد حجز عرض معيّن. استدعِها عند موافقته الصريحة على الحجز. تُنشئ طلب حجز وتحوّل المحادثة لموظف ليُتمّه. لا تؤكّد للعميل أنّ الحجز مكتمل — قل إنّ موظفاً سيتواصل لإتمامه.',
+            'properties' => [
+                'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه', 'minimum' => 1],
+                'option_ref' => ['type' => 'string', 'description' => 'قيمة ref للخيار الذي اختاره العميل من options في get_offer_details — انسخها كما هي', 'maxLength' => 64],
+                'supplement_refs' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 64], 'maxItems' => 10, 'description' => 'قيم ref للإضافات التي طلبها العميل من supplements (مثل باص VIP) — اتركها فارغة إن لم يطلب إضافة'],
+                'hotel' => ['type' => 'string', 'description' => 'الخيار الذي اختاره العميل: اسم الفندق، أو الفندقين معاً في عمرة مكة والمدينة', 'maxLength' => 150],
+                'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية', 'maxLength' => 30],
+                'adults' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 99],
+                'children' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 99],
+                'infants' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 20],
+                'travel_date' => ['type' => 'string', 'description' => 'تاريخ السفر المطلوب إن ذكره العميل YYYY-MM-DD'],
+                'details' => ['type' => 'string', 'description' => 'أي تفاصيل ذكرها العميل (أسماء، ملاحظات، تواريخ مفضّلة)', 'maxLength' => 1500],
+            ],
+            'required' => ['offer_id', 'details'],
+            'rules' => [
+                'offer_id' => 'required|integer|min:1', 'option_ref' => 'nullable|string|max:64', 'supplement_refs' => 'nullable|array|max:10',
+                'supplement_refs.*' => 'string|max:64', 'hotel' => 'nullable|string|max:150', 'room_type' => 'nullable|string|max:30',
+                'adults' => 'nullable|integer|min:1|max:99', 'children' => 'nullable|integer|min:0|max:99', 'infants' => 'nullable|integer|min:0|max:20',
+                'travel_date' => 'nullable|date', 'details' => 'required|string|max:1500',
+            ],
+        ],
+        'save_note' => [
+            'label' => 'حفظ ملاحظة عن العميل', 'handler' => 'saveNote', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'احفظ ملاحظة مهمة عن العميل لتذكّرها لاحقاً (تفضيلاته، عدد أفراد عائلته، اسمه). لا تحفظ أسراراً ولا أرقام بطاقات ولا أرقام جوازات أو هويات.',
+            'properties' => ['note' => ['type' => 'string', 'description' => 'الملاحظة — 300 حرف كحدّ أقصى', 'maxLength' => 300]],
+            'required' => ['note'],
+            'rules' => ['note' => 'required|string|max:300'],
+        ],
+        // E33: دبوس المكتب وبطاقة الاتصال. مطفأتان افتراضياً (default_enabled=false) وخلف العلم wa_share_cards، وكلٌّ رسالة
+        // خدمة إضافية مدفوعة. لا وسائط حرة: المكتب من wa_places والبطاقة بمفتاح من قائمة تُحسب عند بناء الإعلان
+        'send_office_location' => [
+            'label' => 'إرسال دبوس موقع المكتب', 'handler' => 'sendOfficeLocation', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'wa_share_cards',
+            'description' => 'أرسل للعميل دبوس موقع المكتب المعتمد على الخريطة. استدعِها إذا سأل عن مكان المكتب أو العنوان أو كيف يصل. '
+                .'بعدها اكتب جملة قصيرة فقط ولا تكرر العنوان.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'send_contact_card' => [
+            'label' => 'إرسال بطاقة اتصال معتمدة', 'handler' => 'sendContactCard', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'wa_share_cards',
+            'description' => 'أرسل للعميل بطاقة اتصال من القائمة المعتمدة (المكتب أو المندوب…) إذا طلب رقم جهة بعينها. '
+                .'لا تكتب أي رقم هاتف بنفسك أبداً.',
+            'properties' => ['card_key' => ['type' => 'string', 'description' => 'مفتاح البطاقة من القائمة', 'maxLength' => 20]],
+            'required' => ['card_key'],
+            'rules' => ['card_key' => 'required|string|max:20'],
+        ],
+        // E36: القوائم والأزرار ونموذج طلب التسعير. مطفأة افتراضياً وخلف أعلامها، وتُعلن بشروط المحادثة (InteractiveReply::offerable).
+        // لا ترسل بنفسها: تجهّز الخيارات من ChoiceBuilder، ونص رد النموذج يصير body الرسالة التفاعلية (رسالة واحدة).
+        // لا تقبل عنواناً ولا معرّفاً ولا سعراً: نوعاً ورقم عرض يُتحقق منه
+        'show_offers_menu' => [
+            'label' => 'قائمة العروض التفاعلية', 'handler' => 'showOffersMenu', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'interactive_choices',
+            'description' => 'اعرض على العميل قائمة تفاعلية بالعروض يختار منها بلمسة. استعملها بدل سرد العروض نصاً. '
+                .'بعدها اكتب جملة قصيرة تمهّد للقائمة فقط: القائمة تحمل العناوين والأسعار.',
+            'properties' => [
+                'category' => ['type' => 'string', 'description' => 'تصنيف اختياري', 'enum' => ['package', 'umrah', 'hajj', 'flight', 'visa', 'hotel', 'transport', 'tour']],
+            ],
+            'required' => [],
+            'rules' => ['category' => 'nullable|string|in:package,umrah,hajj,flight,visa,hotel,transport,tour'],
+        ],
+        'present_choices' => [
+            'label' => 'خيارات تفاعلية (فندق، غرفة، حجز)', 'handler' => 'presentChoices', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'interactive_choices',
+            'description' => 'اعرض على العميل اختيارات تفاعلية من بيانات العرض: category (التصنيفات)، offer_option (فنادق العرض)، '
+                .'room_type (سعة الغرفة لخيار، ومعها option_ref)، booking_actions (أزرار «احجز هذا» و«سؤال آخر» و«كلّم موظفاً»). '
+                .'بعد أن يختار العميل عرضاً أرسل بطاقته ثم استعملها لاختيار الفندق والغرفة. لا تكتب الخيارات نصاً.',
+            'properties' => [
+                'kind' => ['type' => 'string', 'description' => 'نوع الاختيار', 'enum' => ['category', 'offer_option', 'room_type', 'booking_actions']],
+                'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض (لغير category)', 'minimum' => 1],
+                'option_ref' => ['type' => 'string', 'description' => 'ref الخيار من get_offer_details أو من اختيار العميل المؤكد (لـ room_type)', 'maxLength' => 64],
+            ],
+            'required' => ['kind'],
+            'rules' => ['kind' => 'required|string|in:category,offer_option,room_type,booking_actions', 'offer_id' => 'nullable|integer|min:1',
+                'option_ref' => 'nullable|string|max:64'],
+        ],
+        'send_quote_form' => [
+            'label' => 'نموذج طلب التسعير داخل واتساب', 'handler' => 'sendQuoteForm', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'quote_flow',
+            'description' => 'أرسل للعميل نموذجاً قصيراً لطلب التسعير يعبّئه داخل واتساب (المسار والتواريخ وعدد المسافرين). '
+                .'استعملها حين يريد العميل سعراً لرحلة طيران أو خدمة بدل طرح الأسئلة واحداً واحداً. الكتابة تبقى ممكنة، وrequest_quote بديلها الحواري.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'handoff_to_human' => [
+            'label' => 'تحويل لموظف', 'handler' => 'handoff', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => true,
+            'escalates' => true, 'disableable' => false,
+            'description' => 'حوّل المحادثة لموظف بشري. استدعِها إذا طلب العميل التحدث مع شخص، أو كان غاضباً أو يشكو، أو كان طلبه خارج قدراتك.',
+            'properties' => ['reason' => ['type' => 'string', 'description' => 'سبب التحويل بإيجاز', 'maxLength' => 300]],
+            'required' => ['reason'],
+            'rules' => ['reason' => 'required|string|max:300'],
+        ],
     ];
 
-    /** إعلانات الأدوات بصيغة Anthropic tool_use */
+    /** سقف نتيجة أداة البوت ما لم تحدّد الأداة سقفها (E15.7) */
+    public const DEFAULT_MAX_RESULT_BYTES = 6000;
+
+    /** @return list<string> */
+    public static function names(): array
+    {
+        return array_keys(self::TOOLS);
+    }
+
+    /** @return array<string, string> */
+    public static function labels(): array
+    {
+        return array_map(fn ($t) => $t['label'], self::TOOLS);
+    }
+
+    /** الأدوات التي ينجح بها التحويل لموظف (HandoffGuard) @return list<string> */
+    public static function escalating(): array
+    {
+        return array_keys(array_filter(self::TOOLS, fn ($t) => $t['escalates']));
+    }
+
+    public static function disableable(string $name): bool
+    {
+        return (bool) (self::TOOLS[$name]['disableable'] ?? true);
+    }
+
+    /** حالتها حين يغيب مفتاحها عن tools_config: مفعّلة، إلا أداة شُحنت مطفأة (E33) */
+    public static function defaultEnabled(string $name): bool
+    {
+        return (bool) (self::TOOLS[$name]['default_enabled'] ?? true);
+    }
+
+    /**
+     * مفعّلة لهذا الإعداد: ما لا يُطفأ مفعّل دائماً مهما كان في tools_config. أداة خلف علم ميزة (E33) لا تعمل ما دام علمها
+     * مطفأً، أياً كان tools_config.
+     */
+    public static function isEnabled(WaBotSetting $s, string $name): bool
+    {
+        if (!isset(self::TOOLS[$name])) {
+            return false;
+        }
+        if (isset(self::TOOLS[$name]['flag']) && !FeatureFlags::on(self::TOOLS[$name]['flag'])) {
+            return false;
+        }
+
+        return !self::disableable($name) || $s->toolEnabled($name);
+    }
+
+    /** للإعدادات: [{key, label, escalates, disableable, default_enabled}] */
+    public static function meta(): array
+    {
+        return array_map(fn ($name) => ['key' => $name, 'label' => self::TOOLS[$name]['label'],
+            'escalates' => self::TOOLS[$name]['escalates'], 'disableable' => self::TOOLS[$name]['disableable'],
+            'default_enabled' => self::defaultEnabled($name)], self::names());
+    }
+
+    /** @return array<string, string> */
+    public static function rules(string $name): array
+    {
+        return self::TOOLS[$name]['rules'] ?? [];
+    }
+
+    public static function maxResultBytes(string $name): int
+    {
+        return (int) (self::TOOLS[$name]['max_result_bytes'] ?? self::DEFAULT_MAX_RESULT_BYTES);
+    }
+
+    /** إعلانات الأدوات المفعّلة بصيغة Anthropic tool_use (يحوّلها كل مزوّد لصيغته) */
     public static function declarations(WaBotSetting $s, WaConversation $conv): array
     {
-        $all = [
-            [
-                'name' => 'get_offers',
-                'description' => 'اجلب قائمة العروض والباقات المتاحة حالياً (عمرة، حج، تذاكر، فنادق، تأشيرات...). '
-                    . 'استدعِها عندما يسأل العميل عن العروض أو الأسعار أو ما هو متاح. اعرض النتائج بإيجاز باسم العرض و«يبدأ من» ولا تخترع عرضاً غير موجود. '
-                    . 'انتبه: شكل العرض يختلف بتصنيفه — عروض الفنادق تأتي بخيارات لكل خيار أسعار للفرد حسب سعة الغرفة، '
-                    . 'وعمرة «مكة والمدينة» يشمل خيارها فندقين بسعر واحد لهما معاً، والتأشيرات لها سعر واحد للفرد بلا فنادق. '
-                    . 'التزم دائماً بحقل pricing_note المرافق لكل عرض ولا تصف التسعير بغيره.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'category' => ['type' => 'string', 'description' => 'تصنيف اختياري: umrah|hajj|flight|visa|hotel|transport|tour|package'],
-                    ],
-                ],
-            ],
-            [
-                'name' => 'get_offer_details',
-                'description' => 'تفاصيل عرض محدد برقمه: ما يشمله وما لا يشمله وخياراته وأسعارها، أو شروط التأشيرة ومدّة إصدارها إن كان تأشيرة. '
-                    . 'استدعِها بعد أن يختار العميل عرضاً من القائمة. اذكر السعر دائماً بوصفه «للفرد» وأنّه غير نهائي ويحتاج تأكيد الموظف.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
-                    'required' => ['offer_id'],
-                ],
-            ],
-            [
-                'name' => 'send_offer_card',
-                'description' => 'أرسل للعميل صورة بطاقة العرض (تحوي الفنادق والأسعار حسب سعة الغرفة وما يشمله العرض). '
-                    . 'استدعِها بعد أن يختار العميل عرضاً محدّداً أو يطلب تفاصيله أو صورته أو «التفاصيل كاملة». '
-                    . 'أرسل البطاقة مرّة واحدة لكل عرض في المحادثة، ولا تصف محتوى الصورة بعدها — جملة قصيرة تكفي.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['offer_id' => ['type' => 'integer', 'description' => 'رقم العرض']],
-                    'required' => ['offer_id'],
-                ],
-            ],
-            [
-                'name' => 'set_topic',
-                'description' => 'سجّل موضوع المحادثة فور اتّضاحه — حتى قبل أي تحويل لموظف. '
-                    . 'هذا يربط المحادثة بالموظف المختصّ فيتابعها من البداية. '
-                    . 'استدعِها مرّة واحدة لكل موضوع، وإن تعدّدت اهتمامات العميل سجّلها كلها. '
-                    . 'لا تُخبر العميل بذلك ولا تذكره في ردّك إطلاقاً.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'topics' => [
-                            'type' => 'array',
-                            'description' => 'موضوع أو أكثر من: ' . implode(' | ', array_keys(\App\Services\WhatsApp\TopicRouter::TOPICS)),
-                            'items' => ['type' => 'string'],
-                        ],
-                    ],
-                    'required' => ['topics'],
-                ],
-            ],
-            [
-                'name' => 'get_my_balance',
-                'description' => 'رصيد ذمّة العميل الحالي (كم عليه من مبالغ). تعمل فقط إن كان رقم المحادثة مربوطاً بحساب عميل مسجّل.',
-                'input_schema' => ['type' => 'object', 'properties' => []],
-            ],
-            [
-                'name' => 'get_my_invoices',
-                'description' => 'فواتير العميل الحالي المعتمدة مع المبلغ المتبقي على كل فاتورة. استدعِها إذا سأل عن فواتيره أو ما تبقّى عليه.',
-                'input_schema' => ['type' => 'object', 'properties' => []],
-            ],
-            [
-                'name' => 'get_my_trips',
-                'description' => 'رحلات العميل الحالي القادمة (تواريخ السفر المسجّلة على فواتيره المعتمدة).',
-                'input_schema' => ['type' => 'object', 'properties' => []],
-            ],
-            [
-                'name' => 'request_quote',
-                'description' => 'أنشئ طلب تسعير وحوّل المحادثة لموظف. استدعِها عندما يطلب العميل سعراً نهائياً لرحلة طيران أو خدمة، أو يسأل عن توفّر المقاعد. اجمع أولاً بالحوار: المسار (من/إلى) وتاريخ السفر وعدد المسافرين. لا تذكر أي سعر من عندك أبداً — الموظف هو من يسعّر.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'type' => ['type' => 'string', 'description' => 'flight|package|visa|hotel|transport|other'],
-                        'route_from' => ['type' => 'string', 'description' => 'مدينة/مطار المغادرة'],
-                        'route_to' => ['type' => 'string', 'description' => 'مدينة/مطار الوصول'],
-                        'depart_date' => ['type' => 'string', 'description' => 'تاريخ السفر YYYY-MM-DD'],
-                        'return_date' => ['type' => 'string', 'description' => 'تاريخ العودة إن وُجد YYYY-MM-DD'],
-                        'adults' => ['type' => 'integer'],
-                        'children' => ['type' => 'integer'],
-                        'infants' => ['type' => 'integer'],
-                        'details' => ['type' => 'string', 'description' => 'ملخّص ما طلبه العميل بكلماته'],
-                    ],
-                    'required' => ['type', 'details'],
-                ],
-            ],
-            [
-                'name' => 'confirm_booking',
-                'description' => 'العميل يريد تأكيد حجز عرض معيّن. استدعِها عند موافقته الصريحة على الحجز. تُنشئ طلب حجز وتحوّل المحادثة لموظف ليُتمّه. لا تؤكّد للعميل أنّ الحجز مكتمل — قل إنّ موظفاً سيتواصل لإتمامه.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'offer_id' => ['type' => 'integer', 'description' => 'رقم العرض المطلوب حجزه'],
-                        'option_ref' => ['type' => 'string', 'description' => 'قيمة ref للخيار الذي اختاره العميل من options في get_offers أو get_offer_details — انسخها كما هي'],
-                        'supplement_refs' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'قيم ref للإضافات التي طلبها العميل من supplements (مثل باص VIP) — اتركها فارغة إن لم يطلب إضافة'],
-                        'hotel' => ['type' => 'string', 'description' => 'الخيار الذي اختاره العميل: اسم الفندق، أو الفندقين معاً في عمرة مكة والمدينة'],
-                        'room_type' => ['type' => 'string', 'description' => 'سعة الغرفة المطلوبة: مفردة|ثنائية|ثلاثية|رباعية'],
-                        'adults' => ['type' => 'integer'],
-                        'children' => ['type' => 'integer'],
-                        'infants' => ['type' => 'integer'],
-                        'travel_date' => ['type' => 'string', 'description' => 'تاريخ السفر المطلوب إن ذكره العميل YYYY-MM-DD'],
-                        'details' => ['type' => 'string', 'description' => 'أي تفاصيل ذكرها العميل (أسماء، ملاحظات، تواريخ مفضّلة)'],
-                    ],
-                    'required' => ['offer_id', 'details'],
-                ],
-            ],
-            [
-                'name' => 'save_note',
-                'description' => 'احفظ ملاحظة مهمة عن العميل لتذكّرها لاحقاً (تفضيلاته، عدد أفراد عائلته، اسمه). لا تحفظ أسراراً ولا أرقام بطاقات.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['note' => ['type' => 'string', 'description' => 'الملاحظة — 500 حرف كحدّ أقصى']],
-                    'required' => ['note'],
-                ],
-            ],
-            [
-                'name' => 'handoff_to_human',
-                'description' => 'حوّل المحادثة لموظف بشري. استدعِها إذا طلب العميل التحدث مع شخص، أو كان غاضباً أو يشكو، أو كان طلبه خارج قدراتك.',
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => ['reason' => ['type' => 'string', 'description' => 'سبب التحويل بإيجاز']],
-                    'required' => ['reason'],
-                ],
-            ],
-        ];
+        $out = [];
+        foreach (self::TOOLS as $name => $t) {
+            if (!self::isEnabled($s, $name)) {
+                continue;
+            }
+            $props = $t['properties'];
+            if (isset($props['topics']['description'])) {
+                $props['topics']['description'] = str_replace('{topics}', implode(' | ', array_keys(TopicRouter::TOPICS)), $props['topics']['description']);
+            }
+            // E36: الأدوات التفاعلية بشروط المحادثة (التجربة، والنافذة، ومحادثة الإدارة، ومعرّف الـ Flow)
+            if (in_array($name, InteractiveReply::TOOLS, true) && !InteractiveReply::offerable($conv, $s, $name)) {
+                continue;
+            }
+            // مفاتيح البطاقات المسموحة للبوت (E33): القائمة نفسها في الإعلان وفي التنفيذ، وبلا بطاقة لا تُعلن الأداة
+            if ($name === 'send_contact_card') {
+                $keys = self::contactCardKeys();
+                if ($keys === []) {
+                    continue;
+                }
+                $props['card_key']['enum'] = $keys;
+            }
+            $schema = ['type' => 'object', 'properties' => $props];
+            if ($t['required']) {
+                $schema['required'] = $t['required'];
+            }
+            $out[] = ['name' => $name, 'description' => $t['description'], 'input_schema' => $schema];
+        }
 
-        return array_values(array_filter($all, fn ($t) => $s->toolEnabled($t['name'])));
+        return $out;
     }
 
     // ==================== التنفيذ ====================
 
+    /**
+     * التنفيذ المباشر بالمعالج المسجّل: للكود الموثوق والاختبارات. ما يطلبه النموذج يمر بـ ToolInvoker (E15.3)
+     * الذي يفحص الاسم المعلن والإذن والمدخلات قبل هذا.
+     */
     public static function execute(string $name, array $in, WaConversation $conv): array
     {
-        return match ($name) {
-            'get_offers' => self::getOffers($in, $conv),
-            'get_offer_details' => self::getOfferDetails($in, $conv),
-            'send_offer_card' => self::sendOfferCard($in, $conv),
-            'set_topic' => self::setTopic($in, $conv),
-            'get_my_balance' => self::getBalance($conv),
-            'get_my_invoices' => self::getInvoices($conv),
-            'get_my_trips' => self::getTrips($conv),
-            'request_quote' => self::requestQuote($in, $conv),
-            'confirm_booking' => self::confirmBooking($in, $conv),
-            'save_note' => self::saveNote($in, $conv),
-            'handoff_to_human' => self::handoff($in, $conv),
-            default => ['error' => 'أداة غير معروفة', 'note' => 'اعتذر للعميل بإيجاز.'],
-        };
+        $handler = self::TOOLS[$name]['handler'] ?? null;
+        if ($handler === null) {
+            return ['error' => 'أداة غير معروفة', 'note' => 'اعتذر للعميل بإيجاز.'];
+        }
+
+        return self::{$handler}($in, $conv);
     }
 
     private static function getOffers(array $in, WaConversation $conv): array
@@ -205,14 +361,15 @@ class BotTools
         // الترتيب النهائي بـ «يبدأ من» يجري في PHP لأنّ السعر صار داخل الفنادق
         $offers = $q->limit(12)->get()
             ->sortBy(fn ($o) => $o->priceFrom() ?? INF)
-            ->map(fn ($o) => $o->toBotArray())->values()->all();
+            ->map(fn ($o) => $o->toBotSummary())->values()->all();
 
         return [
             'count' => count($offers),
             'offers' => $offers,
             'note' => $offers
                 ? 'اعرض العروض بإيجاز (الاسم والسعر والمدة، وتاريخ الانطلاق إن وُجد trip_date). لا تخترع تفاصيل غير مذكورة. '
-                    . 'availability تقريبية: قلها كما هي («متوفر» أو «مقاعد محدودة») ولا تذكر عدد مقاعد ولا تؤكّد مقعداً. اسأل العميل أيّ عرض يهمّه.'
+                    .'الفنادق والخيارات وأسعارها في get_offer_details للعرض الذي يختاره العميل. '
+                    .'availability تقريبية: قلها كما هي («متوفر» أو «مقاعد محدودة») ولا تذكر عدد مقاعد ولا تؤكّد مقعداً. اسأل العميل أيّ عرض يهمّه.'
                 : 'لا توجد عروض منشورة حالياً — اعتذر واسأل العميل عمّا يبحث عنه بالتحديد، ثم استدعِ request_quote.',
         ];
     }
@@ -231,7 +388,7 @@ class BotTools
         return [
             'offer' => $o->toBotArray(),
             'note' => 'اعرض التفاصيل بإيجاز. إن أراد الحجز فاستدعِ confirm_booking ومرّر ref الخيار الذي اختاره و ref أي إضافة طلبها من supplements. '
-                . 'لا تذكر عدد مقاعد ولا تؤكّد توفّراً غير ما في availability.',
+                .'لا تذكر عدد مقاعد ولا تؤكّد توفّراً غير ما في availability.',
         ];
     }
 
@@ -258,7 +415,77 @@ class BotTools
         ];
     }
 
+    private const CARD_AS_TEXT = 'تعذّر إرسال الصورة. اذكر تفاصيل العرض وأسعاره نصّاً بإيجاز بدلاً منها، ولا تعتذر عن الصورة.';
+
     /** إرسال بطاقة العرض كصورة — تُولَّد عند الطلب إن لم تكن جاهزة */
+    /**
+     * بطاقة العرض بالمعرّف (E32.11): تُفحص كأي صورة صادرة (أكبر من 5MB لا تُرسل)، وتُرفع مرة ويُخزَّن معرّفها 25 يوماً
+     * (ميتا تحفظه 30) فلا تُرفع لكل عميل، وتُحفظ نسختها على wa_media إثباتاً للسعر الذي رآه العميل ولو أُعيد توليدها.
+     * أي فشل: sent=false بلا رجوع إلى الرابط العام، فلا يقول البوت إن البطاقة وصلت وهي لم تُرسل.
+     */
+    private static function sendOfferCardById(Offer $offer, string $path, WaConversation $conv): array
+    {
+        $unsent = ['sent' => false, 'note' => 'تعذّر إرسال الصورة. اذكر التفاصيل نصّاً بإيجاز بدلاً منها.'];
+        $abs = Storage::disk('public')->path($path);
+        $info = Outbound\OutboundMediaPolicy::inspect($abs, 'offer-'.$offer->id.'.'.(pathinfo($path, PATHINFO_EXTENSION) ?: 'png'));
+        if (!$info['ok'] || $info['type'] !== 'image') {
+            WaLog::warning('bot.card.rejected', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $info['code'] ?? 'MEDIA_TYPE']);
+
+            return $unsent;
+        }
+
+        $cacheKey = 'wa:media:card:'.$info['sha256'];
+        $mediaId = Cache::get($cacheKey);
+        if (!is_string($mediaId) || $mediaId === '') {
+            // رفع جديد يأخذ من ميزانية الرد كالتوليد
+            if (($run = ReplyRun::current()) && !$run->hasAtLeast(ReplyRun::CARD_MIN_SECONDS)) {
+                WaLog::warning('bot.card.skipped_budget', ['offer_id' => $offer->id, 'conv_id' => $conv->id]);
+
+                return ['sent' => false, 'note' => self::CARD_AS_TEXT];
+            }
+            $up = WhatsAppChannel::uploadMedia($conv, $abs, (string) $info['mime'], (string) $info['name'], 'bot');
+            if (!$up['ok']) {
+                WaLog::warning('bot.card.upload_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $up['code']]);
+
+                return $unsent;
+            }
+            $mediaId = (string) $up['media_id'];
+            Cache::put($cacheKey, $mediaId, now()->addDays((int) config('whatsapp.outbound.card_id_days', 25)));
+        }
+
+        // نسخة إثبات السعر: تبقى ولو أُعيد توليد البطاقة وحُذفت القديمة (OfferCardService)
+        $stored = rescue(fn () => Outbound\OutboundFileStore::put($abs, (string) $info['ext']), null, false);
+        $title = mb_substr($offer->title, 0, 200);
+        $res = WhatsAppChannel::send($conv, Outbound\OutboundMessage::image($mediaId, $title), 'bot', null, [
+            'send_key' => SendKey::reply($conv, ReplyRun::current()?->uptoId, 'card:'.$offer->id),
+            // نص الصف كما في مسار الرابط: عنوان العرض
+            'display' => $title,
+            // إن اقتبس العميل البطاقة عرف الخادم العرض بعينه (E33)
+            'meta' => ['offer_id' => $offer->id],
+            'media' => $stored ? ['mime' => $info['mime'], 'sha256' => $stored['sha256'], 'size' => $stored['size'],
+                'filename' => $info['name'], 'path' => $stored['path']] : null,
+        ]);
+        if ($stored && (!$res['ok'] || !empty($res['replayed'])) && !\App\Models\WaMessage::where('media_path', $stored['path'])->exists()) {
+            Outbound\OutboundFileStore::delete($stored['path']);
+        }
+        if (!$res['ok']) {
+            WaLog::warning('bot.card.send_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $res['code']]);
+            // معرّف رفضته ميتا (انتهى أو حُذف): يُنسى فيُرفع من جديد في المرة التالية
+            if (($res['meta_code'] ?? null) !== null) {
+                Cache::forget($cacheKey);
+            }
+
+            return $unsent;
+        }
+
+        return [
+            'sent' => true,
+            'offer' => $offer->title,
+            'note' => 'أُرسلت البطاقة للعميل بالفعل. لا تصف محتواها ولا تعيد سرد الأسعار — '
+                .'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
+        ];
+    }
+
     private static function sendOfferCard(array $in, WaConversation $conv): array
     {
         $offer = Offer::forBot()->with(['groups.options.stays', 'options.stays'])->find($in['offer_id'] ?? 0);
@@ -268,31 +495,53 @@ class BotTools
 
         $path = $offer->cardImage();
 
-        // البطاقة غير موجودة أو قديمة بعد تعديل الأسعار → نولّدها الآن
+        // البطاقة غير موجودة أو قديمة بعد تعديل الأسعار → نولّدها الآن، إن بقي وقت يكفي Chromium
         if (!$path || $offer->cardIsStale()) {
-            try {
-                $path = OfferCardService::generate($offer);
-            } catch (\Throwable $e) {
-                Log::error('تعذّر توليد بطاقة العرض للبوت', [
-                    'offer_id' => $offer->id, 'error' => $e->getMessage(),
-                ]);
+            $run = ReplyRun::current();
+            if ($run && !$run->hasAtLeast(ReplyRun::CARD_MIN_SECONDS)) {
+                WaLog::warning('bot.card.skipped_budget', ['offer_id' => $offer->id, 'conv_id' => $conv->id]);
 
                 return [
                     'sent' => false,
-                    'note' => 'تعذّر إرسال الصورة. اذكر تفاصيل العرض وأسعاره نصّاً بإيجاز بدلاً منها، ولا تعتذر عن الصورة.',
+                    'note' => self::CARD_AS_TEXT,
                 ];
             }
+            try {
+                $path = OfferCardService::generate($offer);
+            } catch (\Throwable $e) {
+                WaLog::error('bot.card.render_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'exception' => $e]);
+
+                return [
+                    'sent' => false,
+                    'note' => self::CARD_AS_TEXT,
+                ];
+            }
+        }
+
+        // موظف تسلّم المحادثة أثناء التوليد؟ لا صورة، وتنقطع الحلقة
+        if (($run = ReplyRun::current()) && ($drop = $run->mayDeliver($conv))) {
+            $run->abort = $drop;
+
+            return ['sent' => false, 'note' => 'لا ترسل شيئاً آخر.'];
+        }
+
+        // بالمعرّف بدل الرابط العام (E32.11، العلم offer_card_by_media_id)
+        if (FeatureFlags::on('offer_card_by_media_id')) {
+            return self::sendOfferCardById($offer, $path, $conv);
         }
 
         $res = WhatsAppChannel::sendImage(
             $conv,
             url(Storage::disk('public')->url($path)),
             mb_substr($offer->title, 0, 200),
-            'bot'
+            'bot',
+            sendKey: SendKey::reply($conv, ReplyRun::current()?->uptoId, 'card:'.$offer->id),
+            // إن اقتبس العميل البطاقة عرف الخادم العرض بعينه (E33)
+            opts: ['meta' => ['offer_id' => $offer->id]]
         );
 
         if (!$res['ok']) {
-            Log::warning('فشل إرسال بطاقة العرض', ['offer_id' => $offer->id, 'error' => $res['error']]);
+            WaLog::warning('bot.card.send_failed', ['offer_id' => $offer->id, 'conv_id' => $conv->id, 'code' => $res['code']]);
 
             return [
                 'sent' => false,
@@ -300,34 +549,130 @@ class BotTools
             ];
         }
 
+        // دليل السعر الذي رآه العميل (E14.11): البطاقة تُستبدل عند إعادة التوليد، فتُنسخ للأرشيف لحظة الإرسال
+        if (FeatureFlags::on('media_archive') && !empty($res['message_id'])) {
+            app(MediaArchiver::class)->storeOutbound((string) $res['message_id'], Storage::disk('public')->path($path), 'image/png');
+        }
+
         return [
             'sent' => true,
             'offer' => $offer->title,
             'note' => 'أُرسلت البطاقة للعميل بالفعل. لا تصف محتواها ولا تعيد سرد الأسعار — '
-                . 'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
+                .'اكتفِ بجملة قصيرة مثل دعوته للاطّلاع وسؤاله أيّ فندق يناسبه.',
         ];
     }
 
-    private static function getBalance(WaConversation $conv): array
+    // ==================== الدبوس والبطاقة (E33) ====================
+
+    /** مكتب البوت الافتراضي وحده (فعّال ومسموح للبوت)، وإلا العنوان النصي. رسالتان مدفوعتان: الدبوس ثم نص البوت */
+    private static function sendOfficeLocation(array $in, WaConversation $conv): array
     {
-        if (!$conv->client_id) {
+        $place = \App\Models\WaPlace::defaultOffice();
+        if (!$place) {
+            return ['sent' => false, 'note' => 'لا يوجد دبوس معتمد؛ اذكر العنوان النصي من بيانات الشركة فقط'];
+        }
+        if (($run = ReplyRun::current()) && ($drop = $run->mayDeliver($conv))) {
+            $run->abort = $drop;
+
+            return ['sent' => false, 'note' => 'لا ترسل شيئاً آخر.'];
+        }
+        $res = WhatsAppChannel::sendLocation($conv, $place, 'bot', null,
+            ['send_key' => SendKey::reply($conv, ReplyRun::current()?->uptoId, 'place:'.$place->id)]);
+        if (!$res['ok']) {
+            WaLog::warning('bot.place.send_failed', ['conv_id' => $conv->id, 'code' => $res['code']]);
+
+            return ['sent' => false, 'note' => 'تعذّر إرسال الدبوس؛ اذكر العنوان النصي من بيانات الشركة فقط'];
+        }
+
+        return ['sent' => true, 'note' => 'أُرسل دبوس الموقع. اكتب جملة قصيرة فقط ولا تكرر العنوان'];
+    }
+
+    /** card_{id} للبطاقات الفعّالة المسموحة للبوت @return list<string> */
+    public static function contactCardKeys(): array
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('wa_contact_cards')) {
+            return [];
+        }
+
+        return \App\Models\WaContactCard::active()->botAllowed()->orderBy('sort_order')->orderBy('id')->limit(20)->pluck('id')
+            ->map(fn ($id) => 'card_'.$id)->all();
+    }
+
+    /** بطاقة من القائمة المعتمدة بمفتاحها وحده: مفتاح خارج القائمة يُرفض، والرقم لا يكتبه النموذج أبداً */
+    private static function sendContactCard(array $in, WaConversation $conv): array
+    {
+        $key = (string) ($in['card_key'] ?? '');
+        if (!in_array($key, self::contactCardKeys(), true)) {
+            return ['ok' => false, 'error' => 'بطاقة غير متاحة', 'note' => 'اعتذر بإيجاز ولا تذكر أي رقم، واعرض التحويل لموظف.'];
+        }
+        $card = \App\Models\WaContactCard::active()->botAllowed()->find((int) substr($key, 5));
+        if (!$card) {
+            return ['ok' => false, 'error' => 'بطاقة غير متاحة', 'note' => 'اعتذر بإيجاز ولا تذكر أي رقم، واعرض التحويل لموظف.'];
+        }
+        if (($run = ReplyRun::current()) && ($drop = $run->mayDeliver($conv))) {
+            $run->abort = $drop;
+
+            return ['sent' => false, 'note' => 'لا ترسل شيئاً آخر.'];
+        }
+        $res = WhatsAppChannel::sendContacts($conv, collect([$card]), 'bot', null,
+            ['send_key' => SendKey::reply($conv, ReplyRun::current()?->uptoId, 'contact:'.$card->id)]);
+        if (!$res['ok']) {
+            WaLog::warning('bot.contact.send_failed', ['conv_id' => $conv->id, 'code' => $res['code']]);
+
+            return ['sent' => false, 'note' => 'تعذّر إرسال البطاقة؛ اعرض تحويل المحادثة لموظف ولا تكتب أي رقم.'];
+        }
+
+        return ['sent' => true, 'note' => 'أُرسلت البطاقة. اكتب جملة قصيرة فقط ولا تكرر أي رقم.'];
+    }
+
+    // ==================== الاختيارات التفاعلية (E36) ====================
+
+    private static function showOffersMenu(array $in, WaConversation $conv): array
+    {
+        return InteractiveReply::showOffersMenu($in, $conv);
+    }
+
+    private static function presentChoices(array $in, WaConversation $conv): array
+    {
+        return InteractiveReply::presentChoices($in, $conv);
+    }
+
+    private static function sendQuoteForm(array $in, WaConversation $conv): array
+    {
+        return InteractiveReply::sendQuoteForm($in, $conv);
+    }
+
+    private static function getBalance(array $in, WaConversation $conv): array
+    {
+        if (!$conv->financialClientId()) {
             return self::notLinked();
         }
+        // غياب العميل أو حسابه «غير متاح» صريحاً، لا رصيد صفري يُقرأ «مسدّدة» (E12.7)
         $client = $conv->client;
-        $balance = round((float) ($client?->account?->balance ?? 0), 3);
+        if (!$client) {
+            return ['ok' => false, 'error' => 'تعذّر جلب الحساب', 'note' => self::UNAVAILABLE_NOTE];
+        }
+        if (!$client->account) {
+            return ['ok' => false, 'available' => false,
+                'note' => 'الرصيد غير متاح الآن. لا تذكر أي رقم ولا تقل إن ذمّته مسدّدة. اعتذر واعرض تحويله لموظف.'];
+        }
+        $balance = round((float) $client->account->balance, 3);
 
         return [
-            'client' => $client?->name,
+            'ok' => true,
+            'client' => $client->name,
             'balance_jod' => $balance,
-            'note' => $balance > 0
-                ? 'أبلغ العميل بالمبلغ المتبقي عليه كما هو — لا تحسب ولا تقرّب.'
-                : 'أبلغه أنّ ذمّته مسدّدة ولا يوجد مبلغ متبقٍ.',
+            'note' => match (true) {
+                $balance > 0 => 'أبلغ العميل بالمبلغ المتبقي عليه كما هو — لا تحسب ولا تقرّب.',
+                $balance < 0 => 'له رصيد دائن لدينا بهذا المبلغ (القيمة بالسالب). اذكره كما هو، ولا تقل إن عليه مبلغاً.',
+                default => 'أبلغه أنّ ذمّته مسدّدة ولا يوجد مبلغ متبقٍ.',
+            },
         ];
     }
 
-    private static function getInvoices(WaConversation $conv): array
+    private static function getInvoices(array $in, WaConversation $conv): array
     {
-        if (!$conv->client_id) {
+        if (!$conv->financialClientId()) {
             return self::notLinked();
         }
 
@@ -343,19 +688,20 @@ class BotTools
             'date' => $i->invoice_date?->toDateString(),
             'trip_date' => $i->trip_date?->toDateString(),
             'total_jod' => round((float) $i->total_sell_jod, 3),
-            'remaining_jod' => $remaining[$i->id] ?? round((float) $i->total_sell_jod, 3),
+            // غير محسوب = غير متاح، لا «الإجمالي كله متبقٍ»
+            'remaining_jod' => $remaining[$i->id] ?? null,
         ])->all();
 
         return [
             'count' => count($rows),
             'invoices' => $rows,
-            'note' => 'اذكر الأرقام كما وردت حرفياً. المتبقي محسوب بالنظام — لا تعد حسابه.',
+            'note' => 'اذكر الأرقام كما وردت حرفياً. المتبقي محسوب بالنظام — لا تعد حسابه. remaining_jod=null يعني «غير متاح الآن»: لا تذكر له رقماً.',
         ];
     }
 
-    private static function getTrips(WaConversation $conv): array
+    private static function getTrips(array $in, WaConversation $conv): array
     {
-        if (!$conv->client_id) {
+        if (!$conv->financialClientId()) {
             return self::notLinked();
         }
 
@@ -375,40 +721,49 @@ class BotTools
         ];
     }
 
-    /** ★ طلب تسعير → إشعار الموظف + تحويل المحادثة */
+    /** ★ طلب تسعير → إشعار الموظف + تحويل المحادثة. الإنشاء في QuoteRequestFactory (E36) يشترك فيه نموذج واتساب */
     private static function requestQuote(array $in, WaConversation $conv): array
     {
-        $qr = QuoteRequest::create([
-            'request_number' => QuoteRequest::nextNumber(),
-            'conversation_id' => $conv->id,
-            'client_id' => $conv->client_id,
-            'phone' => $conv->phone,
-            'customer_name' => $conv->display_name,
-            'type' => $in['type'] ?? 'flight',
-            // كان القصّ عند 8 أحرف (طول رمز مطار) يقطع أسماء المدن: «المدينة المنورة» ← «المدينة»
-            'route_from' => mb_substr((string) ($in['route_from'] ?? ''), 0, 60) ?: null,
-            'route_to' => mb_substr((string) ($in['route_to'] ?? ''), 0, 60) ?: null,
-            'depart_date' => self::date($in['depart_date'] ?? null),
-            'return_date' => self::date($in['return_date'] ?? null),
-            'pax_adults' => max(1, (int) ($in['adults'] ?? 1)),
-            'pax_children' => max(0, (int) ($in['children'] ?? 0)),
-            'pax_infants' => max(0, (int) ($in['infants'] ?? 0)),
-            'details' => mb_substr((string) ($in['details'] ?? ''), 0, 2000),
-            'status' => 'new',
-        ]);
-
-        self::escalate($conv, $qr, '💰 طلب تسعير جديد');
+        ['qr' => $qr, 'duplicate' => $dup] = \App\Services\QuoteRequestFactory::fromInput($conv, $in, 'bot');
+        if ($dup) {
+            return self::duplicateResult($qr);
+        }
 
         return [
             'request_number' => $qr->request_number,
             'note' => 'أبلغ العميل أنّ طلبه وصل لفريقنا وسيعود إليه موظف بالسعر النهائي وتأكيد التوفّر قريباً. '
-                . 'لا تذكر أي سعر ولا تؤكّد توفّر مقعد. جملة واحدة قصيرة تكفي.',
+                .'لا تذكر أي سعر ولا تؤكّد توفّر مقعد. جملة واحدة قصيرة تكفي.'.self::askForPhone($conv),
         ];
+    }
+
+    private const UNAVAILABLE_NOTE = 'المعلومة غير متاحة الآن. لا تستنتج قيمة ولا تقل لا يوجد أو مسدّد. اعتذر واعرض تحويله لموظف.';
+
+    /** اسم الطلب: العميل المربوط، ثم الاسم المحفوظ، ثم لقب واتساب (غير موثّق) */
+    private static function customerName(WaConversation $conv): ?string
+    {
+        return \App\Services\QuoteRequestFactory::customerName($conv);
+    }
+
+    /**
+     * محادثة بلا رقم (E11.7): زر «مشاركة الرقم» يصل للعميل مع الطلب إن سمح وضع الهوية، فيعرف الموظف رقمه.
+     * يعيد سطراً يُضاف لملاحظة النموذج، أو '' إن لم يُرسل.
+     */
+    private static function askForPhone(WaConversation $conv): string
+    {
+        if ($conv->hasPhone() || !IdentityMode::botServesWithoutPhone()) {
+            return '';
+        }
+        $sent = WhatsAppChannel::sendContactRequest($conv, 'ليتابع معك موظفنا بالسعر والتفاصيل، شارك رقم هاتفك بالضغط على الزر أدناه.', 'system',
+            sendKey: SendKey::reqcontact($conv, ReplyRun::current()?->uptoId));
+
+        return $sent['ok'] ? ' وصل العميلَ الآن زرٌّ لمشاركة رقم هاتفه: اطلب منه الضغط عليه، ولا تطلب منه كتابة الرقم.' : '';
     }
 
     /** ★ تأكيد حجز عرض → إشعار الموظف + تحويل المحادثة */
     private static function confirmBooking(array $in, WaConversation $conv): array
     {
+        // اختيار العميل المؤكد من أزرارنا (E36) يتقدّم على وسائط النموذج: العرض والخيار والغرفة كما ضغطها العميل
+        $in = ChoiceResolver::applyToBooking($conv, $in);
         $offer = Offer::forBot()->find($in['offer_id'] ?? 0);
         if (!$offer) {
             return ['error' => 'العرض غير متاح', 'note' => 'أخبر العميل أنّ العرض غير متاح واعرض البدائل.'];
@@ -416,13 +771,13 @@ class BotTools
 
         $selection = self::bookingSelection($offer, $in);
 
-        $qr = QuoteRequest::create([
-            'request_number' => QuoteRequest::nextNumber(),
+        ['qr' => $qr, 'duplicate' => $dup] = QuoteRequestGuard::createOrReuse($conv, 'booking', [
             'conversation_id' => $conv->id,
             'client_id' => $conv->client_id,
             'offer_id' => $offer->id,
-            'phone' => $conv->phone,
-            'customer_name' => $conv->display_name,
+            // عميل بلا رقم: نص فارغ (العمود NOT NULL)، والهوية من conversation_id
+            'phone' => $conv->phone ?? '',
+            'customer_name' => self::customerName($conv),
             'type' => 'package',
             // العرض الجاهز بتاريخه؛ وإلا التاريخ الذي طلبه العميل — والموظف يثبّته عند التقفيل
             'depart_date' => $offer->is_ready ? $offer->trip_date : self::date($in['travel_date'] ?? null),
@@ -435,14 +790,18 @@ class BotTools
             'offer_selection' => $selection,
             'status' => 'new',
         ]);
+        if ($dup) {
+            return self::duplicateResult($qr) + ['offer' => $offer->title];
+        }
 
-        self::escalate($conv, $qr, '🧾 طلب تأكيد حجز');
+        self::auditQuote($qr, $conv);
+        self::escalate($conv, $qr, HandoffReason::Booking);
 
         return [
             'request_number' => $qr->request_number,
             'offer' => $offer->title,
             'note' => 'أبلغ العميل أنّ طلب الحجز وصل وأنّ موظفاً سيتواصل معه لإتمامه وتأكيد التوفّر والدفع. '
-                . 'لا تقل إنّ الحجز تمّ أو تأكّد. جملة قصيرة فقط.',
+                .'لا تقل إنّ الحجز تمّ أو تأكّد. جملة قصيرة فقط.'.self::askForPhone($conv),
         ];
     }
 
@@ -475,7 +834,7 @@ class BotTools
             }
         }
 
-        $room = array_search(trim((string) ($in['room_type'] ?? '')), \App\Models\OfferOption::ROOM_TYPES, true) ?: null;
+        $room = array_search(trim((string) ($in['room_type'] ?? '')), OfferOption::ROOM_TYPES, true) ?: null;
         if ($room && (($option->prices[$room] ?? null) === null)) {
             $room = null;
         }
@@ -486,10 +845,10 @@ class BotTools
     /** سطر تفاصيل الحجز كما يراه الموظف — الفندق وسعة الغرفة إن اختارهما العميل */
     private static function bookingDetails(Offer $offer, array $in, ?array $selection = null): string
     {
-        $parts = ['طلب حجز عرض: ' . $offer->title];
+        $parts = ['طلب حجز عرض: '.$offer->title];
 
         if ($selection && $selection['sel']) {
-            $labels = collect(\App\Services\OfferPricing::selectionLabels($offer, $selection['sel']))
+            $labels = collect(OfferPricing::selectionLabels($offer, $selection['sel']))
                 ->map(fn ($l) => "{$l['group']}: {$l['option']}")->implode(' — ');
             if ($labels !== '') {
                 $parts[] = $labels;
@@ -497,10 +856,10 @@ class BotTools
         }
 
         if (!empty($in['hotel'])) {
-            $parts[] = 'الفندق: ' . mb_substr((string) $in['hotel'], 0, 150);
+            $parts[] = 'الفندق: '.mb_substr((string) $in['hotel'], 0, 150);
         }
         if (!empty($in['room_type'])) {
-            $parts[] = 'الغرفة: ' . mb_substr((string) $in['room_type'], 0, 30);
+            $parts[] = 'الغرفة: '.mb_substr((string) $in['room_type'], 0, 30);
         }
         if (!empty($in['details'])) {
             $parts[] = mb_substr((string) $in['details'], 0, 1500);
@@ -510,9 +869,37 @@ class BotTools
     }
 
     /**
-     * التحويل الكامل: إيقاف البوت + شارة تدخّل + إشعار الأدمن وموظف العميل المسؤول.
+     * طلب مسجّل مسبقاً (E17.8): لا إنشاء ولا تحويل ولا إشعار ثانٍ. التحويل حدث مع الطلب الأول، ورسالة التأكيد
+     * لا تُسقط (escalated في التشغيل نفسه).
      */
-    private static function escalate(WaConversation $conv, ?QuoteRequest $qr, string $title): void
+    private static function duplicateResult(QuoteRequest $qr): array
+    {
+        if ($run = ReplyRun::current()) {
+            $run->escalated = true;
+        }
+
+        return [
+            'request_number' => $qr->request_number,
+            'duplicate' => true,
+            'note' => 'الطلب مسجّل مسبقاً بهذا الرقم. أبلغ العميل أنه وصل وسيتواصل معه موظف، ولا تنشئ طلباً جديداً.',
+        ];
+    }
+
+    /** النوع والعرض والمحادثة فقط: اسم العميل ورقمه وتفاصيل طلبه في الطلب نفسه لا في السجل. $extra (E36): مصدر النموذج */
+    public static function auditQuote(QuoteRequest $qr, WaConversation $conv, array $extra = []): void
+    {
+        AuditLog::safe(AuditAction::QuoteRequestCreate, 'quote_request', $qr->id, $qr->request_number, [
+            'type' => $qr->type, 'offer_id' => $qr->offer_id, 'conversation_id' => $conv->id,
+        ] + $extra);
+    }
+
+    /**
+     * التحويل الكامل: إيقاف البوت + شارة تدخّل + إشعار الأدمن وموظف العميل المسؤول.
+     * يطلق ConversationHandedOff دائماً (E21، بعد الاعتماد)، والموضع الوحيد للحدث: handoffFromCode وforceHandoff
+     * وحارس الادعاء يمرّون كلهم من هنا. والعلم wa_event_bus هو القرار الوحيد للإشعار والتدقيق: مطفأ = مباشرة هنا كما
+     * كان، مفعّل = المستمعان NotifyHandoffRecipients وAuditWhatsAppEvents.
+     */
+    public static function escalate(WaConversation $conv, ?QuoteRequest $qr, HandoffReason $reason): void
     {
         // الأولوية: توكيل قائم ← مختصّ الموضوع ← موظف العميل المسؤول
         $assignee = TopicRouter::assigneeFor($conv);
@@ -521,29 +908,28 @@ class BotTools
             'bot_enabled' => false,          // تحويل كامل — لا يردّ البوت بعدها
             'needs_attention' => true,
             'assigned_to' => $assignee,
-        ]);
+        ] + (ReplyState::available() ? ['attention_reason' => 'handoff'] : []));
+
+        // التحويل من التشغيل نفسه: رسالة تأكيده لا تُسقط بحجة أن البوت صار مطفأً
+        if ($run = ReplyRun::current()) {
+            $run->escalated = true;
+        }
 
         if ($qr && $assignee) {
             $qr->update(['assigned_to' => $assignee]);
         }
 
-        $who = $conv->display_name ?: $conv->phone;
-        $body = $qr
-            ? "{$who} — طلب {$qr->request_number}: " . mb_substr((string) $qr->details, 0, 140)
-            : "{$who} — يحتاج تدخّلاً بشرياً.";
-        $url = $qr ? '/quote-requests' : '/whatsapp/inbox';
-
-        WhatsAppInbox::notifyAdmins($title, $body, $url);
-
-        if ($assignee) {
-            try {
-                \App\Services\NotificationService::send($assignee, $title, $body, [
-                    'type' => 'whatsapp', 'icon' => '💬', 'action_url' => $url,
-                ]);
-            } catch (\Throwable $e) {
-                // الإشعار ليس حرجاً — الطلب محفوظ والشارة مرفوعة
-            }
+        EventBus::emit(new ConversationHandedOff($conv->id, $assignee !== null ? (int) $assignee : null, $qr?->id, $reason->value));
+        if (FeatureFlags::on('wa_event_bus')) {
+            return;
         }
+
+        AuditLog::safe(AuditAction::WaHandoff, 'wa_conversation', $conv->id, null, [
+            'title' => $reason->title(), 'quote_request_id' => $qr?->id, 'assigned_to' => $assignee,
+        ]);
+
+        // الجرس: الاسم بلا رقم ورقم الطلب، والتفاصيل في صفحة الطلب (E15.10)
+        HandoffNotice::send($conv, $qr, $reason, $assignee !== null ? (int) $assignee : null);
     }
 
     private static function saveNote(array $in, WaConversation $conv): array
@@ -551,7 +937,8 @@ class BotTools
         WaCustomerNote::create([
             'conversation_id' => $conv->id,
             'client_id' => $conv->client_id,
-            'note' => mb_substr((string) ($in['note'] ?? ''), 0, 500),
+            // كلام العميل: سطر واحد حتى 300 حرف، بلا أرقام طويلة ولا رموز جوازات (E15.6)
+            'note' => CustomerNotes::scrub((string) ($in['note'] ?? '')),
             'source' => 'bot',
             'created_at' => now(),
         ]);
@@ -559,9 +946,19 @@ class BotTools
         return ['saved' => true, 'note' => 'لا تذكر للعميل أنك حفظت ملاحظة — تابع الحديث طبيعياً.'];
     }
 
-    private static function handoff(array $in, WaConversation $conv): array
+    /**
+     * تحويل يقرّره الكود (طلب صريح لموظف، حارس الوعد، الميزانية، حد المعدّل…): مدخل موثوق لا يراه النموذج ولا يمر
+     * بالمنفّذ، ويعمل ولو كانت الأداة مخفية.
+     */
+    public static function handoffFromCode(WaConversation $conv, string $reason, HandoffReason $why = HandoffReason::HumanRequest): array
     {
-        self::escalate($conv, null, '🙋 تحويل محادثة واتساب');
+        return self::handoff(['reason' => $reason], $conv, $why);
+    }
+
+    /** الأداة نفسها (من النموذج عبر ToolInvoker: handoff_tool)، أو من الكود بسببه الثابت */
+    private static function handoff(array $in, WaConversation $conv, HandoffReason $why = HandoffReason::HandoffTool): array
+    {
+        self::escalate($conv, null, $why);
 
         return [
             'ok' => true,
@@ -574,15 +971,17 @@ class BotTools
         return [
             'linked' => false,
             'note' => 'رقم العميل غير مربوط بحساب في النظام. لا تكشف أي بيانات مالية. '
-                . 'اعتذر بلطف واقترح أن يتواصل معه موظف للتحقق، أو استدعِ handoff_to_human.',
+                .'اعتذر بلطف واقترح أن يتواصل معه موظف للتحقق، أو استدعِ handoff_to_human.',
         ];
     }
 
     private static function date(?string $d): ?string
     {
-        if (!$d) return null;
+        if (!$d) {
+            return null;
+        }
         try {
-            return \Illuminate\Support\Carbon::parse($d)->toDateString();
+            return Carbon::parse($d)->toDateString();
         } catch (\Throwable $e) {
             return null;
         }

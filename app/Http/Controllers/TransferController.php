@@ -102,7 +102,7 @@ class TransferController extends Controller
                     'transfer',
                     $transfer->id
                 );
-                AuditLog::log('approve', 'transfer', $transfer->id, $transfer->transfer_number);
+                AuditLog::log(\App\Enums\AuditAction::Approve, 'transfer', $transfer->id, $transfer->transfer_number);
                 // قيود محاسبية إلزامية — فشلها يُلغي الاعتماد بالكامل
                 AccountingService::recordTransfer($transfer);
                 AccountingService::recordTransferDifference($transfer);
@@ -124,7 +124,7 @@ class TransferController extends Controller
 
         $request->validate(['rejection_reason' => 'required|string|max:500']);
         $transfer->reject(auth()->user(), $request->rejection_reason);
-        AuditLog::log('reject', 'transfer', $transfer->id, $transfer->transfer_number);
+        AuditLog::log(\App\Enums\AuditAction::Reject, 'transfer', $transfer->id, $transfer->transfer_number);
 
         try { \App\Services\NotificationService::operationRejected($transfer, 'حوالة', $transfer->transfer_number); } catch (\Exception $e) {}
 
@@ -152,7 +152,7 @@ class TransferController extends Controller
             try { $this->reverseTransferAccounting($transfer); } catch (\Exception $e) { \Log::error('Reverse Transfer: ' . $e->getMessage()); }
 
             $transfer->startEditing(auth()->user());
-            AuditLog::log('start_edit', 'transfer', $transfer->id, $transfer->transfer_number);
+            AuditLog::log(\App\Enums\AuditAction::StartEdit, 'transfer', $transfer->id, $transfer->transfer_number);
         });
 
         return back()->with('success', "تم فتح الحوالة {$transfer->transfer_number} للتعديل");

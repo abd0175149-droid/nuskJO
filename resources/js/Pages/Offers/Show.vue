@@ -55,6 +55,8 @@
             <OfferBotTab v-if="!isNew && tab === 'bot'" :offer-id="offer.id" :bot="bot" :can="can" :dirty="form.isDirty"/>
             <OfferSalesTab v-if="!isNew && tab === 'sales'" :sales="sales" :can="can"/>
             <OfferCloseTab v-if="!isNew && tab === 'close'" :offer-id="offer.id" :closing="closing" :agents="agents" :can="can"/>
+            <OfferShareTab v-if="!isNew && tab === 'share' && shareEnabled" :offer-id="offer.id"/>
+            <AuditTrail v-if="!isNew" type="offer" :id="offer.id"/>
         </div>
     </AppLayout>
 </template>
@@ -63,11 +65,13 @@
 import { computed, ref } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
+import AuditTrail from '@/Components/AuditTrail.vue';
 import OfferDataTab from '@/Components/Offers/OfferDataTab.vue';
 import OfferOptionsTab from '@/Components/Offers/OfferOptionsTab.vue';
 import OfferBotTab from '@/Components/Offers/OfferBotTab.vue';
 import OfferSalesTab from '@/Components/Offers/OfferSalesTab.vue';
 import OfferCloseTab from '@/Components/Offers/OfferCloseTab.vue';
+import OfferShareTab from '@/Components/Offers/OfferShareTab.vue';
 
 const props = defineProps({
     title: String,
@@ -83,6 +87,8 @@ const props = defineProps({
     bot: Object,
     sales: Object,
     closing: Object,
+    // E38: تبويب المشاركة (رموز QR وبطاقة الحالة) خلف علميه
+    shareEnabled: Boolean,
 });
 
 const isNew = computed(() => !props.offer?.id);
@@ -93,8 +99,10 @@ const tabs = computed(() => [
     { key: 'bot', label: 'ما يراه البوت', needsSaved: true },
     { key: 'sales', label: 'الفواتير والمقاعد', needsSaved: true },
     { key: 'close', label: 'الإقفال', needsSaved: true },
+    ...(props.shareEnabled ? [{ key: 'share', label: '📤 المشاركة', needsSaved: true }] : []),
 ]);
-const tab = ref(['data', 'options', 'bot', 'sales', 'close'].includes(props.tab) && !(isNew.value && ['bot', 'sales', 'close'].includes(props.tab)) ? props.tab : 'data');
+const tab = ref(['data', 'options', 'bot', 'sales', 'close', ...(props.shareEnabled ? ['share'] : [])].includes(props.tab)
+    && !(isNew.value && ['bot', 'sales', 'close', 'share'].includes(props.tab)) ? props.tab : 'data');
 const editable = computed(() => ['data', 'options'].includes(tab.value) && (isNew.value ? props.can?.create : props.can?.update) && !props.summary?.is_closed);
 const setTab = (k) => {
     tab.value = k;

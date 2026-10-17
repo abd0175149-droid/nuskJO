@@ -30,6 +30,8 @@ Thumbs.db
 
 # Database
 database/database.sqlite
+database/data/
+storage/app/backups/
 
 # Large binary files (don't belong in git)
 cover letter.pdf

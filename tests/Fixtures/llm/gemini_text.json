@@ -1,0 +1,11 @@
+{
+  "candidates": [
+    {
+      "content": {"role": "model", "parts": [{"text": "PLACEHOLDER"}]},
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {"promptTokenCount": 120, "candidatesTokenCount": 20, "totalTokenCount": 140},
+  "modelVersion": "gemini-test"
+}

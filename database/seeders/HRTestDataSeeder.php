@@ -56,9 +56,11 @@ class HRTestDataSeeder extends Seeder
                 [
                     'name' => 'أحمد الموظف',
                     'password' => Hash::make('password'),
-                    'role_id' => $salesRole->id,
                 ]
             );
+            if (! $user1->role_id) {
+                $user1->forceFill(['role_id' => $salesRole->id, 'is_active' => true])->save();
+            }
 
             $employee1 = Employee::firstOrCreate(
                 ['user_id' => $user1->id],

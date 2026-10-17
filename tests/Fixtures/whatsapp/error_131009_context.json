@@ -1,0 +1,12 @@
+{
+  "error": {
+    "message": "(#131009) Parameter value is not valid",
+    "type": "OAuthException",
+    "code": 131009,
+    "error_data": {
+      "messaging_product": "whatsapp",
+      "details": "Invalid context: the message_id in context was not found."
+    },
+    "fbtrace_id": "Ax3ContextInvalid0000AA"
+  }
+}

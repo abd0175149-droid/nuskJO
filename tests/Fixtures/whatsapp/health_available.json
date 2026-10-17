@@ -1,0 +1,30 @@
+{
+  "health_status": {
+    "can_send_message": "AVAILABLE",
+    "entities": [
+      {
+        "entity_type": "PHONE_NUMBER",
+        "id": "106540352242922",
+        "can_send_message": "AVAILABLE"
+      },
+      {
+        "entity_type": "WABA",
+        "id": "102290129340398",
+        "can_send_message": "AVAILABLE"
+      },
+      {
+        "entity_type": "BUSINESS",
+        "id": "222170244656060",
+        "can_send_message": "AVAILABLE"
+      },
+      {
+        "entity_type": "APP",
+        "id": "100000000000002",
+        "can_send_message": "AVAILABLE"
+      }
+    ]
+  },
+  "quality_rating": "GREEN",
+  "verified_name": "Test Travel",
+  "id": "106540352242922"
+}

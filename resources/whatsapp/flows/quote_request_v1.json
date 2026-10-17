@@ -1,0 +1,112 @@
+{
+  "version": "7.1",
+  "screens": [
+    {
+      "id": "QUOTE",
+      "title": "طلب تسعير",
+      "terminal": true,
+      "success": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "أخبرنا بما تحتاجه، ويعود إليك موظف بالسعر النهائي وتأكيد التوفّر."
+          },
+          {
+            "type": "Dropdown",
+            "name": "type",
+            "label": "نوع الخدمة",
+            "required": true,
+            "data-source": [
+              { "id": "flight", "title": "تذاكر طيران" },
+              { "id": "package", "title": "باقة سياحية" },
+              { "id": "visa", "title": "تأشيرة" },
+              { "id": "hotel", "title": "فندق" },
+              { "id": "transport", "title": "نقل" },
+              { "id": "other", "title": "أخرى" }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "route_from",
+            "label": "من (مدينة أو مطار)",
+            "input-type": "text",
+            "required": false,
+            "max-chars": 60
+          },
+          {
+            "type": "TextInput",
+            "name": "route_to",
+            "label": "إلى (مدينة أو مطار)",
+            "input-type": "text",
+            "required": false,
+            "max-chars": 60
+          },
+          {
+            "type": "DatePicker",
+            "name": "depart_date",
+            "label": "تاريخ السفر",
+            "required": false
+          },
+          {
+            "type": "DatePicker",
+            "name": "return_date",
+            "label": "تاريخ العودة (اختياري)",
+            "required": false
+          },
+          {
+            "type": "TextInput",
+            "name": "adults",
+            "label": "عدد البالغين (1 إلى 20)",
+            "input-type": "number",
+            "required": true,
+            "max-chars": 2
+          },
+          {
+            "type": "TextInput",
+            "name": "children",
+            "label": "عدد الأطفال (0 إلى 20)",
+            "input-type": "number",
+            "required": false,
+            "max-chars": 2
+          },
+          {
+            "type": "TextInput",
+            "name": "infants",
+            "label": "عدد الرضّع (0 إلى 20)",
+            "input-type": "number",
+            "required": false,
+            "max-chars": 2
+          },
+          {
+            "type": "TextArea",
+            "name": "details",
+            "label": "تفاصيل إضافية",
+            "required": false,
+            "max-length": 300,
+            "helper-text": "لا تكتب رقم جواز أو هوية"
+          },
+          {
+            "type": "Footer",
+            "label": "إرسال الطلب",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "type": "${form.type}",
+                "route_from": "${form.route_from}",
+                "route_to": "${form.route_to}",
+                "depart_date": "${form.depart_date}",
+                "return_date": "${form.return_date}",
+                "adults": "${form.adults}",
+                "children": "${form.children}",
+                "infants": "${form.infants}",
+                "details": "${form.details}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

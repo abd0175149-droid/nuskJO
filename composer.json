@@ -70,7 +70,8 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
-        ]
+        ],
+        "audit:php": "@composer audit --locked --no-dev --abandoned=report --ignore-severity=low --ignore-severity=medium"
     },
     "extra": {
         "laravel": {
@@ -84,6 +85,26 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
+        },
+        "audit": {
+            "abandoned": "report",
+            "ignore": {
+                "PKSA-3r5d-mb8f-1qw9": "laravel/framework: يُغلق بتحديث الحزمة إلى 13.30 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-mdq4-51ck-6kdq": "laravel/framework: يُغلق بتحديث الحزمة إلى 13.30 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-m4t9-vsgq-8khn": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-zyf5-hrxv-hrd7": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-nv44-1b4d-6gjg": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-kr3s-894t-g5w2": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-9q1p-3s19-bp1q": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-cqd6-fg4n-nxpf": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-1q6p-sqkj-8mmj": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-mc58-w91n-f5gv": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-t21r-vtr5-3mdz": "league/commonmark: يُغلق بتحديث الحزمة إلى 2.10.2 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-mnyp-475s-ywph": "mtdowling/jmespath.php (تبعية kreait/firebase-php): يُغلق بتحديث الحزمة إلى 2.9.1 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-xmwy-rmx5-m7h4": "symfony/http-foundation: يُغلق بتحديث الحزمة إلى 8.1.7 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-dw7n-x7f5-zf63": "symfony/http-kernel: يُغلق بتحديث الحزمة إلى 8.0.12 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15",
+                "PKSA-2n2k-66v2-bwg3": "symfony/mime: يُغلق بتحديث الحزمة إلى 8.0.12 أو أحدث (E26.9، composer update على نسك). مراجعة قبل 2026-11-15"
+            }
         }
     },
     "minimum-stability": "stable",

@@ -21,7 +21,14 @@
                     >{{ tb.label }}</button>
                 </div>
 
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- مبدّل الفترة (E24، analytics_v2): لكل التبويبات -->
+                    <div v-if="v2" class="flex items-center gap-1.5" role="group" aria-label="الفترة" data-test="periods">
+                        <button v-for="(label, key) in PERIODS" :key="key" type="button" :aria-pressed="periodSel === key" :data-test="`period-${key}`"
+                                class="px-3 py-2 rounded-lg border text-xs font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                                :class="periodSel === key ? 'border-gold-400 bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-400' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gold-300'"
+                                :disabled="loading" @click="setPeriod(key)">{{ label }}</button>
+                    </div>
                     <span v-if="refreshError" class="text-xs text-red-600 dark:text-red-400">تعذّر التحديث — حاول مرّة أخرى</span>
                     <span v-else-if="refreshedAt" class="text-xs text-gray-400" dir="ltr">{{ refreshedAt }}</span>
                     <button
@@ -34,6 +41,12 @@
                 </div>
             </div>
 
+            <!-- التبويب «الحركة» وبطاقة تكلفة ميتا (E24، analytics_v2) -->
+            <div v-if="v2" v-show="tab === 'traffic'" class="space-y-5" role="tabpanel" aria-label="الحركة">
+                <MetaCostCard v-if="costData" :cost="costData"/>
+                <AnalyticsTraffic v-if="trafficData" :traffic="trafficData" :period="periodSel"/>
+            </div>
+
             <!-- ============================================================ -->
             <!-- ==================  التبويب ١ — الاستهلاك  ================= -->
             <!-- ============================================================ -->
@@ -43,11 +56,11 @@
                 <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5">
                     <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
                         <div>
-                            <p class="text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400 mb-1">التكلفة + منحنى 30 يوماً</p>
+                            <p class="text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400 mb-1">{{ v2 ? `التكلفة — ${PERIODS[periodSel]}` : 'التكلفة + منحنى 30 يوماً' }}</p>
                             <p class="text-2xl font-bold tnum" :style="{ color: C_COST }" dir="ltr">{{ money(rangeCost) }}</p>
-                            <p class="text-xs text-gray-400 mt-1">آخر {{ range }} يوماً · اليوم {{ money(t.today_cost) }} · الإجمالي {{ money(t.cost_total) }}</p>
+                            <p class="text-xs text-gray-400 mt-1">{{ v2 ? PERIODS[periodSel] : `آخر ${range} يوماً` }} · اليوم {{ money(t.today_cost) }} · الإجمالي {{ money(t.cost_total) }}<span v-if="t.rolled_up_months"> · ما قبل 12 شهراً مجمّع</span></p>
                         </div>
-                        <div class="flex items-center gap-2" role="group" aria-label="مدى الأيام المعروضة">
+                        <div v-if="!v2" class="flex items-center gap-2" role="group" aria-label="مدى الأيام المعروضة">
                             <button
                                 v-for="r in ranges" :key="r"
                                 type="button"
@@ -96,7 +109,7 @@
                 <!-- ②  أعمدة التوكنز — 14 يوماً -->
                 <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5">
                     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-                        <p class="text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">أعمدة التوكنز — 14 يوماً</p>
+                        <p class="text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">{{ v2 ? `أعمدة التوكنز — ${PERIODS[periodSel]}` : 'أعمدة التوكنز — 14 يوماً' }}</p>
                         <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" :style="{ background: C_IN }"></span> إدخال</span>
                             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" :style="{ background: C_OUT }"></span> إخراج</span>
@@ -190,10 +203,10 @@
                     <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 flex flex-col">
                         <p class="text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400 mb-2">المتوسّط اليوميّ</p>
                         <p class="text-2xl font-bold tnum" :style="{ color: C_COST }" dir="ltr">{{ money(t.daily_avg) }}</p>
-                        <p class="text-xs text-gray-400 mt-2">محسوب على <span class="tnum" dir="ltr">{{ num(t.active_days) }}</span> يوماً نشطاً لا على 30.</p>
+                        <p class="text-xs text-gray-400 mt-2">محسوب على <span class="tnum" dir="ltr">{{ num(t.active_days) }}</span> {{ v2 && periodSel === '24h' ? 'يوماً (الفترة 24 ساعة).' : 'يوماً نشطاً لا على عدد أيام الفترة.' }}</p>
                         <div class="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50 grid grid-cols-2 gap-2 text-xs">
-                            <div><p class="text-gray-500 dark:text-gray-400">كلفة 30 يوماً</p><p class="font-bold tnum text-gray-700 dark:text-gray-200" dir="ltr">{{ money(t.cost_30) }}</p></div>
-                            <div><p class="text-gray-500 dark:text-gray-400">ردود 30 يوماً</p><p class="font-bold tnum text-gray-700 dark:text-gray-200" dir="ltr">{{ num(t.replies_30) }}</p></div>
+                            <div><p class="text-gray-500 dark:text-gray-400">{{ v2 ? 'كلفة الفترة' : 'كلفة 30 يوماً' }}</p><p class="font-bold tnum text-gray-700 dark:text-gray-200" dir="ltr">{{ money(t.cost_30) }}</p></div>
+                            <div><p class="text-gray-500 dark:text-gray-400">{{ v2 ? 'ردود الفترة' : 'ردود 30 يوماً' }}</p><p class="font-bold tnum text-gray-700 dark:text-gray-200" dir="ltr">{{ num(t.replies_30) }}</p></div>
                         </div>
                     </section>
 
@@ -424,6 +437,9 @@
                     </div>
                     <p v-if="weekly.length && weekMaxReal === 0" class="text-xs text-gray-400 mt-2">لا طلبات ولا حجوزات في الأسابيع الثمانية الماضية.</p>
                 </section>
+
+                <!-- ⑥ مصادر المحادثات (E38) -->
+                <EntrySourcesPanel v-if="props.entries" :initial="props.entries"/>
             </div>
         </div>
     </AppLayout>
@@ -434,8 +450,16 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import EntrySourcesPanel from '@/Components/WhatsApp/EntrySourcesPanel.vue';
+import AnalyticsTraffic from '@/Components/WhatsApp/AnalyticsTraffic.vue';
+import MetaCostCard from '@/Components/WhatsApp/MetaCostCard.vue';
 
-const props = defineProps({ title: String, usage: Object, quality: Object });
+const props = defineProps({
+    title: String, usage: Object, quality: Object, entries: { type: Object, default: null },
+    // E24 (analytics_v2): الفترة والحركة وتكلفة ميتا
+    v2: { type: Boolean, default: false }, period: { type: String, default: '7d' },
+    traffic: { type: Object, default: null }, metaCost: { type: Object, default: null },
+});
 
 /* ===================== الألوان ===================== */
 const C_IN = '#3987e5';
@@ -448,10 +472,16 @@ const C_WON = '#199e70';
 const tabs = [
     { key: 'usage', label: 'الاستهلاك والتكلفة' },
     { key: 'quality', label: 'الجودة' },
+    ...(props.v2 ? [{ key: 'traffic', label: '📈 الحركة' }] : []),
 ];
 const tab = ref('usage');
 const ranges = [7, 14, 30];
 const range = ref(30);
+// E24: الفترة الموحّدة لكل التبويبات (24h و7d و30d)، والحركة وتكلفة ميتا من الخادم
+const PERIODS = { '24h': '24 ساعة', '7d': '7 أيام', '30d': '30 يوماً' };
+const periodSel = ref(props.period || '7d');
+const trafficData = ref(props.traffic);
+const costData = ref(props.metaCost);
 const pinned = ref(null);
 
 const usage = ref(props.usage && typeof props.usage === 'object' ? props.usage : {});
@@ -465,10 +495,12 @@ async function refresh() {
     loading.value = true;
     refreshError.value = false;
     try {
-        const { data } = await axios.get('/api/whatsapp/analytics');
+        const { data } = await axios.get('/api/whatsapp/analytics', props.v2 ? { params: { period: periodSel.value } } : undefined);
         if (data && typeof data === 'object') {
             if (data.usage && typeof data.usage === 'object') usage.value = data.usage;
             if (data.quality && typeof data.quality === 'object') quality.value = data.quality;
+            if (data.traffic) trafficData.value = data.traffic;
+            if (data.metaCost) costData.value = data.metaCost;
             seedPrices();
             pinned.value = null;
             refreshedAt.value = new Date().toLocaleTimeString('en-GB');
@@ -478,6 +510,18 @@ async function refresh() {
     } finally {
         loading.value = false;
     }
+}
+
+/** الفترة الموحّدة: تحديث البيانات وعنوان الصفحة (?period=) بلا إعادة تحميل */
+async function setPeriod(key) {
+    if (key === periodSel.value || loading.value) return;
+    periodSel.value = key;
+    if (window.history?.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('period', key);
+        window.history.replaceState(window.history.state, '', url.toString());
+    }
+    await refresh();
 }
 
 /* ===================== أدوات التنسيق ===================== */
@@ -565,7 +609,7 @@ const costPts = computed(() => {
         y: +(CH.padT + innerH - (n(d.cost) / costScale.value) * innerH).toFixed(2),
     }));
 });
-const selStart = computed(() => Math.max(0, series.value.length - range.value));
+const selStart = computed(() => (props.v2 ? 0 : Math.max(0, series.value.length - range.value)));
 const selPts = computed(() => costPts.value.slice(selStart.value));
 const rangeCost = computed(() => series.value.slice(selStart.value).reduce((s, d) => s + n(d.cost), 0));
 const costXLabels = computed(() => costPts.value.filter((p) => p.i % 5 === 0));
@@ -581,7 +625,7 @@ const costArea = (pts) => {
 
 /* --- ② أعمدة التوكنز 14 يوماً --- */
 const TB = { h: 190, padT: 14, padB: 28, padL: 56, padR: 12 };
-const last14 = computed(() => series.value.slice(-14));
+const last14 = computed(() => (props.v2 ? series.value : series.value.slice(-14)));
 const tokMaxReal = computed(() => Math.max(0, ...last14.value.map((d) => Math.max(n(d.in), n(d.out)))));
 const tokScale = computed(() => (tokMaxReal.value > 0 ? tokMaxReal.value : 1));
 const tokBars = computed(() => {

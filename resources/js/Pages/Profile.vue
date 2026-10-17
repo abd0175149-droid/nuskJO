@@ -69,6 +69,18 @@
                 </form>
             </div>
 
+            <!-- الأمان والتحقق بخطوتين (E27) -->
+            <Link v-if="security?.available" href="/profile/security"
+                  class="flex items-center gap-3 rounded-2xl border shadow-sm p-5 mb-6 transition-colors"
+                  :class="isDark ? 'bg-gray-900 border-gray-800 hover:border-gold-700' : 'bg-white border-gray-200 hover:border-gold-400'">
+                <span class="text-2xl">🔐</span>
+                <span class="flex-1 min-w-0">
+                    <span class="block text-base font-bold" :class="isDark ? 'text-gold-400' : 'text-gold-700'">الأمان والتحقق بخطوتين</span>
+                    <span class="block text-sm" :class="isDark ? 'text-gray-400' : 'text-gray-500'">{{ security?.enabled ? 'مفعّل — رموز الاسترداد والتعطيل' : 'رمز من هاتفك مع كلمة المرور' }}</span>
+                </span>
+                <span :class="isDark ? 'text-gray-500' : 'text-gray-400'">←</span>
+            </Link>
+
             <!-- Password Card -->
             <div class="rounded-2xl border shadow-sm p-6"
                  :class="isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'">
@@ -90,7 +102,7 @@
                     <!-- New Password -->
                     <div>
                         <label class="block text-sm font-medium mb-1.5" :class="isDark ? 'text-gray-300' : 'text-gray-700'">كلمة المرور الجديدة</label>
-                        <input v-model="passForm.password" type="password" required minlength="6"
+                        <input v-model="passForm.password" type="password" required minlength="8"
                                class="w-full px-4 py-2.5 rounded-xl border text-sm transition-colors focus:ring-2 focus:ring-gold-400 focus:border-gold-400 outline-none"
                                :class="isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'"/>
                         <p v-if="passForm.errors.password" class="text-red-500 text-xs mt-1">{{ passForm.errors.password }}</p>
@@ -99,7 +111,7 @@
                     <!-- Confirm Password -->
                     <div>
                         <label class="block text-sm font-medium mb-1.5" :class="isDark ? 'text-gray-300' : 'text-gray-700'">تأكيد كلمة المرور</label>
-                        <input v-model="passForm.password_confirmation" type="password" required minlength="6"
+                        <input v-model="passForm.password_confirmation" type="password" required minlength="8"
                                class="w-full px-4 py-2.5 rounded-xl border text-sm transition-colors focus:ring-2 focus:ring-gold-400 focus:border-gold-400 outline-none"
                                :class="isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'"/>
                     </div>
@@ -117,9 +129,11 @@
 
 <script setup>
 import { computed } from 'vue';
-import { usePage, useForm } from '@inertiajs/vue3';
+import { usePage, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import EmployeeLayout from '@/Components/Layout/EmployeeLayout.vue';
+
+defineProps({ security: { type: Object, default: null } });
 
 const page = usePage();
 const user = computed(() => page.props.auth?.user);

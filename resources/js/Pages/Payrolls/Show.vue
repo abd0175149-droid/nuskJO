@@ -113,7 +113,9 @@ import { computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { usePermissions } from '@/composables/usePermissions';
+import { useConfirm } from '@/composables/useConfirm';
 const { can } = usePermissions();
+const { confirm, prompt } = useConfirm();
 
 const props = defineProps({ payroll: Object });
 const monthNames = { 1:'يناير', 2:'فبراير', 3:'مارس', 4:'أبريل', 5:'مايو', 6:'يونيو', 7:'يوليو', 8:'أغسطس', 9:'سبتمبر', 10:'أكتوبر', 11:'نوفمبر', 12:'ديسمبر' };
@@ -138,9 +140,10 @@ const totals = computed(() => {
     };
 });
 
-const submitPayroll = () => { if (confirm('تقديم المسير للاعتماد؟')) router.post('/payrolls/' + props.payroll.id + '/submit', {}, { preserveScroll: true }); };
-const approvePayroll = () => { if (confirm('اعتماد المسير؟ سيتم خصم الأقساط والمخالفات تلقائياً.')) router.post('/payrolls/' + props.payroll.id + '/approve', {}, { preserveScroll: true }); };
-const rejectPayroll = () => { const r = prompt('سبب الرفض:'); if (r !== null) router.post('/payrolls/' + props.payroll.id + '/reject', { rejection_reason: r }, { preserveScroll: true }); };
+// تأكيد موحّد (E16.9)
+const submitPayroll = async () => { if (await confirm({ title: 'تقديم المسير للاعتماد', message: 'تقديم هذا المسير للاعتماد؟', confirmLabel: '📤 تقديم' })) router.post('/payrolls/' + props.payroll.id + '/submit', {}, { preserveScroll: true }); };
+const approvePayroll = async () => { if (await confirm({ title: 'اعتماد المسير', message: 'اعتماد المسير؟ ستُخصم الأقساط والمخالفات تلقائياً.', confirmLabel: '✅ اعتماد', danger: true })) router.post('/payrolls/' + props.payroll.id + '/approve', {}, { preserveScroll: true }); };
+const rejectPayroll = async () => { const r = await prompt({ title: 'رفض المسير', label: 'سبب الرفض', maxLength: 500, confirmLabel: 'رفض', danger: true }); if (r !== null) router.post('/payrolls/' + props.payroll.id + '/reject', { rejection_reason: r }, { preserveScroll: true }); };
 
 const statusClass = (s) => ({ draft: 'bg-gray-100 text-gray-600', pending: 'bg-yellow-100 text-yellow-700', approved: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700' }[s] || '');
 const statusLabel = (s) => ({ draft: 'مسودة', pending: 'معلقة', approved: 'معتمدة', rejected: 'مرفوضة' }[s] || s);

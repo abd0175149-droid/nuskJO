@@ -11,6 +11,9 @@
                 <p>من يراسل رقم البوت على واتساب من رقم مسجّل هنا يردّ عليه <b>المساعد الإداري</b> بدل بوت العملاء، ولا يستطيع إلا ما سمحت به لرقمه: تقارير، أو إدارة قاعدة المعرفة، أو تشغيل أدوات البوت وإيقافها.</p>
                 <p>أي تعديل يطلبه يُعرض عليه أولاً كمعاينة، ولا يُنفَّذ إلا بعد أن يردّ بـ«تأكيد» في رسالة جديدة. وكل ما يُنفَّذ أو يُرفض يظهر في السجلّ أسفل الصفحة.</p>
                 <p v-if="!botReady" class="text-amber-700 dark:text-amber-400 font-bold">⚠️ قناة واتساب غير مهيّأة بعد من إعدادات البوت.</p>
+                <p>لا يُنفَّذ إلا ما يملكه <b>المستخدم المرتبط</b> بالرقم بدوره في النظام، والرقم بلا مستخدم مرتبط للقراءة فقط.
+                    <span v-if="!modes.rbacEnforced" class="text-gray-500 dark:text-gray-400">(هذا الشرط يُسجَّل الآن ولا يُفرض بعد.)</span></p>
+                <p v-if="modes.readonly" class="text-red-700 dark:text-red-400 font-bold">🔒 وضع القراءة فقط مفعّل: كل تعديل من أرقام الإدارة موقوف.</p>
             </div>
 
             <div class="flex justify-between items-center gap-3 flex-wrap">
@@ -28,21 +31,32 @@
                                 👔 {{ n.name }}
                                 <span v-if="!n.is_active" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">موقوف</span>
                             </p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span class="font-mono" dir="ltr">+{{ n.phone }}</span><span v-if="n.user_name"> · حساب: {{ n.user_name }}</span><span v-if="n.last_used"> · آخر استخدام {{ n.last_used }}</span></p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span class="font-mono" dir="ltr">+{{ n.phone }}</span><span v-if="n.user_name"> · حساب: {{ n.user_name }}</span><span v-if="n.user_inactive" class="mr-1 px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 font-bold">المستخدم المرتبط معطّل — يُعامَل كعميل</span><span v-if="n.last_used"> · آخر استخدام {{ n.last_used }}</span></p>
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
                             <button type="button" @click="openForm(n)" class="px-2 py-1 rounded-lg text-xs font-bold text-gold-700 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20">✏️ تعديل</button>
-                            <button type="button" @click="remove(n)" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
+                            <button type="button" @click="remove(n)" :aria-label="'حذف ' + n.name" title="حذف" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
                         </div>
                     </div>
+                    <!-- E27: شرط التحقق بخطوتين لمستخدم الرقم، والمساعد موقوف ما دام لم يفعّله -->
+                    <p v-if="n.test_recipient" class="text-xs"><span data-test="test-recipient-badge" class="px-2 py-0.5 rounded-full font-bold bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">🧪 يستقبل الرسائل التجريبية</span></p>
+                    <p v-if="n.require_mfa || n.mfa_blocked" class="flex flex-wrap gap-1.5 text-xs">
+                        <span v-if="n.require_mfa" class="px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">🔐 يشترط تحققاً بخطوتين<template v-if="!modes.mfaRequired"> (غير مفروض بعد)</template></span>
+                        <span v-if="n.mfa_blocked" class="px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">المستخدم المرتبط بلا تحقق بخطوتين — المساعد موقوف</span>
+                    </p>
                     <p v-if="n.client_match" class="text-xs p-2 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">⚠️ هذا الرقم مسجّل أيضاً للعميل «{{ n.client_match }}». سيُخدم كإدارة لا كعميل.</p>
                     <div v-for="(keys, group) in groupedOf(n.permissions)" :key="group" class="space-y-1">
                         <p class="text-[11px] font-bold text-gray-400">{{ group }}</p>
                         <div class="flex flex-wrap gap-1.5">
                             <span v-for="k in keys" :key="k" class="px-2 py-0.5 rounded-full text-xs font-bold"
-                                  :class="catalog[k]?.write ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gold-50 text-gold-800 dark:bg-gold-900/30 dark:text-gold-200'">{{ catalog[k]?.label || k }}</span>
+                                  :class="[catalog[k]?.write ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gold-50 text-gold-800 dark:bg-gold-900/30 dark:text-gold-200',
+                                           (n.effective || n.permissions).includes(k) ? '' : 'line-through opacity-60']"
+                                  :title="(n.effective || n.permissions).includes(k) ? '' : 'لا يدعمها دور المستخدم المرتبط'">{{ catalog[k]?.label || k }}</span>
                         </div>
                     </div>
+                    <ul v-if="n.warnings?.length" class="space-y-1">
+                        <li v-for="(w, i) in n.warnings" :key="i" class="text-xs p-2 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">⚠️ {{ w }}</li>
+                    </ul>
                     <p v-if="!n.permissions.length" class="text-xs text-gray-400">لا صلاحيات — يردّ المساعد بأنّه لا يملك أدوات لهذا الرقم.</p>
                     <p v-if="n.notes" class="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800 pt-2">{{ n.notes }}</p>
                 </div>
@@ -56,7 +70,10 @@
             <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
                 <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
                     <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100">سجلّ الإجراءات من واتساب</h3>
-                    <span class="text-xs text-gray-400">آخر 40</span>
+                    <span class="text-xs text-gray-400">آخر 40
+                        <Link v-if="$page.props.features?.audit_page && ($page.props.auth.isAdmin || $page.props.auth.permissions?.includes('audit.view'))"
+                              href="/audit-logs?tab=admin" class="ms-2 font-bold text-gold-700 dark:text-gold-400 hover:underline">السجل الكامل ←</Link>
+                    </span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
@@ -81,13 +98,9 @@
         </div>
 
         <!-- ===== نموذج الرقم ===== -->
-        <div v-if="showForm" class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto" @click.self="showForm = false">
-            <form @submit.prevent="save" class="w-full max-w-3xl mt-[4vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 space-y-5">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ editing ? 'تعديل رقم إدارة' : 'رقم إدارة جديد' }}</h3>
-                    <button type="button" @click="showForm = false" class="text-gray-400 hover:text-red-500 text-xl" aria-label="إغلاق">&times;</button>
-                </div>
-
+        <!-- AppModal (E16.9): Escape والخلفية لا يضيّعان تعديلات غير محفوظة -->
+        <AppModal :open="showForm" :title="editing ? 'تعديل رقم إدارة' : 'رقم إدارة جديد'" size="xl" :dirty="formDirty" @close="showForm = false">
+            <form @submit.prevent="save" class="space-y-5">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="an-phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم واتساب *</label>
@@ -107,12 +120,30 @@
                             <option :value="null">—</option>
                             <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
                         </select>
-                        <p class="mt-1 text-xs text-gray-400">لنسبة ما يعدّله إلى حسابه في سجلّ التدقيق.</p>
+                        <p class="mt-1 text-xs text-gray-400">لنسبة ما يعدّله إلى حسابه في سجلّ التدقيق، ولا يُنفَّذ إلا ما يملكه هذا الحساب بدوره. بلا حساب: قراءة فقط.</p>
                     </div>
                     <div class="flex items-center">
                         <label for="an-active" class="flex items-center gap-2 cursor-pointer">
                             <input id="an-active" v-model="form.is_active" type="checkbox" class="w-4 h-4 rounded text-gold-500"/>
                             <span class="text-sm text-gray-700 dark:text-gray-300">فعّال — أوقفه فوراً إن فُقد الهاتف</span>
+                        </label>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="an-mfa" class="flex items-start gap-2 cursor-pointer">
+                            <input id="an-mfa" type="checkbox" :checked="mfaLocked || form.require_mfa" @change="form.require_mfa = $event.target.checked" :disabled="mfaLocked" class="mt-0.5 w-4 h-4 rounded text-gold-500 shrink-0 disabled:opacity-60"/>
+                            <span class="text-sm text-gray-700 dark:text-gray-300">يشترط تحققاً بخطوتين لمستخدمه المرتبط — يتوقف المساعد لهذا الرقم حتى يفعّله
+                                <span class="block text-xs text-gray-400">{{ mfaHint }}</span>
+                            </span>
+                        </label>
+                        <p v-if="form.errors.user_id" class="mt-1 text-xs text-red-500">{{ form.errors.user_id }}</p>
+                    </div>
+                    <!-- E23: المستلمون الوحيدون للإرسال التجريبي من الإعدادات (قرار المالك أي الأرقام) -->
+                    <div class="md:col-span-2">
+                        <label for="an-test" class="flex items-start gap-2 cursor-pointer">
+                            <input id="an-test" v-model="form.test_recipient" type="checkbox" class="mt-0.5 w-4 h-4 rounded text-gold-500 shrink-0"/>
+                            <span class="text-sm text-gray-700 dark:text-gray-300">يستقبل الرسائل التجريبية
+                                <span class="block text-xs text-gray-400">«إرسال تجريبي» في الإعدادات يصل إلى هذه الأرقام وحدها، بنافذة مفتوحة ونصوص ثابتة.<template v-if="!testSendEnabled"> الميزة مطفأة الآن (wa_test_send).</template></span>
+                            </span>
                         </label>
                     </div>
                 </div>
@@ -152,14 +183,16 @@
                     <button type="button" @click="showForm = false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">إلغاء</button>
                 </div>
             </form>
-        </div>
+        </AppModal>
     </AppLayout>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue';
-import { router, useForm } from '@inertiajs/vue3';
+import { router, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import AppModal from '@/Components/AppModal.vue';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({
     numbers: { type: Array, default: () => [] },
@@ -168,11 +201,29 @@ const props = defineProps({
     actions: { type: Array, default: () => [] },
     botPhone: { type: String, default: null },
     botReady: { type: Boolean, default: true },
+    toolLabels: { type: Object, default: () => ({ tools: {}, actions: {} }) },
+    modes: { type: Object, default: () => ({ readonly: false, rbacEnforced: false, mfaRequired: false }) },
+    isAdmin: { type: Boolean, default: false },
+    testSendEnabled: { type: Boolean, default: false },
 });
 
 const showForm = ref(false);
 const editing = ref(null);
-const form = useForm({ phone: '', name: '', user_id: null, permissions: [], is_active: true, notes: '' });
+const form = useForm({ phone: '', name: '', user_id: null, permissions: [], is_active: true, notes: '', require_mfa: false, test_recipient: false });
+
+// E27: رقم فيه أدوات تعديل يشترط العامل الثاني لمستخدمه حين يُفرض العلم؛ لا يطفئه إلا المدير
+const hasWrites = computed(() => form.permissions.some((k) => props.catalog[k]?.write));
+const mfaLocked = computed(() => props.modes.mfaRequired && hasWrites.value && !props.isAdmin);
+const mfaHint = computed(() => {
+    if (!props.modes.mfaRequired) return 'يُحفظ الآن ويُفرض حين يُفعَّل شرط التحقق لأرقام الإدارة.';
+    if (hasWrites.value) return props.isAdmin ? 'إلزامي للرقم الذي يعدّل؛ إطفاؤه قرار المدير ويُسجَّل.' : 'إلزامي للرقم الذي يعدّل، ويحتاج حساب صاحبه.';
+    return 'اختياري لرقم التقارير وحدها.';
+});
+
+const { confirm } = useConfirm();
+// لقطة الحقول عند الفتح: ما يختلف عنها تعديل غير محفوظ
+const baseline = ref('');
+const formDirty = computed(() => showForm.value && JSON.stringify(form.data()) !== baseline.value);
 
 // الصلاحيات مجمّعة كما في الكتالوج: التقارير، قاعدة المعرفة، إدارة الأدوات
 const groups = computed(() => {
@@ -195,6 +246,10 @@ const openForm = (n = null) => {
     form.permissions = n ? [...n.permissions] : [];
     form.is_active = n ? n.is_active : true;
     form.notes = n?.notes || '';
+    form.test_recipient = !!n?.test_recipient;
+    // رقم جديد والشرط مفروض: مفعّل افتراضياً (يطفئه المدير لرقم التقارير)
+    form.require_mfa = n ? !!n.require_mfa : !!props.modes.mfaRequired;
+    baseline.value = JSON.stringify(form.data());
     showForm.value = true;
 };
 
@@ -205,24 +260,19 @@ const preset = (p) => {
 
 const save = () => {
     const opts = { preserveScroll: true, onSuccess: () => { showForm.value = false; } };
+    form.transform((data) => ({ ...data, require_mfa: mfaLocked.value || data.require_mfa }));
     if (editing.value) form.put('/whatsapp/admin-numbers/' + editing.value.id, opts);
     else form.post('/whatsapp/admin-numbers', opts);
 };
 
-const remove = (n) => {
-    if (!confirm(`حذف رقم «${n.name}» من أرقام الإدارة؟ سيُخدم بعدها كأي عميل.`)) return;
+const remove = async (n) => {
+    if (!(await confirm({ title: 'حذف رقم إدارة', message: `حذف رقم «${n.name}» من أرقام الإدارة؟ سيُخدم بعدها كأي عميل.`, confirmLabel: '🗑️ حذف', danger: true }))) return;
     router.delete('/whatsapp/admin-numbers/' + n.id, { preserveScroll: true });
 };
 
-const TOOL_LABELS = {
-    get_daily_summary: 'ملخّص اليوم', get_sales_report: 'تقرير المبيعات', get_travelers: 'المسافرون',
-    get_pending_approvals: 'ما ينتظر الاعتماد', get_open_quotes: 'طلبات التسعير', find_client: 'بحث عن عميل',
-    manage_knowledge: 'قاعدة المعرفة', manage_bot_tools: 'أدوات البوت', set_customer_bot: 'بوت العملاء',
-};
-const ACTION_LABELS = {
-    list: 'قائمة', view: 'عرض', search: 'بحث', add: 'إضافة', update: 'تعديل', delete: 'حذف',
-    enable: 'تفعيل', disable: 'إيقاف', status: 'الحالة', on: 'تشغيل', off: 'إيقاف',
-};
+// من سجل أدوات المساعد في الخادم (AdminTools::labels)
+const TOOL_LABELS = props.toolLabels?.tools || {};
+const ACTION_LABELS = props.toolLabels?.actions || {};
 const actionLabel = (a) => (TOOL_LABELS[a.tool] || a.tool) + (a.action ? ' · ' + (ACTION_LABELS[a.action] || a.action) : '');
 const statusLabel = { done: 'نُفّذ', preview: 'معاينة', denied: 'مرفوض', error: 'خطأ' };
 const statusClass = {

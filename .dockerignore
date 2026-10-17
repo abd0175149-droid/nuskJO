@@ -1,11 +1,27 @@
-# Context & docs
+# Context & docs (قاعدة *.md تطابق الجذر فقط، فتُستثنى المجلدات صراحة)
 context/
+docs/
 *.md
+**/*.md
 
-# Development
+# سكربتات تجريب لا مكان لها في صورة الإنتاج
+check_admin.php
+test.php
+test_request.php
+scratch/
+docker-compose.yml.bak
+Dockerfile.test
+Dockerfile.test.dockerignore
+scripts/
+.github/
+# خط أساس التدقيق واستثناءات Trivy (E26): للبوابات على المضيف وفي CI، لا للصورة
+security/
+.trivyignore
+
+# Development — لا ملف بيئة في الصورة أبداً: البيئة من env_file، ومتغيرات VITE_* سرّ بناء (docker-compose.yml)
 .env
+.env.*
 .env.backup
-.env.example
 .vscode/
 .idea/
 .cursor/
@@ -33,6 +49,23 @@ phpunit.xml
 # OS
 .DS_Store
 Thumbs.db
+
+# قواعد ونسخ وأسرار لا تدخل الصورة أبداً (COPY . . ينسخ كل ما في /opt/nuskJO)
+database/*.sqlite*
+*.sqlite*
+**/*.sqlite*
+database/data/
+storage/
+*.age
+*.sql
+*.bak
+**/*.sql
+**/*.bak
+.mcp.json
+mcp.log
+testsprite_tests/
+*.pdf
+*.log
 
 # Misc
 *.png

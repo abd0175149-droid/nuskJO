@@ -12,8 +12,8 @@ class LlmFactory
     public static function make(?string $provider): LlmProvider
     {
         return match ($provider) {
-            'anthropic' => new AnthropicProvider(),
-            default => new GeminiProvider(),   // الافتراضي: جوجل
+            'anthropic' => new AnthropicProvider,
+            default => new GeminiProvider,   // الافتراضي: جوجل
         };
     }
 }

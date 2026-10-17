@@ -47,7 +47,7 @@
                             <button type="button" @click="move(i, 1)" :disabled="i === entries.length - 1" :aria-label="'تحريك ' + e.title + ' للأسفل'" class="px-2 py-1 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30">▼</button>
                             <button type="button" @click="toggle(e)" class="px-2 py-1 rounded-lg text-xs font-bold hover:bg-gray-100 dark:hover:bg-gray-800" :class="e.is_active ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'">{{ e.is_active ? 'إيقاف' : 'تفعيل' }}</button>
                             <button type="button" @click="openForm(e)" class="px-2 py-1 rounded-lg text-xs font-bold text-gold-700 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20">✏️ تعديل</button>
-                            <button type="button" @click="remove(e)" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
+                            <button type="button" @click="remove(e)" :aria-label="'حذف ' + e.title" title="حذف" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
                         </div>
                     </div>
                     <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed" :class="expanded[e.id] ? '' : 'line-clamp-3'">{{ e.content }}</p>
@@ -65,15 +65,12 @@
         </div>
 
         <!-- ===== نموذج الإضافة والتعديل ===== -->
-        <div v-if="showForm" class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto" @click.self="showForm = false">
-            <form @submit.prevent="save" class="w-full max-w-2xl mt-[5vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 space-y-4">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ editing ? 'تعديل معلومة' : 'معلومة جديدة' }}</h3>
-                    <button type="button" @click="showForm = false" class="text-gray-400 hover:text-red-500 text-xl" aria-label="إغلاق">&times;</button>
-                </div>
+        <!-- AppModal (E16.9): Escape والخلفية لا يضيّعان تعديلات غير محفوظة -->
+        <AppModal :open="showForm" :title="editing ? 'تعديل معلومة' : 'معلومة جديدة'" size="lg" :dirty="formDirty" @close="showForm = false">
+            <form @submit.prevent="save" class="space-y-5">
                 <div>
                     <label for="kb-title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">العنوان *</label>
-                    <input id="kb-title" v-model="form.title" :maxlength="limits.title" required placeholder="مثال: الإلغاء والاسترداد"
+                    <input id="kb-title" data-autofocus v-model="form.title" :maxlength="limits.title" required placeholder="مثال: الإلغاء والاسترداد"
                            class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 text-sm focus:ring-2 focus:ring-gold-500 focus:outline-none"/>
                     <p v-if="form.errors.title" class="mt-1 text-xs text-red-500">{{ form.errors.title }}</p>
                 </div>
@@ -94,7 +91,7 @@
                     <button type="button" @click="showForm = false" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">إلغاء</button>
                 </div>
             </form>
-        </div>
+        </AppModal>
     </AppLayout>
 </template>
 
@@ -102,6 +99,8 @@
 import { ref, reactive, computed } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import AppModal from '@/Components/AppModal.vue';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({
     entries: { type: Array, default: () => [] },
@@ -112,6 +111,10 @@ const expanded = reactive({});
 const showForm = ref(false);
 const editing = ref(null);
 const form = useForm({ title: '', content: '', is_active: true });
+const { confirm } = useConfirm();
+// لقطة الحقول عند الفتح: ما يختلف عنها تعديل غير محفوظ
+const baseline = ref('');
+const formDirty = computed(() => showForm.value && JSON.stringify(form.data()) !== baseline.value);
 
 const activeCount = computed(() => props.entries.filter(e => e.is_active).length);
 const activeChars = computed(() => props.entries.filter(e => e.is_active).reduce((s, e) => s + e.title.length + e.content.length, 0));
@@ -123,6 +126,7 @@ const openForm = (e = null) => {
     form.title = e?.title || '';
     form.content = e?.content || '';
     form.is_active = e ? e.is_active : true;
+    baseline.value = JSON.stringify(form.data());
     showForm.value = true;
 };
 
@@ -136,8 +140,8 @@ const toggle = (e) => {
     router.put('/whatsapp/knowledge/' + e.id, { title: e.title, content: e.content, is_active: !e.is_active }, { preserveScroll: true });
 };
 
-const remove = (e) => {
-    if (!confirm(`حذف «${e.title}» نهائياً؟ تبقى نسخته في سجلّ التدقيق.`)) return;
+const remove = async (e) => {
+    if (!(await confirm({ title: 'حذف معلومة', message: `حذف «${e.title}» نهائياً؟ تبقى نسخته في سجلّ التدقيق.`, confirmLabel: '🗑️ حذف', danger: true }))) return;
     router.delete('/whatsapp/knowledge/' + e.id, { preserveScroll: true });
 };
 

@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Sheena Nelson"
+                },
+                "wa_id": "16505551234"
+              }
+            ],
+            "messages": [
+              {
+                "from": "16505551234",
+                "id": "wamid.HBgLMTY1MDU1NTEyMzQVAgASGBRFMTRBMUIyQzNENEU1RjYwNzE4MgA=",
+                "timestamp": "1760425300",
+                "type": "image",
+                "image": {
+                  "caption": "الحجز",
+                  "mime_type": "image/jpeg",
+                  "sha256": "Yx5mO0Kq3l8Wf0b8nRyVdIuS1Wm5x1zq0d1dZy1r8nE=",
+                  "id": "1104480873777230"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

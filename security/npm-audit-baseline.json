@@ -1,0 +1,149 @@
+[
+  {
+    "id": "GHSA-5375-pq7m-f5r2",
+    "package": "@grpc/grpc-js",
+    "severity": "high",
+    "reason": "تبعية firebase/firestore لجانب Node، ونستعمل من Firebase الإشعارات وحدها؛ تُغلق بتحديث firebase (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-99f4-grh7-6pcq",
+    "package": "@grpc/grpc-js",
+    "severity": "high",
+    "reason": "تبعية firebase/firestore لجانب Node، ونستعمل من Firebase الإشعارات وحدها؛ تُغلق بتحديث firebase (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-m9gg-hp2v-232j",
+    "package": "@grpc/grpc-js",
+    "severity": "high",
+    "reason": "تبعية firebase/firestore لجانب Node، ونستعمل من Firebase الإشعارات وحدها؛ تُغلق بتحديث firebase (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-g2v6-rqmx-r4w6",
+    "package": "@vue/server-renderer",
+    "severity": "high",
+    "reason": "تخص التصيير على الخادم (SSR) ولا نستعمله؛ تُغلق بتحديث vue (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-3pq3-5fj3-cg6v",
+    "package": "axios",
+    "severity": "high",
+    "reason": "حزمة تشغيلية مباشرة؛ تُغلق بتحديث axios (npm update axios، E26.9 على نسك)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-542g-h47m-68v8",
+    "package": "axios",
+    "severity": "high",
+    "reason": "حزمة تشغيلية مباشرة؛ تُغلق بتحديث axios (npm update axios، E26.9 على نسك)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-c29m-xwm3-cm6r",
+    "package": "axios",
+    "severity": "high",
+    "reason": "حزمة تشغيلية مباشرة؛ تُغلق بتحديث axios (npm update axios، E26.9 على نسك)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-gcfj-64vw-6mp9",
+    "package": "axios",
+    "severity": "high",
+    "reason": "حزمة تشغيلية مباشرة؛ تُغلق بتحديث axios (npm update axios، E26.9 على نسك)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-m8m8-qj5v-23w3",
+    "package": "axios",
+    "severity": "high",
+    "reason": "حزمة تشغيلية مباشرة؛ تُغلق بتحديث axios (npm update axios، E26.9 على نسك)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-mghh-pgcx-3jjj",
+    "package": "axios",
+    "severity": "high",
+    "reason": "حزمة تشغيلية مباشرة؛ تُغلق بتحديث axios (npm update axios، E26.9 على نسك)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-x97p-jq2g-jp4f",
+    "package": "axios",
+    "severity": "high",
+    "reason": "حزمة تشغيلية مباشرة؛ تُغلق بتحديث axios (npm update axios، E26.9 على نسك)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-hmw2-7cc7-3qxx",
+    "package": "form-data",
+    "severity": "high",
+    "reason": "تبعية axios لمحوّل Node، لا تُحزم للمتصفح؛ تُغلق بتحديث axios (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-28wg-ghj8-5hjv",
+    "package": "nanoid",
+    "severity": "high",
+    "reason": "تبعية postcss وقت البناء؛ تُغلق بتحديث vite (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-2v37-7h3g-55p8",
+    "package": "nanoid",
+    "severity": "high",
+    "reason": "تبعية postcss وقت البناء؛ تُغلق بتحديث vite (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-r28c-9q8g-f849",
+    "package": "postcss",
+    "severity": "high",
+    "reason": "أداة بناء لا تدخل حزمة المتصفح؛ تُغلق بتحديث vite وvue (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-wcpc-wj8m-hjx6",
+    "package": "protobufjs",
+    "severity": "high",
+    "reason": "تبعية firebase/firestore لجانب Node؛ تُغلق بتحديث firebase (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-2m8v-j782-fhvr",
+    "package": "socket.io-parser",
+    "severity": "high",
+    "reason": "تبعية socket.io-client (عبر laravel-echo) ولا نستعمل محوّل socket.io (Reverb بمحوّل pusher)؛ تُغلق بتحديث laravel-echo (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-68fv-2mgg-jv7q",
+    "package": "source-map-js",
+    "severity": "high",
+    "reason": "تبعية أدوات البناء (postcss ومترجم vue)؛ تُغلق بتحديث vite وvue (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-fx2h-pf6j-xcff",
+    "package": "vite",
+    "severity": "high",
+    "reason": "أداة بناء وخادم تطوير، لا تدخل حزمة المتصفح (تُسحب عبر @vitejs/plugin-vue)؛ تُغلق بتحديث vite (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-xv26-6w52-cph6",
+    "package": "websocket-driver",
+    "severity": "critical",
+    "reason": "تبعية firebase/database لجانب Node (faye-websocket)؛ تُغلق بتحديث firebase (E26.9)",
+    "review_by": "2026-11-15"
+  },
+  {
+    "id": "GHSA-96hv-2xvq-fx4p",
+    "package": "ws",
+    "severity": "high",
+    "reason": "تبعية socket.io-client (عبر laravel-echo) لجانب Node؛ المتصفح يستعمل WebSocket الأصلية مع Reverb؛ تُغلق بتحديث laravel-echo (E26.9)",
+    "review_by": "2026-11-15"
+  }
+]

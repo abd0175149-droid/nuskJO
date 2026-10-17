@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Role extends Model
 {
+    use HasFactory;
+
     protected $fillable = ['name', 'slug', 'description'];
 
     public function users(): HasMany
@@ -22,6 +25,9 @@ class Role extends Model
 
     public function hasPermission(string $slug): bool
     {
-        return $this->permissions()->where('slug', $slug)->exists();
+        // العلاقة المحمّلة أصلاً (HandleInertiaRequests وGate::before) تغني عن استعلام لكل فحص
+        return $this->relationLoaded('permissions')
+            ? $this->permissions->contains('slug', $slug)
+            : $this->permissions()->where('slug', $slug)->exists();
     }
 }

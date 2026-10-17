@@ -48,7 +48,9 @@ class AttendanceLocationController extends Controller
             AttendanceLocation::create($validated);
             return redirect()->back()->with('success', 'تم إضافة موقع الحضور بنجاح');
         } catch (\Exception $e) {
-            return redirect()->back()->withErrors(['name' => 'حدث خطأ أثناء الإضافة: ' . $e->getMessage()]);
+            $ref = \App\Support\ErrorRef::log($e, 'attendance.location.store_failed');
+
+            return redirect()->back()->withErrors(['name' => "حدث خطأ أثناء الإضافة. رقم المرجع: {$ref}"]);
         }
     }
 
@@ -75,7 +77,9 @@ class AttendanceLocationController extends Controller
             $location->update($validated);
             return redirect()->back()->with('success', 'تم تحديث الموقع بنجاح');
         } catch (\Exception $e) {
-            return redirect()->back()->withErrors(['name' => 'حدث خطأ أثناء التحديث: ' . $e->getMessage()]);
+            $ref = \App\Support\ErrorRef::log($e, 'attendance.location.update_failed');
+
+            return redirect()->back()->withErrors(['name' => "حدث خطأ أثناء التحديث. رقم المرجع: {$ref}"]);
         }
     }
 

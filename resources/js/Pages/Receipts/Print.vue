@@ -73,6 +73,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { renderTemplate } from '@/composables/usePdfTemplate';
 
 const props = defineProps({ receipt: Object, templateUrl: String, layout: Object });
 
@@ -141,39 +142,23 @@ const sigStyle = computed(() => {
 
 const pdfCanvas = ref(null);
 
+// قالب PDF من pdf.js المحلي بلا eval (usePdfTemplate، E26)
 const renderPdf = async () => {
-    if (!props.templateUrl || !pdfCanvas.value) return;
-    try {
-        const pdfjsLib = await loadPdfJs();
-        const pdf = await pdfjsLib.getDocument(props.templateUrl).promise;
-        const page = await pdf.getPage(1);
-        const scale = 2;
-        const viewport = page.getViewport({ scale });
-        const canvas = pdfCanvas.value;
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    } catch (e) { console.error('PDF error:', e); }
+    try { await renderTemplate(props.templateUrl, [pdfCanvas.value]); } catch (e) { console.error('PDF error:', e); }
 };
-
-const loadPdfJs = () => new Promise((resolve, reject) => {
-    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload = () => {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        resolve(window.pdfjsLib);
-    };
-    s.onerror = reject;
-    document.head.appendChild(s);
-});
 
 onMounted(() => { setTimeout(renderPdf, 300); });
 const doPrint = () => window.print();
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+/* خطوط محلية (E16.8) بدل Google Fonts */
+@import '@fontsource/cairo/400.css';
+@import '@fontsource/cairo/600.css';
+@import '@fontsource/cairo/700.css';
+@import '@fontsource/cairo/900.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
 
 .a4-page { width: 210mm; height: 297mm; position: relative; margin: 0 auto; overflow: hidden; background: white; font-family: 'Cairo', sans-serif; }
 .pdf-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }

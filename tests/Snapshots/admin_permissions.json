@@ -1,0 +1,100 @@
+{
+    "get_daily_summary:_": {
+        "perm": "report.daily",
+        "write": false
+    },
+    "get_sales_report:_": {
+        "perm": "report.sales",
+        "write": false
+    },
+    "get_travelers:_": {
+        "perm": "report.travelers",
+        "write": false
+    },
+    "get_pending_approvals:_": {
+        "perm": "report.approvals",
+        "write": false
+    },
+    "get_open_quotes:_": {
+        "perm": "report.quotes",
+        "write": false
+    },
+    "get_attention_queue:_": {
+        "perm": "report.attention",
+        "write": false
+    },
+    "find_client:_": {
+        "perm": "report.client",
+        "write": false
+    },
+    "manage_knowledge:list": {
+        "perm": [
+            "kb.view",
+            "kb.add",
+            "kb.update",
+            "kb.delete"
+        ],
+        "write": false
+    },
+    "manage_knowledge:view": {
+        "perm": [
+            "kb.view",
+            "kb.add",
+            "kb.update",
+            "kb.delete"
+        ],
+        "write": false
+    },
+    "manage_knowledge:search": {
+        "perm": [
+            "kb.view",
+            "kb.add",
+            "kb.update",
+            "kb.delete"
+        ],
+        "write": false
+    },
+    "manage_knowledge:add": {
+        "perm": "kb.add",
+        "write": true
+    },
+    "manage_knowledge:update": {
+        "perm": "kb.update",
+        "write": true
+    },
+    "manage_knowledge:delete": {
+        "perm": "kb.delete",
+        "write": true
+    },
+    "manage_bot_tools:list": {
+        "perm": [
+            "tools.view",
+            "tools.toggle"
+        ],
+        "write": false
+    },
+    "manage_bot_tools:enable": {
+        "perm": "tools.toggle",
+        "write": true
+    },
+    "manage_bot_tools:disable": {
+        "perm": "tools.toggle",
+        "write": true
+    },
+    "set_customer_bot:status": {
+        "perm": "bot.toggle",
+        "write": false
+    },
+    "set_customer_bot:on": {
+        "perm": "bot.toggle",
+        "write": true
+    },
+    "set_customer_bot:off": {
+        "perm": "bot.toggle",
+        "write": true
+    },
+    "get_channel_status:_": {
+        "perm": "channel.view",
+        "write": false
+    }
+}

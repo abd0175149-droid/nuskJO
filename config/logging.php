@@ -58,11 +58,30 @@ return [
             'ignore_exceptions' => false,
         ],
 
+        // أحداث الواتساب (App\Services\WhatsApp\WaLog): JSON يومي بمستواه، ومعه سجل التطبيق بمستواه
+        'whatsapp' => [
+            'driver' => 'stack',
+            'channels' => array_merge(['wa_json'], explode(',', (string) env('LOG_STACK', 'single'))),
+            'ignore_exceptions' => true,
+        ],
+
+        'wa_json' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/whatsapp.log'),
+            'formatter' => Monolog\Formatter\JsonFormatter::class,
+            'level' => env('WA_LOG_LEVEL', 'info'),
+            'days' => env('WA_LOG_DAYS', 30),
+            'permission' => 0640,   // E26: لا قراءة لغير www-data ومجموعتها
+            'tap' => [App\Logging\RedactSecrets::class],
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            'permission' => 0640,   // E26: www-data يكتب ومجموعته تقرأ؛ artisan دائماً بـ -u www-data كي لا يملك root الملف
+            'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05/E06)
         ],
 
         'daily' => [
@@ -71,6 +90,19 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            'permission' => 0640,   // E26: www-data يكتب ومجموعته تقرأ؛ artisan دائماً بـ -u www-data كي لا يملك root الملف
+            'tap' => [App\Logging\RedactSecrets::class],   // لا أسرار في السجل (E05/E06)
+        ],
+
+        // الطلبات البطيئة و5xx وانتقالات قواعد whatsapp:ops-check (E24): بقالب المسار، بلا رابط كامل ولا query ولا IP.
+        // المستوى warning فيُكتب رغم LOG_LEVEL المرفوع إلى warning (E06)
+        'perf' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/perf.log'),
+            'level' => 'warning',
+            'days' => 14,
+            'permission' => 0640,
+            'tap' => [App\Logging\RedactSecrets::class],
         ],
 
         'slack' => [
@@ -103,6 +135,7 @@ return [
             ],
             'formatter' => env('LOG_STDERR_FORMATTER'),
             'processors' => [PsrLogMessageProcessor::class],
+            'tap' => [App\Logging\RedactSecrets::class],
         ],
 
         'syslog' => [

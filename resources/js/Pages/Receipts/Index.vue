@@ -24,9 +24,9 @@
                     <td data-label="الحالة" class="px-5 py-3 text-right"><span class="px-2.5 py-1 rounded-full text-xs font-bold" :class="{pending:'bg-yellow-100 text-yellow-700',approved:'bg-green-100 text-green-700',rejected:'bg-red-100 text-red-700',editing:'bg-blue-100 text-blue-700'}[r.status]">{{ {pending:'معلقة',approved:'معتمدة',rejected:'مرفوضة',editing:'تحت التعديل'}[r.status] }}</span></td>
                     <td data-label="بواسطة" class="px-5 py-3 text-right text-xs text-gray-500 hide-mobile"><div>📝 {{ r.creator?.name || '—' }}</div><div v-if="r.status !== 'pending'" class="mt-0.5">{{ r.status === 'approved' ? '✅' : '❌' }} {{ r.approver?.name || '—' }}</div></td>
                     <td data-label="" class="px-5 py-3 text-center whitespace-nowrap actions-cell">
-                        <a :href="'/receipts/'+r.id+'/print'" target="_blank" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
-                        <template v-if="r.status==='pending'"><button v-if="can('receipts.approve')" @click="router.post('/receipts/'+r.id+'/approve')" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="can('receipts.delete')" @click="router.delete('/receipts/'+r.id)" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
-                        <template v-if="r.status==='approved'"><button v-if="can('receipts.edit_approved')" @click="startEdit(r)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button></template>
+                        <a :href="'/receipts/'+r.id+'/print'" target="_blank" aria-label="طباعة" title="طباعة" class="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded-lg btn-mobile-sm">🖨️</a>
+                        <template v-if="r.status==='pending'"><button v-if="can('receipts.approve') && mayApprove(r)" @click="approve(r)" :disabled="busy.has(r.id)" aria-label="اعتماد" title="اعتماد" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg btn-mobile-sm">✅</button><button v-if="$page.props.auth?.isAdmin" @click="destroy(r)" aria-label="حذف" title="حذف" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg btn-mobile-sm">🗑️</button></template>
+                        <template v-if="r.status==='approved'"><button v-if="$page.props.auth?.isAdmin" @click="startEdit(r)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg btn-mobile-sm">✏️ تعديل</button></template>
                         <template v-if="r.status==='editing'"><button @click="openEditForm(r)" class="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg font-bold btn-mobile-sm">📝 تعديل البيانات</button></template>
                     </td>
                 </tr><tr v-if="!receipts.data?.length"><td colspan="8" class="px-5 py-12 text-center text-gray-400">لا يوجد سندات</td></tr></tbody>
@@ -100,8 +100,12 @@ import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import SearchableSelect from '@/Components/SearchableSelect.vue';
 import { usePermissions } from '@/composables/usePermissions';
+import { useRowActions } from '@/composables/useRowActions';
+import { useConfirm } from '@/composables/useConfirm';
 import { useHighlight } from '@/composables/useHighlight';
 const { can } = usePermissions();
+const { busy, post, mayApprove } = useRowActions();
+const { confirm } = useConfirm();
 const { isHighlighted } = useHighlight();
 const props = defineProps({ receipts: Object, filters: Object, clients: Array });
 const clientOptions = computed(() => props.clients.map(c => ({ value: c.id, label: c.name })));
@@ -111,9 +115,16 @@ const editForm = useForm({ _editId: null, receipt_number:'', client_id:'', amoun
 
 const openForm=()=>{form.reset();showForm.value=true;};
 
-const startEdit = (r) => {
-    if(confirm('تعديل السند المعتمد؟ سيتم عكس الأثر المالي.')) {
-        router.post('/receipts/'+r.id+'/start-edit',{},{preserveScroll:true});
+// تأكيد موحّد (E16.9): كان الاعتماد والحذف بنقرة واحدة
+const approve = async (r) => {
+    if (await confirm({ title: 'اعتماد سند القبض', message: `اعتماد سند القبض ${r.receipt_number}؟ يُسجَّل أثره المالي.`, confirmLabel: '✅ اعتماد', danger: true })) post('/receipts/'+r.id+'/approve', {}, r.id);
+};
+const destroy = async (r) => {
+    if (await confirm({ title: 'حذف سند القبض', message: `حذف سند القبض ${r.receipt_number}؟`, confirmLabel: '🗑️ حذف', danger: true })) router.delete('/receipts/'+r.id, { preserveScroll: true });
+};
+const startEdit = async (r) => {
+    if (await confirm({ title: 'تعديل سند القبض المعتمد', message: `تعديل سند القبض ${r.receipt_number}؟ سيُعكس أثره المالي حتى يُعتمد من جديد.`, confirmLabel: 'متابعة', danger: true })) {
+        post('/receipts/'+r.id+'/start-edit', {}, r.id);
     }
 };
 

@@ -1,0 +1,6 @@
+# يُضاف لمستخدم sysadmin (crontab -e). لا يحتاج sudo؛ يكفي أنه في مجموعة docker.
+# مرة واحدة قبله: mkdir -p ~/security/nuskjo
+# فحص Trivy الأسبوعي للصورة مع SBOM، الأحد 04:17 بتوقيت عمّان (E26.11).
+# افحص توقيت المضيف أولاً (timedatectl): إن كان UTC وعمّان UTC+3 فالسطر يصبح 17 1 * * 0.
+CRON_TZ=Asia/Amman
+17 4 * * 0 bash /opt/nuskJO/scripts/security/trivy-scan.sh >> $HOME/security/nuskjo/scan.log 2>&1

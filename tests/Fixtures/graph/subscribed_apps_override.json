@@ -1,0 +1,12 @@
+{
+  "data": [
+    {
+      "whatsapp_business_api_data": {
+        "id": "100000000000002",
+        "link": "https://www.facebook.com/games/?app_id=100000000000002",
+        "name": "Test Travel App"
+      },
+      "override_callback_uri": "https://aibot-platform.example.com/hooks/waba"
+    }
+  ]
+}

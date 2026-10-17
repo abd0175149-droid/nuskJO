@@ -51,7 +51,7 @@
                     </button>
                     <div v-show="openGroups[group.label]" class="space-y-0.5">
                         <template v-for="item in group.items" :key="item.route">
-                            <Link v-if="!item.permission || can(item.permission)"
+                            <Link v-if="(!item.permission || can(item.permission)) && (!item.feature || $page.props.features?.[item.feature])"
                                :href="item.route"
                                @click="isMobile && (sidebarOpen = false)"
                                class="flex items-center gap-3 px-4 py-2 mx-2 rounded-lg text-sm transition-all duration-200"
@@ -147,7 +147,7 @@
                     </div>
 
                     <!-- Theme Toggle -->
-                    <button @click="toggleTheme"
+                    <button @click="toggleTheme" type="button" aria-label="تبديل الوضع الليلي" title="تبديل الوضع الليلي" :aria-pressed="isDark ? 'true' : 'false'"
                             class="p-2 rounded-lg transition-colors"
                             :class="isDark ? 'text-gold-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'">
                         {{ isDark ? '☀️' : '🌙' }}
@@ -188,8 +188,16 @@
 
             <!-- Page Content -->
             <main class="flex-1 p-3 sm:p-6 overflow-x-hidden" :class="isDark ? 'bg-gray-900' : 'bg-gray-50'">
+                <MfaBanner />
+                <PageErrorCard />
                 <slot />
             </main>
+            <!-- نافذة التأكيد الموحّدة (useConfirm، E16.9): مثيل واحد للصفحة -->
+            <ConfirmDialog />
+            <!-- تأكيد الهوية قبل فعل حساس (E27) -->
+            <StepUpModal />
+            <!-- شريط الانقطاع الوحيد (E28) -->
+            <ConnectionBanner />
         </div>
     </div>
 </template>
@@ -198,7 +206,13 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { usePage, Link, router } from '@inertiajs/vue3';
 import { syncPushToken, currentPushToken, forgetPushToken } from '../../firebase';
+import { clearStoredDrafts } from '@/composables/useDrafts';
 import PushToggle from './PushToggle.vue';
+import ConfirmDialog from '../ConfirmDialog.vue';
+import MfaBanner from '../Security/MfaBanner.vue';
+import StepUpModal from '../Security/StepUpModal.vue';
+import ConnectionBanner from './ConnectionBanner.vue';
+import PageErrorCard from './PageErrorCard.vue';
 import axios from 'axios';
 
 const page = usePage();
@@ -243,7 +257,10 @@ const openNotification = async (n) => {
 };
 
 // الخروج يحذف توكن هذا الجهاز، فلا تصل إشعارات المستخدم لمن يستعمل الجهاز بعده
-const logout = () => router.post('/logout', { push_token: currentPushToken() }, { onFinish: forgetPushToken });
+const logout = () => {
+    clearStoredDrafts(); // مسودات الردود لا تبقى بعد الخروج
+    router.post('/logout', { push_token: currentPushToken() }, { onFinish: forgetPushToken });
+};
 
 const markAllRead = async () => {
     try {
@@ -328,7 +345,8 @@ onUnmounted(() => {
 
 const can = (permission) => {
     const perms = page.props.auth?.permissions || [];
-    return page.props.auth?.isAdmin || perms.includes(permission);
+    // قائمة = يكفي أيٌّ منها (E40: التكاملات لمن يدير الوجهات أو يملك رموز MCP)
+    return page.props.auth?.isAdmin || [].concat(permission).some((p) => perms.includes(p));
 };
 
 const currentPath = computed(() => page.url?.split('?')[0] || '/');
@@ -360,15 +378,21 @@ const menuGroups = [
         { icon: '🤖', label: 'إعدادات البوت', route: '/whatsapp/settings', permission: 'whatsapp.settings' },
         { icon: '🎯', label: 'توجيه المحادثات', route: '/whatsapp/routing', permission: 'whatsapp.settings' },
         { icon: '📚', label: 'قاعدة معرفة البوت', route: '/whatsapp/knowledge', permission: 'whatsapp.settings' },
+        { icon: '⚡', label: 'الردود الجاهزة', route: '/whatsapp/quick-replies', permission: 'whatsapp.quick_replies' },
+        { icon: '🏷️', label: 'تصنيفات المحادثات', route: '/whatsapp/labels', permission: 'whatsapp.settings' },
+        { icon: '🧩', label: 'الردود الحتمية', route: '/whatsapp/auto-rules', permission: 'whatsapp.auto_rules' },
         { icon: '👔', label: 'أرقام الإدارة', route: '/whatsapp/admin-numbers', permission: 'whatsapp.settings' },
         { icon: '📊', label: 'استهلاك البوت وجودته', route: '/whatsapp/analytics', permission: 'whatsapp.settings' },
+        { icon: '🧯', label: 'الإخفاقات', route: '/whatsapp/failures', permission: 'whatsapp.settings', feature: 'failures_center' },
+        { icon: '🗑️', label: 'طلبات حذف البيانات', route: '/whatsapp/erasure-requests', permission: 'whatsapp.erase' },
+        { icon: '⛔', label: 'المحظورون', route: '/whatsapp/blocks', permission: 'whatsapp.block', feature: 'wa_block' },
     ]},
     { label: '📂 عمليات أخرى', items: [
         { icon: '🏢', label: 'الوكلاء', route: '/agents', permission: 'agents.view' },
         { icon: '👥', label: 'العملاء', route: '/clients', permission: 'clients.view' },
-        { icon: '🔧', label: 'الخدمات', route: '/services', permission: 'settings.view' },
+        { icon: '🔧', label: 'الخدمات', route: '/services', permission: 'services.view' },
         { icon: '🏷️', label: 'تصنيفات المصاريف', route: '/expense-categories', permission: 'settings.view' },
-        { icon: '📊', label: 'قائمة الدخل', route: '/accounting/profit-loss', permission: 'reports.view' },
+        { icon: '📊', label: 'قائمة الدخل', route: '/accounting/profit-loss', permission: 'accounting.view' },
         { icon: '✈️', label: 'تجربة أسعار الرحلات', route: '/flights/search', permission: 'settings.view' },
     ]},
     { label: '👨‍💼 الموارد البشرية', items: [
@@ -383,19 +407,23 @@ const menuGroups = [
         { icon: '📈', label: 'منشئ التقارير', route: '/reports/builder', permission: 'reports.view' },
         { icon: '✈️', label: 'المسافرون بتاريخ', route: '/reports/trip-date', permission: 'reports.trip_date' },
         { icon: '🧑‍💼', label: 'أرباح الموظفين', route: '/reports/employee-profit', permission: 'reports.employee_profit' },
-        { icon: '🌳', label: 'شجرة الحسابات', route: '/accounting/chart-of-accounts', permission: 'reports.view' },
-        { icon: '⚖️', label: 'ميزان المراجعة', route: '/accounting/trial-balance', permission: 'reports.view' },
-        { icon: '📝', label: 'سجل القيود', route: '/accounting/journal-entries', permission: 'reports.view' },
-        { icon: '📊', label: 'قائمة الدخل', route: '/accounting/profit-loss', permission: 'reports.view' },
-        { icon: '🏦', label: 'الميزانية العمومية', route: '/accounting/balance-sheet', permission: 'reports.view' },
-        { icon: '📅', label: 'الفترات والإقفال', route: '/accounting/periods', permission: 'reports.view' },
+        { icon: '🌳', label: 'شجرة الحسابات', route: '/accounting/chart-of-accounts', permission: 'accounting.view' },
+        { icon: '⚖️', label: 'ميزان المراجعة', route: '/accounting/trial-balance', permission: 'accounting.view' },
+        { icon: '📝', label: 'سجل القيود', route: '/accounting/journal-entries', permission: 'accounting.view' },
+        { icon: '📊', label: 'قائمة الدخل', route: '/accounting/profit-loss', permission: 'accounting.view' },
+        { icon: '🏦', label: 'الميزانية العمومية', route: '/accounting/balance-sheet', permission: 'accounting.view' },
+        { icon: '📅', label: 'الفترات والإقفال', route: '/accounting/periods', permission: 'accounting.view' },
     ]},
     { label: '⚙️ الإعدادات', items: [
-        { icon: '👥', label: 'المستخدمين', route: '/users', permission: 'settings.view' },
-        { icon: '🛡️', label: 'الصلاحيات', route: '/roles', permission: 'settings.view' },
+        { icon: '👥', label: 'المستخدمين', route: '/users', permission: 'users.view' },
+        { icon: '🛡️', label: 'الصلاحيات', route: '/roles', permission: 'roles.manage' },
         { icon: '🗓️', label: 'أنواع الإجازات', route: '/leave-types', permission: 'settings.view' },
         { icon: '📍', label: 'مواقع الحضور', route: '/attendance-locations', permission: 'settings.view' },
         { icon: '⚙️', label: 'إعدادات النظام', route: '/settings', permission: 'settings.view' },
+        { icon: '🛟', label: 'النسخ الاحتياطي', route: '/settings/backups', permission: 'backups.view' },
+        { icon: '🖥️', label: 'حالة النظام', route: '/ops/status', permission: 'ops.view', feature: 'ops_status' },
+        { icon: '🧾', label: 'سجل التدقيق', route: '/audit-logs', permission: 'audit.view', feature: 'audit_page' },
+        { icon: '🔌', label: 'التكاملات', route: '/settings/integrations', permission: ['integrations.manage', 'mcp.use'], feature: 'integrations' },
     ]},
 ];
 

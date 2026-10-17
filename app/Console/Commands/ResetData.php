@@ -2,6 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\AuditAction;
+use App\Enums\AuditSeverity;
+use App\Models\AuditLog;
+use App\Support\AuditActor;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -18,17 +22,28 @@ class ResetData extends Command
             return 1;
         }
 
-        $this->info('🔄 جاري تفريغ البيانات...');
+        // نسخة قبل أي حذف؛ فشلها يوقف التفريغ (E01)
+        if ($this->call('backup:run', ['--reason' => 'pre-reset']) !== 0) {
+            $this->error('رُفض التفريغ: تعذّر أخذ نسخة احتياطية قبله');
+            return 1;
+        }
 
-        DB::statement('PRAGMA foreign_keys = OFF');
-
-        // 1. حذف كل البيانات المالية والعمليات
+        // 1. حذف كل البيانات المالية والعمليات. سجل التدقيق لا يُمسح: التفريغ نفسه أول ما يُسجَّل فيه
         $operationTables = [
             'journal_entry_lines', 'journal_entries', 'ledger_entries',
             'invoice_items', 'invoices', 'transfers', 'receipts',
-            'expenses', 'violations', 'audit_logs', 'activity_logs',
+            'expenses', 'violations', 'activity_logs',
             'notifications', 'fcm_tokens', 'exchange_rates',
         ];
+
+        // بعد النسخة (فلا صف لتفريغ لم يحدث) وقبل أي حذف، وفشله يوقف التفريغ
+        AuditActor::as('system', 'artisan:app:reset-data', fn () => AuditLog::log(AuditAction::SystemReset, 'system', null, null, [
+            'tables' => $operationTables, 'os_user' => get_current_user(), 'host' => gethostname(),
+        ], AuditSeverity::Error));
+
+        $this->info('🔄 جاري تفريغ البيانات...');
+
+        DB::statement('PRAGMA foreign_keys = OFF');
 
         foreach ($operationTables as $table) {
             if (Schema::hasTable($table)) {

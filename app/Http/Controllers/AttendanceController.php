@@ -73,7 +73,9 @@ class AttendanceController extends Controller
         $request->validate([
             'lat' => 'nullable|numeric',
             'lng' => 'nullable|numeric',
-            'method' => 'required|string|in:ip,geo,webauthn,manual',
+            // الطريقتان اللتان يتحقق منهما الخادم وحدهما (E27): webauthn وmanual كانتا تُقبلان بلا أي تحقق.
+            // التعديل اليدوي عبر attendance.manual-edit بصلاحيته، والحضور بمفتاح مرور يُبنى على تحقق في الخادم لا على قيمة من العميل
+            'method' => 'required|string|in:ip,geo',
         ]);
 
         $user = auth()->user();
@@ -107,8 +109,13 @@ class AttendanceController extends Controller
                 'message' => 'تم تسجيل الحضور بنجاح',
                 'attendance' => $attendance
             ]);
-        } catch (\Exception $e) {
+        } catch (\DomainException $e) {
+            // رسائل قواعد الحضور نفسها (مسجّل مسبقاً)
             return response()->json(['message' => $e->getMessage()], 400);
+        } catch (\Throwable $e) {
+            $ref = \App\Support\ErrorRef::log($e, 'attendance.record.failed');
+
+            return response()->json(['message' => "تعذّر التسجيل. رقم المرجع: {$ref}"], 500);
         }
     }
 
@@ -120,7 +127,9 @@ class AttendanceController extends Controller
         $request->validate([
             'lat' => 'nullable|numeric',
             'lng' => 'nullable|numeric',
-            'method' => 'required|string|in:ip,geo,webauthn,manual',
+            // الطريقتان اللتان يتحقق منهما الخادم وحدهما (E27): webauthn وmanual كانتا تُقبلان بلا أي تحقق.
+            // التعديل اليدوي عبر attendance.manual-edit بصلاحيته، والحضور بمفتاح مرور يُبنى على تحقق في الخادم لا على قيمة من العميل
+            'method' => 'required|string|in:ip,geo',
         ]);
 
         $user = auth()->user();
@@ -164,8 +173,13 @@ class AttendanceController extends Controller
                 'message' => 'تم تسجيل الانصراف بنجاح',
                 'attendance' => $attendance
             ]);
-        } catch (\Exception $e) {
+        } catch (\DomainException $e) {
+            // رسائل قواعد الحضور نفسها (مسجّل مسبقاً)
             return response()->json(['message' => $e->getMessage()], 400);
+        } catch (\Throwable $e) {
+            $ref = \App\Support\ErrorRef::log($e, 'attendance.record.failed');
+
+            return response()->json(['message' => "تعذّر التسجيل. رقم المرجع: {$ref}"], 500);
         }
     }
 
@@ -224,18 +238,33 @@ class AttendanceController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        if ($validated['check_in']) {
-            $attendance->check_in = Carbon::parse($attendance->date . ' ' . $validated['check_in']);
+        $before = ['check_in' => $attendance->check_in?->format('H:i'), 'check_out' => $attendance->check_out?->format('H:i'), 'status' => $attendance->status];
+
+        // اليوم وحده (العمود date يُقرأ بوقت 00:00:00، فإلصاق الساعة به كان يُفشل التحليل)
+        $day = Carbon::parse($attendance->date)->toDateString();
+        if ($validated['check_in'] ?? null) {
+            $attendance->check_in = Carbon::parse($day.' '.$validated['check_in']);
         }
 
-        if ($validated['check_out']) {
-            $attendance->check_out = Carbon::parse($attendance->date . ' ' . $validated['check_out']);
+        if ($validated['check_out'] ?? null) {
+            $attendance->check_out = Carbon::parse($day.' '.$validated['check_out']);
         }
 
         $attendance->status = $validated['status'];
-        $attendance->notes = $validated['notes'];
-        
-        $attendance->save(); // The observer will recalculate hours
+        if (array_key_exists('notes', $validated)) {
+            $attendance->notes = $validated['notes'];
+        }
+
+        // الطريق الوحيد للتعديل اليدوي بعد إغلاق method=manual (E27): أثره في التدقيق في المعاملة نفسها (يمس الرواتب)
+        $after = ['check_in' => $attendance->check_in?->format('H:i'), 'check_out' => $attendance->check_out?->format('H:i'), 'status' => $attendance->status];
+        $notesChanged = $attendance->isDirty('notes');
+        \Illuminate\Support\Facades\DB::transaction(function () use ($attendance, $before, $after, $notesChanged, $day) {
+            $attendance->save(); // The observer will recalculate hours
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Update, 'attendance', $attendance->id, $attendance->employee?->user?->name, [
+                'date' => $day, 'manual' => true, 'before' => $before, 'after' => $after,
+                'notes_changed' => $notesChanged,
+            ]);
+        });
 
         return redirect()->back()->with('success', 'تم تعديل الحضور بنجاح');
     }

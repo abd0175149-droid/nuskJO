@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "messaging_product": "whatsapp",
+      "wa_id": "16505551234"
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "QVFIUmJlZm9yZQ",
+      "after": "QVFIUmFmdGVy"
+    },
+    "next": "https://example.invalid/block_users?after=QVFIUmFmdGVy"
+  }
+}

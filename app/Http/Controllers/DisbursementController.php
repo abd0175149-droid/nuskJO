@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApprovalConflict;
 use App\Models\Disbursement;
 use App\Models\Agent;
 use App\Models\Account;
@@ -79,15 +80,20 @@ class DisbursementController extends Controller
 
     public function approve(Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('disbursements.approve'), 403);
+
         if (!$disbursement->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
+        }
+        if (!$disbursement->approvableBy(auth()->user())) {
+            return back()->with('error', 'لا يعتمد المنشئ مستنده إلا المدير');
         }
 
         try {
             DB::transaction(function () use ($disbursement) {
                 $disbursement->approve(auth()->user());
 
-                AuditLog::log('approve', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
+                AuditLog::log(\App\Enums\AuditAction::Approve, 'disbursement', $disbursement->id, $disbursement->disbursement_number);
 
                 // قيد محاسبي إلزامي — فشله يُلغي الاعتماد بالكامل
                 AccountingService::recordDisbursement($disbursement);
@@ -95,6 +101,8 @@ class DisbursementController extends Controller
                 // إشعار
                 try { \App\Services\NotificationService::disbursementApproved($disbursement); } catch (\Throwable $e) {}
             });
+        } catch (ApprovalConflict $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             AccountingService::notifyFailure("اعتماد سند الصرف {$disbursement->disbursement_number}", $e);
             return back()->with('error', 'تعذّر اعتماد سند الصرف محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
@@ -105,13 +113,15 @@ class DisbursementController extends Controller
 
     public function reject(Request $request, Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('disbursements.reject'), 403);
+
         if (!$disbursement->isPending()) {
             return back()->with('error', 'هذا السند ليس معلقاً');
         }
 
         $request->validate(['rejection_reason' => 'required|string|max:500']);
         $disbursement->reject(auth()->user(), $request->rejection_reason);
-        AuditLog::log('reject', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
+        AuditLog::log(\App\Enums\AuditAction::Reject, 'disbursement', $disbursement->id, $disbursement->disbursement_number);
 
         try { \App\Services\NotificationService::operationRejected($disbursement, 'سند صرف', $disbursement->disbursement_number); } catch (\Throwable $e) {}
 
@@ -120,19 +130,23 @@ class DisbursementController extends Controller
 
     public function startEdit(Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$disbursement->isApproved()) {
             return back()->with('error', 'يمكن تعديل السندات المعتمدة فقط');
         }
 
         DB::transaction(function () use ($disbursement) {
+            // أول كتابة: approved → editing ذرياً، فلا يتكرر عكس الذمة مع نقرة مزدوجة
+            $disbursement->startEditing(auth()->user());
+
             // عكس القيد المحاسبي
             $entry = \App\Models\JournalEntry::where('reference_type', 'disbursement')
                 ->where('reference_id', $disbursement->id)
                 ->where('is_reversed', false)->first();
             if ($entry) try { AccountingService::reverseEntry($entry, 'تعديل سند الصرف'); } catch (\Exception $e) { \Log::error('Reverse Disbursement: ' . $e->getMessage()); }
 
-            $disbursement->startEditing(auth()->user());
-            AuditLog::log('start_edit', 'disbursement', $disbursement->id, $disbursement->disbursement_number);
+            AuditLog::log(\App\Enums\AuditAction::StartEdit, 'disbursement', $disbursement->id, $disbursement->disbursement_number);
         });
 
         return back()->with('success', "تم فتح سند الصرف {$disbursement->disbursement_number} للتعديل");
@@ -140,6 +154,8 @@ class DisbursementController extends Controller
 
     public function updateApproved(Request $request, Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$disbursement->isEditing()) {
             return back()->with('error', 'هذا السند ليس في وضع التعديل');
         }
@@ -158,18 +174,26 @@ class DisbursementController extends Controller
 
         $validated['exchange_rate'] = self::EXCHANGE_RATE;
 
-        $disbursement->update($validated);
-        $disbursement->resubmitForApproval();
+        DB::transaction(function () use ($disbursement, $validated) {
+            $disbursement->resubmitForApproval();   // ذري: editing → pending
+            $disbursement->update($validated);
+        });
 
         return back()->with('success', "تم تعديل سند الصرف {$disbursement->disbursement_number} وإرساله للاعتماد");
     }
 
     public function destroy(Disbursement $disbursement)
     {
+        abort_unless(auth()->user()->can('admin'), 403);
+
         if (!$disbursement->isPending()) {
             return back()->with('error', 'لا يمكن حذف سند صرف معتمد');
         }
-        $disbursement->delete();
+        // سند معلّق بلا أثر مالي، لكن حذفه لا يترك أثراً في الجدول نفسه
+        \Illuminate\Support\Facades\DB::transaction(function () use ($disbursement) {
+            $disbursement->delete();
+            AuditLog::log(\App\Enums\AuditAction::Delete, 'disbursement', $disbursement->id, $disbursement->disbursement_number, ['amount' => (float) $disbursement->amount]);
+        });
         return redirect()->route('disbursements.index')->with('success', 'تم حذف سند الصرف');
     }
 

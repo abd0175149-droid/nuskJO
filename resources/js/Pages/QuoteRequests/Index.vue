@@ -24,10 +24,16 @@
             <span v-if="t.count" class="mr-1 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">{{ t.count }}</span>
           </button>
         </div>
-        <input v-model="search" type="text" placeholder="بحث برقم الطلب أو الهاتف أو الاسم..."
-               class="w-72 max-w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
-               @input="debounceSearch"/>
+        <div class="flex flex-wrap items-center gap-2 max-w-full">
+          <input v-model="search" type="text" placeholder="بحث برقم الطلب أو الهاتف أو الاسم..."
+                 class="w-72 max-w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
+                 @input="debounceSearch"/>
+          <!-- تصدير CSV (E24): لمن يملك quotes.export، والخادم يفحص الصلاحية والعلم -->
+          <button v-if="canExport" type="button" data-test="export" @click="exporting = true"
+                  class="min-h-11 px-4 py-2 rounded-xl text-sm font-bold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">⬇️ تصدير CSV</button>
+        </div>
       </div>
+      <QuoteExportDialog v-if="canExport" :open="exporting" :status="filters?.status" :search="search || null" @close="exporting = false"/>
 
       <!-- القائمة -->
       <div class="space-y-3">
@@ -64,7 +70,8 @@
               <span v-if="r.client" class="text-[11px] text-green-600 block">✅ حساب مسجّل</span>
             </div>
             <div><span class="text-gray-400 text-xs block">الهاتف</span>
-              <span class="font-mono text-xs" dir="ltr">{{ r.phone }}</span>
+              <span v-if="r.phoneless" class="text-xs text-amber-600 dark:text-amber-400">📵 بلا رقم — اطلبه من المحادثة</span>
+              <span v-else class="font-mono text-xs" dir="ltr">{{ r.phone }}</span>
             </div>
             <div v-if="r.offer"><span class="text-gray-400 text-xs block">العرض</span><span>{{ r.offer }}</span></div>
             <div v-else-if="r.route"><span class="text-gray-400 text-xs block">المسار</span><span class="font-mono text-xs" dir="ltr">{{ r.route }}</span></div>
@@ -163,6 +170,15 @@
             </span>
           </label>
 
+          <label v-if="pForm.send_to_client && (target.status === 'sent' || pForm.errors.confirm_resend)"
+                 class="flex items-start gap-2.5 p-3 rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 cursor-pointer">
+            <input type="checkbox" v-model="pForm.confirm_resend" class="mt-0.5 rounded text-amber-600"/>
+            <span class="text-sm text-amber-800 dark:text-amber-300">
+              <b>أُرسل سعر لهذا الطلب للعميل من قبل.</b> أؤكد إرسال السعر الجديد أيضاً.
+              <span v-if="pForm.errors.confirm_resend" class="block text-xs text-red-600 mt-0.5">{{ pForm.errors.confirm_resend }}</span>
+            </span>
+          </label>
+
           <div class="flex gap-3">
             <button type="submit" :disabled="pForm.processing"
                     class="px-6 py-2.5 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 shadow-md disabled:opacity-50">
@@ -180,6 +196,7 @@
 import { ref, computed } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
+import QuoteExportDialog from '@/Components/Quotes/QuoteExportDialog.vue';
 
 const props = defineProps({
   title: String,
@@ -187,7 +204,10 @@ const props = defineProps({
   filters: Object,
   counts: Object,
   canReply: Boolean,
+  canExport: Boolean,
 });
+
+const exporting = ref(false);
 
 const search = ref(props.filters?.search || '');
 let t = null;
@@ -226,7 +246,7 @@ const setStatus = (s) => router.get('/quote-requests', { status: s, search: sear
 const debounceSearch = () => { clearTimeout(t); t = setTimeout(go, 400); };
 
 const target = ref(null);
-const pForm = useForm({ quoted_price_jod: null, quoted_note: '', send_to_client: true });
+const pForm = useForm({ quoted_price_jod: null, quoted_note: '', send_to_client: true, confirm_resend: false });
 
 const openPrice = (r) => {
   target.value = r;
@@ -234,6 +254,7 @@ const openPrice = (r) => {
   pForm.quoted_price_jod = r.quoted_price_jod;
   pForm.quoted_note = r.quoted_note || '';
   pForm.send_to_client = !!r.window_open;
+  pForm.confirm_resend = false;
 };
 
 const submitPrice = () => {

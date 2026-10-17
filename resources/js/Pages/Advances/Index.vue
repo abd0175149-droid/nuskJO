@@ -54,9 +54,9 @@
                             <span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="statusClass(adv.status)">{{ statusLabel(adv.status) }}</span>
                         </td>
                         <td class="px-4 py-3 text-center whitespace-nowrap">
-                            <button v-if="adv.status==='pending' && can('advances.approve')" @click="approveAdv(adv)" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg">✅</button>
-                            <button v-if="adv.status==='pending' && can('advances.approve')" @click="rejectAdv(adv)" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg">❌</button>
-                            <button v-if="adv.status==='pending' && can('advances.delete')" @click="deleteTarget=adv" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg">🗑️</button>
+                            <button v-if="adv.status==='pending' && can('advances.approve')" @click="approveAdv(adv)" aria-label="اعتماد" title="اعتماد" class="px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg">✅</button>
+                            <button v-if="adv.status==='pending' && can('advances.approve')" @click="rejectAdv(adv)" aria-label="رفض" title="رفض" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded-lg">❌</button>
+                            <button v-if="adv.status==='pending' && can('advances.delete')" @click="deleteAdv(adv)" aria-label="حذف" title="حذف" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg">🗑️</button>
                         </td>
                     </tr>
                     <tr v-if="!advances.data?.length"><td colspan="9" class="px-5 py-12 text-center text-gray-400">لا يوجد سلف</td></tr>
@@ -108,18 +108,6 @@
             </div>
         </div>
 
-        <!-- Delete Modal -->
-        <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="deleteTarget=null">
-            <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 text-center">
-                <div class="text-5xl mb-4">⚠️</div>
-                <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">تأكيد الحذف</h3>
-                <p class="text-sm text-gray-500 mb-6">حذف السلفة <strong>{{ deleteTarget.advance_number }}</strong>؟</p>
-                <div class="flex gap-3 justify-center">
-                    <button @click="confirmDel" class="px-6 py-2.5 rounded-xl font-bold text-sm text-white bg-red-500 hover:bg-red-600">🗑️ حذف</button>
-                    <button @click="deleteTarget=null" class="px-6 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button>
-                </div>
-            </div>
-        </div>
     </AppLayout>
 </template>
 
@@ -128,21 +116,23 @@ import { ref } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/SmartLayout.vue';
 import { usePermissions } from '@/composables/usePermissions';
+import { useConfirm } from '@/composables/useConfirm';
 const { can } = usePermissions();
+const { confirm, prompt } = useConfirm();
 
 const props = defineProps({ advances: Object, employees: Array, filters: Object });
 const filters = ref({ employee_id: props.filters?.employee_id || '', status: props.filters?.status || '' });
 const showForm = ref(false);
-const deleteTarget = ref(null);
 
 const form = useForm({ employee_id: '', amount: '', installments_count: 3, reason: '', payment_method: 'cash' });
 
 const openModal = () => { form.reset(); form.installments_count = 3; form.payment_method = 'cash'; form.clearErrors(); showForm.value = true; };
 const submit = () => { form.post('/advances', { onSuccess: () => { showForm.value = false; form.reset(); }, preserveScroll: true, preserveState: false }); };
 
-const approveAdv = (adv) => { if (confirm('اعتماد السلفة وتحويل المبلغ للموظف؟')) router.post('/advances/' + adv.id + '/approve', {}, { preserveScroll: true }); };
-const rejectAdv = (adv) => { const r = prompt('سبب الرفض:'); if (r !== null) router.post('/advances/' + adv.id + '/reject', { rejection_reason: r }, { preserveScroll: true }); };
-const confirmDel = () => { router.delete('/advances/' + deleteTarget.value.id, { preserveScroll: true, onSuccess: () => { deleteTarget.value = null; } }); };
+// تأكيد موحّد (E16.9)
+const approveAdv = async (adv) => { if (await confirm({ title: 'اعتماد السلفة', message: `اعتماد السلفة ${adv.advance_number} وتحويل المبلغ للموظف؟`, confirmLabel: '✅ اعتماد', danger: true })) router.post('/advances/' + adv.id + '/approve', {}, { preserveScroll: true }); };
+const rejectAdv = async (adv) => { const r = await prompt({ title: `رفض السلفة ${adv.advance_number}`, label: 'سبب الرفض', maxLength: 500, confirmLabel: 'رفض', danger: true }); if (r !== null) router.post('/advances/' + adv.id + '/reject', { rejection_reason: r }, { preserveScroll: true }); };
+const deleteAdv = async (adv) => { if (await confirm({ title: 'حذف السلفة', message: `حذف السلفة ${adv.advance_number}؟`, confirmLabel: '🗑️ حذف', danger: true })) router.delete('/advances/' + adv.id, { preserveScroll: true }); };
 
 const applyFilter = () => { router.get('/advances', { ...filters.value }, { preserveState: true, replace: true }); };
 

@@ -115,10 +115,13 @@ class PayrollController extends Controller
 
                 // تسجيل القيد المحاسبي للرواتب — إلزامي: فشله يُلغي الاعتماد بالكامل
                 \App\Services\AccountingService::recordPayroll($payroll);
+                \App\Models\AuditLog::log(\App\Enums\AuditAction::Approve, 'payroll', $payroll->id, $payroll->payroll_number, ['total_net' => (float) $payroll->total_net, 'currency' => $payroll->currency]);
 
                 // إشعار الموظفين
                 NotificationService::payrollReady($payroll);
             });
+        } catch (\App\Exceptions\ApprovalConflict $e) {
+            return redirect()->back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             \App\Services\AccountingService::notifyFailure("اعتماد مسير الرواتب {$payroll->payroll_number}", $e);
             return redirect()->back()->with('error', 'تعذّر اعتماد مسير الرواتب محاسبياً ولم يُحفظ أي تغيير. تم إشعار الإدارة: ' . $e->getMessage());
@@ -170,7 +173,10 @@ class PayrollController extends Controller
 
         $request->validate(['rejection_reason' => 'nullable|string|max:500']);
 
-        $payroll->reject(auth()->user(), $request->rejection_reason ?? '');
+        \Illuminate\Support\Facades\DB::transaction(function () use ($payroll, $request) {
+            $payroll->reject(auth()->user(), $request->rejection_reason ?? '');
+            \App\Models\AuditLog::log(\App\Enums\AuditAction::Reject, 'payroll', $payroll->id, $payroll->payroll_number, ['total_net' => (float) $payroll->total_net]);
+        });
 
         return redirect()->back()->with('success', 'تم رفض مسير الرواتب');
     }
@@ -214,10 +220,9 @@ class PayrollController extends Controller
     {
         $user = auth()->user();
 
-        // الموظف يمكنه رؤية قسيمته فقط، المدير يمكنه رؤية الكل
-        if ($user->employee && $user->employee->id !== $employee->id && !$user->can('payroll.view')) {
-            abort(403);
-        }
+        // قسيمة الموظف نفسه، أو لمن يملك payroll.view (حساب بلا ملف موظف لا يرى قسائم غيره)
+        $ownPayslip = $user->employee && $user->employee->id === $employee->id;
+        abort_unless($ownPayslip || $user->can('payroll.view'), 403);
 
         $item = PayrollItem::with(['payroll', 'employee.user', 'employee.department'])
             ->where('employee_id', $employee->id)

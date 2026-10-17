@@ -1,5 +1,12 @@
 <?php
 
+// E26.7: بعد ضم عمّال nginx إلى مجموعة www-data (NUSKJO_STORAGE_PERMS=strict في compose) تُنشأ ملفات القرصين
+// local وpublic بـ 0640 ومجلداتهما بـ 0750، فيقرأ nginx صور البطاقات عبر المجموعة ولا يقرؤها غيره. قبله افتراضي
+// Flysystem (0644/0755) كي لا تنكسر الصور. قرص wa_media له صلاحياته الخاصة 0600/0700 في الحالين (E14)
+$storagePermissions = env('NUSKJO_STORAGE_PERMS') === 'strict'
+    ? ['file' => ['public' => 0640, 'private' => 0600], 'dir' => ['public' => 0750, 'private' => 0700]]
+    : [];
+
 return [
 
     /*
@@ -34,7 +41,23 @@ return [
             'driver' => 'local',
             'root' => storage_path('app/private'),
             'serve' => true,
+            'permissions' => $storagePermissions,
             'throw' => false,
+            'report' => false,
+        ],
+
+        // مرفقات العملاء المؤرشفة (E14): خارج جذر local (عليه serve=true)، ولا رابط عام. العرض من
+        // WhatsAppMediaController وحده بربط محصور. المفتاح {Y}/{m}/{uuid7}.{ext} بلا اسم ولا رقم
+        'wa_media' => [
+            'driver' => 'local',
+            'root' => storage_path('app/wa-media'),
+            'serve' => false,
+            'visibility' => 'private',
+            'permissions' => [
+                'file' => ['public' => 0600, 'private' => 0600],
+                'dir' => ['public' => 0700, 'private' => 0700],
+            ],
+            'throw' => true,
             'report' => false,
         ],
 
@@ -43,6 +66,7 @@ return [
             'root' => storage_path('app/public'),
             'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
             'visibility' => 'public',
+            'permissions' => $storagePermissions,
             'throw' => false,
             'report' => false,
         ],

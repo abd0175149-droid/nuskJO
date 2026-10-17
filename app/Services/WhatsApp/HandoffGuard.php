@@ -10,11 +10,34 @@ namespace App\Services\WhatsApp;
  * فالتحويل صار مضموناً بالكود من طرفيه:
  *   ① قبل النموذج: طلبٌ صريح لموظف يُحوَّل مباشرةً بلا سؤال.
  *   ② بعد النموذج: ردٌّ يزعم التحويل دون أداة تحويل يُنفَّذ تحويله فعلاً.
+ * التفصيل: docs/whatsapp/handoff.md
  */
 class HandoffGuard
 {
-    /** أدوات تحوّل المحادثة فعلاً — إن استُدعيت إحداها فالزعم صادق */
-    public const ESCALATING_TOOLS = ['handoff_to_human', 'request_quote', 'confirm_booking'];
+    /** أدوات تحوّل المحادثة فعلاً — من سجل الأدوات (E15) */
+    public static function escalatingTools(): array
+    {
+        return BotTools::escalating();
+    }
+
+    /**
+     * هل تحوّلت المحادثة فعلاً في هذا الرد؟ نجاح أداة تحويل وحده (ok:اسم)، أو اسم قديم بلا بادئة. الرفض أو
+     * الفشل (denied:/failed:) لا يُعدّ، فلا يُسكت حارس «وعد بموظف دون تحويل».
+     *
+     * @param  list<string>  $usedTools
+     */
+    public static function escalated(array $usedTools): bool
+    {
+        foreach ($usedTools as $entry) {
+            [$status, $name] = str_contains($entry, ':') ? explode(':', $entry, 2) : ['ok', $entry];
+            // dup: طلب مسجّل مسبقاً، والمحادثة حُوّلت معه (E17.8)
+            if (in_array($status, ['ok', 'dup'], true) && in_array($name, self::escalatingTools(), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /** طلب صريح للتحدّث مع إنسان */
     private const WANTS_HUMAN = [
@@ -28,6 +51,12 @@ class HandoffGuard
         '/(ما بدي|مش بدي|لا اريد)\s+(احكي مع\s+)?(بوت|روبوت|اله)/u',
         '/\b(talk|speak|chat)\s+(to|with)\s+(a|an|someone|somebody|the|your|real|human|agent|person)\b/i',
         '/\b(real person|live agent|human agent|representative)\b/i',
+    ];
+
+    /** طلب حذف البيانات (E13): يُفتح طلب مسجّل حتمياً ويُحوَّل لموظف، ولا يراه النموذج */
+    private const WANTS_ERASURE = [
+        '/(^|\s)(حذف|احذف|احذفو|احذفوا|امسح|امسحو|امسحوا|مسح|شطب)\s+(كل\s+)?(بياناتي|معلوماتي|محادثتي|محادثاتي|رقمي|بيانات حسابي)(\s|$)/u',
+        '/\b(delete|erase|remove)\s+(all\s+)?(of\s+)?my\s+(data|information|personal data|chat|messages)\b/i',
     ];
 
     /** ردٌّ يزعم أنّ المحادثة حُوّلت أو أنّ موظفاً سيتواصل */
@@ -44,6 +73,19 @@ class HandoffGuard
     public static function wantsHuman(string $text): bool
     {
         return self::matchesAny(self::normalize($text), self::WANTS_HUMAN);
+    }
+
+    public static function wantsErasure(string $text): bool
+    {
+        return self::matchesAny(self::normalize($text), self::WANTS_ERASURE);
+    }
+
+    /** إيصال طلب الحذف بلغة العميل: لا يدّعي حذفاً لم يحدث */
+    public static function erasureConfirmation(bool $latin): string
+    {
+        return $latin
+            ? 'We have received your request to delete your data. A colleague will verify your identity and contact you within two working days; the deletion is completed within 30 days.'
+            : 'استلمنا طلب حذف بياناتك. سيتحقق موظف من هويتك ويتواصل معك خلال يومي عمل، ويُنفَّذ الحذف خلال 30 يوماً.';
     }
 
     public static function claimsHandoff(string $text): bool

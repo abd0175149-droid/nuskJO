@@ -7,8 +7,18 @@ use App\Jobs\SendPushNotification;
 use App\Models\Notification;
 use App\Models\User;
 
+/**
+ * الإشعارات: الجرس داخل النظام (قناة خاصة بالمستخدم) وإشعار الجهاز (FCM).
+ *
+ * تقليل البيانات (E15.10، docs/security/DATA-MINIMIZATION.md): إشعار الجهاز يمر بطرف ثالث ويُعرض على شاشة القفل،
+ * فإشعارات الواتساب (type=whatsapp) تصله بعنوان ثابت وجسم «افتح النظام للتفاصيل» مهما كان نص الجرس، والرابط يفتح
+ * المحادثة أو الطلب. ونص الجرس نفسه بلا رقم هاتف ولا تفاصيل طلب (WaConversation::noticeLabel ورقم الطلب).
+ * options['push'] = ['title' => …, 'body' => …] لنص جهاز مختلف عن الجرس؛ جسم الواتساب لا يُتجاوز.
+ */
 class NotificationService
 {
+    public const WHATSAPP_PUSH_BODY = 'افتح النظام للتفاصيل';
+
     /**
      * إرسال إشعار لمستخدم واحد
      */
@@ -32,13 +42,31 @@ class NotificationService
         } catch (\Throwable $e) {
             report($e);
         }
+        [$pushTitle, $pushBody] = self::pushText($title, $body, $options);
         try {
-            SendPushNotification::dispatch($userId, $title, $body, $notification->action_url, 'n' . $notification->id);
+            // sync_push: تنبيهات التشغيل تُدفع مباشرة، فتصل والطابور متوقف (OpsAlerts)
+            if (!empty($options['sync_push'])) {
+                PushService::toUser($userId, $pushTitle, $pushBody, $notification->action_url, 'n' . $notification->id);
+            } else {
+                // الوظيفة تحمل نص الجهاز وحده، فلا تدخل الأسماء حمولة jobs ولا failed_jobs
+                SendPushNotification::dispatch($userId, $pushTitle, $pushBody, $notification->action_url, 'n' . $notification->id);
+            }
         } catch (\Throwable $e) {
             report($e);
         }
 
         return $notification;
+    }
+
+    /** نص إشعار الجهاز: للواتساب عنوان الإشعار الثابت (أو push.title) وجسم عام دائماً @return array{0: string, 1: string} */
+    public static function pushText(string $title, string $body, array $options = []): array
+    {
+        $push = (array) ($options['push'] ?? []);
+        if (($options['type'] ?? null) === 'whatsapp') {
+            return [(string) ($push['title'] ?? $title), self::WHATSAPP_PUSH_BODY];
+        }
+
+        return [(string) ($push['title'] ?? $title), (string) ($push['body'] ?? $body)];
     }
 
     /** بنفس شكل /api/notifications ليُضاف لقائمة الجرس كما هو */
@@ -73,6 +101,7 @@ class NotificationService
     public static function notifyAdmins(string $title, string $body, array $options = []): void
     {
         $adminIds = User::whereHas('role', fn($q) => $q->where('slug', 'admin'))
+            ->where('is_active', true)
             ->where('id', '!=', auth()->id())
             ->pluck('id')
             ->toArray();
@@ -85,7 +114,7 @@ class NotificationService
      */
     public static function broadcast(string $title, string $body, array $options = [], ?int $excludeUserId = null): void
     {
-        $users = User::query();
+        $users = User::where('is_active', true);
         if ($excludeUserId) {
             $users->where('id', '!=', $excludeUserId);
         }
