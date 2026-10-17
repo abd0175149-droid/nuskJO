@@ -5,7 +5,8 @@
 FROM php:8.3-fpm-alpine@sha256:454b11c8907e32878ce92e87b13c14e1bbe6e1b10f4f96d4a19c9b62ec675d41
 
 # ffmpeg لاختبارات المحوّل الفعلي (E34، مجموعة ffmpeg)؛ بدونه تُتخطى ويبقى المزيّف
-RUN apk add --no-cache sqlite-dev icu-dev libzip-dev libpng-dev oniguruma-dev ffmpeg \
+# bash: اختبار سطر whatsapp:doctor في entrypoint يشغّله بـ bash كما على المضيف
+RUN apk add --no-cache sqlite-dev icu-dev libzip-dev libpng-dev oniguruma-dev ffmpeg bash \
     && docker-php-ext-install pdo_sqlite mbstring intl bcmath gd zip
 
 COPY --from=composer:2@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac /usr/bin/composer /usr/bin/composer

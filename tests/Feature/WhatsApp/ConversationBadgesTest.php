@@ -43,7 +43,7 @@ class ConversationBadgesTest extends TestCase
 
     private function invoice(Client $client, string $status, ?string $tripDate, ?string $number = null): void
     {
-        DB::table('invoices')->insert(['invoice_number' => $number ?? 'INV-'.random_int(10000, 99999), 'client_id' => $client->id,
+        DB::table('invoices')->insert(['invoice_number' => $number ?? 'INV-'.\Illuminate\Support\Str::ulid(), 'client_id' => $client->id,
             'exchange_rate_snapshot' => 0.189, 'invoice_date' => now()->toDateString(), 'trip_date' => $tripDate, 'status' => $status,
             'total_sell_jod' => 300, 'created_by' => $this->creator->id, 'created_at' => now(), 'updated_at' => now()]);
     }

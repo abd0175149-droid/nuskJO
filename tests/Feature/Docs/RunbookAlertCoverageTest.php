@@ -80,7 +80,8 @@ class RunbookAlertCoverageTest extends TestCase
             $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(base_path($dir), \FilesystemIterator::SKIP_DOTS));
             foreach ($it as $file) {
                 if ($file->getExtension() === 'php') {
-                    $out[] = ltrim(str_replace(base_path(), '', $file->getPathname()), '/');
+                    // substr لا str_replace: جذر المشروع /app في حاوية البوابة يتكرر داخل /app/app/…
+                    $out[] = ltrim(substr($file->getPathname(), strlen(base_path())), '/');
                 }
             }
         }
