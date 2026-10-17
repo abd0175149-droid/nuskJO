@@ -29,6 +29,7 @@ return [
         'dashboard',                                   // يفرّع على isAdmin؛ الموظف يرى لوحته فقط
         'profile', 'profile.update', 'profile.password',
         'POST api/fcm-token', 'DELETE api/fcm-token',  // رموز جهاز المستخدم نفسه
+        'POST api/fcm-token/test',                     // إشعار تجريبي لتوكن مسجّل لحساب المستخدم نفسه (FcmTokenController::test)
         'GET api/notifications', 'POST api/notifications/{notification}/read', 'POST api/notifications/read-all',
         'attendance.check-in', 'attendance.check-out', 'attendance.status',
         'hr.my-attendance', 'hr.my-requests', 'hr.my-payslip',

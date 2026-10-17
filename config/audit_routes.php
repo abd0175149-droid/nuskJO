@@ -268,6 +268,7 @@ return [
     'NotificationController@markAllAsRead' => 'none: إشعار المستخدم نفسه',
     'FcmTokenController@store' => 'none: رمز جهاز المستخدم نفسه',
     'FcmTokenController@destroy' => 'none: رمز جهاز المستخدم نفسه',
+    'FcmTokenController@test' => 'none: إشعار تجريبي لجهاز المستخدم نفسه، لا يغيّر بيانات',
 
     // ===== الدخول والإطار =====
     'Auth\LoginController@login' => 'auth.login',
