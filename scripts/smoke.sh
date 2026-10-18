@@ -45,6 +45,9 @@ if [[ -n "$chromium" ]]; then pass "كروميوم: ${chromium}"; else fail "ل�
 # 5ب) ffmpeg لرسائل الموظف الصوتية (E34)
 ffmpeg="$(docker exec "$APP_CONTAINER" ffmpeg -hide_banner -version 2>/dev/null | head -1 || true)"
 if [[ -n "$ffmpeg" ]]; then pass "ffmpeg: ${ffmpeg}"; else fail "لا ffmpeg في الصورة (الرسائل الصوتية)"; fi
+# 5ج) pdftoppm لورقة الشركة الرسمية المرفوعة PDF
+poppler="$(docker exec "$APP_CONTAINER" pdftoppm -v 2>&1 | head -1 || true)"
+if [[ "$poppler" == pdftoppm* ]]; then pass "pdftoppm: ${poppler}"; else fail "لا pdftoppm في الصورة (ورقة الشركة PDF)"; fi
 
 # 6) الجوازات والنسخ لـ www-data وحده بعد الإقلاع (A17): لا بت للمجموعة أو الغير، وnginx لا يفتح المجلد
 leaks="$(docker exec "$APP_CONTAINER" sh -c 'find storage/app/wa-media -perm /077 -print 2>/dev/null | head -3
@@ -73,5 +76,15 @@ check /login '^Content-Security-Policy(-Report-Only)?: .*nonce-'
 check /build/manifest.json
 check /firebase-messaging-sw.js
 check /storage/__smoke__.png "^Content-Security-Policy: .*sandbox"
+
+# 8) وحدات .mjs من /build بنوع JavaScript: عامل pdf.js بنوع آخر يرفضه المتصفح فتختفي خلفية صفحات الطباعة
+mjs="$(docker exec "$APP_CONTAINER" sh -c "grep -o 'assets/[^\"]*\.mjs' public/build/manifest.json | head -1" 2>/dev/null || true)"
+if [[ -z "$mjs" ]]; then
+    pass "لا وحدات .mjs في البناء"
+elif headers "/build/$mjs" | grep -qiE '^Content-Type: (application|text)/javascript'; then
+    pass "عامل pdf.js يُخدم JavaScript"
+else
+    fail "عامل pdf.js (/build/$mjs) لا يُخدم بنوع JavaScript: قوالب الطباعة لن تُرسم"
+fi
 
 exit "$failed"

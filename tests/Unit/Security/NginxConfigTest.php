@@ -124,6 +124,16 @@ class NginxConfigTest extends TestCase
         $this->assertMatchesRegularExpression('/^\s*keepalive_timeout 100s;/m', $this->conf());
     }
 
+    /** عامل pdf.js وحدة .mjs: بنوع octet-stream يرفضها المتصفح فتختفي خلفية كل صفحات الطباعة (حدث على نسك 2026-10-18) */
+    public function test_mjs_modules_are_served_as_javascript(): void
+    {
+        $mjs = array_values(array_filter($this->locations($this->code($this->conf())), fn ($l) => str_contains($l['head'], '\.mjs')));
+
+        $this->assertCount(1, $mjs, 'كتلة location لملفات .mjs');
+        $this->assertMatchesRegularExpression('/default_type\s+application\/javascript\s*;/', $mjs[0]['own']);
+        $this->assertStringContainsString(self::SNIPPET, $mjs[0]['own']);
+    }
+
     public function test_the_image_ships_the_snippet_where_the_config_includes_it(): void
     {
         $this->assertStringContainsString('COPY docker/nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf', (string) file_get_contents(base_path('Dockerfile')));

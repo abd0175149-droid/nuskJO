@@ -75,22 +75,25 @@
                             <input ref="logoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-gold-100 file:text-gold-700 hover:file:bg-gold-200"/>
                             <button type="submit" class="mt-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-gold-600 hover:bg-gold-700">📤 رفع الشعار</button>
                         </form>
+                        <p v-if="lastBrand === 'logo' && $page.props.errors?.asset" class="mt-2 text-xs text-red-600" role="alert">{{ $page.props.errors.asset }}</p>
                     </div>
                     <!-- ورقة الشركة الرسمية -->
                     <div class="p-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 md:col-span-2">
                         <h4 class="font-bold text-sm text-gray-700 mb-2">📄 ورقة الشركة الرسمية (اختياري)</h4>
                         <p class="text-xs text-gray-500 mb-3">
-                            ارفع ورقتك الرسمية كاملة بمقاس A4 عمودي، فتصير خلفية البطاقة ويُرسم الجدول داخل بياضها.
+                            ارفع ورقتك الرسمية كاملة بمقاس A4 عمودي، فتصير خلفية البطاقة وخلفية فاتورة «⬇️ PDF»، ويُرسم الجدول داخل بياضها.
                             عند استخدامها يُخفى شريط الترويسة وشريط التواصل لأنّ الورقة تحملهما أصلاً.
                         </p>
+                        <p class="text-xs text-gray-500 mb-3">صورة PNG أو JPG، أو ملف PDF (مثل قالب الطباعة نفسه): تُؤخذ صفحته الأولى.</p>
                         <div v-if="brand?.letterhead" class="mb-3 p-2 bg-white rounded-lg border border-gray-200 flex items-start gap-3">
                             <img :src="brand.letterhead" alt="ورقة الشركة" class="max-h-36 rounded border border-gray-100"/>
                             <a :href="brand.letterhead" target="_blank" class="text-xs text-blue-600 hover:underline">فتح</a>
                         </div>
                         <form @submit.prevent="uploadBrand('letterhead')" enctype="multipart/form-data">
-                            <input ref="letterheadFile" type="file" accept="image/png,image/jpeg" class="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"/>
+                            <input ref="letterheadFile" type="file" accept="image/png,image/jpeg,application/pdf,.pdf" class="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"/>
                             <button type="submit" class="mt-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-purple-600 hover:bg-purple-700">📤 رفع الورقة</button>
                         </form>
+                        <p v-if="lastBrand === 'letterhead' && $page.props.errors?.asset" class="mt-2 text-xs text-red-600" role="alert">{{ $page.props.errors.asset }}</p>
                         <div v-if="brand?.letterhead" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 mb-1">ارتفاع ترويسة الورقة (% من الصفحة)</label>
@@ -120,6 +123,7 @@
                             <input ref="heroFile" type="file" accept="image/png,image/jpeg,image/webp" class="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"/>
                             <button type="submit" class="mt-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700">📤 رفع الترويسة</button>
                         </form>
+                        <p v-if="lastBrand === 'hero' && $page.props.errors?.asset" class="mt-2 text-xs text-red-600" role="alert">{{ $page.props.errors.asset }}</p>
                     </div>
                 </div>
             </div>
@@ -201,7 +205,10 @@ const heroFile = ref(null);
 const letterheadFile = ref(null);
 
 // رفع الشعار أو الترويسة أو الورقة الرسمية — تُحفظ في الإعدادات ويقرأها مولّد البطاقات
+// آخر نموذج رُفع منه: خطأ الرفع (صيغة أو PDF لا يُقرأ) يظهر تحته وحده
+const lastBrand = ref('');
 const uploadBrand = (type) => {
+    lastBrand.value = type;
     const input = { logo: logoFile, hero: heroFile, letterhead: letterheadFile }[type]?.value;
     if (!input?.files?.length) return;
 

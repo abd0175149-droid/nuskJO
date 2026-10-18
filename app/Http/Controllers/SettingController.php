@@ -92,14 +92,17 @@ class SettingController extends Controller
     }
 
     /**
-     * رفع هوية الشركة البصرية المستخدمة في بطاقات العروض:
-     * الشعار (PNG بخلفية شفافة) وصورة الترويسة الافتراضية.
+     * رفع هوية الشركة البصرية المستخدمة في بطاقات العروض وفاتورة PDF:
+     * الشعار (PNG بخلفية شفافة) وصورة الترويسة الافتراضية، وورقة الشركة الرسمية صورةً أو PDF.
      */
     public function uploadBrandAsset(Request $request)
     {
         $request->validate([
+            // ورقة الشركة تقبل PDF (ملف قالب الطباعة نفسه) فتُحوَّل صفحته الأولى إلى PNG.
             // بلا svg (E26): قاعدة image ترفضه أصلاً، وحذفه هنا يمنع فتحه يوماً بـ allow_svg بالخطأ
-            'asset' => 'required|image|mimes:png,jpg,jpeg,webp|max:5120',
+            'asset' => $request->input('type') === 'letterhead'
+                ? 'required|file|mimes:png,jpg,jpeg,pdf|max:10240'
+                : 'required|image|mimes:png,jpg,jpeg,webp|max:5120',
             'type' => 'required|in:logo,hero,letterhead',
         ]);
 
@@ -111,12 +114,24 @@ class SettingController extends Controller
             default => 'card_hero_path',
         };
 
-        $old = Setting::where('key', $key)->first();
-        if (self::ownedUpload($old?->value, 'brand/')) {
-            Storage::disk('public')->delete($old->value);
+        $file = $request->file('asset');
+        if ($file->getMimeType() === 'application/pdf') {
+            // من ملف الرفع المؤقت مباشرة: الـ PDF لا يُحفظ على القرص العام، والمحفوظ صورة صفحته الأولى وحدها
+            $path = \App\Services\PdfRasterizer::firstPage($file->getRealPath(), 'public', 'brand');
+            if (!$path) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'asset' => 'تعذّرت قراءة ملف PDF. جرّب ملفاً آخر أو صورة PNG أو JPG.',
+                ]);
+            }
+        } else {
+            $path = $file->store('brand', 'public');
         }
 
-        $path = $request->file('asset')->store('brand', 'public');
+        // القديم يُحذف بعد نجاح الجديد، فلا تبقى الهوية بلا ملف إن فشل التحويل
+        $old = Setting::where('key', $key)->first();
+        if (self::ownedUpload($old?->value, 'brand/') && $old->value !== $path) {
+            Storage::disk('public')->delete($old->value);
+        }
 
         Setting::updateOrCreate(
             ['key' => $key],

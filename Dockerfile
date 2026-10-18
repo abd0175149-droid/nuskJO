@@ -53,6 +53,8 @@ RUN apk add --no-cache \
     font-noto-arabic \
     # ── رسائل الموظف الصوتية (E34): تحويل تسجيل المتصفح إلى ogg/opus أحادي. الحزمة تحمل ffprobe ومرمّز libopus ──
     ffmpeg \
+    # ── ورقة الشركة الرسمية PDF: pdftoppm يحوّل صفحتها الأولى إلى PNG خلفيةً لفاتورة PDF وبطاقات العروض ──
+    poppler-utils \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo_sqlite \
