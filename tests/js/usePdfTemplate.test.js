@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { renderTemplate, loadPdfJs, PDF_OPTIONS, resetPdfJsForTests } from '@/composables/usePdfTemplate';
+import { renderTemplate, loadPdfJs, PDF_OPTIONS, WORKER_REV, resetPdfJsForTests } from '@/composables/usePdfTemplate';
 
 // pdf.js مزيّف: نتحقق من خيارات المستند (بلا eval) ومن مصدر العامل، بلا رسم حقيقي في jsdom
 const pdf = vi.hoisted(() => ({ getDocument: vi.fn(), GlobalWorkerOptions: {} }));
@@ -34,6 +34,8 @@ describe('usePdfTemplate', () => {
         expect(pdf.getDocument).toHaveBeenCalledWith({ url: '/storage/templates/invoice.pdf', isEvalSupported: false, enableXfa: false });
         expect(PDF_OPTIONS.isEvalSupported).toBe(false);
         expect(pdf.GlobalWorkerOptions.workerSrc).toMatch(/^\/build\/assets\/pdf\.worker/);
+        // الإصدار في الرابط: المتصفح لا يعيد استعمال رد قديم بنوع خاطئ
+        expect(pdf.GlobalWorkerOptions.workerSrc).toBe('/build/assets/pdf.worker.min-abc123.mjs?v=' + WORKER_REV);
     });
 
     it('paints the first page on every copy at scale 2 and releases the document', async () => {

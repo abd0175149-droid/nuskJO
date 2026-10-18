@@ -7,6 +7,11 @@
 /** خيارات ثابتة لكل مستند: بلا eval وبلا نماذج XFA */
 export const PDF_OPTIONS = Object.freeze({ isEvalSupported: false, enableXfa: false });
 
+// إصدار رابط العامل: الملف نفسه خرج من nginx بنوع octet-stream حتى 2026-10-18 بكاش سنة، فالمتصفح يحتفظ بالرد
+// الخاطئ ويرفض تشغيله. رقم جديد هنا يجبر كل متصفح على جلب العامل من جديد، فيُرفع عند أي إصلاح مماثل
+export const WORKER_REV = '2';
+export const workerUrl = (url) => `${url}${String(url).includes('?') ? '&' : '?'}v=${WORKER_REV}`;
+
 let loading = null;
 
 /** تحميل كسول: pdf.js لا يدخل الحزمة الرئيسية، ويُحمَّل مرة واحدة لكل صفحة */
@@ -15,7 +20,7 @@ export function loadPdfJs() {
         import('pdfjs-dist/legacy/build/pdf.mjs'),
         import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
     ]).then(([pdfjs, worker]) => {
-        pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl(worker.default);
         return pdfjs;
     }).catch((e) => {
         loading = null;

@@ -40,6 +40,7 @@
 import { ref, computed, watch, nextTick, onUnmounted } from 'vue';
 import axios from 'axios';
 import { mediaUrl, fetchError } from '@/utils/media.js';
+import { loadPdfJs } from '@/composables/usePdfTemplate.js';
 
 // عارض المرفقات (E14.7): الملف يُجلب blob عند الطلب ويُعرض داخل الصفحة (صورة بـ img، وPDF بـ pdf.js على canvas بلا eval).
 // لا شيء inline من المتصفح، ولا يُخزَّن الملف في أي مخزن للمتصفح، ويُحرَّر كل شيء عند الإغلاق.
@@ -107,10 +108,9 @@ const load = async () => {
     try {
         const { data } = await axios.get(mediaUrl(props.messageId), { responseType: 'blob', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
         if (kind.value === 'pdf') {
-            // تحميل كسول: pdf.js لا يدخل حزمة الصندوق إلا عند فتح أول PDF. البناء legacy لأن الحديث يستعمل دوالّ JS
-            // لم تصل بعد إلى متصفحات اليوم (Map.getOrInsertComputed)، فلا يُرسم شيء بدونه
-            const [pdfjs, worker] = await Promise.all([import('pdfjs-dist/legacy/build/pdf.mjs'), import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')]);
-            pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+            // تحميل كسول: pdf.js لا يدخل حزمة الصندوق إلا عند فتح أول PDF. المحمّل المشترك (البناء legacy، ورابط العامل
+            // بإصداره فلا يبقى المتصفح على رد قديم)
+            const pdfjs = await loadPdfJs();
             pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(await data.arrayBuffer()), isEvalSupported: false, enableXfa: false }).promise;
             pages.value = pdfDoc.numPages;
             loading.value = false;
