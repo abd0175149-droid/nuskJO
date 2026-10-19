@@ -11,6 +11,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // معاملات SQLite بوضعها المضبوط (IMMEDIATE) على PHP 8.3 أيضاً: Laravel يطبّقه على 8.4 وحده
+        $this->app->bind('db.connector.sqlite', \App\Database\SQLiteImmediateConnector::class);
+
         // البث اللحظي للصندوق (E28): طلب واحد أو وظيفة واحدة، فتُجمَّع لمسات المحادثة نفسها في حدث واحد
         $this->app->scoped(\App\Services\WhatsApp\Realtime\InboxBroadcaster::class);
 
