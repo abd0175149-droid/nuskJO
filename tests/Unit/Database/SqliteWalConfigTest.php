@@ -45,7 +45,7 @@ class SqliteWalConfigTest extends TestCase
     {
         $compose = file_get_contents(base_path('docker-compose.yml'));
 
-        foreach (['DB_JOURNAL_MODE=wal', 'DB_BUSY_TIMEOUT=60000', 'DB_SYNCHRONOUS=normal', 'DB_TRANSACTION_MODE=DEFERRED'] as $line) {
+        foreach (['DB_JOURNAL_MODE=wal', 'DB_BUSY_TIMEOUT=60000', 'DB_SYNCHRONOUS=normal', 'DB_TRANSACTION_MODE=IMMEDIATE'] as $line) {
             $this->assertStringContainsString('- '.$line, $compose);
         }
     }

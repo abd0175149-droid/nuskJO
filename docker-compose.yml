@@ -51,11 +51,12 @@ services:
       - WA_LOG_LEVEL=info
       - DB_CONNECTION=sqlite
       - DB_DATABASE=/var/www/html/database/data/database.sqlite
-      # E07.11: WAL ومهلة القفل 60 ثانية (صريحة هنا لا في الافتراضي وحده)؛ IMMEDIATE بعد تجربته على نسخة
+      # E07.11: WAL ومهلة القفل 60 ثانية (صريحة هنا لا في الافتراضي وحده). IMMEDIATE منذ 2026-10-19: مع DEFERRED
+      # كان حجز وظيفة من الطابور يفشل فوراً بـ «database is locked» عند ترقية القراءة إلى كتابة (14 مرة في يومين)
       - DB_JOURNAL_MODE=wal
       - DB_BUSY_TIMEOUT=60000
       - DB_SYNCHRONOUS=normal
-      - DB_TRANSACTION_MODE=DEFERRED
+      - DB_TRANSACTION_MODE=IMMEDIATE
       # E08: فحص /up الحقيقي وفحوص ميتا. مطفآن حتى يُضبطا في /opt/nuskJO/.env (تعويض compose)، مرحلةً مرحلة (docs/RELEASE.md)
       - OPS_HEALTH_CHECKS=${OPS_HEALTH_CHECKS:-false}
       - WA_META_CHECKS=${WA_META_CHECKS:-false}

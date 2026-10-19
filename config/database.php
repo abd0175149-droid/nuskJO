@@ -45,8 +45,9 @@ return [
             'busy_timeout' => env('DB_BUSY_TIMEOUT', 60000),
             // normal آمن مع WAL (قد يضيع آخر اعتماد عند انقطاع الكهرباء، لا تتلف القاعدة)
             'synchronous' => env('DB_SYNCHRONOUS', 'normal'),
-            // IMMEDIATE يُجرَّب على نسخة من قاعدة الإنتاج أولاً: مع DEFERRED قد تفشل ترقية القراءة إلى كتابة فوراً
-            'transaction_mode' => env('DB_TRANSACTION_MODE', 'DEFERRED'),
+            // IMMEDIATE: المعاملة تحجز الكتابة من بدايتها فتنتظر busy_timeout. مع DEFERRED تفشل ترقية القراءة إلى كتابة
+            // فوراً بلا انتظار (حجز وظيفة من طابور القاعدة كان يفشل بـ «database is locked»، 2026-10-19)
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'IMMEDIATE'),
         ],
 
         'mysql' => [
