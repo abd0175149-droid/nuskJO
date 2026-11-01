@@ -2,7 +2,7 @@
 # نفس أساس الإنتاج لتُشارَك الطبقات، دون كروميوم ولا nginx.
 # تُشغَّل بـ --network none: لا شيء يخرج إلى ميتا أو النموذج أو FCM.
 # البصمة نفسها في Dockerfile (E26.8)
-FROM php:8.3-fpm-alpine@sha256:454b11c8907e32878ce92e87b13c14e1bbe6e1b10f4f96d4a19c9b62ec675d41
+FROM php:8.3-fpm-alpine@sha256:25e15cf35ed0f5b75d8cf14fc2c4ed7e0e6bee00d359e681b7fa3e91a7bee49f
 
 # ffmpeg لاختبارات المحوّل الفعلي (E34، مجموعة ffmpeg)؛ بدونه تُتخطى ويبقى المزيّف
 # bash وcoreutils وfindutils (GNU): سكربتات المضيف (scripts/backup/*.sh وسطر doctor في entrypoint) تُختبر بأدوات المضيف نفسها، لا busybox
