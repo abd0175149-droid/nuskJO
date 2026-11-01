@@ -8,7 +8,7 @@
 
 # ---- Stage 1: Build Frontend Assets ----
 # node:22-alpine (Node 22.23.3)، البصمة في 2026-10-16
-FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS frontend
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS frontend
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -22,7 +22,7 @@ RUN --mount=type=secret,id=vite_env,target=/app/.env.production,required=true np
 
 # ---- Stage 2: PHP Production Image ----
 # php:8.3-fpm-alpine (PHP 8.3.35)، البصمة في 2026-10-16
-FROM php:8.3-fpm-alpine@sha256:454b11c8907e32878ce92e87b13c14e1bbe6e1b10f4f96d4a19c9b62ec675d41 AS production
+FROM php:8.3-fpm-alpine@sha256:25e15cf35ed0f5b75d8cf14fc2c4ed7e0e6bee00d359e681b7fa3e91a7bee49f AS production
 
 # Install system dependencies
 RUN apk add --no-cache \
