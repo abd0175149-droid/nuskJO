@@ -25,7 +25,7 @@ use Illuminate\Support\Str;
 final class MediaArchiver
 {
     /** حالات الأرشفة في wa_messages.media_status */
-    public const STATES = ['pending', 'stored', 'too_large', 'failed', 'expired', 'rejected', 'purged', 'missing', 'skipped_quota', 'skipped_consent'];
+    public const STATES = ['pending', 'stored', 'too_large', 'failed', 'expired', 'rejected', 'purged', 'missing', 'skipped_quota', 'skipped_consent', 'remote'];
 
     /**
      * النتيجة، أو retry=true: أعد المحاولة لاحقاً (backoff).

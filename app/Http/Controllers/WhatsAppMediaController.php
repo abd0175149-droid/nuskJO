@@ -73,10 +73,11 @@ class WhatsAppMediaController extends Controller
         $user = $request->user();
         abort_unless($user->can('whatsapp.media') && $user->can('whatsapp.reply'), 403);
 
-        if (!in_array($message->media_status, ['too_large', 'failed'], true) || !$message->media_id) {
+        if (!in_array($message->media_status, ['too_large', 'failed', 'remote'], true) || !$message->media_id) {
             return response()->json(['message' => 'لا يمكن تنزيل هذا الملف يدوياً (حُذف أو انتهى أو نوعه غير مسموح).'], 422);
         }
-        if (!MediaPresenter::withinIdLifetime($message)) {
+        // remote: ملف من السجل المستورد عند ربط الرقم، على الهاتف بلا مهلة نعرفها
+        if ($message->media_status !== 'remote' && !MediaPresenter::withinIdLifetime($message)) {
             return response()->json(['message' => 'انتهت صلاحية الملف عند ميتا — اطلب من العميل إرساله ثانية.'], 422);
         }
         if ($archiver->overQuota()) {

@@ -76,6 +76,8 @@ class ConversationScopeTest extends TestCase
         // رسائل النظام من المحادثة (OpenWA، 2026-11-06): داخل النطاق بلا حمولة 422 (الربط قبل التحقق)، وخارجه 404
         'follow-up' => ['POST', [], [], [], 422],
         'system-mute' => ['POST', [], [], [], 422],
+        // تجربة البوت (2026-11-06): صلاحية الإعدادات فوق صلاحيات الصندوق
+        'bot-pilot' => ['POST', ['on' => true], [], ['whatsapp.settings']],
     ];
 
     protected function setUp(): void

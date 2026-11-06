@@ -193,7 +193,7 @@ return [
         'webhook_base' => rtrim((string) env('OPENWA_WEBHOOK_BASE', 'http://nuskjo-app:4020'), '/'),
         // مهلات الطلب (ثوانٍ): الإرسال يحمل base64 حتى 19MB، والتشغيل يفتح كروميوم، وإشعار القراءة ومؤشر الكتابة قصيران
         // (receipt) فلا يؤخران الرد
-        'timeouts' => ['default' => 20, 'send' => 90, 'start' => 150, 'connect' => 5, 'receipt' => 5],
+        'timeouts' => ['default' => 20, 'send' => 90, 'start' => 150, 'connect' => 5, 'receipt' => 5, 'import' => 90],
         // الأحداث المسجلة في webhook كل رقم
         'events' => [
             'message.received', 'message.sent', 'message.ack', 'message.failed', 'message.revoked',
@@ -208,8 +208,21 @@ return [
         'ready_probe_minutes' => 5,
         // صلاحية QR في الكاش (ثوانٍ)
         'qr_ttl' => 60,
-        // الاسترجاع بعد إعادة الاتصال
+        // الاسترجاع بعد إعادة الاتصال (فجوة الانقطاع وحدها، لا السجل الأول)
         'backfill' => ['chats' => 40, 'messages' => 15, 'overlap_seconds' => 120],
+        // استيراد السجل عند أول ربط للرقم (OpenWa\HistoryImport، docs/whatsapp/openwa.md «استيراد السجل»).
+        // البوابة لا تعرف مؤشراً للسجل: آخر N رسالة لكل محادثة (deep=true، سقفها 2000)، فالعمق أيام وعدد معاً
+        'import' => [
+            'auto' => (bool) env('WA_IMPORT_AUTO', true),
+            'days' => (int) env('WA_IMPORT_DAYS', 180),
+            'messages_per_chat' => min(2000, max(1, (int) env('WA_IMPORT_MESSAGES_PER_CHAT', 500))),
+            // صفحة قائمة المحادثات (1–1000)، ومهلة بين نداءين للبوابة (whatsapp-web.js ثقيل)، وميزانية الوظيفة الواحدة
+            'chats_page' => 500,
+            'sleep_ms' => (int) env('WA_IMPORT_SLEEP_MS', 300),
+            'job_budget_seconds' => 25,
+            // المحادثة التي ينشئها الاستيراد تُغلق، فلا يغرق «الكل» بمئات المحادثات القديمة. أول وارد حي يعيد فتحها
+            'close_new' => true,
+        ],
         // حدود نص واتساب ويب (OpenWA يرفض فوقها)
         'max_text' => 4096,
         'max_caption' => 1024,

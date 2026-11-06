@@ -134,6 +134,7 @@ TXT;
         return self::hasPendingInbound($conv, $s)
             && $s->botReady()
             && self::channelMode($conv) !== 'off'
+            && $s->inBotPilot($conv)
             && $conv->botActive()
             && !(self::watermarkOn($s) && $s->flag('stale_gate') && ReplyState::isStale($conv, $s));
     }
@@ -192,6 +193,8 @@ TXT;
             !self::channelUsable($conv) => 'channel_blocked',
             // البوت مطفأ على هذا الرقم (wa_channels.bot_mode=off): الموظفون وحدهم
             self::channelMode($conv) === 'off' => 'bot_off',
+            // نطاق التجربة (2026-11-06): المحادثات المختارة وحدها، والباقي للموظفين
+            !$s->inBotPilot($conv) => 'not_in_pilot',
             !$conv->bot_enabled => 'with_staff',
             !$conv->botActive() => 'bot_paused',
             default => null,

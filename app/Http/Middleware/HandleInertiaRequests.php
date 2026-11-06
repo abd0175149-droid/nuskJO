@@ -60,6 +60,15 @@ class HandleInertiaRequests extends Middleware
                 ? rescue(fn () => \App\Models\WaChannel::query()->orderBy('sort')->orderBy('id')->get(['id', 'name', 'color', 'status', 'phone'])
                     ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name, 'color' => $c->color, 'linked' => $c->isLinked()])->values()->all(), [], false)
                 : [],
+            // تجربة البوت (2026-11-06): نطاق الرد وعدد المختارين لشريط الصندوق وزر اللوحة. كسول كسابقه
+            'waBotPilot' => fn () => $user?->can('whatsapp.view')
+                ? rescue(function () {
+                    $s = \App\Models\WaBotSetting::current();
+
+                    return ['scope' => $s->botScope(), 'phones' => count($s->pilotPhones()),
+                        'conversations' => $s->botScope() === 'pilot' ? \App\Models\WaConversation::where('bot_pilot', true)->count() : 0];
+                }, null, false)
+                : null,
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);
     }

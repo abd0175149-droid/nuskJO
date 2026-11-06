@@ -92,6 +92,8 @@ final class SettingsSchema
         'llm_terms_confirmed_at', 'llm_terms_confirmed_by', 'llm_terms_fp',
         // OpenWA (2026-11-06): تكتبها صفحاتها بمساراتها المدقَّقة (الحدود ورسائل النظام وصلاحيات البوت)، لا PATCH الإعدادات
         'warmup_ladder', 'system_test_mode', 'test_recipients', 'tool_profiles',
+        // نطاق رد البوت وهواتف التجربة: مسار «نطاق الرد» في صفحة صلاحيات البوت
+        'bot_scope', 'bot_pilot_phones',
         // حامل هاتف الرقم القديم: احتياط EchoHandler حين لا موظف أساسياً على الرقم
         'coexistence_holder_user_id',
     ];

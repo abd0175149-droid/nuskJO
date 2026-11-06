@@ -34,6 +34,8 @@ class WaBotSetting extends Model
         'wa_daily_alert_threshold',
         // OpenWA (2026-11-06): سلّم التسخين ووضع الاختبار وأرقامه وتعديلات صلاحيات الأدوات (forceFill من صفحاتها)
         'warmup_ladder', 'system_test_mode', 'test_recipients', 'tool_profiles',
+        // نطاق رد البوت وهواتف التجربة (forceFill من صفحة صلاحيات البوت)
+        'bot_scope', 'bot_pilot_phones',
     ];
 
     /** دفاعاً إن سُلسل النموذج يوماً: لا سر في toArray/JSON */
@@ -207,6 +209,42 @@ class WaBotSetting extends Model
     /** في النظام رقم واتساب واحد على الأقل فعّال ومربوط على البوابة (2026-11-06). جاهزية رقم بعينه: WaChannel::isReady */
     public function channelReady(): bool { return WaChannel::anyLinked(); }
     public function botReady(): bool { return $this->enabled && $this->channelReady() && !empty($this->llmKey()); }
+
+    /** نطاق رد البوت: all (كل المحادثات)، أو pilot (المحادثات المختارة للتجربة وحدها) */
+    public const BOT_SCOPES = ['all', 'pilot'];
+
+    public function botScope(): string
+    {
+        return in_array($this->bot_scope, self::BOT_SCOPES, true) ? (string) $this->bot_scope : 'all';
+    }
+
+    /** @return list<string> هواتف التجربة بالصيغة الموحّدة */
+    public function pilotPhones(): array
+    {
+        $list = json_decode((string) $this->bot_pilot_phones, true);
+
+        return is_array($list) ? array_values(array_filter(array_map('strval', $list))) : [];
+    }
+
+    /** يرد البوت على هذه المحادثة: النطاق كامل، أو المحادثة معلَّمة للتجربة، أو هاتفها في القائمة */
+    public function inBotPilot(WaConversation $conv): bool
+    {
+        if ($this->botScope() === 'all' || $conv->bot_pilot) {
+            return true;
+        }
+        $phones = $this->pilotPhones();
+        if ($phones === []) {
+            return false;
+        }
+        foreach ([$conv->phone, $conv->wa_phone] as $p) {
+            $c = \App\Services\WhatsApp\PhoneNormalizer::canonical($p);
+            if ($c !== '' && in_array($c, $phones, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public function flag(string $key): bool
     {

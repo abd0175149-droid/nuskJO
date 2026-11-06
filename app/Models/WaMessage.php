@@ -22,7 +22,7 @@ class WaMessage extends Model
         // E21: وقت ميتا للحالة الحالية (statuses[].timestamp)، غير sent_at (وقت قبول ميتا للطلب)
         'status_at',
         'media_id', 'media_mime', 'media_sha256', 'media_filename', 'media_size', 'media_path', 'referral',
-        // E14: حالة الأرشفة (pending|stored|too_large|failed|expired|rejected|purged|missing|skipped_quota|skipped_consent)
+        // E14: حالة الأرشفة (pending|stored|too_large|failed|expired|rejected|purged|missing|skipped_quota|skipped_consent|remote: من السجل المستورد، على الهاتف)
         'media_status', 'media_error', 'media_archived_at',
         // E24: كائن pricing من ويبهوك الحالة (أول ظهور هو المعتمد)
         'pricing_billable', 'pricing_model', 'pricing_category', 'pricing_type',

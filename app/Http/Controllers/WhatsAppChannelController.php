@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\User;
 use App\Models\WaChannel;
 use App\Models\WaMessage;
+use App\Services\WhatsApp\OpenWa\HistoryImport;
 use App\Services\WhatsApp\OpenWa\SessionManager;
 use App\Services\WhatsApp\Sending\FailureBreaker;
 use Illuminate\Http\Request;
@@ -20,6 +21,8 @@ use Inertia\Inertia;
  */
 class WhatsAppChannelController extends Controller
 {
+    public const COMMANDS = ['start', 'restart', 'stop', 'logout', 'repair', 'pause', 'resume', 'reset_breaker', 'import_start', 'import_stop'];
+
     public function index()
     {
         return Inertia::render('WhatsApp/Channels', [
@@ -100,10 +103,10 @@ class WhatsAppChannelController extends Controller
         return response()->json($res, $res['ok'] ? 200 : 422);
     }
 
-    /** start | restart | stop | logout | repair | pause | resume | reset_breaker */
+    /** start | restart | stop | logout | repair | pause | resume | reset_breaker | import_start | import_stop */
     public function command(Request $request, WaChannel $channel, string $command)
     {
-        abort_unless(in_array($command, ['start', 'restart', 'stop', 'logout', 'repair', 'pause', 'resume', 'reset_breaker'], true), 404);
+        abort_unless(in_array($command, self::COMMANDS, true), 404);
         $data = $request->validate(['minutes' => ['nullable', 'integer', 'min:5', 'max:10080'], 'reason' => ['nullable', 'string', 'max:160']]);
         $res = match ($command) {
             'start' => SessionManager::provision($channel)['ok'] ? SessionManager::start($channel->refresh()) : SessionManager::provision($channel),
@@ -118,6 +121,9 @@ class WhatsAppChannelController extends Controller
 
                 return ['ok' => true];
             })(),
+            // استيراد سجل الرقم (HistoryImport): بدء أو استئناف من المؤشر، وإيقاف
+            'import_start' => HistoryImport::start($channel, 'manual:'.$request->user()->id),
+            'import_stop' => HistoryImport::stop($channel),
         };
         AuditLog::safe(AuditAction::WaChannelChange, 'wa_channel', $channel->id, null, ['action' => $command, 'ok' => $res['ok'], 'code' => $res['code'] ?? null]);
 
@@ -187,6 +193,7 @@ class WhatsAppChannelController extends Controller
                 'failed' => WaMessage::where('channel_id', $c->id)->where('direction', 'out')->where('status', 'failed')->where('created_at', '>=', $today)->count(),
             ],
             'conversations' => $c->conversations()->where('status', '!=', 'merged')->count(),
+            'history' => HistoryImport::present($c),
         ];
     }
 }

@@ -100,6 +100,7 @@ enum AuditAction: string
     case WaMessageTypeUpdate = 'wa.message_type_update';
     case WaOutboxAction = 'wa.outbox_action';
     case WaBotPolicyUpdate = 'wa.bot_policy_update';
+    case WaBotPilotUpdate = 'wa.bot_pilot_update';
     case WaIdentityChange = 'wa.identity_change';
     case WaLinkClient = 'wa.link_client';
     case WaUnlinkClient = 'wa.unlink_client';
@@ -290,7 +291,7 @@ enum AuditAction: string
             self::WaMsgCorrect => AuditSeverity::Warn,
             self::WaCallsFollowupUpdate, self::WaCallingSettingsApply, self::WaCoexistenceHolderSet, self::WaHistoryDiscard => AuditSeverity::Warn,
             self::WaRedrive, self::QuoteExport => AuditSeverity::Warn,
-            self::WaChannelChange, self::WaSendLimitsUpdate, self::WaMessageTypeUpdate, self::WaBotPolicyUpdate => AuditSeverity::Warn,
+            self::WaChannelChange, self::WaSendLimitsUpdate, self::WaMessageTypeUpdate, self::WaBotPolicyUpdate, self::WaBotPilotUpdate => AuditSeverity::Warn,
             default => AuditSeverity::Info,
         };
     }
@@ -319,7 +320,7 @@ enum AuditAction: string
             self::WaBusinessProfileUpdate, self::WaBusinessProfilePhoto,
             self::WaQrCreate, self::WaQrDelete, self::WaQrCardToggle, self::OfferStoryGenerate => 'config',
             self::WaPlaceChange, self::WaCardChange => 'config',
-            self::WaChannelChange, self::WaSendLimitsUpdate, self::WaMessageTypeUpdate, self::WaBotPolicyUpdate => 'config',
+            self::WaChannelChange, self::WaSendLimitsUpdate, self::WaMessageTypeUpdate, self::WaBotPolicyUpdate, self::WaBotPilotUpdate => 'config',
             self::WaReactionSend => 'noise',
             self::WaCallsFollowupUpdate, self::WaCallingSettingsApply => 'config',
             self::WaCoexistenceHolderSet => 'access',
@@ -421,6 +422,7 @@ enum AuditAction: string
             self::WaMessageTypeUpdate => 'تعديل نوع رسالة نظام',
             self::WaOutboxAction => 'إجراء على طابور رسائل النظام',
             self::WaBotPolicyUpdate => 'تعديل صلاحيات أدوات البوت',
+            self::WaBotPilotUpdate => 'تعديل نطاق تجربة البوت',
             self::WaIdentityChange => 'تغيّر رقم العميل أو معرّفه',
             self::WaLinkClient => 'ربط محادثة بعميل',
             self::WaUnlinkClient => 'فك ربط محادثة بعميل',

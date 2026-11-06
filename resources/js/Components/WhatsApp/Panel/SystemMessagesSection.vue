@@ -35,13 +35,24 @@
       </div>
       <p class="text-[10px] text-gray-400">تُلغى وحدها إن ردّ العميل قبل موعدها، وتخرج بحدود الإرسال.</p>
     </form>
+    <!-- تجربة البوت (2026-11-06): في نطاق «pilot» يرد البوت على المحادثات المختارة وحدها -->
+    <div v-if="pilotScope" class="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-900/20 p-2 space-y-1" data-test="panel-bot-pilot">
+      <label v-if="canPilot" class="flex items-center gap-2 font-bold cursor-pointer">
+        <input type="checkbox" :checked="!!system.bot_pilot" :disabled="pilotBusy" @change="togglePilot($event.target.checked)" class="rounded border-gray-300 text-violet-600" />
+        🧪 ضمن تجربة البوت
+      </label>
+      <p class="text-[11px]" :class="system.bot_pilot_effective ? 'text-violet-700 dark:text-violet-300' : 'text-gray-500'">
+        {{ system.bot_pilot_effective ? 'البوت يرد على هذه المحادثة.' : 'البوت لا يرد هنا: المحادثة خارج التجربة، والرد للموظفين.' }}
+      </p>
+    </div>
     <p v-if="msg" role="status" :class="msg.ok ? 'text-green-700' : 'text-red-600'">{{ msg.text }}</p>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import axios from 'axios';
+import { usePage } from '@inertiajs/vue3';
 import { errorText } from '@/composables/whatsapp/useInbox.js';
 
 const props = defineProps({
@@ -51,6 +62,11 @@ const props = defineProps({
   canReply: Boolean,
 });
 const emit = defineEmits(['changed']);
+
+const page = usePage();
+const pilotScope = computed(() => page.props.waBotPilot?.scope === 'pilot');
+const canPilot = computed(() => page.props.auth?.isAdmin || (page.props.auth?.permissions || []).includes('whatsapp.settings'));
+const pilotBusy = ref(false);
 
 const api = { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
 const open = ref(false);
@@ -85,6 +101,20 @@ async function toggleMute() {
     emit('changed');
   } catch (e) {
     msg.value = { ok: false, text: errorText(e, 'تعذّر الحفظ') };
+  }
+}
+
+async function togglePilot(on) {
+  pilotBusy.value = true;
+  msg.value = null;
+  try {
+    await axios.post(`/api/whatsapp/conversations/${props.conversationId}/bot-pilot`, { on }, api);
+    msg.value = { ok: true, text: on ? 'أُضيفت المحادثة لتجربة البوت' : 'أُخرجت المحادثة من تجربة البوت' };
+    emit('changed');
+  } catch (e) {
+    msg.value = { ok: false, text: errorText(e, 'تعذّر الحفظ') };
+  } finally {
+    pilotBusy.value = false;
   }
 }
 </script>

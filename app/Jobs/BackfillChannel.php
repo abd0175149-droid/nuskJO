@@ -6,6 +6,7 @@ use App\Jobs\ProcessWhatsAppReply;
 use App\Models\WaChannel;
 use App\Services\WhatsApp\EchoHandler;
 use App\Services\WhatsApp\OpenWa\EventRouter;
+use App\Services\WhatsApp\OpenWa\HistoryImport;
 use App\Services\WhatsApp\OpenWa\InboundParser;
 use App\Services\WhatsApp\Transport\ChannelTransport;
 use App\Services\WhatsApp\WaLog;
@@ -19,7 +20,8 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * بعد عودة رقم من انقطاع (ChannelState): ما وصل أثناءه ولم يصل webhookه. آخر 40 محادثة فردية × 15 رسالة منذ آخر وارد
- * ناقص دقيقتين، تمر بالمحلل نفسه، ومنع التكرار بالمعرّف (wamid). الصادر منها (fromMe) يمر بـ EchoHandler.
+ * ناقص دقيقتين، تمر بالمحلل نفسه، ومنع التكرار بالمعرّف (wamid). الصادر منها (fromMe) يمر بـ EchoHandler بوصفه تاريخاً:
+ * إرسالنا القديم يُطابَق 24 ساعة، وما كتبه الهاتف قديماً لا يوقف البوت الآن. السجل الأول ليس هنا بل HistoryImport.
  * البوت يُجدول للمحادثات التي وصلها جديد، وبوابة الحداثة في ProcessWhatsAppReply تمنع الرد على القديم جداً.
  */
 class BackfillChannel implements ShouldQueue, ShouldBeUnique
@@ -46,6 +48,17 @@ class BackfillChannel implements ShouldQueue, ShouldBeUnique
     {
         $channel = WaChannel::find($this->channelId);
         if (!$channel || !$channel->isReady()) {
+            return;
+        }
+        // ليس استيراداً أول: رقم لم يُستورد سجله يبدأ الاستيراد (HistoryImport)، والجاري يكمل وحده
+        if (HistoryImport::neverStarted($channel)) {
+            if (config('whatsapp.openwa.import.auto', true)) {
+                HistoryImport::start($channel, 'auto');
+            }
+
+            return;
+        }
+        if (HistoryImport::isRunning($channel)) {
             return;
         }
         $cfg = (array) config('whatsapp.openwa.backfill', []);
@@ -78,7 +91,7 @@ class BackfillChannel implements ShouldQueue, ShouldBeUnique
                 }
                 $m['chatId'] ??= $jid;
                 if (!empty($m['fromMe'])) {
-                    EchoHandler::handleOpenWa($channel, $m, null, retried: true);
+                    EchoHandler::handleOpenWa($channel, $m, null, retried: true, historical: true);
 
                     continue;
                 }

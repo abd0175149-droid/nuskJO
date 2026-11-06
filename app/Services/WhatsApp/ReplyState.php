@@ -26,6 +26,7 @@ final class ReplyState
         'job_failed' => '⚠️ خلل في البوت',
         'budget' => '⏳ تجاوز زمن الرد',
         'bot_off' => '🔕 البوت مطفأ',
+        'not_in_pilot' => '🧪 خارج تجربة البوت',
         'rate_limit' => '🚦 تجاوز الحد',
         'handoff' => '🙋 طلب موظفاً',
         'no_phone' => '📵 رقم غير ظاهر',

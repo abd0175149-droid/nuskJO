@@ -178,7 +178,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/channels/{channel}/pairing', [\App\Http\Controllers\WhatsAppChannelController::class, 'pairing'])->middleware(['perm:whatsapp.channels', 'throttle:6,1']);
     Route::get('api/whatsapp/channels/{channel}/events', [\App\Http\Controllers\WhatsAppChannelController::class, 'events'])->middleware('perm:whatsapp.channels');
     Route::post('api/whatsapp/channels/{channel}/{command}', [\App\Http\Controllers\WhatsAppChannelController::class, 'command'])
-        ->whereIn('command', ['start', 'restart', 'stop', 'logout', 'repair', 'pause', 'resume', 'reset_breaker'])->middleware(['perm:whatsapp.channels', 'throttle:20,1']);
+        ->whereIn('command', \App\Http\Controllers\WhatsAppChannelController::COMMANDS)->middleware(['perm:whatsapp.channels', 'throttle:20,1']);
     Route::delete('api/whatsapp/channels/{channel}', [\App\Http\Controllers\WhatsAppChannelController::class, 'destroy'])->middleware(['perm:whatsapp.channels', 'throttle:6,1']);
     // من المحادثة: متابعة يجدولها الموظف، وكتم رسائل النظام للعميل (2026-11-06)
     Route::post('api/whatsapp/conversations/{conversation}/follow-up', [\App\Http\Controllers\WhatsAppConversationSystemController::class, 'followUp'])->middleware(['perm:whatsapp.reply', 'throttle:20,1']);
@@ -201,6 +201,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::get('whatsapp/bot-permissions', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'index'])->name('whatsapp.bot-permissions')->middleware('perm:whatsapp.settings');
     Route::put('api/whatsapp/bot-policy', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'update'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::put('api/whatsapp/bot-policy/channels/{channel}', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'channel'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::put('api/whatsapp/bot-policy/scope', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'scope'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::post('api/whatsapp/conversations/{conversation}/bot-pilot', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'conversation'])->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
 
     Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'show'])->name('whatsapp.settings')->middleware('perm:whatsapp.settings');
     Route::patch('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'update'])->name('whatsapp.settings.patch')->middleware('perm:whatsapp.settings');

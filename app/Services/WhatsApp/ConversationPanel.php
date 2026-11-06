@@ -77,6 +77,9 @@ final class ConversationPanel
             'recent' => $q()->whereIn('status', [\App\Models\WaOutbox::SENT, \App\Models\WaOutbox::FAILED, \App\Models\WaOutbox::EXPIRED])->orderByDesc('id')->limit(5)->get()->map($row)->values()->all(),
             'muted' => $muted,
             'can_follow_up' => (bool) $c->channel_id && $c->status !== 'merged',
+            // تجربة البوت (2026-11-06): المحادثة معلَّمة، أو هاتفها في قائمة التجربة
+            'bot_pilot' => (bool) $c->bot_pilot,
+            'bot_pilot_effective' => \App\Models\WaBotSetting::current()->inBotPilot($c),
         ];
     }
 

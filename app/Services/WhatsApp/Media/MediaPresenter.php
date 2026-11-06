@@ -34,11 +34,16 @@ final class MediaPresenter
         ] + ($m->media_remote_deleted_at !== null ? ['remote_deleted' => true] : []);
     }
 
-    /** تنزيل يدوي ممكن: كبير أو فشل، ومعرّفه عند ميتا لم ينتهِ، ولمن يملك العرض والرد */
+    /**
+     * تنزيل يدوي ممكن: كبير أو فشل ومعرّفه لم ينتهِ، أو من السجل المستورد (remote: الملف على الهاتف بلا مهلة نعرفها)،
+     * ولمن يملك العرض والرد
+     */
     public static function refetchable(WaMessage $m, User $user): bool
     {
-        return in_array($m->media_status, ['too_large', 'failed'], true) && $m->media_id && $m->media_error !== (string) MediaIntake::META_TOO_LARGE
-            && self::withinIdLifetime($m) && $user->can('whatsapp.media') && $user->can('whatsapp.reply');
+        $remote = $m->media_status === 'remote';
+
+        return ($remote || in_array($m->media_status, ['too_large', 'failed'], true)) && $m->media_id && $m->media_error !== (string) MediaIntake::META_TOO_LARGE
+            && ($remote || self::withinIdLifetime($m)) && $user->can('whatsapp.media') && $user->can('whatsapp.reply');
     }
 
     public static function withinIdLifetime(WaMessage $m): bool

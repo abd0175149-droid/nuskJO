@@ -72,6 +72,8 @@ final class MediaConsent
         if (!FeatureFlags::on('media_consent_prompt') || $conv->media_consent !== null
             || ($conv->media_notice_at && $conv->media_notice_at->gt(now()->subDays(self::NOTICE_DAYS)))
             || $conv->is_admin_chat || WaAdminNumber::forPhone($conv->phone)
+            // تجربة البوت (2026-11-06): خارج المحادثات المختارة لا رسالة آلية؛ يُرسل الإشعار مع أول ملف بعد التوسيع
+            || !\App\Models\WaBotSetting::current()->inBotPilot($conv)
             || !Cache::add("wa:media:notice:{$conv->id}", 1, 300)) {
             return false;
         }

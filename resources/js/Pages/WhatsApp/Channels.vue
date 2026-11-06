@@ -63,6 +63,29 @@
             <template v-if="c.users.length">يخدمه: {{ c.users.map((u) => u.name + (u.primary ? ' ★' : '')).join('، ') }}</template>
             <template v-else>مفتوح لكل الموظفين بقيد الاختصاصات</template>
           </p>
+          <!-- استيراد سجل الهاتف (HistoryImport): يبدأ وحده عند أول ربط، ويُستأنف من حيث توقف -->
+          <div v-if="c.linked || c.history?.status" class="text-xs p-2 rounded-lg bg-gray-50 dark:bg-gray-800/40 space-y-1" data-test="history-import">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="font-bold text-gray-700 dark:text-gray-200">📥 سجل الهاتف: {{ historyLabel(c.history) }}</span>
+              <span class="flex gap-1">
+                <button v-if="c.history?.status === 'running'" type="button" @click="run(c, { cmd: 'import_stop', label: '⏹ إيقاف الاستيراد' })"
+                        class="px-2 py-0.5 rounded-lg font-bold text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600">⏹ إيقاف</button>
+                <button v-else-if="c.linked" type="button" @click="run(c, importAction(c))"
+                        class="px-2 py-0.5 rounded-lg font-bold text-gold-800 bg-gold-100 dark:bg-gold-900/30 dark:text-gold-200">📥 {{ importAction(c).short }}</button>
+              </span>
+            </div>
+            <div v-if="c.history?.status === 'running' && c.history.chats_total" class="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden" role="progressbar"
+                 :aria-valuenow="c.history.chats_done" aria-valuemin="0" :aria-valuemax="c.history.chats_total">
+              <div class="h-full bg-gold-400" :style="{ width: Math.min(100, Math.round(100 * c.history.chats_done / c.history.chats_total)) + '%' }"></div>
+            </div>
+            <p class="text-gray-500 dark:text-gray-400">
+              {{ c.history?.chats_done || 0 }} / {{ c.history?.chats_total ?? '…' }} محادثة · {{ c.history?.messages || 0 }} رسالة ·
+              العمق: آخر {{ c.history?.days }} يوماً، حتى {{ c.history?.messages_per_chat }} رسالة للمحادثة
+            </p>
+            <p v-if="c.history?.chats_partial" class="text-gray-500 dark:text-gray-400">{{ c.history.chats_partial }} محادثة وصلتها رسائل قبل دورها: أُخذ ما بعد أحدثها وحده، فلا يختلط ترتيب الخيط.</p>
+            <p v-if="c.history?.chats_skipped" class="text-amber-700 dark:text-amber-300">{{ c.history.chats_skipped }} محادثة تعذّرت قراءتها من الهاتف فتُخطّيت.</p>
+            <p v-if="c.history?.last_error && c.history.status !== 'done'" class="text-red-600 dark:text-red-300">آخر خطأ: {{ c.history.last_error }}</p>
+          </div>
           <p v-if="c.paused_until" class="text-xs p-2 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
             ⏸ موقوف حتى <bdi>{{ fmt(c.paused_until) }}</bdi><template v-if="c.pause_reason === 'restriction'"> — علامة تقييد من واتساب، راجع الهاتف قبل رفع الإيقاف</template>
           </p>
@@ -139,7 +162,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import AppModal from '@/Components/AppModal.vue';
@@ -160,8 +183,23 @@ const EVENT_LABELS = {
   created: 'أُنشئت الجلسة', api_key: 'مفتاح جديد', webhook: 'سُجّل الـ webhook', ready: 'اتصل', status: 'تغيّرت الحالة',
   authenticated: 'رُبط بالهاتف', disconnected: 'انقطع', reconnect_loop: 'يعيد الاتصال باستمرار', restriction: '⛔ علامة تقييد من واتساب',
   restart: 'إعادة تشغيل', probe_failed: 'فشل الفحص', probe_ok: 'نجح الفحص', logout: 'فُك الربط', destroyed: 'حُذفت الجلسة',
-  paused: 'إيقاف مؤقت', resumed: 'رُفع الإيقاف', breaker: 'قاطع الإخفاقات', backfill: 'استرجاع ما فات',
+  paused: 'إيقاف مؤقت', resumed: 'رُفع الإيقاف', breaker: 'قاطع الإخفاقات', backfill: 'استرجاع ما فات', history_import: 'استيراد سجل الهاتف',
 };
+
+const HISTORY_LABELS = { running: 'جارٍ الاستيراد', stopped: 'موقوف', done: 'اكتمل', failed: 'توقف بخطأ' };
+function historyLabel(h) {
+  if (!h?.status) return 'لم يُستورد بعد';
+  if (h.status === 'running' && h.phase === 'list') return 'يقرأ قائمة المحادثات…';
+  return HISTORY_LABELS[h.status] || h.status;
+}
+function importAction(c) {
+  const st = c.history?.status;
+  if (st === 'stopped' || st === 'failed') return { cmd: 'import_start', label: '📥 استئناف الاستيراد', short: 'استئناف' };
+  return {
+    cmd: 'import_start', label: '📥 استيراد سجل الهاتف', short: st === 'done' ? 'استيراد من جديد' : 'استيراد السجل',
+    ask: 'تُقرأ محادثات الرقم من الهاتف وتُحفظ تاريخاً صامتاً: لا يرد عليها البوت، ولا تصل منها إشعارات. قد يستغرق ذلك ساعات لرقم كبير، والإرسال والاستقبال يعملان أثناءه.',
+  };
+}
 
 const api = { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
 const { confirm } = useConfirm();
@@ -190,6 +228,15 @@ async function refresh() {
     if (linking.value) linking.value = list.value.find((c) => c.id === linking.value.id) || linking.value;
   } catch { /* يبقى آخر عرض */ }
 }
+
+// تقدّم الاستيراد لا يطلق أحداث قناة: تحديث كل 10 ثوانٍ ما دام استيراد جارياً
+let poller = null;
+onMounted(() => {
+  poller = setInterval(() => {
+    if (list.value.some((c) => c.history?.status === 'running')) refresh();
+  }, 10000);
+});
+onUnmounted(() => clearInterval(poller));
 
 useChannelEvents((e) => {
   refresh();
@@ -246,7 +293,7 @@ function actionsFor(c) {
 }
 
 async function run(c, a) {
-  if (a.ask && !(await confirm({ title: a.label, message: a.ask, confirmLabel: 'نعم', danger: true }))) return;
+  if (a.ask && !(await confirm({ title: a.label, message: a.ask, confirmLabel: 'نعم', danger: !!a.danger }))) return;
   notice.value = null;
   try {
     if (a.cmd === 'destroy') await axios.delete(`/api/whatsapp/channels/${c.id}`, api);

@@ -230,6 +230,8 @@ return [
     'WhatsAppOutboxController@action' => 'wa.outbox_action',
     'WhatsAppBotPolicyController@update' => 'wa.bot_policy_update',
     'WhatsAppBotPolicyController@channel' => 'wa.bot_policy_update',
+    'WhatsAppBotPolicyController@scope' => 'wa.bot_pilot_update',
+    'WhatsAppBotPolicyController@conversation' => 'wa.bot_pilot_update',
     'OpenWaWebhookController@receive' => 'none: webhook موقّع من البوابة؛ أثره رسائل وحالات في جداول الواتساب نفسها',
 
     // ===== بيانات تشغيلية بلا أثر مالي ولا صلاحيات =====

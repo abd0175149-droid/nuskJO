@@ -64,8 +64,12 @@ final class ChannelState
         }
         WaLog::info('openwa.channel.status', ['channel_id' => $channel->id, 'from' => $before, 'to' => $status]);
         event(new ChannelStatusChanged($channel->id, $status));
-        // عودة بعد انقطاع: ما وصل أثناءه
-        if ($status === 'ready' && in_array($before, ['disconnected', 'initializing', 'authenticating', 'failed'], true) && $channel->last_inbound_at) {
+        // أول ربط: استيراد السجل كله (HistoryImport)، بعد مهلة يحمّل فيها واتساب ويب محادثاته.
+        // عودة بعد انقطاع: ما وصل أثناءه وحده (BackfillChannel)، والاستيراد الجاري يكمل من مؤشره (channel-watch)
+        if ($status === 'ready' && HistoryImport::neverStarted($channel) && config('whatsapp.openwa.import.auto', true)) {
+            HistoryImport::start($channel, 'auto', 30);
+        } elseif ($status === 'ready' && in_array($before, ['disconnected', 'initializing', 'authenticating', 'failed'], true) && $channel->last_inbound_at
+            && !HistoryImport::isRunning($channel)) {
             BackfillChannel::dispatch($channel->id)->delay(now()->addSeconds(20));
         }
         if (!$quiet && $before === 'ready' && in_array($status, ['disconnected', 'failed', 'action_required'], true)) {

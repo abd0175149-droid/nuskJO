@@ -35,6 +35,8 @@ class WaConversation extends Model
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
     protected $casts = [
         'bot_enabled' => 'boolean',
+        // تجربة البوت (2026-11-06): يرد عليها البوت وهو في نطاق «pilot». يضبطها forceFill من اللوحة وحدها
+        'bot_pilot' => 'boolean',
         'needs_attention' => 'boolean',
         'is_admin_chat' => 'boolean',
         'bot_paused_until' => 'datetime',

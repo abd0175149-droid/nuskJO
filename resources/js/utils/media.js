@@ -32,6 +32,7 @@ export function statusLabel(media) {
     case 'missing': return 'الملف غير موجود على الخادم';
     case 'skipped_quota': return 'لم يُحفظ (الأرشيف بلغ سقفه)';
     case 'skipped_consent': return 'لم يُحفظ (طلب العميل حذف ملفاته)';
+    case 'remote': return 'من سجل الهاتف — لم يُنزَّل بعد';
     default: return null;
   }
 }

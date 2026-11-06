@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class EchoHandler
 {
-    public static function handleOpenWa(WaChannel $channel, array $data, ?WebhookResult $result = null, bool $retried = false): void
+    public static function handleOpenWa(WaChannel $channel, array $data, ?WebhookResult $result = null, bool $retried = false, bool $historical = false): void
     {
         $in = InboundParser::parse($data, $channel);
         if ($in === null || !$in->wamid) {
@@ -40,7 +40,7 @@ final class EchoHandler
         $conv = ContactIdentity::find($in->fromPhone ?? InboundParser::digits((string) $in->jid), $in->lid, (int) $channel->id)
             ?? WaConversation::where('channel_id', $channel->id)->where('jid', $in->jid)->where('status', '!=', 'merged')->first();
 
-        if ($conv !== null && self::claimOwn($conv, $in)) {
+        if ($conv !== null && self::claimOwn($conv, $in, $historical ? 1440 : 3)) {
             return;
         }
         if (!$retried && $conv !== null && self::inFlight($conv)) {
@@ -48,15 +48,18 @@ final class EchoHandler
 
             return;
         }
-        self::storeFromPhone($channel, $in, $data);
+        self::storeFromPhone($channel, $in, $data, $historical);
     }
 
-    /** إرسالنا الذي لم يُكتب معرّفه بعد: النص نفسه في المحادثة نفسها خلال 3 دقائق */
-    private static function claimOwn(WaConversation $conv, InboundMessage $in): bool
+    /**
+     * إرسالنا الذي لم يُكتب معرّفه بعد: النص نفسه في المحادثة نفسها خلال 3 دقائق.
+     * الاسترجاع بعد الانقطاع (historical) يبحث 24 ساعة: إرسال «غير مؤكد» قبل الانقطاع يعود بصداه بعده بساعات
+     */
+    private static function claimOwn(WaConversation $conv, InboundMessage $in, int $minutes = 3): bool
     {
         $row = WaMessage::where('conversation_id', $conv->id)->where('direction', 'out')->whereNull('wamid')
             ->whereIn('status', [WaMessage::STATUS_QUEUED, WaMessage::STATUS_UNKNOWN])
-            ->where('created_at', '>=', now()->subMinutes(3))
+            ->where('created_at', '>=', now()->subMinutes($minutes))
             ->when($in->type === 'text', fn ($q) => $q->where('body', $in->body), fn ($q) => $q->where('msg_type', $in->type === 'audio' ? 'audio' : $in->type))
             ->orderByDesc('id')->first();
         if ($row === null) {
@@ -78,12 +81,12 @@ final class EchoHandler
             ->where('status', WaMessage::STATUS_QUEUED)->where('created_at', '>=', now()->subMinutes(2))->exists();
     }
 
-    private static function storeFromPhone(WaChannel $channel, InboundMessage $in, array $data): void
+    private static function storeFromPhone(WaChannel $channel, InboundMessage $in, array $data, bool $historical = false): void
     {
         $at = $in->timestamp > 0 ? min(Carbon::createFromTimestamp($in->timestamp, config('app.timezone')), now()) : now();
         $holder = self::holderId($channel);
         try {
-            [$conv, $message] = DB::transaction(function () use ($in, $data, $at, $holder, $channel) {
+            [$conv, $message] = DB::transaction(function () use ($in, $data, $at, $holder, $channel, $historical) {
                 // الموظف قد يبدأ المحادثة من الهاتف: تُنشأ إن لم توجد
                 $conv = ContactIdentity::resolve($in);
                 $message = WaMessage::create(array_filter([
@@ -103,7 +106,7 @@ final class EchoHandler
                     'media_filename' => $in->media['filename'] ?? null,
                     'sent_at' => $at,
                 ], fn ($v) => $v !== null));
-                self::afterEcho($conv, $at, $in->body);
+                self::afterEcho($conv, $at, $in->body, $historical);
                 Media\MediaIntake::onInbound($message, $conv, $data);
 
                 return [$conv, $message];
@@ -116,7 +119,7 @@ final class EchoHandler
     }
 
     /** كرد الموظف من الصندوق: إيقاف البوت، وتصفير المؤشرات، والعلامة إلى أعلى وارد. المؤشرات رتيبة */
-    private static function afterEcho(WaConversation $conv, Carbon $at, string $preview): void
+    private static function afterEcho(WaConversation $conv, Carbon $at, string $preview, bool $historical = false): void
     {
         $newer = $conv->last_message_at === null || $conv->last_message_at->lte($at);
         $conv->forceFill(array_filter([
@@ -125,14 +128,27 @@ final class EchoHandler
             'last_message_preview' => $newer ? mb_substr(trim($preview), 0, 160) : null,
         ], fn ($v) => $v !== null) + ['unread_count' => 0]
             + (InboxFollowup::available() ? ['marked_unread_at' => null, 'marked_unread_by' => null] : []));
-        self::pause($conv, self::echoPauseUntil());
+        // صدى مسترجع بعد انقطاع: الإيقاف من وقت كتابته لا من الآن، فرسالة هاتف من ساعات لا توقف البوت اليوم
+        $until = $historical ? $at->copy()->addMinutes(self::echoPauseMinutes()) : self::echoPauseUntil();
+        if ($until->isFuture()) {
+            self::pause($conv, $until);
+        } else {
+            // ما سبق رد الهاتف أجاب عنه الموظف، وما وصل بعده (أثناء الانقطاع) يبقى للبوت وبوابة الحداثة
+            $conv->save();
+            ReplyState::advance($conv, (int) WaMessage::where('conversation_id', $conv->id)->where('direction', 'in')->where('created_at', '<=', $at)->max('id'));
+        }
+    }
+
+    private static function echoPauseMinutes(): int
+    {
+        $s = WaBotSetting::current();
+
+        return max(1, (int) ($s->echo_pause_minutes ?: $s->pause_minutes));
     }
 
     private static function echoPauseUntil(): Carbon
     {
-        $s = WaBotSetting::current();
-
-        return now()->addMinutes(max(1, (int) ($s->echo_pause_minutes ?: $s->pause_minutes)));
+        return now()->addMinutes(self::echoPauseMinutes());
     }
 
     /** الإيقاف لا يقصّر إيقافاً أطول قائماً، ويرفع «تدخّل»: موظف يتابع الآن */

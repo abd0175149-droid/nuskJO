@@ -30,7 +30,8 @@ class SendOutageNotice implements ShouldQueue
     public function handle(): void
     {
         $conv = WaConversation::find($this->conversationId);
-        if (!$conv) {
+        // خارج تجربة البوت (2026-11-06) لا رسالة آلية للعميل
+        if (!$conv || !\App\Models\WaBotSetting::current()->inBotPilot($conv)) {
             return;
         }
         $lastIn = $conv->messages()->where('direction', 'in')->where('source', '!=', 'system')->where('msg_type', '!=', 'reaction')->orderByDesc('id')->first();

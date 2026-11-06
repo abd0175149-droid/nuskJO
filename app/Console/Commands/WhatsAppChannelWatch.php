@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Events\WhatsApp\ChannelStatusChanged;
 use App\Models\WaChannel;
 use App\Services\WhatsApp\OpenWa\ChannelState;
+use App\Services\WhatsApp\OpenWa\HistoryImport;
 use App\Services\WhatsApp\OpenWa\SessionManager;
 use App\Services\WhatsApp\Transport\ChannelTransport;
 use App\Services\WhatsApp\WaLog;
@@ -33,6 +34,7 @@ class WhatsAppChannelWatch extends Command
                 WaLog::error('openwa.watch.failed', ['channel_id' => $ch->id, 'exception' => $e]);
             }
         }
+        rescue(fn () => HistoryImport::recoverStale(), null, false);
 
         return self::SUCCESS;
     }
@@ -60,6 +62,10 @@ class WhatsAppChannelWatch extends Command
                 $ch->logEvent('probe_ok');
                 ChannelState::alert($ch, 'up', '✅ عاد رقم واتساب', "الرقم «{$ch->name}» متصل من جديد، والرسائل المؤجلة تخرج تباعاً.");
                 event(new ChannelStatusChanged($ch->id, (string) $ch->status));
+            }
+            // استيراد السجل: أول ربط فاته حدث الجاهزية (الرقم وصل بعده)، أو سلسلة ماتت ويُستأنف من مؤشرها
+            if (HistoryImport::neverStarted($ch) && config('whatsapp.openwa.import.auto', true)) {
+                HistoryImport::start($ch->refresh(), 'auto');
             }
             $this->line("{$ch->name}: ok");
 

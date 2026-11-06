@@ -19,9 +19,11 @@ class WaChannel extends Model
         'uuid', 'name', 'phone', 'push_name', 'color', 'openwa_session_id', 'api_key', 'webhook_secret', 'webhook_id',
         'status', 'status_at', 'last_probe_ok_at', 'probe_failures', 'last_restart_at', 'last_inbound_at',
         'roles', 'bot_mode', 'is_default_for', 'warmup_started_at', 'paused_until', 'pause_reason', 'is_active', 'sort',
+        'history_import_state', 'history_queue', 'history_imported_at',
     ];
 
-    protected $hidden = ['api_key', 'webhook_secret'];
+    // قائمة المحادثات المنتظرة للاستيراد قد تكون آلاف المعرّفات: لا تخرج في أي سلسلة
+    protected $hidden = ['api_key', 'webhook_secret', 'history_queue'];
 
     protected $casts = [
         'api_key' => 'encrypted',
@@ -34,6 +36,9 @@ class WaChannel extends Model
         'last_inbound_at' => 'datetime',
         'warmup_started_at' => 'datetime',
         'paused_until' => 'datetime',
+        'history_import_state' => 'array',
+        'history_queue' => 'array',
+        'history_imported_at' => 'datetime',
         'is_active' => 'boolean',
         'probe_failures' => 'integer',
     ];

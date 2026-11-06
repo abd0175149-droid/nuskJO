@@ -30,7 +30,14 @@
       ⏸️ {{ channels.paused.length === 1 ? 'رقم موقوف مؤقتاً' : 'أرقام موقوفة مؤقتاً' }}: <bdi dir="auto">{{ channels.paused.join('، ') }}</bdi> — الرسائل الصادرة منها تنتظر في الطابور.
     </div>
 
-    <!-- وضع التحويل (E12): مزوّد الذكاء متعطّل -->
+    <!-- تجربة البوت (2026-11-06): نطاق الرد محصور في المحادثات المختارة -->
+    <div v-if="!status.suspended && pilot && pilot.scope === 'pilot'" role="status" data-test="bot-pilot"
+         class="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 p-2.5 text-xs font-bold text-violet-800 dark:text-violet-300">
+      🧪 البوت في وضع التجربة: يرد على {{ pilotText }} فقط، والباقي للموظفين.
+      <a href="/whatsapp/bot-permissions" class="ms-1 underline">نطاق الرد</a>
+    </div>
+
+        <!-- وضع التحويل (E12): مزوّد الذكاء متعطّل -->
     <div v-if="llm.state && llm.state !== 'closed'" role="alert"
          class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3.5 text-sm font-bold text-amber-800 dark:text-amber-300">
       🔌 البوت في وضع التحويل<span v-if="llm.opened_at"> منذ {{ hhmm(llm.opened_at) }}</span>. مزوّد الذكاء متعطّل — ردّوا على العملاء يدوياً.
@@ -57,6 +64,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 import { SUSPEND_SOURCES } from '@/utils/waSettings.js';
 
 const props = defineProps({
@@ -70,6 +78,14 @@ const props = defineProps({
 defineEmits(['dismiss']);
 
 const channels = computed(() => ({ down: props.status.channels?.down || [], paused: props.status.channels?.paused || [] }));
+
+const pilot = computed(() => usePage().props.waBotPilot);
+const pilotText = computed(() => {
+  const c = pilot.value?.conversations || 0;
+  const p = pilot.value?.phones || 0;
+  if (!c && !p) return 'لا محادثة (لم يُختر أحد بعد)';
+  return [c ? `${c} محادثة` : '', p ? `${p} رقم` : ''].filter(Boolean).join(' و');
+});
 
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
 </script>

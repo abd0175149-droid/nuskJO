@@ -99,8 +99,8 @@ class ReplyTimingInvariantsTest extends TestCase
         preg_match('/--queue=([\w,-]+)/', $media['command'], $q);
         $job = new \App\Jobs\SendWhatsAppMediaJob(1);
 
-        // OpenWA: طابور رسائل النظام wa-system بين ملفات الموظف وأرشفة الوارد
-        $this->assertSame(['wa-media-out', 'wa-system', 'wa-media'], explode(',', $q[1]), 'ملفات الموظف قبل أرشفة الوارد');
+        // OpenWA: طابور رسائل النظام wa-system بين ملفات الموظف وأرشفة الوارد، واستيراد السجل wa-import آخرها
+        $this->assertSame(['wa-media-out', 'wa-system', 'wa-media', 'wa-import'], explode(',', $q[1]), 'ملفات الموظف قبل أرشفة الوارد، والاستيراد أخيراً');
         $this->assertLessThan((int) $m[1], (new \App\Jobs\DispatchOutboxItem(1))->timeout, 'وظيفة الطابور تحت مهلة العامل');
         $this->assertSame('wa-media-out', $job->queue);
         $this->assertSame(1, $job->tries);
