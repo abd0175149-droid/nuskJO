@@ -200,8 +200,39 @@ return [
     // ميتا لا تسلّم تفاعلاً على رسالة أقدم من 30 يوماً
     'reaction_max_days' => 30,
 
-    // الناقل إلى ميتا (E23): cloud وحده في الإنتاج. log بلا شبكة للاختبار والتطوير المحلي، ويُرفض في production
-    'transport' => env('WA_TRANSPORT', 'cloud'),
+    // الناقل (2026-11-06): openwa وحده في الإنتاج. log بلا شبكة للاختبار والتطوير المحلي، ويُرفض في production
+    'transport' => env('WA_TRANSPORT', 'openwa'),
+
+    // بوابة OpenWA الخاصة بنُسك (docker/openwa، docs/whatsapp/openwa.md). كلها هنا عبر config() لا env() في الكود،
+    // لأن clear_env مع config:cache يُخفي env() وقت التشغيل
+    'openwa' => [
+        'url' => rtrim((string) env('OPENWA_URL', 'http://nuskjo-openwa:2785'), '/'),
+        // المفتاح الرئيس للإدارة وحدها: إنشاء الجلسات ومفاتيحها المحصورة والـ webhooks
+        'admin_key' => (string) env('OPENWA_ADMIN_KEY', ''),
+        // عنوان nuskjo-app كما تراه البوابة داخل الشبكة (SSRF_ALLOWED_HOSTS=nuskjo-app)
+        'webhook_base' => rtrim((string) env('OPENWA_WEBHOOK_BASE', 'http://nuskjo-app:4020'), '/'),
+        // مهلات الطلب (ثوانٍ): الإرسال يحمل base64 حتى 19MB، والتشغيل يفتح كروميوم
+        'timeouts' => ['default' => 20, 'send' => 90, 'start' => 150, 'connect' => 5],
+        // الأحداث المسجلة في webhook كل رقم
+        'events' => [
+            'message.received', 'message.sent', 'message.ack', 'message.failed', 'message.revoked',
+            'message.reaction', 'message.edited', 'session.status', 'session.qr', 'session.authenticated',
+            'session.disconnected', 'session.reconnect_loop', 'session.restriction', 'call.missed', 'call.received', 'poll.vote',
+        ],
+        'webhook_retry_count' => 3,
+        // صحة الرقم (whatsapp:channel-watch): الفحص الحقيقي، وإخفاقات قبل إعادة التشغيل، وأقل فاصل بين إعادتين (دقائق)
+        'probe_failures_restart' => 3,
+        'restart_cooldown_minutes' => 30,
+        // الرقم «جاهز» إن نجح آخر فحص حقيقي خلال هذه المدة (دقائق)
+        'ready_probe_minutes' => 5,
+        // صلاحية QR في الكاش (ثوانٍ)
+        'qr_ttl' => 60,
+        // الاسترجاع بعد إعادة الاتصال
+        'backfill' => ['chats' => 40, 'messages' => 15, 'overlap_seconds' => 120],
+        // حدود نص واتساب ويب (OpenWA يرفض فوقها)
+        'max_text' => 4096,
+        'max_caption' => 1024,
+    ],
 
     // المراقب الدوري وأدوات التشخيص (E23، docs/whatsapp/diagnostics.md). العلم channel_monitor يقرر القراءات الإضافية
     'monitor' => [

@@ -45,3 +45,6 @@ testsprite_tests/tmp/
 testsprite_tests/tmp/config.json
 /testsprite_tests
 database/testing.sqlite
+
+# بصمة صورة بوابة واتساب (scripts/deploy.sh)
+.openwa-build

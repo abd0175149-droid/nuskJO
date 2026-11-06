@@ -102,9 +102,37 @@ if grep -q '^ *- nuskjo-dbdata:/var/www/html/database/data' docker-compose.yml \
     exit 1
 fi
 
-# 5) البناء والتشغيل
+# 4ب) بوابة واتساب (nuskjo-openwa): تُبنى وتُعاد فقط عند تغيّر docker/openwa (البصمة في .openwa-build خارج git)،
+#     لأن إعادة تشغيلها توقف كل الأرقام نحو دقيقة. مفتاحاها في /opt/nuskJO/.env وغيابهما يُفشل compose كله، فيُفحصان أولاً.
+OPENWA_CONTAINER="${OPENWA_CONTAINER:-nuskjo-openwa}"
+for k in OPENWA_API_MASTER_KEY OPENWA_API_KEY_PEPPER; do
+    if ! grep -q "^${k}=." .env 2>/dev/null; then
+        log "sha=$SHA $k missing in $REPO_DIR/.env (docs/whatsapp/openwa.md «أول تشغيل»); deploy stopped"
+        exit 1
+    fi
+done
+OPENWA_FP="$(cat docker/openwa/Dockerfile docker/openwa/*.cjs | sha256sum | cut -c1-16)"
+if [[ "$(cat .openwa-build 2>/dev/null || true)" != "$OPENWA_FP" ]]    || ! docker ps --format '{{.Names}}' | grep -qx "$OPENWA_CONTAINER"; then
+    log "sha=$SHA gateway build fp=$OPENWA_FP"
+    docker compose build nuskjo-openwa
+    docker compose up -d nuskjo-openwa-redis nuskjo-openwa
+    gw="unknown"
+    for _ in $(seq 1 36); do
+        gw="$(docker inspect "$OPENWA_CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)"
+        [[ "$gw" == "healthy" ]] && break
+        sleep 5
+    done
+    if [[ "$gw" != "healthy" ]]; then
+        log "sha=$SHA gateway NOT healthy (health=$gw): docker logs $OPENWA_CONTAINER"
+        exit 1
+    fi
+    echo "$OPENWA_FP" > .openwa-build
+    log "sha=$SHA gateway healthy"
+fi
+
+# 5) البناء والتشغيل. --no-deps: نشر التطبيق لا يلمس البوابة ولا جلساتها
 docker compose build --build-arg GIT_COMMIT="$SHA" --build-arg BUILD_TIME="$BUILD_TIME" "$APP_CONTAINER"
-docker compose up -d "$APP_CONTAINER"
+docker compose up -d --no-deps "$APP_CONTAINER"
 
 for _ in $(seq 1 30); do
     status="$(docker inspect "$APP_CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)"

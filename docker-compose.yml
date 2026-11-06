@@ -80,6 +80,11 @@ services:
       - REVERB_PUBLISH_PORT=${REVERB_PUBLISH_PORT:-8080}
       - REVERB_PUBLISH_SCHEME=${REVERB_PUBLISH_SCHEME:-http}
       - REVERB_ALLOWED_ORIGINS=${REVERB_ALLOWED_ORIGINS:-nuskjo.grade.sbs}
+      # بوابة واتساب (nuskjo-openwa) داخل شبكة compose. المفتاح الرئيس للإدارة فقط (إنشاء الجلسات ومفاتيحها
+      # والـ webhooks)؛ كل إرسال وقراءة بمفتاح الرقم المحصور بجلسته (wa_channels.api_key)
+      - OPENWA_URL=http://nuskjo-openwa:2785
+      - OPENWA_ADMIN_KEY=${OPENWA_API_MASTER_KEY:-}
+      - OPENWA_WEBHOOK_BASE=http://nuskjo-app:4020
     env_file:
       - .env.production
     # سجلات الحاوية مدوّرة: 5 ملفات × 10MB (nginx وphp-fpm يكتبان إلى stdout/stderr)
@@ -96,6 +101,135 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  # بوابة واتساب نُسك (OpenWA + whatsapp-web.js): كل أرقام نُسك جلسات عليها، ولا يشاركها مشروع آخر.
+  # الصورة تُبنى من docker/openwa (الرسمية + رقعتا WB web). لا منفذ للإنترنت: nuskjo-app يصلها بالاسم داخل الشبكة،
+  # واللوحة على 127.0.0.1:4021 عبر نفق SSH فقط. حدود المحرك مطفأة لأن نُسك يدير حدوده (docker/openwa/README.md).
+  # scripts/deploy.sh لا يعيد تشغيلها مع نشر التطبيق (--no-deps)، بل فقط عند تغيّر docker/openwa.
+  nuskjo-openwa:
+    build:
+      context: ./docker/openwa
+      args:
+        OPENWA_VERSION: "0.24.0"
+    image: nuskjo-openwa:0.24.0
+    container_name: nuskjo-openwa
+    restart: unless-stopped
+    # أطول من WEBHOOK_SHUTDOWN_DRAIN_MS: تسليم جارٍ يكتمل، وكروميوم يُغلق الجلسات بنظافة
+    stop_grace_period: 75s
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 2048
+    # نحو 300 إلى 500MB لكل رقم. 2g تتسع لثلاثة أرقام، وتُرفع في /opt/nuskJO/.env عند إضافة رقم رابع
+    mem_limit: ${NUSKJO_OPENWA_MEM_LIMIT:-2g}
+    memswap_limit: ${NUSKJO_OPENWA_MEM_LIMIT:-2g}
+    ports:
+      - "127.0.0.1:4021:2785"
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Amman
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/.config
+      XDG_CACHE_HOME: /tmp/.cache
+      PORT: 2785
+      LOG_LEVEL: info
+      BASE_URL: http://127.0.0.1:4021
+      DASHBOARD_URL: http://127.0.0.1:4021
+      CORS_ORIGINS: http://127.0.0.1:4021
+      # الأسرار في /opt/nuskJO/.env بلا قيم احتياطية: غيابها يُفشل الإقلاع. الـ pepper لا يتغير أبداً
+      API_MASTER_KEY: ${OPENWA_API_MASTER_KEY:?اضبط OPENWA_API_MASTER_KEY في /opt/nuskJO/.env}
+      API_KEY_PEPPER: ${OPENWA_API_KEY_PEPPER:?اضبط OPENWA_API_KEY_PEPPER في /opt/nuskJO/.env}
+      ENABLE_SWAGGER: "true"
+      # SQLite داخل /app/data تكفي لبضعة أرقام، فلا حاجة لـ Postgres وذاكرته
+      DATABASE_TYPE: sqlite
+      DATABASE_SYNCHRONIZE: "false"
+      # Redis للطابور: الـ webhooks تمر عبر BullMQ فلا تضيع عند إعادة التشغيل.
+      # قيمة حرفية لا ${...:-}، لأن الكود يقرأ === 'true' لحظة الاستيراد
+      REDIS_ENABLED: "true"
+      REDIS_HOST: nuskjo-openwa-redis
+      REDIS_PORT: 6379
+      QUEUE_ENABLED: "true"
+      SESSION_DATA_PATH: /app/data/sessions
+      PUPPETEER_HEADLESS: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/local/bin/puppeteer-chrome
+      ENGINE_TYPE: whatsapp-web.js
+      AUTO_START_SESSIONS: "true"
+      # المرسل خلف معرّف خصوصية (@lid): الرقم الحقيقي يصل في senderPhone
+      RESOLVE_LID_TO_PHONE: "true"
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/data/media
+      # ── حدود المحرك مطفأة: نُسك يدير حدوده لكل رقم ونوع (wa_send_limits وSendGovernor) ──
+      SEND_PACING_ENABLED: "false"
+      SIMULATE_TYPING: "false"
+      MAX_CONCURRENT_SESSIONS: "0"
+      WEBHOOK_MAX_PER_SESSION: "0"
+      # حد المعدّل لكل عنوان IP لا يُطفأ (أقله 1)، وكل طلبات نُسك من عنوان واحد
+      RATE_LIMIT_SHORT_LIMIT: "100000"
+      RATE_LIMIT_MEDIUM_LIMIT: "100000"
+      RATE_LIMIT_LONG_LIMIT: "100000"
+      BODY_SIZE_LIMIT: 70mb
+      # ── الـ webhook إلى nuskjo-app ──
+      WEBHOOK_TIMEOUT: "10000"
+      WEBHOOK_RETRY_DELAY: "5000"
+      WEBHOOK_SHUTDOWN_DRAIN_MS: "15000"
+      # الوسائط حتى 1MB تصل مضمّنة في الحمولة، وما فوقها omitted ويجلبه نُسك من /media
+      WEBHOOK_MEDIA_INLINE_MAX_BYTES: "1048576"
+      WEBHOOK_MAX_PAYLOAD_BYTES: "2097152"
+      # حارس SSRF يمنع العناوين الخاصة؛ يُسمح لحاوية التطبيق وحدها بالاسم
+      SSRF_ALLOWED_HOSTS: nuskjo-app
+      MCP_ENABLED: "false"
+      UPDATE_CHECK_ENABLED: "false"
+      PLUGINS_DIR: /app/data/plugins
+    volumes:
+      # الجلسات وmain.sqlite (المفاتيح والـ webhooks). خارج النسخ الاحتياطي عمداً (docker/openwa/README.md)
+      - nuskjo-openwa-data:/app/data
+    depends_on:
+      nuskjo-openwa-redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2785/api/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  nuskjo-openwa-redis:
+    image: redis:7-alpine
+    container_name: nuskjo-openwa-redis
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    # appendonly: مهام الطابور حالة حقيقية. noeviction: BullMQ يرفض غيرها
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    mem_limit: 128m
+    volumes:
+      - nuskjo-openwa-redis:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # تمرين الاستعادة المعزول (scripts/backup/drill.sh): لا شبكة، ولا أي حجم إنتاجي، ونظام ملفات للقراءة فقط.
   # لا يعمل مع «docker compose up»؛ فقط: docker compose --profile drill run --rm -T nuskjo-drill
@@ -130,6 +264,11 @@ volumes:
   nuskjo-storage:
     driver: local
   nuskjo-dbdata:
+    driver: local
+  # جلسات بوابة واتساب وmain.sqlite. فقدانه = مسح QR جديد لكل رقم، لا فقدان رسائل
+  nuskjo-openwa-data:
+    driver: local
+  nuskjo-openwa-redis:
     driver: local
   # الحجم القديم nuskjo_nuskjo-database غير معلن هنا عن قصد: يبقى كما هو للرجوع، ولا يحذفه «docker compose down -v».
   # حذفه يدوياً بعد 30 يوماً على الأقل وبقرار المالك.
