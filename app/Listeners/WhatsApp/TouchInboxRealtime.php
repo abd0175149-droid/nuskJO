@@ -12,7 +12,6 @@ use App\Services\WhatsApp\WaLog;
 
 /**
  * من أحداث E21 إلى البث اللحظي للصندوق (E28): الوارد والصادر والفاشل «message»، والحالة «status»، والتحويل «meta».
- * ChannelHealthChanged لا يخص محادثة، فلا يصل قنوات المستخدمين (شريط الصندوق يقرأ الحالة عند الجلب).
  * علمه inbox_realtime وحده (يفحصه InboxBroadcaster)، لا wa_event_bus: الأحداث تُطلق دائماً. fail-open كمستمعي الناقل.
  * يُكتشف تلقائياً (docs/whatsapp/events.md)، فلا Event::listen يدوي له.
  */

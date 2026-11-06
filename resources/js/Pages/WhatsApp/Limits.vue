@@ -115,7 +115,9 @@ function inheritedRaw(type, f) {
     const v = find(c, t)?.[f];
     if (v !== null && v !== undefined) return v;
   }
-  return props.defaults[f];
+  // سقف فارغ في الصف الأساسي = بلا سقف؛ النافذة والفاصل من الكود
+  const caps = ['per_minute', 'per_hour', 'per_day', 'cold_per_day', 'per_recipient_day'];
+  return find(null, null) && caps.includes(f) ? null : props.defaults[f];
 }
 const inherited = (type, f) => String(inheritedRaw(type, f) ?? '∞');
 function setCell(type, f, v) {

@@ -24,8 +24,7 @@ describe('InboxStatusBar', () => {
         expect(w.text()).toContain('وضع التحويل');
     });
 
-    it('tells the admin what Meta rejects and what to do, and others only that the admin knows (E18)', () => {
-        const admin = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, meta_error: { message: 'رمز ميتا منتهٍ', action: 'ولّد رمزاً جديداً', code: 'TOKEN_INVALID' } } } });
+});
         const bar = admin.find('[data-test="meta-error-bar"]');
         expect(bar.text()).toContain('ميتا ترفض الإرسال: رمز ميتا منتهٍ — ولّد رمزاً جديداً');
         expect(bar.find('a').attributes('href')).toBe('/whatsapp/settings#ops');
@@ -46,5 +45,15 @@ describe('InboxStatusBar', () => {
         expect(limited.find('[data-test="health-badge"]').text()).toBe('قيد جزئي من ميتا — الردود تعمل');
 
         expect(mount(InboxStatusBar, { props: { ...base, status: { ...base.status, health: 'AVAILABLE' } } }).find('[data-test="health-badge"]').exists()).toBe(false);
+    });
+    it('names disconnected and paused numbers and links to the channels page', () => {
+        const w = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, channels: { total: 3, ready: 1, down: ['المبيعات'], paused: ['الحجوزات'] } } } });
+        expect(w.find('[data-test="channels-down"]').text()).toContain('رقم غير متصل: المبيعات');
+        expect(w.find('[data-test="channels-down"] a').attributes('href')).toBe('/whatsapp/channels');
+        expect(w.find('[data-test="channels-paused"]').text()).toContain('رقم موقوف مؤقتاً: الحجوزات');
+
+        expect(mount(InboxStatusBar, { props: base }).find('[data-test="channels-down"]').exists()).toBe(false);
+        expect(mount(InboxStatusBar, { props: { ...base, status: { ...base.status, suspended: true, channels: { down: ['المبيعات'], paused: [] } } } })
+            .find('[data-test="channels-down"]').exists()).toBe(false);
     });
 });

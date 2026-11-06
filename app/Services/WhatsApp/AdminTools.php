@@ -209,10 +209,10 @@ class AdminTools
                 'reason' => 'required|string|max:300', 'confirm' => 'nullable|boolean'],
             'actions' => ['block' => ['perm' => 'contacts.block', 'write' => true, 'label' => 'حظر']],
         ],
-        // E23: حالة القناة للقراءة، بلا مدخلات ولا أسرار ولا أرقام عملاء
+        // E23: حالة الأرقام والطابور للقراءة، بلا مدخلات ولا أسرار ولا أرقام عملاء
         'get_channel_status' => [
-            'label' => 'حالة القناة', 'handler' => 'channelStatus',
-            'description' => 'حالة قناة الواتساب الآن: هل الإرسال يعمل أو موقوف، وصحة الرقم وجودته عند ميتا، وآخر خطأ إرسال، وسلامة الويبهوك، وإصدار Graph. قراءة فقط.',
+            'label' => 'حالة الأرقام', 'handler' => 'channelStatus',
+            'description' => 'حالة الواتساب الآن: هل الإرسال يعمل أو موقوف، وكل رقم واتساب فعّال وحالته وهل هو جاهز، وعدد الرسائل المنتظرة في الطابور الصادر، وآخر خطأ إرسال. قراءة فقط.',
             'properties' => [], 'required' => [], 'rules' => [],
             'actions' => ['_' => ['perm' => 'channel.view', 'write' => false]],
         ],
@@ -538,61 +538,55 @@ class AdminTools
     }
 
     /**
-     * حالة القناة (E23): مصفوفة صغيرة بلا أسرار ولا نصوص استثناء ولا أرقام عملاء. المصدر الإيقاف (رمزه لا نص المدير)،
-     * وآلة الحالات (E22)، وآخر فحص لميتا، وآخر خطأ قناة (E18)، والإصدار (E05).
+     * حالة الأرقام (E23، OpenWA 2026-11-06): مصفوفة صغيرة بلا أسرار ولا هواتف عملاء. الإيقاف (رمزه لا نص المدير)، ولكل رقم
+     * فعّال اسمه وحالته على البوابة وهل هو جاهز أو موقوف مؤقتاً، وعدّادات الطابور الصادر، وآخر فشل إرسال.
      */
     private static function channelStatus(array $in, WaConversation $conv, WaAdminNumber $a): array
     {
         $s = WaBotSetting::current();
-        $health = ChannelHealth::available() ? ChannelHealth::current($s) : null;
-        $graph = GraphVersions::status(config('services.whatsapp.graph_version'));
-        $channel = (array) ($s->wa_channel_health ?? []);
-        $webhook = is_array($channel['webhook'] ?? null) ? $channel['webhook'] : null;
-        $last = (array) ($s->wa_last_error ?? []);
-        if ($last === []) {
-            $row = \App\Models\WaMessage::where('direction', 'out')->where('status', 'failed')->whereNotNull('error_code')
-                ->latest('id')->first(['error_code', 'created_at']);
-            $last = $row ? ['error_code' => $row->error_code, 'message' => MetaErrorCatalog::byCode($row->error_code)['message'] ?? null, 'at' => $row->created_at?->toIso8601String()] : [];
-        }
+        $row = \App\Models\WaMessage::where('direction', 'out')->where('status', 'failed')->whereNotNull('error_code')
+            ->latest('id')->first(['error_code', 'created_at']);
         $source = $s->suspendSource();
+        $outbox = \App\Models\WaOutbox::query()->whereIn('status', \App\Models\WaOutbox::OPEN)
+            ->groupBy('status')->selectRaw('status, COUNT(*) as n')->pluck('n', 'status')->map(fn ($n) => (int) $n)->all();
 
         return [
             'bot' => ['enabled' => (bool) $s->enabled, 'provider' => $s->provider, 'model' => $s->model],
             'sending' => [
                 'manual_suspended' => $s->sendingSuspended(),
                 'suspended_by' => $source === null ? null : (self::SUSPEND_SOURCES[$source] ?? $source),
-                'health' => $health?->value,
-                'health_label' => $health?->label(),
-                'blocks_sending' => $health?->blocksSending(),
-                'until' => $s->wa_health_until?->toIso8601String(),
             ],
-            'graph' => ['version' => $graph['version'], 'sunset' => $graph['sunset'], 'days_left' => $graph['days_left']],
+            'channels' => \App\Models\WaChannel::query()->active()->orderBy('sort')->orderBy('id')->get()->map(fn ($c) => [
+                'name' => $c->name,
+                'status' => $c->status,
+                'ready' => $c->isReady(),
+                'paused_until' => $c->isPaused() ? $c->paused_until?->toIso8601String() : null,
+                'last_inbound_at' => $c->last_inbound_at?->toIso8601String(),
+            ])->values()->all(),
+            'outbox' => [
+                'pending' => $outbox[\App\Models\WaOutbox::PENDING] ?? 0,
+                'deferred' => $outbox[\App\Models\WaOutbox::DEFERRED] ?? 0,
+                'awaiting_approval' => $outbox[\App\Models\WaOutbox::AWAITING] ?? 0,
+            ],
             'last' => [
                 'last_inbound_at' => self::iso(WaConversation::max('last_inbound_at')),
                 'last_outbound_at' => self::iso(WaConversation::max('last_outbound_at')),
-                'last_failure' => $last === [] ? null : [
-                    'code' => $last['error_code'] ?? null,
-                    'label' => isset($last['message']) ? mb_substr((string) $last['message'], 0, 160) : null,
-                    'at' => $last['at'] ?? null,
-                ],
-            ],
-            'meta' => [
-                'checked_at' => $channel['checked_at'] ?? null,
-                'can_send_message' => $channel['can_send_message'] ?? null,
-                'quality_rating' => $channel['quality_rating'] ?? null,
-                'webhook_ok' => $webhook['ok'] ?? null,
-                'webhook_issue' => $webhook['issues'][0] ?? null,
+                'last_failure' => $row ? [
+                    'code' => $row->error_code,
+                    'label' => mb_substr((string) (MetaErrorCatalog::byCode($row->error_code)['message'] ?? ''), 0, 160) ?: null,
+                    'at' => $row->created_at?->toIso8601String(),
+                ] : null,
             ],
             'bot_tools_enabled' => count(array_filter(array_keys(BotTools::labels()), fn ($k) => $s->toolEnabled($k))),
             'kb_active_entries' => WaKnowledgeEntry::where('is_active', true)->count(),
-            'note' => 'انقل الحالة بإيجاز كما هي. webhook_ok=false يعني أن ويبهوك ميتا منحرف؛ التفاصيل في صفحة «حالة النظام» أو whatsapp:doctor.',
+            'note' => 'انقل الحالة بإيجاز كما هي. رقم ready=false لا يصل منه ولا إليه شيء حتى يُعاد ربطه من صفحة «الأرقام»؛ التفاصيل هناك أو في whatsapp:doctor.',
         ];
     }
 
     /** من يوقف الإرسال (WaBotSetting::suspendSource) بلا نص المدير */
     private const SUSPEND_SOURCES = [
-        'env' => 'بيئة الخادم', 'manual' => 'إيقاف طارئ يدوي', 'meta_event' => 'حدث من ميتا',
-        'graph_error' => 'خطأ من ميتا عند الإرسال', 'restore' => 'وضع آمن بعد استعادة نسخة',
+        'env' => 'بيئة الخادم', 'manual' => 'إيقاف طارئ يدوي', 'meta_event' => 'حدث من ميتا (قديم)',
+        'graph_error' => 'خطأ من ميتا عند الإرسال (قديم)', 'restore' => 'وضع آمن بعد استعادة نسخة',
     ];
 
     private static function iso(mixed $at): ?string
@@ -755,9 +749,11 @@ class AdminTools
             return self::commit('set_customer_bot', $conv, $a);
         }
         if ($action === 'status') {
-            // E22: حالة القناة عند ميتا وتسميتها، بلا سبب تفصيلي
+            // الأرقام الجاهزة من الفعّالة، بلا تفاصيل
+            $channels = \App\Models\WaChannel::query()->active()->get();
+
             return ['enabled' => (bool) $s->enabled, 'sending_suspended' => $s->sendingSuspended(), 'suspended_source' => $s->suspendSource(), 'model' => $s->model,
-                'health' => ChannelHealth::current($s)->value, 'health_label' => ChannelHealth::current($s)->label()];
+                'channels_ready' => $channels->filter(fn ($c) => $c->isReady())->count(), 'channels_total' => $channels->count()];
         }
         if ((bool) $s->enabled === ($action === 'on')) {
             return ['error' => 'لا تغيير', 'note' => 'البوت '.($s->enabled ? 'يعمل' : 'موقوف').' أصلاً.'];

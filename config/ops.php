@@ -17,13 +17,6 @@ return [
     // وظيفة متاحة لم يلتقطها عامل منذ هذه المدة
     'backlog_stale_seconds' => 300,
 
-    // فحص رمز ميتا يومياً وصحة القناة كل ساعة، والتنبيه الفوري على أخطاء الاعتماد
-    'meta_checks' => (bool) env('WA_META_CHECKS', true),
-    'token_warn_days' => 14,
-    'token_critical_days' => 3,
-    // بتوقيت عمّان
-    'credentials_check_at' => '08:00',
-
     // صمت الوارد (E37، العلم inbound_silence_alert): ساعات الدوام المنظّمة للحساب (القيمة الحرة company_hours لا تصلح).
     // الأيام بترقيم Carbon: 0 الأحد … 6 السبت؛ الافتراضي السبت إلى الخميس
     'business_hours' => [
@@ -39,8 +32,6 @@ return [
     // whatsapp:ops-check كل 5 دقائق: لقطة أرقام مجمّعة في مخزن cache_store أعلاه (لا SQLite)، يقرؤها /internal/metrics
     // وصفحة الإخفاقات. التنبيه بالعلم ops_alerts؛ مطفأ = تُحسب القواعد وتُكتب سطراً في سجل perf بلا إشعار (الأسبوع الأول)
     'metrics_ttl_minutes' => 15,
-    // رسائل الخدمة المجانية شهرياً لكل رقم (تسعير ميتا منذ 2026-10-01)، والتنبيه قبل نفادها
-    'service_free_tier' => 1000,
 
     /*
      * مصفوفة الاستجابة (بديل Alertmanager): لكل قاعدة عتبتها وخطورتها وعنوانها والإجراء ورابطها، والمقياس في
@@ -53,32 +44,32 @@ return [
         'failed_jobs' => ['threshold' => 3, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/failures#jobs',
             'title' => '⚠️ مهام خلفية تفشل', 'action' => 'افتح «مهام خلفية فاشلة» في صفحة الإخفاقات.'],
         'send_auth' => ['threshold' => 1, 'severity' => 'critical', 'period' => 'hour', 'url' => '/whatsapp/settings#ops',
-            'title' => '⛔ ميتا ترفض الإرسال: خطأ اعتماد', 'action' => 'جدّد رمز ميتا أو راجع الصلاحيات من WhatsApp Manager.'],
+            'title' => '⛔ البوابة ترفض الإرسال: خطأ اعتماد', 'action' => '«إصلاح» الرقم من صفحة الأرقام يصدر مفتاحه من جديد.'],
         'send_integrity' => ['threshold' => 1, 'severity' => 'critical', 'period' => 'hour', 'url' => '/whatsapp/settings#ops',
-            'title' => '⛔ ميتا تقيّد الحساب', 'action' => 'راجع صحة القناة وجودة الرقم في WhatsApp Manager.'],
+            'title' => '⛔ واتساب يقيّد رقماً', 'action' => 'راجع الرقم في صفحة الأرقام وأوقف الإرسال الآلي منه حتى يُرفع القيد.'],
         'send_recipient' => ['threshold' => 10, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/failures#messages',
             'title' => '⚠️ رسائل كثيرة لم تصل عملاءها', 'action' => 'قد تكون نوافذ مغلقة أو أرقاماً لا تستقبل؛ راجع «رسائل لم تصل».'],
         'unknown_sends' => ['threshold' => 1, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/failures#messages',
             'title' => '❔ إرسال غير مؤكد', 'action' => 'راجع الإخفاقات قبل أي إعادة: قد تكون الرسالة وصلت.'],
         'webhook_failed' => ['threshold' => 1, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/failures#webhooks',
-            'title' => '📥 إشعارات ميتا لم تُعالج', 'action' => 'افتح «ويبهوك فاشل» في صفحة الإخفاقات.'],
+            'title' => '📥 إشعارات البوابة لم تُعالج', 'action' => 'افتح «ويبهوك فاشل» في صفحة الإخفاقات.'],
         'waiting_human' => ['threshold' => 5, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/inbox',
             'title' => '👥 عملاء ينتظرون موظفاً', 'action' => 'محادثات محوّلة لم يرد عليها أحد منذ أكثر من 30 دقيقة.'],
         'bot_latency' => ['threshold' => 60000, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/analytics',
             'title' => '🐢 البوت بطيء', 'action' => 'زمن الرد (p90) تجاوز دقيقة: راجع مزوّد الذكاء وطابور الردود.'],
         // العتبة من إعداد wa_daily_alert_threshold (صفحة الإعدادات)، وهذه القيمة احتياطية فقط
         'daily_outbound' => ['threshold' => 300, 'severity' => 'warn', 'period' => 'day', 'url' => '/whatsapp/analytics',
-            'title' => '📤 الصادر اليوم تجاوز الحد', 'action' => 'راجع مصادر الصادر في التحليلات؛ رسائل الخدمة تُحتسب بعد 1000 شهرياً.'],
-        'service_free_tier' => ['threshold' => 900, 'severity' => 'info', 'period' => 'month', 'url' => '/whatsapp/analytics',
-            'title' => '💵 رسائل الخدمة المجانية تقترب من النفاد', 'action' => 'بعد 1000 رسالة خدمة في الشهر تُحتسب كل رسالة؛ راجع وسيلة الدفع.'],
+            'title' => '📤 الصادر اليوم تجاوز الحد', 'action' => 'راجع مصادر الصادر في التحليلات: الكثرة تعرّض الرقم للحظر.'],
+        'channels_down' => ['threshold' => 1, 'severity' => 'critical', 'period' => 'hour', 'url' => '/whatsapp/channels',
+            'title' => '📵 رقم واتساب غير متصل', 'action' => 'أعد ربطه برمز QR من صفحة الأرقام؛ لا يصل منه ولا إليه شيء حتى ذلك.'],
         'automated_budget' => ['threshold' => 1, 'severity' => 'warn', 'period' => 'day', 'url' => '/whatsapp/analytics',
-            'title' => '🤖 رسائل آلية فوق ميزانيتها اليومية', 'action' => 'مصدر رسائل آلية تجاوز ميزانيته؛ راجعه قبل أن ترتفع الفاتورة.'],
+            'title' => '🤖 رسائل آلية فوق ميزانيتها اليومية', 'action' => 'مصدر رسائل آلية تجاوز ميزانيته؛ راجعه قبل أن يتعرّض الرقم للحظر.'],
     ],
 
     /*
      * ميزانية يومية لكل مصدر رسائل آلية (بادئة SendKey، E19)، يقرّها المالك (AMENDMENTS: التسعير). null = بلا ميزانية،
      * يُعرض العدد وحده. تجاوزها تنبيه automated_budget مرة في اليوم، ولا يحجب شيئاً: الحجب للإرسال المبادر وحده
-     * (wa_system_daily_cap). reply ردود البوت نفسها، فتراقبها daily_outbound.
+     * (حدود الإرسال في صفحة «حدود الإرسال»). reply ردود البوت نفسها، فتراقبها daily_outbound.
      */
     'automated_budgets' => [
         'reply' => null,
@@ -94,7 +85,6 @@ return [
     // انتهاء رمز الدمج)، ولا وظيفة ترسل لعميل
     'retryable_jobs' => [
         \App\Jobs\SendPushNotification::class,
-        \App\Jobs\RefreshChannelHealth::class,
     ],
 
     // سجل الطلبات البطيئة و5xx (storage/logs/perf.log): بقالب المسار، بلا رابط كامل ولا query ولا IP. 0 يطفئه

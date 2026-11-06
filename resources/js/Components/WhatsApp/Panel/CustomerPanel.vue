@@ -173,6 +173,11 @@
         </div>
       </PanelSection>
 
+      <!-- 📨 رسائل النظام -->
+      <PanelSection v-if="data?.system" id="system" icon="📨" title="رسائل النظام" :count="data.system.upcoming.length || null">
+        <SystemMessagesSection :conversation-id="thread.id" :system="data.system" :linked="!!thread.client_id" :can-reply="canReply" @changed="load"/>
+      </PanelSection>
+
       <!-- ✈️ الرحلات -->
       <PanelSection ref="tripsSection" id="trips" icon="✈️" title="الرحلات" :count="data ? data.trips.length : null" :summary="tripsSummary" default-open>
         <p v-if="loading && !data" class="text-xs text-gray-400">جارٍ التحميل...</p>
@@ -266,6 +271,7 @@
 </template>
 
 <script setup>
+import SystemMessagesSection from './SystemMessagesSection.vue';
 import { computed, nextTick, ref, useId, watch } from 'vue';
 import axios from 'axios';
 import FactCard from '../FactCard.vue';

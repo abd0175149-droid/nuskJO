@@ -30,8 +30,9 @@ class WhatsAppEventPayloadTest extends TestCase
 
     public function test_there_are_six_events(): void
     {
+        // ChannelStatusChanged (حالة رقم على البوابة) بدل ChannelHealthChanged من صحة قناة ميتا (2026-11-06)
         $this->assertEqualsCanonicalizing([
-            'WaMessageStored', 'WaMessageSent', 'WaMessageFailed', 'WaMessageStatusChanged', 'ConversationHandedOff', 'ChannelHealthChanged',
+            'WaMessageStored', 'WaMessageSent', 'WaMessageFailed', 'WaMessageStatusChanged', 'ConversationHandedOff', 'ChannelStatusChanged',
         ], array_map(fn ($c) => class_basename($c), self::classesIn('Events/WhatsApp', 'App\\Events\\WhatsApp')));
     }
 

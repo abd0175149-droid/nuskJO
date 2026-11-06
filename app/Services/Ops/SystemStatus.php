@@ -4,11 +4,11 @@ namespace App\Services\Ops;
 
 use App\Models\WaBotSetting;
 use App\Services\Backup\BackupStatus;
+use App\Models\WaChannel;
+use App\Models\WaOutbox;
 use App\Services\WhatsApp\ChannelDoctor;
-use App\Services\WhatsApp\ChannelHealth;
-use App\Services\WhatsApp\GraphVersions;
-use App\Services\WhatsApp\MetaHealth;
-use App\Services\WhatsApp\Transport\WhatsAppTransport;
+use App\Services\WhatsApp\OpenWa\OpenWaClient;
+use App\Services\WhatsApp\Transport\ChannelTransport;
 use App\Services\WhatsApp\WebhookStats;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -180,46 +180,30 @@ final class SystemStatus
         ];
     }
 
+    /** البوابة وطابور الصادر واستقبال الـ webhook (OpenWA، 2026-11-06). الأرقام نفسها في numbers() */
     private static function whatsapp(): array
     {
         $s = WaBotSetting::current();
-        $channel = (array) ($s->wa_channel_health ?? []);
-        $credentials = (array) ($s->wa_credentials_status ?? []);
         $level = 'ok';
 
-        $health = null;
-        if (ChannelHealth::available()) {
-            $state = ChannelHealth::current($s);
-            $health = ['state' => $state->value, 'label' => $state->label(), 'until' => $s->wa_health_until?->toIso8601String(),
-                'checked_at' => $s->wa_health_checked_at?->toIso8601String(), 'machine' => ChannelHealth::enabled()];
-            $level = self::worst($level, match ($state->value) {
-                'BLOCKED', 'TOKEN_INVALID' => 'error',
-                'LIMITED' => 'warn',
-                default => 'ok',
-            });
-        }
-        $level = self::worst($level, match ($channel['state'] ?? null) {
-            'critical' => 'error',
-            'warn', 'unreachable' => 'warn',
-            default => 'ok',
-        });
-
-        $webhook = is_array($channel['webhook'] ?? null) ? $channel['webhook'] : null;
-        if (($webhook['ok'] ?? null) === false) {
+        $admin = OpenWaClient::admin();
+        $gateway = ['configured' => $admin->configured(), 'reachable' => null, 'version' => null, 'error' => null];
+        if ($gateway['configured']) {
+            $res = $admin->request('GET', '/health');
+            $gateway['reachable'] = $res->ok;
+            $gateway['version'] = $res->ok ? ((string) ($res->json('version') ?? $res->json('info.version') ?? '') ?: null) : null;
+            $gateway['error'] = $res->ok ? null : $res->error?->code;
+            $level = self::worst($level, $res->ok ? 'ok' : 'error');
+        } elseif (app()->isProduction()) {
             $level = self::worst($level, 'error');
         }
-        $level = self::worst($level, match ($credentials['state'] ?? null) {
-            'critical' => 'error',
-            'warn', 'unreachable' => 'warn',
-            default => 'ok',
-        });
 
-        $graph = GraphVersions::panel();
-        $level = self::worst($level, match ($graph['requests']['level']) {
-            'expired', 'unknown' => 'error',
-            'warn' => 'warn',
-            default => 'ok',
-        });
+        $outbox = WaOutbox::query()->whereIn('status', WaOutbox::OPEN)
+            ->groupBy('status')->selectRaw('status, COUNT(*) as n')->pluck('n', 'status')->map(fn ($n) => (int) $n)->all();
+        $overdue = WaOutbox::query()->whereIn('status', [WaOutbox::PENDING, WaOutbox::DEFERRED])->where('due_at', '<', now()->subMinutes(30))->count();
+        if ($overdue > 0) {
+            $level = self::worst($level, 'warn');
+        }
 
         $intake = WebhookStats::summary();
         if (($intake['dead_open'] ?? 0) > 0) {
@@ -229,61 +213,49 @@ final class SystemStatus
         return [
             'level' => $level,
             'configured' => $s->channelReady(),
-            'monitor' => MetaHealth::monitorOn(),
-            'health' => $health,
-            'channel' => [
-                'state' => $channel['state'] ?? null,
-                'can_send_message' => $channel['can_send_message'] ?? null,
-                'quality_rating' => $channel['quality_rating'] ?? null,
-                'number' => $channel['number'] ?? null,
-                'checked_at' => $channel['checked_at'] ?? null,
-            ],
-            'webhook' => $webhook === null ? null : [
-                'ok' => $webhook['ok'],
-                'issues' => $webhook['issues'] ?? [],
-                'callback' => $webhook['callback'] ?? null,
-                'overrides' => $webhook['overrides'] ?? [],
-                'missing_fields' => $webhook['missing_fields'] ?? null,
-                'field_versions' => $webhook['field_versions'] ?? [],
-                'configuration_available' => $webhook['configuration_available'] ?? null,
-                'subscriptions_at' => $webhook['subscriptions']['at'] ?? null,
+            'gateway' => $gateway,
+            'outbox' => [
+                'pending' => $outbox[WaOutbox::PENDING] ?? 0,
+                'deferred' => $outbox[WaOutbox::DEFERRED] ?? 0,
+                'awaiting_approval' => $outbox[WaOutbox::AWAITING] ?? 0,
+                'overdue' => $overdue,
             ],
             'intake' => [
                 'last24' => $intake['last24'] ?? [],
                 'dead_open' => $intake['dead_open'] ?? 0,
                 'signatures' => $intake['signatures'] ?? [],
-                'fence' => ['mode' => $intake['fence']['mode'] ?? null, 'counts' => $intake['fence']['counts'] ?? []],
                 'last_signed_at' => Cache::get('wa:sig:last_ok_at'),
             ],
-            'graph' => ['requests' => $graph['requests'], 'webhook' => $graph['webhook'], 'appsecret_proof' => $graph['appsecret_proof']],
-            'credentials' => array_intersect_key($credentials, array_flip(['state', 'reasons', 'expires_at', 'never_expires', 'days_left', 'missing_scopes', 'checked_at'])),
-            'transport' => app(WhatsAppTransport::class)->name(),
+            'transport' => app(ChannelTransport::class)->name(),
         ];
     }
 
-    /** أرقام الحساب (C054): من الكاش ساعة، أو قراءة واحدة إن فرغ (فحوص ميتا مفعّلة والقناة مهيّأة) */
+    /** أرقام واتساب الفعّالة (C054): الاسم وحالة الجلسة والجاهزية وآخر فحص ووارد، من القاعدة بلا نداء */
     private static function numbers(): array
     {
-        $s = WaBotSetting::current();
-        if (!config('ops.meta_checks') || !$s->channelReady()) {
-            return ['level' => 'unknown', 'state' => 'not_configured', 'numbers' => []];
+        $channels = WaChannel::query()->active()->orderBy('sort')->orderBy('id')->get();
+        if ($channels->isEmpty()) {
+            return ['level' => 'unknown', 'state' => 'none', 'numbers' => []];
         }
-        $r = MetaHealth::phoneNumbers(10);
-        $numbers = $r['numbers'] ?? [];
-        $level = match ($r['state']) {
-            'ok' => 'ok',
-            'no_waba', 'not_configured' => 'unknown',
-            default => 'warn',
-        };
-        foreach ($numbers as $n) {
-            if ($n['ours'] && $n['status'] !== null && $n['status'] !== 'CONNECTED') {
-                $level = 'error';
-            } elseif ($n['status'] !== 'CONNECTED' || $n['quality_rating'] === 'RED') {
-                $level = self::worst($level, 'warn');
-            }
+        $level = 'ok';
+        $numbers = [];
+        foreach ($channels as $c) {
+            $ready = $c->isReady();
+            $paused = $c->isPaused();
+            $level = self::worst($level, $ready ? ($paused ? 'warn' : 'ok') : ($c->isLinked() ? 'warn' : 'error'));
+            $numbers[] = [
+                'name' => $c->name,
+                'phone' => $c->phone,
+                'status' => $c->status,
+                'ready' => $ready,
+                'paused_until' => $paused ? $c->paused_until?->toIso8601String() : null,
+                'probe_failures' => (int) $c->probe_failures,
+                'last_probe_ok_at' => $c->last_probe_ok_at?->toIso8601String(),
+                'last_inbound_at' => $c->last_inbound_at?->toIso8601String(),
+            ];
         }
 
-        return ['level' => $level, 'state' => $r['state'], 'at' => $r['at'] ?? null, 'numbers' => $numbers];
+        return ['level' => $level, 'state' => 'ok', 'numbers' => $numbers];
     }
 
     private static function reverb(): array

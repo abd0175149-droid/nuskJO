@@ -13,12 +13,6 @@
           <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<template v-if="thread.username"> · <bdi dir="ltr" class="font-mono">@{{ thread.username }}</bdi></template><span v-if="thread.client" class="text-gray-500 dark:text-gray-400"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
           <p v-if="!panel && thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
              title="اسم يضعه العميل بنفسه — غير موثّق">اسم واتساب: <bdi dir="auto">{{ thread.profile_name }}</bdi></p>
-          <!-- مصدر المحادثة (E38): رمز أو رابط أو إعلان، قياس داخلي تقريبي -->
-          <p v-if="!panel && thread.entry" data-test="entry-badge" class="text-[11px] text-sky-700 dark:text-sky-300 truncate"
-             title="مصدر بدء المحادثة (قياس داخلي تقريبي)">
-            <template v-if="thread.entry.channel === 'ad'">📣 من إعلان<template v-if="thread.entry.headline">: <bdi dir="auto">{{ thread.entry.headline }}</bdi></template></template>
-            <template v-else>{{ thread.entry.channel === 'qr' ? '📷 من رمز' : '🔗 من رابط' }}<template v-if="thread.entry.title">: <bdi dir="auto">{{ thread.entry.title }}</bdi></template></template>
-          </p>
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">

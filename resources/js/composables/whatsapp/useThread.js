@@ -19,7 +19,7 @@ export function mergeOlder(messages, older) {
 
 // حقول الحالة التي يعيدها الاستطلاع كاملة لكل رسالة تغيّرت: سبب E18، ومحاولات E19، وعلامات E21.
 // ما غاب منها في التحديث يُمحى (فاشلة صارت مُسلّمة لا تُبقي سببها)
-const STATUS_FIELDS = ['error_code', 'category', 'action', 'fbtrace_id', 'attempts', 'can_resend', 'status_at', 'multi_fail', 'meta_code'];
+const STATUS_FIELDS = ['error_code', 'category', 'action', 'attempts', 'can_resend', 'status_at', 'multi_fail', 'meta_code'];
 
 /** حالات المرسَل منذ آخر مزامنة (status وerror وحقولهما والمرفق) تُطبَّق في مكانها */
 export function applyUpdates(messages, updates) {

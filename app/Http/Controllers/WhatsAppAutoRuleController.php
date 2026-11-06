@@ -15,11 +15,8 @@ use App\Models\WaMessage;
 use App\Services\WhatsApp\AutoRuleContext;
 use App\Services\WhatsApp\AutoRuleEngine;
 use App\Services\WhatsApp\AutoRuleMatcher;
-use App\Services\WhatsApp\ConversationalComponents;
 use App\Services\WhatsApp\RuleTextGuard;
-use App\Services\WhatsApp\Settings\SettingsWriter;
 use App\Services\WhatsApp\TopicRouter;
-use App\Services\WhatsApp\WhatsAppChannel;
 use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,8 +28,7 @@ use Inertia\Inertia;
 /**
  * الردود الحتمية (E37): قواعد بنص ثابت يعتمده المالك، تُدار بصلاحية whatsapp.auto_rules (للمدير افتراضياً).
  * القاعدة تُحفظ موقوفة، ولا تُفعَّل قبل أن تُجرَّب («جرّب نصاً») أو تُحاكى على السجل بعد آخر تعديل، وتعديل محتواها يوقفها
- * حتى تُجرَّب من جديد. كل كتابة في سجل التدقيق داخل معاملتها. المكوّنات الرسمية (أوامر وأسئلة البداية) تكتب في ميتا،
- * فهي لصاحب whatsapp.settings وخلف العلم conversational_components.
+ * حتى تُجرَّب من جديد. كل كتابة في سجل التدقيق داخل معاملتها. (المكوّنات الرسمية في ميتا أُزيلت مع ميتا، 2026-11-06)
  */
 class WhatsAppAutoRuleController extends Controller
 {
@@ -62,17 +58,12 @@ class WhatsAppAutoRuleController extends Controller
             'limits' => [
                 'rules' => WaAutoRule::MAX_RULES, 'patterns' => WaAutoRule::MAX_PATTERNS, 'pattern_len' => WaAutoRule::MAX_PATTERN_LEN,
                 'reply' => WaAutoRule::MAX_REPLY, 'condition_keys' => WaAutoRule::MAX_CONDITION_KEYS,
-                'prompts' => ConversationalComponents::MAX_PROMPTS, 'prompt_len' => ConversationalComponents::PROMPT_LEN,
-                'commands' => ConversationalComponents::MAX_COMMANDS, 'command_len' => ConversationalComponents::COMMAND_LEN,
-                'description_len' => ConversationalComponents::DESCRIPTION_LEN,
             ],
             'mode' => AutoRuleEngine::mode($s),
             'flag' => FeatureFlags::state('auto_rules'),
             'settingsVersion' => (int) ($s->settings_version ?? 1),
             'canSettings' => $canSettings,
             'canViewAll' => auth()->user()->can('whatsapp.view_all'),
-            // المكوّنات الرسمية: لصاحب whatsapp.settings وحده، ولا رمز ولا رد خام من ميتا في الصفحة
-            'automation' => $canSettings ? ConversationalComponents::state($s) + ['enabled' => FeatureFlags::on('conversational_components')] : null,
         ]);
     }
 
@@ -288,52 +279,6 @@ class WhatsAppAutoRuleController extends Controller
         ]);
     }
 
-    // ==================== المكوّنات الرسمية في واتساب (T6) ====================
-
-    /** «قراءة الحالي من واتساب»: ما تعرضه ميتا الآن مقابل المحفوظ، ويُحفظ آخر قراءة (بلا رفع نسخة الإعدادات) */
-    public function automation(): JsonResponse
-    {
-        $this->authorizeComponents();
-        $res = WhatsAppChannel::getConversationalAutomation();
-        $stored = ConversationalComponents::stored();
-        if ($res['ok']) {
-            SettingsWriter::apply(['conversational_automation' => ['last_snapshot' => $res['data'] + ['read_at' => now()->toIso8601String()]] + $stored],
-                null, null, bumpVersion: false, audit: 'none');
-        }
-
-        return response()->json([
-            'ok' => $res['ok'],
-            'error' => $res['ok'] ? null : ($res['message'] ?? $res['code']),
-            'live' => $res['data'] ?? null,
-            'state' => ConversationalComponents::state(),
-            'same' => $res['ok'] ? self::sameComponents($stored['desired'], $res['data']) : null,
-        ], $res['ok'] ? 200 : 409);
-    }
-
-    /** المزامنة: التحقق قبل أي نداء، ثم نداء واحد لميتا، ثم الحفظ والتدقيق بالفرق. القائمتان الفارغتان = «مسح من واتساب» */
-    public function syncAutomation(Request $request): JsonResponse
-    {
-        $this->authorizeComponents();
-        $desired = ConversationalComponents::clean($request->validate(ConversationalComponents::rules(), ConversationalComponents::messages()));
-        $res = WhatsAppChannel::setConversationalAutomation($desired);
-        $stored = ConversationalComponents::stored();
-        $after = $res['ok']
-            ? ['desired' => $desired, 'synced_at' => now()->toIso8601String(), 'last_error' => null] + $stored
-            : ['last_error' => array_filter(['code' => $res['code'], 'meta_code' => $res['meta_code'] ?? null, 'category' => $res['category'] ?? null,
-                'fbtrace_id' => $res['fbtrace_id'] ?? null, 'at' => now()->toIso8601String()], fn ($v) => $v !== null)] + $stored;
-        SettingsWriter::apply(['conversational_automation' => $after], null, AuditAction::WaConvAutomationSync, [
-            'ok' => $res['ok'], 'prompts' => count($desired['prompts']), 'commands' => count($desired['commands']),
-            'cleared' => $desired['prompts'] === [] && $desired['commands'] === [],
-        ], label: 'المكوّنات الرسمية');
-
-        return response()->json([
-            'ok' => $res['ok'],
-            'error' => $res['ok'] ? null : ($res['message'] ?? $res['code']),
-            'warnings' => $res['ok'] ? ConversationalComponents::warnings($desired) : [],
-            'state' => ConversationalComponents::state(),
-        ], $res['ok'] ? 200 : 409);
-    }
-
     // ==================== مساعدات ====================
 
     /** للصفحة: القاعدة وإحصاؤها وحكم الحارس على نصها الآن (قاعدة قديمة قبل تشديده) */
@@ -362,21 +307,8 @@ class WhatsAppAutoRuleController extends Controller
             'reply_kind', 'tag_topic', 'cooldown_minutes', 'command_name']);
     }
 
-    private static function sameComponents(array $desired, array $live): bool
-    {
-        $key = fn (array $c) => array_map(fn ($x) => [(string) data_get($x, 'command_name'), (string) data_get($x, 'command_description')], $c);
-
-        return array_values($desired['prompts']) === array_values($live['prompts']) && $key($desired['commands']) === $key($live['commands']);
-    }
-
     private function authorizeRules(): void
     {
         abort_unless(auth()->user()->can('whatsapp.auto_rules'), 403);
-    }
-
-    private function authorizeComponents(): void
-    {
-        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
-        abort_unless(FeatureFlags::on('conversational_components'), 404);
     }
 }

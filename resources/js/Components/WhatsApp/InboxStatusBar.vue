@@ -8,40 +8,26 @@
       <span class="font-bold">
         <template v-if="status.suspended">⛔ الإرسال موقوف — {{ SUSPEND_SOURCES[status.suspended_source] || 'قفل طارئ' }}</template>
         <template v-else-if="status.bot_ready">🟢 البوت يعمل</template>
-        <template v-else-if="status.channel_ready">🟡 القناة مهيّأة والبوت مطفأ</template>
-        <template v-else>🟡 القناة غير مهيّأة</template>
+        <template v-else-if="status.channel_ready">🟡 الأرقام مربوطة والبوت مطفأ</template>
+        <template v-else>🟡 لا رقم مربوطاً</template>
       </span>
       <span class="text-gray-600 dark:text-gray-400 text-xs hidden sm:inline">
-        <template v-if="!status.channel_ready">أضف بيانات Meta ومفتاح الذكاء من صفحة الإعدادات لتشغيل النظام.</template>
+        <template v-if="!status.channel_ready">اربط رقماً من صفحة الأرقام، وأضف مفتاح الذكاء من الإعدادات لتشغيل البوت.</template>
         <template v-else-if="!status.bot_ready">المحادثات تعمل والموظفون يردّون؛ فعّل البوت من الإعدادات عند الجهوزية.</template>
         <template v-else>الموظف يمكنه الردّ في أي وقت — وردّه يوقف البوت مؤقتاً تلقائياً.</template>
       </span>
-      <!-- التعايش (E39): ما يكتبه الموظف من تطبيق الأعمال على الهاتف يظهر هنا ويوقف البوت -->
-      <span v-if="status.coexistence" data-test="coexistence-badge" title="ما يُكتب من تطبيق الأعمال على هاتف الوكالة يظهر هنا ويوقف البوت"
-            class="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">📱 التعايش مفعّل</span>
       <a href="/whatsapp/settings" class="text-gold-700 dark:text-gold-400 font-bold text-xs hover:underline ms-auto">⚙️ الإعدادات</a>
     </div>
 
-    <!-- صحة القناة (E22): شارة عامة بلا سبب ولا رمز، والتفاصيل في بطاقة «صحة القناة» للمدير -->
-    <div v-if="healthBadge" :role="healthBadge.small ? 'status' : 'alert'" data-test="health-badge"
-         class="rounded-xl border text-sm font-bold" :class="[TONES[healthBadge.tone], healthBadge.small ? 'p-2 text-xs' : 'p-3.5']">
-      {{ healthBadge.text }}
-    </div>
-
-    <!-- ميتا أوقفت القناة: عام بلا تفاصيل، والتفاصيل في الإعدادات -->
-    <div v-if="status.meta_blocked && healthBadge?.tone !== 'red'" role="alert"
-         class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3.5 text-sm font-bold text-red-700 dark:text-red-300">
-      ⛔ القناة متوقفة من جهة ميتا — أبلغ المدير.
-    </div>
-
-    <!-- ميتا ترفض الإرسال على مستوى القناة (E18): الوصف والإجراء للمدير، وسطر عام لغيره -->
-    <div v-if="status.meta_error" role="alert" data-test="meta-error-bar"
+    <!-- أرقام منقطعة أو موقوفة (2026-11-06): أسماؤها وحدها، والتفاصيل في صفحة الأرقام -->
+    <div v-if="!status.suspended && channels.down.length" role="alert" data-test="channels-down"
          class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3.5 text-sm font-bold text-red-700 dark:text-red-300 break-words">
-      <template v-if="status.meta_error.generic">⛔ تعذّر الإرسال مؤقتاً — أُبلغ المسؤول.</template>
-      <template v-else>
-        ⛔ ميتا ترفض الإرسال: {{ status.meta_error.message }}<template v-if="status.meta_error.action"> — {{ status.meta_error.action }}</template>
-        <a href="/whatsapp/settings#ops" class="ms-1 underline">التفاصيل</a>
-      </template>
+      ⛔ {{ channels.down.length === 1 ? 'رقم غير متصل' : 'أرقام غير متصلة' }}: <bdi dir="auto">{{ channels.down.join('، ') }}</bdi> — لا يصل منها ولا إليها شيء حتى يُعاد ربطها.
+      <a href="/whatsapp/channels" class="ms-1 underline">الأرقام</a>
+    </div>
+    <div v-if="!status.suspended && channels.paused.length" role="status" data-test="channels-paused"
+         class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-2.5 text-xs font-bold text-amber-800 dark:text-amber-300 break-words">
+      ⏸️ {{ channels.paused.length === 1 ? 'رقم موقوف مؤقتاً' : 'أرقام موقوفة مؤقتاً' }}: <bdi dir="auto">{{ channels.paused.join('، ') }}</bdi> — الرسائل الصادرة منها تنتظر في الطابور.
     </div>
 
     <!-- وضع التحويل (E12): مزوّد الذكاء متعطّل -->
@@ -72,7 +58,6 @@
 <script setup>
 import { computed } from 'vue';
 import { SUSPEND_SOURCES } from '@/utils/waSettings.js';
-import { TONES, inboxBadge } from '@/utils/channelHealth.js';
 
 const props = defineProps({
   status: { type: Object, default: () => ({}) },
@@ -84,7 +69,7 @@ const props = defineProps({
 });
 defineEmits(['dismiss']);
 
-const healthBadge = computed(() => inboxBadge(props.status));
+const channels = computed(() => ({ down: props.status.channels?.down || [], paused: props.status.channels?.paused || [] }));
 
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
 </script>

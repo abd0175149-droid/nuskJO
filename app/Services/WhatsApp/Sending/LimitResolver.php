@@ -18,7 +18,10 @@ final class LimitResolver
     public static function for(?int $channelId, ?string $typeKey): array
     {
         $rows = self::rows();
-        $out = WaSendLimit::DEFAULTS;
+        // صف «الكل × الكل» موجود (الهجرة تبذره): سقف فارغ فيه = بلا سقف. بلا صف أصلاً: القيم المحافظة من الكود.
+        // النافذة والأيام والفاصل لا تفرغ أبداً: من الكود إن لم يضبطها صف
+        $caps = ['per_minute', 'per_hour', 'per_day', 'cold_per_day', 'per_recipient_day'];
+        $out = isset($rows[self::key(null, null)]) ? array_fill_keys($caps, null) + WaSendLimit::DEFAULTS : WaSendLimit::DEFAULTS;
         foreach (array_unique([[null, null], [null, $typeKey], [$channelId, null], [$channelId, $typeKey]], SORT_REGULAR) as [$c, $t]) {
             $row = $rows[self::key($c, $t)] ?? null;
             if ($row === null) {

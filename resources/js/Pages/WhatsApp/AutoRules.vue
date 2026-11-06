@@ -131,7 +131,6 @@
         <button type="button" @click="openEditor()" class="px-4 py-2 rounded-xl text-sm font-bold text-gold-800 bg-gold-100 dark:bg-gold-900/30 dark:text-gold-200">+ أضف أول قاعدة</button>
       </div>
 
-      <ConversationalComponentsPanel v-if="automation" :initial="automation" :limits="limits"/>
     </div>
 
     <AutoRuleEditor ref="editor" :open="showEditor" :rule="editing" :errors="editorErrors" :processing="saving" :topics="topics" :variables="variables"
@@ -145,7 +144,6 @@ import { router } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
 import AutoRuleEditor from '@/Components/WhatsApp/AutoRuleEditor.vue';
-import ConversationalComponentsPanel from '@/Components/WhatsApp/ConversationalComponentsPanel.vue';
 import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps({
@@ -159,7 +157,6 @@ const props = defineProps({
   settingsVersion: { type: Number, default: 1 },
   canSettings: Boolean,
   canViewAll: Boolean,
-  automation: { type: Object, default: null },
 });
 
 const { confirm } = useConfirm();

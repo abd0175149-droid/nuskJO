@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Offer;
 use App\Models\Setting;
-use App\Models\WaQrLink;
 use App\Services\Rendering\HeadlessChromium;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -147,8 +146,6 @@ class OfferCardService
             'lhBottom' => self::percent(Setting::get('card_letterhead_bottom'), self::LH_BOTTOM),
             'cspNonce' => $nonce,
             'csp' => self::cardPolicy($nonce),
-            // رمز QR مطبوع في التذييل بقرار لكل عرض (E38)
-            'qrUri' => self::cardQrUri($offer),
         ])->render();
     }
 
@@ -159,20 +156,6 @@ class OfferCardService
     public static function cardPolicy(string $nonce): string
     {
         return "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{$nonce}'; font-src data:; base-uri 'none'; form-action 'none'";
-    }
-
-    /** صورة الرمز المختار للبطاقة (فعّال وصورته محفوظة) كـ data: URI، أو null */
-    private static function cardQrUri(Offer $offer): ?string
-    {
-        if (!$offer->card_qr_link_id) {
-            return null;
-        }
-
-        return rescue(function () use ($offer) {
-            $link = WaQrLink::active()->whereKey($offer->card_qr_link_id)->where('offer_id', $offer->id)->first();
-
-            return $link?->qr_png_path ? self::dataUri($link->qr_png_path) : null;
-        }, null, false);
     }
 
     // ==================== بطاقة الحالة 9:16 (E38) ====================
@@ -186,7 +169,6 @@ class OfferCardService
         $bot = $o->toBotArray();
         $company = CompanyInfo::all();
         $phone = collect(preg_split('/[,،\n|]+/u', (string) ($company['phone'] ?? '')))->map(fn ($p) => trim($p))->filter()->first();
-        $short = rescue(fn () => WaQrLink::active()->where('offer_id', $o->id)->where('channel', 'status')->orderByDesc('id')->value('deep_link_url'), null, false);
 
         return [
             'title' => (string) $bot['title'],
@@ -201,7 +183,7 @@ class OfferCardService
             'logoUri' => self::dataUri(Setting::get('company_logo')),
             'heroUri' => self::dataUri($o->hero_path ?: Setting::get('card_hero_path')),
             'ref' => 'N-'.$o->id,
-            'short_link' => is_string($short) ? $short : null,
+            'short_link' => null,
         ];
     }
 

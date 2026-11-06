@@ -89,14 +89,12 @@ final class InboxSummary
         return Carbon::now('Asia/Amman')->startOfDay()->setTimezone(config('app.timezone'));
     }
 
-    /** حالة القناة بلا تفاصيل تقنية: ok | suspended | blocked | not_ready | bot_off */
+    /** حالة القناة بلا تفاصيل تقنية: ok | suspended | not_ready (لا رقم مربوط) | bot_off */
     private static function channel(): array
     {
         $s = WaBotSetting::current();
         $state = match (true) {
             $s->sendingSuspended() => 'suspended',
-            // E22: حجب آلة صحة القناة (BLOCKED، أو TOKEN_INVALID بعلمه) كحجب الفحص
-            ChannelHealth::blocksSending($s) || data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED' || data_get($s->wa_credentials_status, 'state') === 'critical' => 'blocked',
             !$s->channelReady() => 'not_ready',
             !$s->botReady() => 'bot_off',
             default => 'ok',

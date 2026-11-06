@@ -6,7 +6,6 @@ use App\Models\WaBotUsage;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\BlockService;
-use App\Services\WhatsApp\ChannelHealth;
 use App\Services\WhatsApp\MetaErrorCatalog;
 use App\Services\WhatsApp\OutboundCounter;
 use App\Services\WhatsApp\WebhookStats;
@@ -83,9 +82,8 @@ final class OpsMetrics
             'bot_latency_p90_ms_1h' => $part('bot_latency', fn () => $this->latencyP90()),
             'outbound_today' => $outbound,
             'automated_today' => $part('automated_today', fn () => OutboundCounter::automatedToday(), []),
-            'service_billable_month' => $part('service_billable', fn () => OutboundCounter::serviceBillableMonth()),
-            'channel_health' => $part('channel_health', fn () => ChannelHealth::available() ? ChannelHealth::current()->value : null),
-            'channel_health_enabled' => $part('channel_health', fn () => ChannelHealth::enabled(), false),
+            // الأرقام الفعّالة غير الجاهزة الآن (OpenWA): للتنبيه channels_down
+            'channels_down' => $part('channels_down', fn () => \App\Models\WaChannel::query()->active()->get()->reject(fn ($c) => $c->isReady())->count()),
             'scheduler_beat_age_s' => $part('scheduler', function () {
                 $beat = Cache::get(OpsHealth::SCHEDULE_BEAT);
 

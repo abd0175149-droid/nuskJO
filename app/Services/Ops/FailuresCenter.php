@@ -214,7 +214,6 @@ final class FailuresCenter
             'snapshot' => $snap,
             'age_minutes' => $snap ? (int) floor(max(0, now()->getTimestamp() - (int) ($snap['at'] ?? 0)) / 60) : null,
             'automated' => $snap ? OutboundCounter::automatedWithBudgets((array) ($snap['automated_today'] ?? [])) : [],
-            'free_tier' => (int) config('ops.service_free_tier', 1000),
         ];
     }
 }

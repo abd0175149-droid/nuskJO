@@ -172,26 +172,6 @@ return [
         'notify_admins' => (bool) env('WA_BLOCK_NOTIFY', true),
     ],
 
-    // صحة القناة كآلة حالات (E22، docs/whatsapp/channel-health.md). القفل من قاطع النزاهة بالعلم integrity_breaker_lock وحده
-    'health' => [
-        'breaker' => [
-            // 131031 أو 131048 بهذا العدد خلال النافذة: تنبيه حرج وفحص فوري (أو BLOCKED بالعلم)
-            'integrity_threshold' => (int) env('WA_INTEGRITY_THRESHOLD', 3),
-            'window_minutes' => (int) env('WA_INTEGRITY_WINDOW_MINUTES', 15),
-        ],
-        // فشل الإرسال المتتالي: تنبيه عند الثالث ثم كل خامس (3 و8 و13…)
-        'consecutive_alert_at' => 3,
-        'consecutive_alert_every' => 5,
-        // الرفع اليدوي يحتاج فحصاً لا يعيد BLOCKED خلال هذه المدة، وإلا يُفحص الآن (دقائق)
-        'unblock_poll_max_age_minutes' => 10,
-        // الفحص بعد حدث حساب (ثوانٍ): يجمع الأحداث المتتالية في فحص واحد
-        'poll_delay_seconds' => 15,
-        // حمولة الحدث الخام في wa_account_events
-        'event_payload_max_bytes' => 16384,
-        // الأحداث المعلوماتية تُقلَّم بعدها (الحرج والتحذير يبقيان)
-        'info_retention_days' => 180,
-    ],
-
     // الرسائل الغنية (E33). معاينة الرابط لرد الموظف وحده: مضيفات لا تُعاين أبداً (مضيف APP_URL دائماً، وهذه ونطاقاتها
     // الفرعية: خوادمنا المشتركة)، بفواصل في WA_PREVIEW_BLOCK_HOSTS
     'preview_block_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_PREVIEW_BLOCK_HOSTS', 'grade.sbs'))))),
@@ -240,45 +220,13 @@ return [
         'cooldown_minutes' => (int) env('WA_BREAKER_COOLDOWN_MINUTES', 15),
     ],
 
-    // المراقب الدوري وأدوات التشخيص (E23، docs/whatsapp/diagnostics.md). العلم channel_monitor يقرر القراءات الإضافية
+    // أدوات التشخيص (E23، docs/whatsapp/diagnostics.md)
     'monitor' => [
-        // حقول ويبهوك ميتا التي يجب أن يكون تطبيقنا مشتركاً فيها (قائمة E22 مع user_preferences من E21)
-        'required_webhook_fields' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_REQUIRED_WEBHOOK_FIELDS',
-            'messages,account_update,phone_number_quality_update,account_alerts,security,business_capability_update,phone_number_name_update,user_preferences'))))),
-        // أعمار القراءات المخزّنة (ثوانٍ): الرقم 10 دقائق، والاشتراكات وأرقام الحساب ساعة
-        'probe_ttl' => ['node' => 600, 'subs' => 3600, 'numbers' => 3600],
         // الإرسال التجريبي (العلم wa_test_send): حد النظام كله في الساعة
         'test_send_per_hour' => 10,
-    ],
-
-    // المكالمات (E39، docs/whatsapp/calls.md): كلها خلف العلمين calls_webhook وcalls_followup المطفأين
-    'calls' => [
-        // إشعار المكالمة الفائتة: مرة لكل محادثة في هذه المدة (دقائق)
-        'notify_minutes' => 10,
-        // المتابعة النصية بعد الفائتة: مرة لكل محادثة في هذه المدة (ساعات)
-        'followup_hours' => (int) env('WA_CALLS_FOLLOWUP_HOURS', 6),
-        // توقيت ما يُكتب في الخيط والإشعار
-        'timezone' => 'Asia/Amman',
-    ],
-
-    // التعايش مع تطبيق الأعمال (E39، docs/whatsapp/coexistence.md): خلف الأعلام coexistence_* المطفأة
-    'coexistence' => [
-        // الحارس المبكر يوقف البوت مدة لا تقل عن هذه (دقائق)
-        'guard_pause_minutes' => 60,
-        // سجل history المحفوظ مشفّراً بانتظار قرار المالك (أيام)، ثم يُمحى كل ساعة
-        'history_hold_days' => (int) env('WA_COEX_HISTORY_HOLD_DAYS', 30),
-        // رسائل الاستيراد في المعاملة الواحدة
-        'import_batch' => 500,
     ],
 
     // الاختيارات التفاعلية (E36). المحادثات التجريبية: إن لم تكن القائمة فارغة تُعلن أدوات القوائم والأزرار والنموذج لها وحدها
     // (رقم المدير الشخصي كعميل قبل التعميم)، بأرقام المحادثات مفصولة بفواصل في WA_INTERACTIVE_PILOT_CONVERSATIONS
     'interactive_pilot_conversations' => array_values(array_filter(array_map('intval', explode(',', (string) env('WA_INTERACTIVE_PILOT_CONVERSATIONS', ''))))),
-    'interactive' => [
-        // لا تُعلن أداة تفاعلية إن بقي من النافذة أقل من هذا (دقائق)، ولا النموذج إن بقي أقل من الثاني
-        'min_window_minutes' => 10,
-        'flow_min_window_minutes' => 30,
-        // رد الـ Flow (response_json) أكبر من هذا لا يُقرأ
-        'flow_response_max_bytes' => 4096,
-    ],
 ];

@@ -87,7 +87,6 @@ const props = defineProps({
   canLinkClient: Boolean,
   canMedia: Boolean,
   llm: { type: Object, default: () => ({ state: 'closed' }) },
-  identityMode: { type: String, default: 'store' },
   topics: { type: Object, default: () => ({}) },
   staff: { type: Array, default: () => [] },
   attentionReasons: { type: Object, default: () => ({}) },

@@ -1,49 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import axios from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ChannelTestPanel from '@/Components/WhatsApp/ChannelTestPanel.vue';
 import TestSendPanel from '@/Components/WhatsApp/TestSendPanel.vue';
 
-// أدوات التشخيص (E23): «اختبار الاتصال» بخطواته، و«إرسال تجريبي» للمعلَّمين وحدهم ومتابعة علامات التسليم
-const steps = [
-    { key: 'node', ok: true, label: 'الرمز ومعرّف الرقم', detail: 'متطابقان.', advice: null },
-    { key: 'app_secret', ok: false, label: 'App Secret ورابط الويبهوك', detail: 'الويبهوك يشير إلى aibot-platform.example.com وليس إلى نُسك.', advice: 'صحّحه من App Dashboard' },
-    { key: 'waba', ok: null, label: 'اشتراك حساب الأعمال', detail: 'معرّف حساب الأعمال غير معروف.', advice: null },
-];
+// أدوات التشخيص (E23): «إرسال تجريبي» للمعلَّمين وحدهم ومتابعة علامات التسليم
 const recipients = [
     { id: 3, name: 'المالك', last4: '1234', has_conversation: true, window_open: true, minutes_left: 300 },
     { id: 4, name: 'المحاسب', last4: '5678', has_conversation: true, window_open: false, minutes_left: null },
 ];
-
-describe('ChannelTestPanel', () => {
-    afterEach(() => vi.restoreAllMocks());
-
-    it('runs the test and marks each step with its explanation', async () => {
-        const post = vi.spyOn(axios, 'post').mockResolvedValue({ data: { ok: false, steps } });
-        const w = mount(ChannelTestPanel);
-
-        await w.find('[data-test="channel-test-run"]').trigger('click');
-        await flushPromises();
-
-        expect(post).toHaveBeenCalledWith('/api/whatsapp/channel-test', {}, expect.anything());
-        const rows = w.findAll('[data-test="channel-step"]');
-        expect(rows).toHaveLength(3);
-        expect(rows[0].text()).toContain('✓');
-        expect(rows[1].text()).toContain('✗');
-        expect(rows[1].text()).toContain('وليس إلى نُسك');
-        expect(rows[1].text()).toContain('💡 صحّحه من App Dashboard');
-        expect(rows[2].text()).toContain('–');
-        expect(w.text()).toContain('لا يثبت صحته');
-    });
-
-    it('explains the rate limit', async () => {
-        vi.spyOn(axios, 'post').mockRejectedValue({ response: { status: 429 } });
-        const w = mount(ChannelTestPanel);
-        await w.find('[data-test="channel-test-run"]').trigger('click');
-        await flushPromises();
-        expect(w.find('[role="alert"]').text()).toContain('ست مرات في الدقيقة');
-    });
-});
 
 describe('TestSendPanel', () => {
     afterEach(() => {

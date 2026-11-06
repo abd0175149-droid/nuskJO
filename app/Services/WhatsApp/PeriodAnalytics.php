@@ -547,44 +547,6 @@ final class PeriodAnalytics
         return array_values($weeks);
     }
 
-    // ==================================================================
-    //  تكلفة ميتا التقديرية
-    // ==================================================================
-
-    /** رسائل الخدمة المحتسبة هذا الشهر مقابل المجانية، وفئات pricing، والتقدير بسعر المالك، وبجانبها كلفة النموذج */
-    public static function metaCost(string $period): array
-    {
-        $period = self::period($period);
-        $summary = OutboundCounter::summary();
-        $categories = [];
-        if (Schema::hasColumn('wa_messages', 'pricing_category')) {
-            $categories = WaMessage::query()->where('direction', 'out')->where('created_at', '>=', OutboundCounter::monthStart())->whereNotNull('pricing_category')
-                ->groupBy('pricing_category', 'pricing_type', 'pricing_billable')
-                ->selectRaw('pricing_category as category, pricing_type as type, pricing_billable as billable, COUNT(*) as n')->toBase()->get()
-                ->map(fn ($r) => ['category' => $r->category, 'type' => $r->type, 'billable' => (bool) $r->billable, 'count' => (int) $r->n])->all();
-        }
-
-        return $summary + [
-            'period' => $period,
-            'pricing' => $categories,
-            'model_cost_usd' => self::usage($period)['tiles']['cost_30'],
-            'meta' => self::metaAnalytics(),
-            'note' => 'تقديري: بعدد الرسائل المحتسبة كما أبلغت ميتا (pricing.billable) وبسعر يدخله المالك. الفاتورة في Business Manager هي المرجع.',
-        ];
-    }
-
-    /** المطابقة الاختيارية مع تحليلات ميتا (العلم meta_analytics_reconcile): آخر قراءة يومية مخزّنة، للمقارنة فقط */
-    public static function metaAnalytics(): ?array
-    {
-        if (!FeatureFlags::on('meta_analytics_reconcile')) {
-            return null;
-        }
-
-        return MetaAnalytics::last();
-    }
-
-    // ==================================================================
-
     /** @param list<int|float> $sorted */
     private static function median(array $sorted): int|float
     {

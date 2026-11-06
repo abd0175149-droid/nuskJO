@@ -1,7 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import ChoiceChips from '@/Components/WhatsApp/ChoiceChips.vue';
-import QuoteFlowField from '@/Components/WhatsApp/QuoteFlowField.vue';
 
 const msg = (over = {}) => ({ id: 7, direction: 'out', source: 'bot', type: 'interactive', body: 'اختر', at: '10:00', ...over });
 
@@ -44,32 +43,5 @@ describe('ChoiceChips (E36)', () => {
 
     it('renders nothing for an ordinary message', () => {
         expect(mount(ChoiceChips, { props: { m: msg({ type: 'text' }) } }).find('[data-test="choice-chips"]').exists()).toBe(false);
-    });
-});
-
-describe('QuoteFlowField (E36)', () => {
-    it('keeps the flow id to latin digits and emits null when empty', async () => {
-        const w = mount(QuoteFlowField, { props: { flowId: null, mode: 'published', flagOn: true } });
-        const input = w.find('#wa-quote-flow-id');
-        await input.setValue('١٢٣abc456');
-        expect(w.emitted('update:flowId').at(-1)).toEqual(['123456']);
-        expect(input.element.value).toBe('123456');
-        await input.setValue('');
-        expect(w.emitted('update:flowId').at(-1)).toEqual([null]);
-    });
-
-    it('switches between draft and published and says when the flag is off', async () => {
-        const w = mount(QuoteFlowField, { props: { flowId: '123', mode: 'published', flagOn: false } });
-        expect(w.find('[data-test="flag-off"]').exists()).toBe(true);
-        await w.find('#wa-quote-flow-mode').setValue('draft');
-        expect(w.emitted('update:mode')[0]).toEqual(['draft']);
-        expect(w.find('[data-test="meta-steps"]').attributes('rel')).toBe('noopener noreferrer nofollow');
-        expect(w.find('[role="note"]').text()).toContain('لا تضف إلى النموذج أي حقل جواز أو هوية');
-    });
-
-    it('shows the server errors and the dirty ring', () => {
-        const w = mount(QuoteFlowField, { props: { dirty: true, errors: { wa_quote_flow_id: 'أرقام فقط' } } });
-        expect(w.text()).toContain('أرقام فقط');
-        expect(w.find('[data-test="quote-flow-field"]').classes()).toContain('ring-1');
     });
 });

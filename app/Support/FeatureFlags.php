@@ -15,7 +15,6 @@ final class FeatureFlags
     public const DEFINITIONS = [
         'llm_circuit_breaker' => ['label' => 'قاطع دائرة مزوّد الذكاء', 'capability' => 'C256', 'available' => false],
         'inbound_event_log' => ['label' => 'حفظ إشعارات واتساب مشفّرة قبل الإقرار وإعادة معالجة الفاشل (72 ساعة حداً أقصى)', 'capability' => 'C261', 'available' => true],
-        'webhook_fence_enforce' => ['label' => 'رفض إشعارات حساب أو رقم غريب فعلاً (مطفأ = تسجيل فقط)', 'capability' => 'C165', 'available' => true],
         'retention_purge' => ['label' => 'حذف دوري بحسب مدة الاحتفاظ', 'capability' => 'C287', 'available' => true],
         'media_archive' => ['label' => 'أرشفة مرفقات العملاء (صور ووثائق)', 'capability' => 'C283', 'available' => true],
         'media_consent_prompt' => ['label' => 'إشعار العميل بحفظ ملفاته مع زر «احذف ملفاتي»', 'capability' => 'C283', 'available' => true],
@@ -27,14 +26,12 @@ final class FeatureFlags
         'inbox_followup' => ['label' => 'متابعة الصندوق: الإغلاق والتأجيل والتثبيت و«غير مقروء» والبطاقات', 'capability' => 'C126', 'available' => true],
         'quote_dedupe' => ['label' => 'منع تكرار طلبات التسعير والحجز (المكرر يعيد رقم الطلب نفسه بلا إشعار ثانٍ)', 'capability' => 'C122', 'available' => true],
         'reprocess_button' => ['label' => 'زر «إعادة معالجة» للردود العالقة (للمدير)', 'capability' => 'C060', 'available' => true],
-        'meta_error_v2' => ['label' => 'تصنيف أخطاء ميتا الجديد: سبب عربي وإجراء وتنبيه موحّد (مطفأ = وضع ظل يكتب التصنيف فقط)', 'capability' => 'C080', 'available' => true],
         'send_ledger' => ['label' => 'دفتر الإرسال: حفظ الرسالة قبل إرسالها ومنع التكرار وحسم «غير مؤكد» والمنظّف', 'capability' => 'C250', 'available' => true],
         'send_retry' => ['label' => 'إعادة محدودة لرموز ميتا العابرة وفشل الاتصال (بعد أسبوع من دفتر الإرسال)', 'capability' => 'C279', 'available' => true],
         'quick_replies' => ['label' => 'الردود الجاهزة في المنشئ (ملء المتغيرات في الخادم)', 'capability' => 'C066', 'available' => true],
         // E21: حالات التسليم والناقل الداخلي وتفضيلات واتساب
         'delivery_status_v2' => ['label' => 'حالات التسليم الذرية: لا تتراجع، بوقت ميتا وتاريخ بلا تكرار، والإيصال المبكر لا يضيع، وعلامات ✓ و✓✓ في الصندوق', 'capability' => 'C050', 'available' => true],
         'wa_event_bus' => ['label' => 'ناقل الأحداث الداخلي: إشعار التحويل و«لم تصل رسالتك» وتدقيقهما من المستمعين بدل الإشعار المباشر', 'capability' => 'C087', 'available' => true],
-        'user_preferences_optout' => ['label' => 'تسجيل إيقاف العميل للتسويق من إعدادات واتساب (user_preferences) في قائمة الرافضين', 'capability' => 'C087', 'available' => true],
         // E29: التصنيفات وشارات النظام، والملاحظة المثبتة وبطاقة الحقائق، والترجمة عند الطلب (بعد تأكيد الطبقة المدفوعة)
         'wa_labels' => ['label' => 'تصنيفات سير العمل على المحادثات وشارات من النظام (داخلية، لا تغيّر من يرى المحادثة)', 'capability' => 'C127', 'available' => true],
         'thread_pins' => ['label' => 'الملاحظة المثبتة الداخلية والرسائل المثبتة وبطاقة حقائق العميل', 'capability' => 'C128', 'available' => true],
@@ -46,38 +43,27 @@ final class FeatureFlags
         // E26: فوق CSP_MODE=report وحده؛ CSP_MODE=off يطفئ السياسة كلها وenforce يفرضها من البيئة
         'csp_enforce' => ['label' => 'فرض سياسة أمن المحتوى في المتصفح (مطفأ = تقارير فقط بلا حجب)', 'capability' => 'C184', 'available' => true],
         // E35: الوضع من الإعداد send_read_receipts؛ مطفأ = لا إشعار قراءة ولا «يكتب…» مهما كان الوضع
-        'read_receipts' => ['label' => 'إشعار القراءة ومؤشر «يكتب…» (الوضع من «ربط قناة ميتا»؛ مطفأ = لا شيء يصل ميتا)', 'capability' => 'C049', 'available' => true],
+        'read_receipts' => ['label' => 'إشعار القراءة ومؤشر «يكتب…» (الوضع من «أرقام واتساب» في الإعدادات؛ مطفأ = لا شيء يصل واتساب)', 'capability' => 'C049', 'available' => true],
         // E37: الوضع shadow أو live من صفحة الردود الحتمية؛ مطفأ = النموذج يرد على كل شيء كما كان
         'auto_rules' => ['label' => 'الردود الحتمية: نص ثابت معتمد لأسئلة متكررة قبل النموذج (الظل أولاً)', 'capability' => 'C117', 'available' => true],
-        'conversational_components' => ['label' => 'مزامنة الأوامر والأسئلة المقترحة (ice breakers) مع واتساب', 'capability' => 'C117', 'available' => true],
         'inbound_silence_alert' => ['label' => 'تنبيه المدراء عند صمت الوارد من واتساب في وقت الدوام', 'capability' => 'C121', 'available' => true],
         // E32: الملفات الصادرة. المرفقات قبل الفاتورة، والحذف من ميتا بقرار المالك وحده
         'staff_file_send' => ['label' => 'إرسال الصور وPDF والفيديو من صندوق المحادثات (بتأكيد المستلم)', 'capability' => 'C020', 'available' => true],
         'invoice_whatsapp_send' => ['label' => 'فاتورة PDF للتنزيل وإرسالها للعميل على واتساب (المعتمدة وحدها)', 'capability' => 'C016', 'available' => true],
         'offer_card_by_media_id' => ['label' => 'بطاقة العرض تُرفع وتُرسل بالمعرّف بدل الرابط العام', 'capability' => 'C015', 'available' => true],
-        'outbound_media_remote_delete' => ['label' => 'حذف الملفات المرسلة من خوادم واتساب بعد قراءتها', 'capability' => 'C020', 'available' => true],
         // E27: العامل الثاني للموظفين. admin_only: لا يبدّله من الإعدادات إلا المدير (إطفاؤه يُضعف حماية الجميع)
         'staff_mfa' => ['label' => 'التحقق بخطوتين للموظفين: صفحة «الأمان» للتسجيل بتطبيق مصادقة (من سجّل يُتحدّى عند الدخول دائماً)', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'step_up' => ['label' => 'تأكيد الهوية قبل الأفعال الحساسة (اعتماد، إعدادات، أسرار، مستخدمون…) مرة كل ربع ساعة', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'admin_number_mfa' => ['label' => 'أرقام الإدارة التي تعدّل: حساب مرتبط إلزامي، والمساعد موقوف حتى يفعّل صاحبه التحقق بخطوتين', 'capability' => 'C194', 'available' => true, 'admin_only' => true],
         'idle_report' => ['label' => 'تقرير أسبوعي للمدراء بالحسابات وأرقام الإدارة الخاملة (تنبيه بلا تعطيل)', 'capability' => 'C162', 'available' => true],
-        // E31: الحظر الرسمي وملف الأعمال
+        // E31: الحظر
         'wa_block' => ['label' => 'الحظر الرسمي من الصندوق وصفحة «المحظورون» (للمدير بصلاحية whatsapp.block)', 'capability' => 'C038', 'available' => true],
-        'wa_block_bsuid' => ['label' => 'حظر عميل بلا رقم بمعرّفه (BSUID) — بعد التحقق من قبول ميتا له', 'capability' => 'C038', 'available' => true],
         'wa_block_admin_tool' => ['label' => 'أداة «حظر رقم مزعج» في المساعد الإداري (معاينة ثم «تأكيد»)', 'capability' => 'C111', 'available' => true],
-        'business_profile_sync' => ['label' => 'مزامنة ملف واتساب للأعمال مع بيانات الشركة (بتأكيد)', 'capability' => 'C039', 'available' => true],
-        'business_profile_photo' => ['label' => 'رفع صورة ملف واتساب للأعمال (يحتاج App ID)', 'capability' => 'C039', 'available' => true],
-        // E38: رموز QR الرسمية وبطاقة الحالة ومصدر المحادثة
-        'wa_qr_links' => ['label' => 'رموز QR وروابط قصيرة رسمية للعروض (message_qrdls) وتبويب «المشاركة»', 'capability' => 'C056', 'available' => true],
-        'entry_tracking' => ['label' => 'تسجيل مصدر المحادثة (رمز أو رابط أو إعلان) ووسم موضوع العرض وتلميح البوت', 'capability' => 'C056', 'available' => true],
+        // E38: بطاقة الحالة (رموز QR الرسمية ومصدر المحادثة أُزيلا مع ميتا)
         'offer_story_card' => ['label' => 'بطاقة حالة 9:16 للعرض تُنزَّل للنشر اليدوي (لا نشر آلي)', 'capability' => 'C041', 'available' => true],
         // E28: البث اللحظي الآمن للصندوق، وشريط الانقطاع والتعافي بعد النشر
         'inbox_realtime' => ['label' => 'الصندوق اللحظي: الرسالة والحالة تظهران خلال ثانيتين لمن يرى المحادثة (والاستطلاع احتياطي كل 60 ثانية)', 'capability' => 'C138', 'available' => true],
         'connection_resilience' => ['label' => 'شريط انقطاع واحد، وبطاقة «خطأ في الصفحة»، وإعادة تحميل واحدة بعد النشر، و«قد تكون أُرسلت» للإرسال مجهول النتيجة', 'capability' => 'C277', 'available' => true],
-        // E22: صحة القناة كآلة حالات (مطفأ = الإيقاف الآلي القديم في wa_suspended كما هو)
-        'channel_health' => ['label' => 'صحة القناة كآلة حالات: أحداث ميتا بتصنيف صحيح وسجل دائم، والحجب BLOCKED بدل الإيقاف الآلي، ولا قفل على رفع الحظر ولا على قيود رسائل الشركة', 'capability' => 'C232', 'available' => true],
-        'channel_health_block_on_token' => ['label' => 'منع الإرسال وتوليد الردود عند رمز ميتا غير صالح (بدل التنبيه وحده)', 'capability' => 'C260', 'available' => true],
-        'integrity_breaker_lock' => ['label' => 'قاطع النزاهة يحجب الإرسال عند تكرار 131031 أو 131048 (بدل التنبيه والفحص)', 'capability' => 'C244', 'available' => true],
         // E34: رسائل الموظف الصوتية، والتفريغ للزملاء علم مستقل يُطفأ وحده بقرار المالك
         'staff_voice_notes' => ['label' => 'رسائل الموظف الصوتية من الصندوق (تسجيل حتى دقيقتين، وتصل العميل رسالة صوتية بزر تشغيل)', 'capability' => 'C018,C021', 'available' => true],
         'staff_voice_transcript' => ['label' => 'تفريغ رسائل الموظف الصوتية نصاً للزملاء عبر Gemini (لا يصل العميل)', 'capability' => 'C018', 'available' => true],
@@ -89,24 +75,16 @@ final class FeatureFlags
         'wa_staff_reactions' => ['label' => 'تفاعل الموظف بإيموجي على رسالة العميل (إقرار لا يُعدّ رداً ولا يوقف البوت)', 'capability' => 'C008', 'available' => true],
         'wa_link_preview' => ['label' => 'معاينة الرابط في رد الموظف بخانة صريحة، للروابط العامة وحدها', 'capability' => 'C002', 'available' => true],
         'wa_share_cards' => ['label' => 'إرسال دبوس الموقع وبطاقات الاتصال من القوائم المعتمدة', 'capability' => 'C006', 'available' => true],
-        // E23: المراقب الدوري وأدوات التشخيص (قراءة GET فقط، وإرسال تجريبي محصور بأرقام الإدارة المعلَّمة)
-        'channel_monitor' => ['label' => 'المراقب الدوري: صحة الرقم كل 30 دقيقة، واشتراكات الويبهوك كل ساعة وتنبيه انحرافها، وتنبيه فحص الإعدادات اليومي', 'capability' => 'C234', 'available' => true],
-        'channel_selftest' => ['label' => '«اختبار الاتصال» في الإعدادات: قراءات ميتا الرسمية وارتداد موقّع عبر رابط الويبهوك العام', 'capability' => 'C218', 'available' => true],
+        // E23: المراقب الدوري وأدوات التشخيص (قراءة فقط، وإرسال تجريبي محصور بأرقام الإدارة المعلَّمة)
+        'channel_monitor' => ['label' => 'تنبيه المدراء عند خطأ جديد في فحص الإعدادات اليومي (البوابة والأرقام وwebhook كل رقم)', 'capability' => 'C234', 'available' => true],
         'wa_test_send' => ['label' => '«إرسال تجريبي» لأرقام الإدارة المعلَّمة وحدها، بنافذة مفتوحة وحد 10 في الساعة', 'capability' => 'C217', 'available' => true],
         'ops_status_page' => ['label' => 'صفحة «حالة النظام» للقراءة (القاعدة والقرص والطوابير والنبضات والنسخ وصحة واتساب) بالصلاحية ops.view', 'capability' => 'C220', 'available' => true],
-        // E39: المكالمات والتعايش، جاهزية مشروطة. لا يُفعَّل أي منها قبل قرار المالك المكتوب في CHANGELOG
-        'calls_webhook' => ['label' => 'المكالمات: سجل المكالمة ورسالة في الخيط والفائتة إلى «تدخّل» وإذن الاتصال (بقرار المالك المكتوب)', 'capability' => 'C046', 'available' => true],
-        'calls_followup' => ['label' => 'رسالة نصية بعد المكالمة الفائتة بنص يعتمده المالك (داخل النافذة، مرة كل 6 ساعات)', 'capability' => 'C046', 'available' => true],
-        'coexistence_guard' => ['label' => 'حارس التعايش: أي رسالة من تطبيق الأعمال على الهاتف توقف البوت في محادثتها فوراً، بلا تخزين', 'capability' => 'C011', 'available' => true],
-        'coexistence_echoes' => ['label' => 'التعايش: رسائل هاتف الوكالة تُحفظ في الصندوق وتوقف البوت (بقرار المالك المكتوب)', 'capability' => 'C011', 'available' => true],
-        'coexistence_history_hold' => ['label' => 'حفظ سجل المحادثات السابق (history) مشفّراً بانتظار قرار الاستيراد، ثم يُمحى بعد مدته', 'capability' => 'C012', 'available' => true],
         // E24: المراقبة التشغيلية ومركز الإخفاقات والتحليلات
         'ops_alerts' => ['label' => 'تنبيهات التشغيل كل 5 دقائق للمدراء (الطابور والمهام والإرسال والويبهوك والصادر؛ مطفأ = تسجيل فقط)', 'capability' => 'C226', 'available' => true],
         'failures_center' => ['label' => 'صفحة «الإخفاقات والطابور»: رسائل لم تصل، ومهام خلفية فاشلة، وويبهوك فاشل، والطابور الآن', 'capability' => 'C255', 'available' => true],
         'failures_redrive' => ['label' => 'زر «إعادة الإرسال» في صفحة الإخفاقات (الفشل العابر داخل النافذة وحده، بالرسالة نفسها)', 'capability' => 'C255', 'available' => true],
-        'analytics_v2' => ['label' => 'تحليلات بفترات 24 ساعة و7 و30 يوماً: الحركة وساعات الذروة وأول رد بشري وتحوّل الطلب إلى فاتورة وتكلفة ميتا', 'capability' => 'C209', 'available' => true],
+        'analytics_v2' => ['label' => 'تحليلات بفترات 24 ساعة و7 و30 يوماً: الحركة وساعات الذروة وأول رد بشري وتحوّل الطلب إلى فاتورة', 'capability' => 'C209', 'available' => true],
         'quote_export' => ['label' => 'تصدير طلبات التسعير CSV بحقول بلا هاتف ولا اسم عميل (لمن يملك quotes.export)', 'capability' => 'C097', 'available' => true],
-        'meta_analytics_reconcile' => ['label' => 'مطابقة يومية مع تحليلات ميتا للحساب (أُرسل وسُلّم) للمقارنة فقط', 'capability' => 'C209', 'available' => true],
         'ops_tick' => ['label' => 'دمج مهام الدقيقة (إعادة الويبهوك والمُصالِح) في أمر واحد ops:tick لتخفيف الحمل', 'capability' => 'C226', 'available' => true],
         // E36: القوائم والأزرار للبوت، وزرّا المساعد الإداري، ونموذج طلب التسعير (Flow ثابت بلا نقطة نهاية، بعد توثيق النشاط)
         'interactive_choices' => ['label' => 'قائمة العروض وأزرار الاختيار التفاعلية للبوت (معرّفات يولّدها الخادم، ونص البوت والقائمة رسالة واحدة)', 'capability' => 'C027', 'available' => true],

@@ -11,32 +11,7 @@ return [
         // طابور ردود البوت وحده (عامل laravel-wa في supervisord): الإشعارات لا تنتظر خلف رد يطول.
         // الرجوع: WA_REPLY_QUEUE=default ثم تصريف المتبقي (docs/RELEASE.md)
         'reply_queue' => env('WA_REPLY_QUEUE', 'wa-replies'),
-        'token' => env('WA_TOKEN'),
-        'phone_number_id' => env('WA_PHONE_NUMBER_ID'),
-        // معرّف حساب واتساب للأعمال (WABA): به يفرض سياج الويبهوك (E20) رفض حمولة حساب آخر. فارغ = وضع التسجيل
-        'waba_id' => env('WA_WABA_ID'),
-        'verify_token' => env('WA_WEBHOOK_VERIFY_TOKEN'),
-        'app_secret' => env('WA_APP_SECRET'),
-        // معرّف التطبيق (App settings › Basic): عام لا سري، لفحص الرمز اليومي (E08)
-        'app_id' => env('WA_APP_ID'),
-        // إصدار Graph للطلبات الصادرة — القيمة الافتراضية الوحيدة في المستودع. تواريخ النهاية في
-        // App\Services\WhatsApp\GraphVersions، والتنبيه قبل 60 يوماً (whatsapp:graph-version-check).
-        // للتراجع: WA_GRAPH_VERSION=<إصدار سابق ما زال مدعوماً> ثم config:cache.
-        'graph_version' => env('WA_GRAPH_VERSION') ?: 'v25.0',
-        // إصدار الويبهوك المضبوط في لوحة ميتا (لا يُقرأ من الطلبات): للتنبيه قبل نهايته فقط
-        'webhook_version' => env('WA_WEBHOOK_VERSION'),
-        // appsecret_proof مع كل نداء Graph. يُفعَّل قبل «Require App Secret» في لوحة ميتا بأسبوع على الأقل
-        'appsecret_proof' => (bool) env('WA_APPSECRET_PROOF', false),
-        // عدّادات نداءات Graph والإثبات (GraphClient): مخزن file داخل حجم التخزين، لا قاعدة البيانات
-        'graph_counter_store' => env('WA_GRAPH_COUNTER_STORE', 'file'),
-        // تنزيل الوسائط: log يسجّل المضيف الغريب ويكمل، enforce يرفضه. https إلزامي في الوضعين
-        'media_host_mode' => env('WA_MEDIA_HOST_MODE', 'log'),
-        'media_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('WA_MEDIA_HOSTS', 'fbsbx.com,whatsapp.net,facebook.com,fbcdn.net'))))),
         'suspended' => (bool) env('WA_SUSPENDED', false),
-        // إيقاف الإرسال آلياً عند رمز ميتا خطير. 368 وحده افتراضياً: 131031 قد يعني PIN تحقق خاطئاً،
-        // فهو و131048 للتنبيه فقط (App\Services\WhatsApp\MetaErrorCatalog)
-        'health_autosuspend' => (bool) env('WA_HEALTH_AUTOSUSPEND', true),
-        'autosuspend_codes' => env('WA_AUTOSUSPEND_CODES', '368'),
         // طلبات التسعير بنطاق المحادثات نفسه (E04). يُفعَّل بعد ملء /whatsapp/routing ومراجعة whatsapp:fence-report
         'fence_quotes' => (bool) env('WA_FENCE_QUOTES', false),
     ],

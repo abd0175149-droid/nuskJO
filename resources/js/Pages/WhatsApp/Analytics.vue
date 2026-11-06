@@ -41,9 +41,8 @@
                 </div>
             </div>
 
-            <!-- التبويب «الحركة» وبطاقة تكلفة ميتا (E24، analytics_v2) -->
+            <!-- التبويب «الحركة» (E24، analytics_v2) -->
             <div v-if="v2" v-show="tab === 'traffic'" class="space-y-5" role="tabpanel" aria-label="الحركة">
-                <MetaCostCard v-if="costData" :cost="costData"/>
                 <AnalyticsTraffic v-if="trafficData" :traffic="trafficData" :period="periodSel"/>
             </div>
 
@@ -437,9 +436,6 @@
                     </div>
                     <p v-if="weekly.length && weekMaxReal === 0" class="text-xs text-gray-400 mt-2">لا طلبات ولا حجوزات في الأسابيع الثمانية الماضية.</p>
                 </section>
-
-                <!-- ⑥ مصادر المحادثات (E38) -->
-                <EntrySourcesPanel v-if="props.entries" :initial="props.entries"/>
             </div>
         </div>
     </AppLayout>
@@ -450,15 +446,13 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
-import EntrySourcesPanel from '@/Components/WhatsApp/EntrySourcesPanel.vue';
 import AnalyticsTraffic from '@/Components/WhatsApp/AnalyticsTraffic.vue';
-import MetaCostCard from '@/Components/WhatsApp/MetaCostCard.vue';
 
 const props = defineProps({
-    title: String, usage: Object, quality: Object, entries: { type: Object, default: null },
+    title: String, usage: Object, quality: Object,
     // E24 (analytics_v2): الفترة والحركة وتكلفة ميتا
     v2: { type: Boolean, default: false }, period: { type: String, default: '7d' },
-    traffic: { type: Object, default: null }, metaCost: { type: Object, default: null },
+    traffic: { type: Object, default: null },
 });
 
 /* ===================== الألوان ===================== */
@@ -477,11 +471,10 @@ const tabs = [
 const tab = ref('usage');
 const ranges = [7, 14, 30];
 const range = ref(30);
-// E24: الفترة الموحّدة لكل التبويبات (24h و7d و30d)، والحركة وتكلفة ميتا من الخادم
+// E24: الفترة الموحّدة لكل التبويبات (24h و7d و30d)، والحركة من الخادم
 const PERIODS = { '24h': '24 ساعة', '7d': '7 أيام', '30d': '30 يوماً' };
 const periodSel = ref(props.period || '7d');
 const trafficData = ref(props.traffic);
-const costData = ref(props.metaCost);
 const pinned = ref(null);
 
 const usage = ref(props.usage && typeof props.usage === 'object' ? props.usage : {});
@@ -500,7 +493,6 @@ async function refresh() {
             if (data.usage && typeof data.usage === 'object') usage.value = data.usage;
             if (data.quality && typeof data.quality === 'object') quality.value = data.quality;
             if (data.traffic) trafficData.value = data.traffic;
-            if (data.metaCost) costData.value = data.metaCost;
             seedPrices();
             pinned.value = null;
             refreshedAt.value = new Date().toLocaleTimeString('en-GB');

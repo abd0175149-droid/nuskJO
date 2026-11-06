@@ -62,7 +62,13 @@ class GatewayOnlyTest extends TestCase
 
     public function test_gemini_host_appears_only_in_its_provider(): void
     {
-        $this->assertSame(['app/Services/WhatsApp/Llm/GeminiProvider.php'], $this->filesMatching('/generativelanguage\.googleapis\.com/'));
+        $raw = [];
+        foreach (array_keys($this->appFiles()) as $path) {
+            if (str_contains((string) file_get_contents(base_path($path)), 'generativelanguage.googleapis.com')) {
+                $raw[] = $path;
+            }
+        }
+        $this->assertSame(['app/Services/WhatsApp/Llm/GeminiProvider.php'], $raw);
     }
 
     public function test_no_api_key_in_a_url_or_query_array(): void

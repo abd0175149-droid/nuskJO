@@ -82,15 +82,14 @@ final class SecretRedactor
         self::$known = [];   // أي سجل أثناء الجمع لا يعيد الجمع (لا تكرار لا نهائي)
 
         $values = [
-            config('services.whatsapp.token'),
-            config('services.whatsapp.app_secret'),
+            config('whatsapp.openwa.admin_key'),
             ...array_values((array) config('services.llm', [])),
         ];
 
         // قراءة فقط: current() قد يُنشئ صفاً، والمسجّل لا يكتب في القاعدة
         $settings = self::attempt(fn () => WaBotSetting::query()->first());
         if ($settings) {
-            foreach (['wa_token', 'wa_app_secret', 'api_key'] as $attribute) {
+            foreach (['api_key', 'fallback_api_key'] as $attribute) {
                 $values[] = self::attempt(fn () => $settings->{$attribute});
             }
         }

@@ -20,7 +20,7 @@ class WhatsAppReencryptSecrets extends Command
 
     protected $description = 'إعادة تشفير أسرار الواتساب بمفتاح التطبيق الحالي بعد تدويره (بلا أسرار في المخرجات)';
 
-    private const SECRETS = ['wa_token', 'wa_app_secret', 'api_key'];
+    private const SECRETS = ['api_key', 'fallback_api_key'];
 
     public function handle(): int
     {

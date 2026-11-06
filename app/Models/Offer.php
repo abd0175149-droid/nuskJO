@@ -424,12 +424,6 @@ class Offer extends Model
         return $touched !== null && $generatedAt->lt($touched);
     }
 
-    /** الرمز المطبوع على بطاقة A4 (E38) */
-    public function cardQrLink(): \Illuminate\Database\Eloquent\Relations\BelongsTo
-    {
-        return $this->belongsTo(WaQrLink::class, 'card_qr_link_id');
-    }
-
     /** مدن أعمدة البطاقة: مسار العمرة، أو مدن مجموعات الفنادق في نمط المدن */
     public function cardCities(): array
     {

@@ -42,7 +42,7 @@ class ExportWhatsAppConfig extends Command
 
         // حارس ثانٍ: المنقّح لا يغيّر شيئاً، ولا قيمة سرية معروفة في الناتج
         $json = json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $secrets = array_filter([$s->token(), $s->appSecret(), $s->llmKey(), $s->wa_verify_token, config('app.key')]);
+        $secrets = array_filter([$s->llmKey(), $s->fallbackKey(), config('whatsapp.openwa.admin_key'), config('app.key')]);
         if (SecretRedactor::cleanArray($out) != $out || array_filter($secrets, fn ($v) => str_contains($json, (string) $v))) {
             $this->error('الناتج يحمل ما يشبه سراً — لم يُكتب شيء.');
 

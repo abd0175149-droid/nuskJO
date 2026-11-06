@@ -1,7 +1,8 @@
 <?php
 
 /*
-| مصفوفة قدرات WhatsApp Cloud API (E25): ما بنيناه، وما ينتظر ملحمته، وما رفضناه ولماذا. لا env ولا معرّف حساب هنا.
+| مصفوفة قدرات واتساب (E25): ما بنيناه، وما ينتظر ملحمته، وما رفضناه ولماذا. لا env ولا معرّف حساب هنا.
+| منذ 2026-11-06 الإرسال عبر بوابة OpenWA؛ ما كان من Cloud API وحدها صار rejected بسبب الإزالة.
 | يولّد منها `php artisan docs:capabilities` الملف docs/whatsapp/capabilities.md، و`--check` يقارنه بلا كتابة.
 | CapabilityMatrixTest يربطها بالكود: كل دالة إرسال عامة في WhatsAppChannel في methods لصف ما، وكل أداة بوت أو
 | مساعد إداري هنا، والقرار المرفوض أو المؤجل بسبب، والمخطط بملحمة. قدرة جديدة: صف هنا ثم docs:capabilities.
@@ -43,8 +44,8 @@ return [
             'methods' => ['sendContactRequest'], 'epic' => 'E11'],
         ['key' => 'interactive.cta_url', 'label' => 'زر رابط', 'official' => $messages.'interactive-cta-url-messages', 'status' => 'planned',
             'epic' => 'E36', 'reason' => 'لم تحتجه E36: القوائم والأزرار والنموذج تكفي'],
-        ['key' => 'interactive.flow', 'label' => 'نموذج Flow', 'official' => 'https://developers.facebook.com/docs/whatsapp/flows', 'status' => 'implemented',
-            'methods' => ['sendFlow'], 'epic' => 'E36', 'flag' => 'quote_flow', 'reason' => 'نموذج طلب التسعير ثابت بلا نقطة نهاية، يُنشأ يدوياً في WhatsApp Manager'],
+        ['key' => 'interactive.flow', 'label' => 'نموذج Flow', 'official' => 'https://developers.facebook.com/docs/whatsapp/flows', 'status' => 'rejected',
+            'epic' => 'E36', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
         ['key' => 'interactive.location_request', 'label' => 'طلب موقع العميل', 'official' => $messages.'location-request-messages', 'status' => 'deferred',
             'reason' => 'لا حاجة تشغيلية اليوم'],
         ['key' => 'interactive.call_permission_request', 'label' => 'طلب إذن الاتصال بالعميل', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/calling', 'status' => 'deferred',
@@ -66,49 +67,49 @@ return [
 
         // ===== الوسائط =====
         ['key' => 'media.download', 'label' => 'تنزيل الوسائط الواردة (الصوت للتفريغ، والأرشيف)', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media', 'status' => 'implemented',
-            'methods' => ['downloadMedia', 'fetchMedia', 'mediaMeta'], 'epic' => 'E14'],
+            'methods' => ['downloadMedia', 'fetchMedia'], 'epic' => 'E14'],
         ['key' => 'media.upload', 'label' => 'رفع الوسائط عبر /media (مؤجل دائماً على الطابور)', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media', 'status' => 'implemented',
             'methods' => ['uploadMedia', 'uploadTimeout'], 'epic' => 'E32'],
         ['key' => 'media.delete', 'label' => 'حذف الملف المرسل من خوادم ميتا', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media', 'status' => 'implemented',
-            'methods' => ['deleteMedia'], 'epic' => 'E32', 'flag' => 'outbound_media_remote_delete'],
+            'methods' => ['deleteMedia'], 'epic' => 'E32'],
 
         // ===== الويبهوك =====
         ['key' => 'webhook.messages', 'label' => 'الرسائل الواردة بكل أنواعها', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components', 'status' => 'implemented',
             'epic' => 'E11'],
         ['key' => 'webhook.statuses', 'label' => 'حالات التسليم بلا تراجع', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components', 'status' => 'implemented',
             'epic' => 'E21', 'flag' => 'delivery_status_v2'],
-        ['key' => 'webhook.account', 'label' => 'أحداث الحساب والجودة والتنبيهات والأمن والقدرات', 'official' => 'https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update/', 'status' => 'implemented',
-            'epic' => 'E22', 'flag' => 'channel_health'],
-        ['key' => 'webhook.user_preferences', 'label' => 'إيقاف العميل للتسويق من إعدادات واتساب', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components', 'status' => 'implemented',
-            'epic' => 'E21', 'flag' => 'user_preferences_optout'],
+        ['key' => 'webhook.account', 'label' => 'أحداث الحساب والجودة والتنبيهات والأمن والقدرات', 'official' => 'https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update/', 'status' => 'rejected',
+            'epic' => 'E22', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
+        ['key' => 'webhook.user_preferences', 'label' => 'إيقاف العميل للتسويق من إعدادات واتساب', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components', 'status' => 'rejected',
+            'epic' => 'E21', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
         ['key' => 'webhook.calls', 'label' => 'أحداث المكالمات', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/calling', 'status' => 'implemented',
-            'epic' => 'E39', 'flag' => 'calls_webhook', 'reason' => 'جاهزية مشروطة بقرار مكتوب من المالك'],
+            'epic' => 'E39'],
         ['key' => 'bsuid_usernames', 'label' => 'عميل باسم مستخدم بلا رقم (BSUID)', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages', 'status' => 'implemented',
             'epic' => 'E11'],
         ['key' => 'coexistence', 'label' => 'التعايش مع تطبيق الأعمال (الصدى والسجل السابق)', 'official' => 'https://developers.facebook.com/docs/whatsapp/embedded-signup/custom-flows/onboarding-business-app-users', 'status' => 'implemented',
-            'epic' => 'E39', 'flag' => 'coexistence_guard', 'reason' => 'جاهزية مشروطة بقرار مكتوب من المالك'],
+            'epic' => 'E39'],
 
         // ===== إدارة الرقم والحساب =====
-        ['key' => 'health_status', 'label' => 'صحة الرقم وقدرته على الإرسال', 'official' => 'https://developers.facebook.com/documentation/business-messaging/whatsapp/support/health-status/', 'status' => 'implemented',
-            'methods' => ['healthStatus'], 'epic' => 'E22'],
-        ['key' => 'debug_token', 'label' => 'فحص الرمز وصلاحياته', 'official' => 'https://developers.facebook.com/docs/graph-api/reference/debug_token', 'status' => 'implemented',
-            'methods' => ['debugToken'], 'epic' => 'E08'],
-        ['key' => 'phone_number', 'label' => 'بيانات الرقم والتحقق من معرّفه', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/phone-numbers', 'status' => 'implemented',
-            'methods' => ['phoneNumberInfo', 'probePhoneNumberId', 'getPhoneIdentity'], 'epic' => 'E23'],
+        ['key' => 'health_status', 'label' => 'صحة الرقم وقدرته على الإرسال', 'official' => 'https://developers.facebook.com/documentation/business-messaging/whatsapp/support/health-status/', 'status' => 'rejected',
+            'epic' => 'E22', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
+        ['key' => 'debug_token', 'label' => 'فحص الرمز وصلاحياته', 'official' => 'https://developers.facebook.com/docs/graph-api/reference/debug_token', 'status' => 'rejected',
+            'epic' => 'E08', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
+        ['key' => 'phone_number', 'label' => 'بيانات الرقم والتحقق من معرّفه', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/phone-numbers', 'status' => 'rejected',
+            'epic' => 'E23', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
         ['key' => 'two_step_verification', 'label' => 'PIN التحقق بخطوتين للرقم', 'official' => 'https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/two-step-verification/', 'status' => 'deferred',
             'epic' => 'E27', 'reason' => 'يدوي من WhatsApp Manager، ولا يُحفظ PIN في القاعدة'],
         ['key' => 'block_users', 'label' => 'حظر جهة اتصال وفكّه عند ميتا', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/block-users', 'status' => 'implemented',
             'methods' => ['blockUsers', 'unblockUsers', 'listBlocked', 'blockTarget'], 'epic' => 'E31', 'flag' => 'wa_block'],
-        ['key' => 'business_profile', 'label' => 'ملف واتساب للأعمال وصورته', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/business-profiles', 'status' => 'implemented',
-            'methods' => ['getBusinessProfile', 'updateBusinessProfile', 'uploadProfilePicture'], 'epic' => 'E31', 'flag' => 'business_profile_sync'],
-        ['key' => 'qr_codes', 'label' => 'رموز QR وروابط قصيرة برسالة جاهزة', 'official' => 'https://developers.facebook.com/docs/whatsapp/business-management-api/qr-codes', 'status' => 'implemented',
-            'methods' => ['createQrdl', 'updateQrdl', 'deleteQrdl', 'listQrdls'], 'epic' => 'E38', 'flag' => 'wa_qr_links'],
-        ['key' => 'conversational_components', 'label' => 'الأوامر وأسئلة البداية', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/phone-numbers/conversational-components', 'status' => 'implemented',
-            'methods' => ['setConversationalAutomation', 'getConversationalAutomation'], 'epic' => 'E37', 'flag' => 'conversational_components'],
-        ['key' => 'calling_settings', 'label' => 'إعدادات الاتصال ورفض الرنين', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/calling', 'status' => 'implemented',
-            'methods' => ['getCallingSettings', 'applyCallingSettings', 'rejectCall'], 'epic' => 'E39', 'reason' => 'الكتابة بالأمر whatsapp:calling-settings وحده'],
-        ['key' => 'analytics', 'label' => 'تحليلات ميتا للحساب للمطابقة', 'official' => 'https://developers.facebook.com/docs/whatsapp/business-management-api/analytics', 'status' => 'implemented',
-            'epic' => 'E24', 'reason' => 'نداء قراءة يومي واحد بعلم المطابقة'],
+        ['key' => 'business_profile', 'label' => 'ملف واتساب للأعمال وصورته', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/reference/business-profiles', 'status' => 'rejected',
+            'epic' => 'E31', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
+        ['key' => 'qr_codes', 'label' => 'رموز QR وروابط قصيرة برسالة جاهزة', 'official' => 'https://developers.facebook.com/docs/whatsapp/business-management-api/qr-codes', 'status' => 'rejected',
+            'epic' => 'E38', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
+        ['key' => 'conversational_components', 'label' => 'الأوامر وأسئلة البداية', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/phone-numbers/conversational-components', 'status' => 'rejected',
+            'epic' => 'E37', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
+        ['key' => 'calling_settings', 'label' => 'إعدادات الاتصال ورفض الرنين', 'official' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/calling', 'status' => 'rejected',
+            'epic' => 'E39', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
+        ['key' => 'analytics', 'label' => 'تحليلات ميتا للحساب للمطابقة', 'official' => 'https://developers.facebook.com/docs/whatsapp/business-management-api/analytics', 'status' => 'rejected',
+            'epic' => 'E24', 'reason' => 'أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه', 'decided' => '2026-11-06'],
     ],
 
     // أدوات بوت العملاء (BotTools::TOOLS): escalating = نجاحها يحوّل المحادثة لموظف

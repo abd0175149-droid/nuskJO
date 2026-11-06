@@ -180,6 +180,9 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/channels/{channel}/{command}', [\App\Http\Controllers\WhatsAppChannelController::class, 'command'])
         ->whereIn('command', ['start', 'restart', 'stop', 'logout', 'repair', 'pause', 'resume', 'reset_breaker'])->middleware(['perm:whatsapp.channels', 'throttle:20,1']);
     Route::delete('api/whatsapp/channels/{channel}', [\App\Http\Controllers\WhatsAppChannelController::class, 'destroy'])->middleware(['perm:whatsapp.channels', 'throttle:6,1']);
+    // من المحادثة: متابعة يجدولها الموظف، وكتم رسائل النظام للعميل (2026-11-06)
+    Route::post('api/whatsapp/conversations/{conversation}/follow-up', [\App\Http\Controllers\WhatsAppConversationSystemController::class, 'followUp'])->middleware(['perm:whatsapp.reply', 'throttle:20,1']);
+    Route::post('api/whatsapp/conversations/{conversation}/system-mute', [\App\Http\Controllers\WhatsAppConversationSystemController::class, 'mute'])->middleware(['perm:whatsapp.reply', 'throttle:20,1']);
     // رسائل النظام وحدود الإرسال وطابوره وصلاحيات أدوات البوت (2026-11-06)
     Route::get('whatsapp/system-messages', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'index'])->name('whatsapp.system-messages')->middleware('perm:whatsapp.settings');
     Route::patch('api/whatsapp/system-messages-settings', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'settings'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
@@ -207,23 +210,13 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/settings/kill-switch', [\App\Http\Controllers\WhatsAppSettingsController::class, 'killSwitch'])->middleware(['perm:whatsapp.settings,whatsapp.kill_switch', 'throttle:20,1']);
     Route::post('api/whatsapp/settings/secrets/{secret}', [\App\Http\Controllers\WhatsAppSettingsController::class, 'setSecret'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
     Route::delete('api/whatsapp/settings/secrets/{secret}', [\App\Http\Controllers\WhatsAppSettingsController::class, 'clearSecret'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
-    Route::post('api/whatsapp/settings/verify-token', [\App\Http\Controllers\WhatsAppSettingsController::class, 'rotateVerifyToken'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
     Route::patch('api/whatsapp/settings/flags/{flag}', [\App\Http\Controllers\WhatsAppSettingsController::class, 'toggleFlag'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
-    Route::patch('api/whatsapp/settings/identity-mode', [\App\Http\Controllers\WhatsAppSettingsController::class, 'identityMode'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::post('api/whatsapp/settings/llm-breaker/open', [\App\Http\Controllers\WhatsAppSettingsController::class, 'breakerOpen'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
-    Route::post('api/whatsapp/settings/last-error/clear', [\App\Http\Controllers\WhatsAppSettingsController::class, 'clearLastError'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::post('api/whatsapp/settings/llm-breaker/close', [\App\Http\Controllers\WhatsAppSettingsController::class, 'breakerClose'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     Route::get('whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analytics'])->name('whatsapp.analytics')->middleware('perm:whatsapp.settings');
     Route::get('api/whatsapp/analytics', [\App\Http\Controllers\WhatsAppController::class, 'analyticsData'])->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/prices', [\App\Http\Controllers\WhatsAppController::class, 'savePrices'])->name('whatsapp.prices')->middleware('perm:whatsapp.settings');
     Route::post('api/whatsapp/test-key', [\App\Http\Controllers\WhatsAppController::class, 'testKey'])->middleware('perm:whatsapp.settings');
-    // فحص ميتا يدوياً (رمز الوصول وصحة القناة): 6 في الدقيقة
-    Route::post('api/whatsapp/meta-check', [\App\Http\Controllers\WhatsAppController::class, 'metaCheck'])->middleware(['perm:whatsapp.settings', 'throttle:6,1']);
-    // صحة القناة كآلة حالات (E22): العرض والرفع اليدوي بسبب و«تم الاطلاع» وحمولة حدث واحد (whatsapp.settings)
-    Route::get('api/whatsapp/channel-health', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'show'])->middleware('perm:whatsapp.settings');
-    Route::get('api/whatsapp/channel-health/events/{event}', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'event'])->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
-    Route::post('api/whatsapp/channel-health/unblock', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'unblock'])->middleware(['perm:whatsapp.settings', 'throttle:6,1']);
-    Route::post('api/whatsapp/channel-health/acknowledge', [\App\Http\Controllers\WhatsAppChannelHealthController::class, 'acknowledge'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
     // الإخفاقات والطابور (E24): العلم failures_center (مطفأ = 404)، والإعادة بالعلم failures_redrive. throttle بمفتاح لكل مسار
     Route::get('whatsapp/failures', [\App\Http\Controllers\WhatsAppFailuresController::class, 'index'])->name('whatsapp.failures')->middleware('perm:whatsapp.settings');
     Route::get('api/whatsapp/failures', [\App\Http\Controllers\WhatsAppFailuresController::class, 'data'])->middleware(['perm:whatsapp.settings', 'throttle:30,1,wa-failures']);
@@ -276,7 +269,7 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/conversations/{conversation}/translate-reply', [\App\Http\Controllers\WhatsAppTranslationController::class, 'translateReply'])->middleware(['perm:whatsapp.reply', 'throttle:20,1,wa-translate']);
     Route::post('api/whatsapp/conversations/{conversation}/send-translated', [\App\Http\Controllers\WhatsAppTranslationController::class, 'sendTranslated'])->middleware(['perm:whatsapp.reply', 'throttle:wa-send']);
     Route::post('api/whatsapp/settings/llm-terms', [\App\Http\Controllers\WhatsAppSettingsController::class, 'llmTerms'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
-    // الردود الحتمية (E37): الإدارة بـ whatsapp.auto_rules، والمكوّنات الرسمية (كتابة في ميتا) بـ whatsapp.settings
+    // الردود الحتمية (E37): الإدارة بـ whatsapp.auto_rules
     Route::get('whatsapp/auto-rules', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'index'])->name('whatsapp.auto-rules')->middleware('perm:whatsapp.auto_rules');
     Route::post('whatsapp/auto-rules', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'store'])->name('whatsapp.auto-rules.store')->middleware('perm:whatsapp.auto_rules');
     Route::post('whatsapp/auto-rules/reorder', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'reorder'])->name('whatsapp.auto-rules.reorder')->middleware('perm:whatsapp.auto_rules');
@@ -285,8 +278,6 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('whatsapp/auto-rules/{rule}/toggle', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'toggle'])->name('whatsapp.auto-rules.toggle')->middleware('perm:whatsapp.auto_rules');
     Route::post('api/whatsapp/auto-rules/test', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'test'])->middleware(['perm:whatsapp.auto_rules', 'throttle:30,1,wa-rule-test']);
     Route::post('api/whatsapp/auto-rules/simulate', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'simulate'])->middleware(['perm:whatsapp.auto_rules', 'throttle:4,1,wa-rule-sim']);
-    Route::get('api/whatsapp/conversational-automation', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'automation'])->middleware(['perm:whatsapp.settings', 'throttle:10,1,wa-conv-read']);
-    Route::post('api/whatsapp/conversational-automation/sync', [\App\Http\Controllers\WhatsAppAutoRuleController::class, 'syncAutomation'])->middleware(['perm:whatsapp.settings', 'throttle:3,1,wa-conv-sync']);
     // ملف من الصندوق (E32): الربط المقيّد وحد wa-files، والرفع إلى ميتا مؤجل في الطابور. لكتلة nginx الخاصة بالمسار حدها (20m)
     Route::post('api/whatsapp/conversations/{conversation}/send-file', [\App\Http\Controllers\WhatsAppFileController::class, 'store'])->middleware(['perm:whatsapp.reply', 'throttle:wa-files']);
     // الرسائل الغنية (E33): التصحيح المقتبس والتفاعل والدبوس والبطاقات، كلٌّ بعلمه في المتحكم وبالربط المسيّج. {message} من
@@ -312,19 +303,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::post('api/whatsapp/blocks/untracked/unblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblockUntracked'])->middleware(['perm:whatsapp.block', 'throttle:10,1']);
     Route::post('api/whatsapp/blocks/{block}/unblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'unblock'])->whereNumber('block')->middleware(['perm:whatsapp.block', 'throttle:10,1']);
     Route::post('api/whatsapp/blocks/{block}/reblock', [\App\Http\Controllers\WhatsAppBlockController::class, 'reblock'])->whereNumber('block')->middleware(['perm:whatsapp.block', 'throttle:10,1']);
-    // ملف واتساب للأعمال (E31): whatsapp.settings، والمزامنة والصورة خلف علميهما. لا مسار يغيّر اسم العرض
-    Route::get('api/whatsapp/business-profile', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'show'])->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
-    Route::post('api/whatsapp/business-profile/sync', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'sync'])->middleware(['perm:whatsapp.settings', 'throttle:5,10']);
-    Route::post('api/whatsapp/business-profile/photo', [\App\Http\Controllers\WhatsAppBusinessProfileController::class, 'photo'])->middleware(['perm:whatsapp.settings', 'throttle:5,10']);
-    // الرموز العامة بلا عرض (E38): ملصق المكتب وصفحات التواصل
-    Route::get('api/whatsapp/qr-links', [\App\Http\Controllers\WhatsAppQrController::class, 'index'])->middleware('perm:whatsapp.settings');
-    Route::post('api/whatsapp/qr-links', [\App\Http\Controllers\WhatsAppQrController::class, 'store'])->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
-    Route::delete('api/whatsapp/qr-links/{link}', [\App\Http\Controllers\WhatsAppQrController::class, 'destroy'])->whereNumber('link')->middleware('perm:whatsapp.settings');
-    Route::get('whatsapp/qr-links/{link}/{format}', [\App\Http\Controllers\WhatsAppQrController::class, 'download'])->whereNumber('link')->where('format', 'png|svg')->middleware('perm:whatsapp.settings');
     // أدوات التشخيص (E23): فحص الإعدادات بزر (قراءة، 3 كل 10 دقائق)
     Route::post('api/whatsapp/doctor', [\App\Http\Controllers\WhatsAppController::class, 'runDoctor'])->middleware(['perm:whatsapp.settings', 'throttle:3,10,wa-doctor']);
-    // «اختبار الاتصال» (العلم channel_selftest): قراءات رسمية وارتداد موقّع، 6 في الدقيقة
-    Route::post('api/whatsapp/channel-test', [\App\Http\Controllers\WhatsAppController::class, 'channelTest'])->middleware(['perm:whatsapp.settings', 'throttle:6,1,wa-channel-test']);
     // «إرسال تجريبي» (العلم wa_test_send): أرقام الإدارة المعلَّمة وحدها، 3 في الدقيقة للمستخدم و10 في الساعة للنظام
     Route::post('api/whatsapp/test-send', [\App\Http\Controllers\WhatsAppController::class, 'testSend'])->middleware(['perm:whatsapp.settings', 'throttle:3,1,wa-test-send']);
     Route::get('api/whatsapp/test-send/{testMessage}/status', [\App\Http\Controllers\WhatsAppController::class, 'testSendStatus'])->whereNumber('testMessage')->middleware(['perm:whatsapp.settings', 'throttle:60,1,wa-test-status']);
@@ -332,12 +312,6 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::get('ops/status', [\App\Http\Controllers\OpsStatusController::class, 'index'])->name('ops.status')->middleware('perm:ops.view');
     Route::get('api/ops/status', [\App\Http\Controllers\OpsStatusController::class, 'data'])->middleware('perm:ops.view');
     Route::post('api/ops/status/refresh', [\App\Http\Controllers\OpsStatusController::class, 'refresh'])->middleware(['perm:ops.view', 'throttle:6,1,ops-status']);
-    // المكالمات والتعايش (E39): بطاقتا الإعدادات لصاحب whatsapp.settings خلف أعلامهما. لا مسار يكتب إعدادات الاتصال عند ميتا
-    Route::get('api/whatsapp/calling', [\App\Http\Controllers\WhatsAppCallingController::class, 'show'])->middleware('perm:whatsapp.settings');
-    Route::post('api/whatsapp/calling/refresh', [\App\Http\Controllers\WhatsAppCallingController::class, 'refresh'])->middleware(['perm:whatsapp.settings', 'throttle:6,1,wa-calling-read']);
-    Route::put('api/whatsapp/calling/settings', [\App\Http\Controllers\WhatsAppCallingController::class, 'update'])->middleware(['perm:whatsapp.settings', 'throttle:20,1,wa-calling-save']);
-    Route::get('api/whatsapp/coexistence', [\App\Http\Controllers\WhatsAppCoexistenceController::class, 'show'])->middleware('perm:whatsapp.settings');
-    Route::put('api/whatsapp/coexistence/settings', [\App\Http\Controllers\WhatsAppCoexistenceController::class, 'update'])->middleware(['perm:whatsapp.settings', 'throttle:20,1,wa-coex-save']);
 
     // العروض — سجل واحد يقرؤه البوت والبطاقة والعروض الجاهزة وفاتورة العرض
     Route::get('offers/ready', [\App\Http\Controllers\OfferController::class, 'ready'])->name('offers.ready')->middleware('perm:offers.view');
@@ -357,12 +331,8 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::delete('offers/{offer}/card', [\App\Http\Controllers\OfferController::class, 'deleteCard'])->name('offers.card.delete')->middleware('perm:offers.update');
     Route::post('offers/{offer}/hero', [\App\Http\Controllers\OfferController::class, 'uploadHero'])->name('offers.hero.upload')->middleware('perm:offers.update');
 
-    // المشاركة (E38): رموز QR الرسمية للعرض وبطاقة الحالة 9:16 للنشر اليدوي. العلمان wa_qr_links وoffer_story_card
+    // المشاركة (E38): بطاقة الحالة 9:16 للنشر اليدوي، بالعلم offer_story_card
     Route::get('api/offers/{offer}/share', [\App\Http\Controllers\OfferShareController::class, 'index'])->middleware('perm:offers.view');
-    Route::post('offers/{offer}/qr', [\App\Http\Controllers\OfferShareController::class, 'storeQr'])->middleware(['perm:offers.update', 'throttle:10,1']);
-    Route::delete('offers/{offer}/qr/{link}', [\App\Http\Controllers\OfferShareController::class, 'destroyQr'])->whereNumber('link')->middleware('perm:offers.update');
-    Route::get('offers/{offer}/qr/{link}/{format}', [\App\Http\Controllers\OfferShareController::class, 'downloadQr'])->whereNumber('link')->where('format', 'png|svg')->middleware('perm:offers.view');
-    Route::post('offers/{offer}/card-qr', [\App\Http\Controllers\OfferShareController::class, 'toggleCardQr'])->middleware('perm:offers.update');
     Route::post('offers/{offer}/story', [\App\Http\Controllers\OfferShareController::class, 'generateStory'])->middleware(['perm:offers.update', 'throttle:6,1']);
     Route::get('offers/{offer}/story/download', [\App\Http\Controllers\OfferShareController::class, 'downloadStory'])->middleware(['perm:offers.view', 'throttle:6,1']);
 

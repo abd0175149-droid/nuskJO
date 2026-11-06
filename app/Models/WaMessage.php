@@ -26,8 +26,8 @@ class WaMessage extends Model
         'media_status', 'media_error', 'media_archived_at',
         // E24: كائن pricing من ويبهوك الحالة (أول ظهور هو المعتمد)
         'pricing_billable', 'pricing_model', 'pricing_category', 'pricing_type',
-        // OpenWA: الرقم الذي استقبلها أو أرسلها (wamid فريد معه)
-        'channel_id',
+        // OpenWA: الرقم الذي استقبلها أو أرسلها (wamid فريد معه)، ونوع رسالة النظام (wa_message_types) للعدّ والعرض
+        'channel_id', 'type_key',
     ];
 
     // مسار الملف وبصمته لا يخرجان إن سُلسلت الرسالة (الصندوق يبني حقل media بنفسه)

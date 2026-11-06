@@ -9,7 +9,7 @@ vi.mock('@inertiajs/vue3', () => ({
 }));
 
 const { default: Status } = await import('@/Pages/Ops/Status.vue');
-const { age, issueLabel, level } = await import('@/utils/opsStatus.js');
+const { age, level } = await import('@/utils/opsStatus.js');
 
 // صفحة «حالة النظام» (E23): بطاقات الأقسام وشاراتها، وقسم واتساب والويبهوك، وجدول أرقام الحساب، والتحديث
 const snapshot = (over = {}) => ({
@@ -23,17 +23,15 @@ const snapshot = (over = {}) => ({
         backups: { level: 'ok', enabled: true, items: { snapshot: { at: '2026-10-16T02:30:00+03:00', age_hours: 7, state: 'ok' } } },
         doctor: { level: 'error', at: '2026-10-16T07:50:00+03:00', counts: { ok: 9, warn: 1, error: 1, skip: 2 }, problems: [{ level: 'error', code: 'RETRY_AFTER', message: 'retry_after قصير' }] },
         whatsapp: {
-            level: 'error', configured: true, monitor: true,
-            health: { state: 'AVAILABLE', label: 'تعمل' },
-            channel: { state: 'ok', can_send_message: 'AVAILABLE', quality_rating: 'GREEN', number: { status: 'CONNECTED', name_status: 'APPROVED', throughput: 'STANDARD' }, checked_at: '2026-10-16T09:37:00+03:00' },
-            webhook: { ok: false, issues: ['callback_mismatch', 'missing:security'], callback: { host: 'aibot-platform.example.com', ours: false }, field_versions: { messages: 'v25.0' } },
+            level: 'error', configured: true,
+            gateway: { configured: true, reachable: false, version: null, error: 'GW_UNREACHABLE' },
+            outbox: { pending: 3, deferred: 1, awaiting_approval: 0, overdue: 2 },
             intake: { last_signed_at: '2026-10-16T09:58:00+03:00', signatures: { day: 0 }, dead_open: 0 },
-            graph: { requests: { version: 'v25.0', sunset: '2028-07-29' }, webhook: { version: null }, appsecret_proof: true },
-            credentials: { state: 'ok', never_expires: true }, transport: 'cloud',
+            transport: 'openwa',
         },
-        numbers: { level: 'warn', state: 'ok', at: '2026-10-16T09:07:00+03:00', numbers: [
-            { display: '15550783881', verified_name: 'Test Travel', quality_rating: 'GREEN', status: 'CONNECTED', name_status: 'APPROVED', code_verification_status: 'VERIFIED', throughput: 'STANDARD', ours: true },
-            { display: '16505553333', verified_name: 'Branch', quality_rating: 'RED', status: 'PENDING', name_status: 'PENDING_REVIEW', code_verification_status: 'NOT_VERIFIED', throughput: null, ours: false },
+        numbers: { level: 'error', state: 'ok', numbers: [
+            { name: 'المبيعات', phone: '962790000001', status: 'ready', ready: true, paused_until: null, probe_failures: 0, last_probe_ok_at: '2026-10-16T09:57:00+03:00', last_inbound_at: null },
+            { name: 'الحجوزات', phone: null, status: 'disconnected', ready: false, paused_until: null, probe_failures: 3, last_probe_ok_at: null, last_inbound_at: null },
         ] },
         reverb: { level: 'unknown', enabled: false },
     },
@@ -54,28 +52,28 @@ describe('Ops status page', () => {
         expect(w.find('[data-test="section-reverb"]').text()).toContain('غير مفعّل');
     });
 
-    it('explains webhook drift by host only', () => {
-        const hook = make().find('[data-test="webhook"]');
-        expect(hook.text()).toContain('⚠️ انحراف');
-        expect(hook.text()).toContain('رابط الويبهوك لا يشير إلى نُسك');
-        expect(hook.text()).toContain('حقل security غير مشترك');
-        expect(hook.text()).toContain('aibot-platform.example.com');
+    it('shows the gateway and the outbox backlog', () => {
+        const w = make();
+        expect(w.find('[data-test="gateway"]').text()).toContain('⛔ لا تستجيب');
+        expect(w.find('[data-test="gateway"]').text()).toContain('GW_UNREACHABLE');
+        expect(w.find('[data-test="outbox"]').text()).toContain('ينتظر: 3');
+        expect(w.find('[data-test="outbox"]').text()).toContain('2 رسالة تأخرت');
     });
 
-    it('lists the account numbers, marks ours and flags another in trouble', () => {
+    it('lists our numbers and flags a disconnected one', () => {
         const w = make();
         const rows = w.findAll('[data-test="number-row"]');
         expect(rows).toHaveLength(2);
-        expect(rows[0].text()).toContain('رقم نُسك');
-        expect(rows[1].classes().join(' ')).toContain('bg-amber-50');
-        expect(w.find('[data-test="section-numbers"]').text()).toContain('WhatsApp Manager');
+        expect(rows[0].text()).toContain('المبيعات');
+        expect(rows[1].classes().join(' ')).toContain('bg-red-50');
+        expect(rows[1].text()).toContain('3 إخفاق');
         expect(w.find('[data-test="section-numbers"]').find('button').exists()).toBe(false);
     });
 
-    it('asks for the WABA ID when it is unknown', () => {
+    it('says so when there is no active number', () => {
         const s = snapshot();
-        s.sections.numbers = { level: 'unknown', state: 'no_waba', numbers: [] };
-        expect(make(s).find('[data-test="section-numbers"]').text()).toContain('أدخل WA_WABA_ID');
+        s.sections.numbers = { level: 'unknown', state: 'none', numbers: [] };
+        expect(make(s).find('[data-test="section-numbers"]').text()).toContain('لا رقم فعّالاً');
     });
 
     it('refreshes on demand and explains the limit', async () => {
@@ -92,12 +90,11 @@ describe('Ops status page', () => {
         expect(w.text()).toContain('ستّ مرات في الدقيقة');
     });
 
-    it('formats ages, levels and issues', () => {
+    it('formats ages and levels', () => {
         expect(age(null)).toBe('—');
         expect(age(45)).toBe('45 ث');
         expect(age(600)).toBe('10 د');
         expect(age(7200)).toBe('2 س');
         expect(level('nonsense').label).toBe('غير معروف');
-        expect(issueLabel('override:waba')).toBe('override على الحساب يوجّه لغيرنا');
     });
 });

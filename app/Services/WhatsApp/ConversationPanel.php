@@ -50,6 +50,33 @@ final class ConversationPanel
             // الملاحظات والحقائق تُقرأ في كل طلب: تظهر إضافات البوت فوراً
             'notes' => self::notes($c),
             'conversation' => self::conversation($c),
+            // رسائل النظام (2026-11-06): القادمة والأخيرة للعميل على كل أرقامنا، وما كتمه
+            'system' => self::system($c),
+        ];
+    }
+
+    /** @return array{upcoming: list<array>, recent: list<array>, muted: list<string>, can_follow_up: bool} */
+    private static function system(WaConversation $c): array
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('wa_outbox')) {
+            return ['upcoming' => [], 'recent' => [], 'muted' => [], 'can_follow_up' => false];
+        }
+        $phone = $c->phone ? PhoneNormalizer::canonical((string) $c->phone) : null;
+        $q = fn () => \App\Models\WaOutbox::query()->where('is_test', false)
+            ->where(fn ($w) => $w->where('conversation_id', $c->id)
+                ->when($phone, fn ($x) => $x->orWhere('phone', $phone))
+                ->when($c->client_id, fn ($x) => $x->orWhere('client_id', $c->client_id)));
+        $row = fn (\App\Models\WaOutbox $o) => ['id' => $o->id, 'type' => System\Catalog::label((string) $o->type_key), 'status' => $o->status,
+            'at' => ($o->sent_at ?? $o->due_at)?->toIso8601String(), 'reason' => $o->defer_reason ?: $o->last_error];
+        $muted = $c->client_id ? \App\Models\WaNotificationPref::query()->where('client_id', $c->client_id)
+            ->where(fn ($w) => $w->whereNull('muted_until')->orWhere('muted_until', '>', now()))->get(['group', 'type_key'])
+            ->map(fn ($p) => $p->group ? (System\Catalog::GROUPS[$p->group] ?? $p->group) : ($p->type_key ? System\Catalog::label($p->type_key) : 'كل الرسائل'))->values()->all() : [];
+
+        return [
+            'upcoming' => $q()->whereIn('status', \App\Models\WaOutbox::OPEN)->orderBy('due_at')->limit(6)->get()->map($row)->values()->all(),
+            'recent' => $q()->whereIn('status', [\App\Models\WaOutbox::SENT, \App\Models\WaOutbox::FAILED, \App\Models\WaOutbox::EXPIRED])->orderByDesc('id')->limit(5)->get()->map($row)->values()->all(),
+            'muted' => $muted,
+            'can_follow_up' => (bool) $c->channel_id && $c->status !== 'merged',
         ];
     }
 

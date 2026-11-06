@@ -135,8 +135,6 @@ class WhatsAppInbox
     private static function storeInboundRows(InboundMessage $in, array $msg): array
     {
         $conv = ContactIdentity::resolve($in);
-        // رقم شاركه العميل بزر «طلب الرقم» يملأ المحادثة (بطاقة شخص ثالث لا)
-        ContactIdentity::acceptSharedPhone($conv, $in);
         // أول مصدر للمحادثة (إعلان انقر للواتساب) يبقى
         if ($in->referral && !$conv->referral) {
             $conv->forceFill(['referral' => $in->referral])->save();
@@ -257,6 +255,14 @@ class WhatsAppInbox
     }
 
     private static ?bool $optoutSource = null;
+
+    private static ?bool $hasMetaAt = null;
+
+    /** وقت الرسالة عند واتساب (meta_at) بعد الهجرة 2026_10_14_000012 */
+    private static function hasMetaAt(): bool
+    {
+        return self::$hasMetaAt ??= \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'meta_at');
+    }
 
     private static function isOptOut(?string $body, ?string $buttonId): bool
     {

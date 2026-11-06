@@ -36,15 +36,9 @@ class WhatsAppController extends Controller
                 // البيئة أو القاعدة (منطق OR)، ومن أوقف: env | manual | meta_event | graph_error | restore
                 'suspended' => $s->sendingSuspended(),
                 'suspended_source' => $s->suspendSource(),
-                // شريط عام بلا تفاصيل: التفاصيل في بطاقة صحة القناة لمن يملك whatsapp.settings
-                'meta_blocked' => data_get($s->wa_channel_health, 'can_send_message') === 'BLOCKED'
-                    || data_get($s->wa_credentials_status, 'state') === 'critical',
-                // ميتا ترفض الإرسال على مستوى القناة (E18): الوصف والإجراء للمدير، وسطر عام لغيره
-                'meta_error' => $this->channelMetaError($s),
-                // التعايش مفعّل (E39، coexistence_echoes): رسائل هاتف الوكالة تظهر في الصندوق
-                'coexistence' => \App\Services\WhatsApp\EchoHandler::fullOn(),
-            // صحة القناة (E22): الحالة والتسمية والانتهاء وهل تمنع، بلا سبب ولا رمز (التفاصيل في البطاقة لصاحب whatsapp.settings)
-            ] + \App\Services\WhatsApp\ChannelHealth::publicStatus($s),
+                // أرقام واتساب (2026-11-06): أسماء المنقطع والموقوف منها، بلا هاتف ولا تفاصيل (التفاصيل في صفحة الأرقام)
+                'channels' => self::channelsStatus(),
+            ],
             // وضع التحويل (E12): الحالة والأوقات فقط، بلا سبب تقني
             'llm' => \App\Services\WhatsApp\LlmCircuitBreaker::publicStatus(),
             'canReply' => auth()->user()->can('whatsapp.reply'),
@@ -71,7 +65,6 @@ class WhatsAppController extends Controller
             'canReprocess' => auth()->user()->can('whatsapp.settings') && \App\Support\FeatureFlags::on('reprocess_button'),
             // الردود الجاهزة في المنشئ (E17.7)
             'quickReplies' => auth()->user()->can('whatsapp.reply') && \App\Support\FeatureFlags::on('quick_replies'),
-            'identityMode' => \App\Services\WhatsApp\IdentityMode::current(),
             // E29: التصنيفات والملاحظة المثبتة والترجمة عند الطلب. الأعلام للواجهة، والخادم يفحص كل شيء مجدداً
             'labels' => \App\Services\WhatsApp\LabelService::enabled() ? \App\Services\WhatsApp\LabelService::activeList() : [],
             'canManageLabels' => auth()->user()->can('whatsapp.settings'),
@@ -86,8 +79,8 @@ class WhatsAppController extends Controller
             'staffReactions' => (array) config('whatsapp.staff_reactions', []),
             'shareItems' => \App\Support\FeatureFlags::on('wa_share_cards') && auth()->user()->can('whatsapp.reply')
                 ? \App\Http\Controllers\WhatsAppSharedItemsController::pickerItems() : null,
-            // E39: فلتر «مكالمات فائتة» وزر «اتصل من هاتف الوكالة» مع العلم calls_webhook
-            'calls' => \App\Services\WhatsApp\CallEventHandler::enabled(),
+            // فلتر «مكالمات فائتة» (call.missed من البوابة)
+            'calls' => true,
             'translateTargets' => \App\Services\WhatsApp\MessageTranslator::enabled() ? \App\Services\WhatsApp\MessageTranslator::REPLY_TARGETS : [],
             // البحث في الرسائل وفلاتر الخيط (E30: المدراء أولاً ثم الجميع)، والتصدير بصلاحيته وعلمه. الخادم يعيد الفحص
             'messageSearch' => \App\Services\WhatsApp\Search\MessageSearch::enabledFor(auth()->user()),
@@ -112,18 +105,21 @@ class WhatsAppController extends Controller
         return auth()->user()->can('whatsapp.block') && \App\Support\FeatureFlags::on('wa_block') && \App\Services\WhatsApp\BlockService::available();
     }
 
-    /** آخر خطأ قناة من فئة auth أو integrity خلال 24 ساعة، مع meta_error_v2 وحده */
-    private function channelMetaError(WaBotSetting $s): ?array
+    /**
+     * الأرقام الفعّالة وجاهزيتها لشريط الصندوق: أسماء المنقطع والموقوف وحدها.
+     *
+     * @return array{total: int, ready: int, down: list<string>, paused: list<string>}
+     */
+    private static function channelsStatus(): array
     {
-        $last = (array) ($s->wa_last_error ?? []);
-        if (!\App\Services\WhatsApp\MetaErrorCatalog::v2() || !in_array($last['category'] ?? null, ['auth', 'integrity'], true)
-            || !rescue(fn () => now()->diffInHours(\Illuminate\Support\Carbon::parse($last['at']), true) < 24, false, false)) {
-            return null;
-        }
+        $all = \App\Models\WaChannel::query()->active()->orderBy('sort')->get();
 
-        return auth()->user()->can('whatsapp.settings')
-            ? ['message' => $last['message'] ?? null, 'action' => $last['action'] ?? null, 'code' => $last['error_code'] ?? null]
-            : ['generic' => true];
+        return [
+            'total' => $all->count(),
+            'ready' => $all->filter(fn ($c) => $c->isReady())->count(),
+            'down' => $all->reject(fn ($c) => $c->isReady() || $c->isPaused())->pluck('name')->values()->all(),
+            'paused' => $all->filter(fn ($c) => $c->isPaused())->pluck('name')->values()->all(),
+        ];
     }
 
     /** بطاقات أعلى الصندوق (E17.6): أعداد محصورة بالنطاق ومخزّنة 60 ثانية، بلا أسماء ولا أرقام ولا نصوص */
@@ -344,16 +340,15 @@ class WhatsAppController extends Controller
         }
         $user = auth()->user();
         $media = fn ($m) => \App\Services\WhatsApp\Media\MediaPresenter::forThread($m, $user);
-        // سبب الفشل وإجراؤه (E18، مع meta_error_v2): الرمز والفئة والإجراء للجميع، وfbtrace_id لصاحب whatsapp.settings
+        // سبب الفشل وإجراؤه (E18): الرمز والفئة والإجراء للجميع
         $errorCols = [];
-        if ($e11 && \App\Services\WhatsApp\MetaErrorCatalog::v2()) {
-            $errorCols = ['meta_code', 'fbtrace_id', 'error_code'];
+        if ($e11) {
+            $errorCols = ['meta_code', 'error_code'];
             if (\Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'error_category')) {
                 $errorCols[] = 'error_category';
             }
             array_push($columns, ...$errorCols);
         }
-        $canSupport = $user->can('whatsapp.settings');
         // دفتر الإرسال (E19): عدد المحاولات وزر «انسخ إلى خانة الكتابة» لما فشل (مفتاحه محرَّر) أو بقي غير مؤكد بعد المنظّف
         $ledger = \App\Support\FeatureFlags::on('send_ledger') && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'attempts');
         if ($ledger) {
@@ -401,7 +396,7 @@ class WhatsAppController extends Controller
         }
         $voice = fn ($m): array => $voiceOn ? \App\Services\WhatsApp\Outbound\VoiceNote::threadFields($m) : [];
         $columns = array_values(array_unique($columns));
-        $failure = function ($m) use ($errorCols, $canSupport): array {
+        $failure = function ($m) use ($errorCols): array {
             if ($errorCols === [] || $m->direction !== 'out' || !in_array($m->status, ['failed', 'unknown', 'blocked'], true)) {
                 return [];
             }
@@ -411,7 +406,6 @@ class WhatsAppController extends Controller
                 'error_code' => $m->error_code,
                 'category' => $meaning['category'] ?? null,
                 'action' => $meaning['action'] ?? null,
-                'fbtrace_id' => $canSupport ? $m->fbtrace_id : null,
             ], fn ($v) => $v !== null);
         };
 
@@ -469,9 +463,8 @@ class WhatsAppController extends Controller
         // E36: ما عُرض من خيارات وما اختاره العميل ورد نموذج التسعير، بلا معرّفات
         $interactive = \App\Services\WhatsApp\InteractiveThread::prepare($conversation, $rows, $user);
 
-        // المكالمات والتعايش (E39): حالة المكالمة من wa_calls بمعرّف رسالة الخيط، وعلامتا التعديل والحذف من الهاتف من الحمولة
-        $calls = \App\Services\WhatsApp\CallEventHandler::available() && ($callIds = $rows->where('msg_type', 'call')->pluck('id')->all())
-            ? \App\Models\WaCall::whereIn('thread_message_id', $callIds)->pluck('missed', 'thread_message_id')->all() : [];
+        // علامتا التعديل والحذف من الهاتف من الحمولة. المكالمة الفائتة سطر نظام في الخيط (MessageMutations::call)
+        $calls = [];
         $phoneFlags = $rows->contains('source', 'staff_phone')
             ? $conversation->messages()->whereIn('id', $rows->where('source', 'staff_phone')->pluck('id'))->get(['id', 'payload'])
                 ->mapWithKeys(fn ($m) => [$m->id => array_filter(['edited' => (bool) data_get($m->payload, '_edited_at'), 'revoked' => (bool) data_get($m->payload, '_revoked_at')])])->all()
@@ -529,7 +522,6 @@ class WhatsAppController extends Controller
                 'client_id' => $conversation->client_id,
                 'client_code' => $conversation->client?->code,
                 'client_link' => $conversation->client_link,
-                'identity_mode' => \App\Services\WhatsApp\IdentityMode::current(),
                 'bot_enabled' => (bool) $conversation->bot_enabled,
                 'needs_attention' => (bool) $conversation->needs_attention,
                 'attention_reason' => $conversation->attention_reason,
@@ -545,8 +537,6 @@ class WhatsAppController extends Controller
                 'is_staff' => (bool) $conversation->user_id,
                 'blocked' => $conversation->isBlocked(),
                 'block' => $conversation->isBlocked() ? self::blockInfo($conversation) : null,
-                // مصدر المحادثة (E38): «📷 من رمز» أو «📣 من إعلان» لمن يرى المحادثة أصلاً
-                'entry' => \App\Services\WhatsApp\EntryRecorder::badge($conversation),
                 // E33: الاقتباس والتفاعل والمعاينة والمشاركة
                 'features' => \App\Services\WhatsApp\RichThread::features(),
             ] + (\App\Services\WhatsApp\LabelService::enabled() ? ['labels' => \App\Services\WhatsApp\LabelService::chipsFor([$conversation->id])[$conversation->id] ?? []] : [])
@@ -950,26 +940,8 @@ class WhatsAppController extends Controller
     // ==================== الإعدادات ====================
 
     /**
-     * «افحص الآن» في بطاقة صحة القناة: الفحصان معاً، ويُرجع الملخص المحفوظ فقط. فحص بدأه إنسان (E22): يمسح
-     * TOKEN_INVALID إن عاد الرمز يعمل، ولا يرفع BLOCKED (الرفع بزره وسببه)
-     */
-    public function metaCheck()
-    {
-        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
-
-        $health = app(\App\Services\WhatsApp\MetaHealth::class);
-        $health->credentials();
-        $health->channel(humanInitiated: true);
-
-        return response()->json([
-            'meta' => \App\Services\WhatsApp\MetaHealth::summary(WaBotSetting::current()->fresh()),
-            'channelHealth' => \App\Services\WhatsApp\ChannelHealth::available() ? \App\Services\WhatsApp\ChannelHealth::panel() : null,
-        ]);
-    }
-
-    /**
      * زر «شغّل الفحص» (E23): whatsapp:doctor كاملاً بميزانية 8 ثوانٍ للقراءات البعيدة، وتُحفظ الحصيلة لبطاقة الإعدادات
-     * وصفحة الحالة. قراءة فقط: لا يغيّر شيئاً عند ميتا ولا حالة القناة، ولا ينبّه (المدير يرى النتيجة أمامه).
+     * وصفحة الحالة. قراءة فقط: لا يغيّر شيئاً على البوابة ولا الأرقام، ولا ينبّه (المدير يرى النتيجة أمامه).
      */
     public function runDoctor()
     {
@@ -979,18 +951,6 @@ class WhatsAppController extends Controller
         \App\Services\WhatsApp\ChannelDoctor::store($result, alert: false);
 
         return response()->json(['doctor' => $result]);
-    }
-
-    /**
-     * «اختبار الاتصال» (E23، العلم channel_selftest): قراءات ميتا الرسمية وارتداد موقّع عبر الرابط العام وآخر ويبهوك حقيقي.
-     * لا يرسل لأي عميل ولا يعدّل شيئاً عند ميتا.
-     */
-    public function channelTest()
-    {
-        abort_unless(auth()->user()->can('whatsapp.settings'), 403);
-        abort_unless(\App\Services\WhatsApp\ChannelSelfTest::enabled(), 404);
-
-        return response()->json(\App\Services\WhatsApp\ChannelSelfTest::run());
     }
 
     /**
@@ -1065,8 +1025,6 @@ class WhatsAppController extends Controller
         return Inertia::render('WhatsApp/Analytics', [
             'title' => 'استهلاك البوت وجودته',
             ...$this->analyticsPayload($request->query('period')),
-            // مصادر المحادثات (E38): أعداد فقط، خلف entry_tracking
-            'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries() : null,
         ]);
     }
 
@@ -1074,14 +1032,8 @@ class WhatsAppController extends Controller
     {
         abort_unless(auth()->user()->can('whatsapp.settings'), 403);
         $request->validate(['period' => 'nullable|in:24h,7d,30d']);
-        $days = (int) $request->integer('entries_days', 30);
-        // فلتر فترة «مصادر المحادثات» وحده: بلا حساب الاستهلاك والجودة
-        if ($request->query('only') === 'entries') {
-            return response()->json(['entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
-        }
 
-        return response()->json($this->analyticsPayload($request->query('period')) + [
-            'entries' => \App\Support\FeatureFlags::on('entry_tracking') ? \App\Services\WhatsApp\BotAnalytics::entries($days) : null]);
+        return response()->json($this->analyticsPayload($request->query('period')));
     }
 
     /**
@@ -1119,7 +1071,6 @@ class WhatsAppController extends Controller
                 'first_human' => $analytics::firstHumanResponse($period),
                 'quotes' => $analytics::quoteConversion($period),
             ],
-            'metaCost' => $analytics::metaCost($period),
         ];
     }
 

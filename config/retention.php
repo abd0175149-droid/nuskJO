@@ -3,7 +3,6 @@
 use App\Models\AuditLog;
 use App\Models\IntegrationOutboxRow;
 use App\Models\Notification;
-use App\Models\WaAccountEvent;
 use App\Models\WaAdminAction;
 use App\Models\WaBotUsage;
 
@@ -45,8 +44,6 @@ return [
         Notification::class,
         WaAdminAction::class,
         WaBotUsage::class,
-        // E22: أحداث حساب ميتا المعلوماتية بعد 180 يوماً (الحرج والتحذير يبقيان)
-        WaAccountEvent::class,
         // E40: سجل التسليمات الصادرة (حمولة بيضاء أصلاً): المُسلَّم بعد 30 يوماً والميت بعد 90
         IntegrationOutboxRow::class,
         // E36: مجموعات الاختيارات التفاعلية بعد 30 يوماً (عناوين وأرقام عروض، بلا بيانات عملاء)

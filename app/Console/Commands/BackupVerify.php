@@ -189,7 +189,7 @@ class BackupVerify extends Command
         }
 
         $row = DB::table('wa_bot_settings')->first();
-        $values = array_filter([$row->wa_token ?? null, $row->api_key ?? null, $row->wa_app_secret ?? null]);
+        $values = array_filter([$row->api_key ?? null, $row->fallback_api_key ?? null]);
         if (!$values) {
             return null;
         }

@@ -2,10 +2,6 @@
 
 namespace App\Services\WhatsApp;
 
-use App\Models\WaBotSetting;
-use App\Services\Ops\OpsAlerts;
-use App\Support\FeatureFlags;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * جدول رموز أخطاء ميتا الوحيد في المستودع (E06 بنته، وE18 وسّعته ولم تستبدله).
@@ -18,11 +14,8 @@ use Illuminate\Support\Facades\Cache;
  * في WhatsAppChannel تقرأ الشكل وحده، وisAccountError هنا لا في MetaHealth، وWaLog بقائمة مفاتيح مسموحة،
  * والأعمدة meta_code وfbtrace_id (E06) وerror_code (E11) موجودة، و'unconfirmed' (E12) صارت 'unknown' في E19.
  *
- * وضع الظل: علم meta_error_v2 مطفأ يحسب التصنيف ويكتب error_category وpayload._meta_error والسجل، لكن الرسالة
- * المعروضة والرمز المعاد والتنبيه والإيقاف من الجدول القديم (LEGACY) كما كانت. يُحذف LEGACY مع إزالة العلم.
- *
- * الإيقاف الآلي (A10): 368 وحده افتراضياً (services.whatsapp.autosuspend_codes)، و131031 قد يعني PIN خاطئاً فينبّه فقط.
- * ولا رفع آلياً لأي قفل.
+ * بعد الانتقال إلى OpenWA (2026-11-06) يبقى الجدول لتصنيف الرموز المحلية ورموز البوابة (OpenWaError) وعرض المحفوظ
+ * من رسائل ميتا القديمة. التصنيف الجديد وحده: أُزيل الجدول القديم (LEGACY) وعلم meta_error_v2 والإيقاف الآلي من ميتا.
  */
 final class MetaErrorCatalog
 {
@@ -321,179 +314,10 @@ final class MetaErrorCatalog
         return preg_replace('/\d{7,}/u', '•••', mb_substr($details, 0, 300)) ?? null;
     }
 
-    public static function v2(): bool
-    {
-        return FeatureFlags::on('meta_error_v2');
-    }
-
     private static function fromLocal(string $code): array
     {
         [$category, $scope, $message, $action, $retry] = self::LOCAL[$code];
 
         return ['code' => $code, 'category' => $category, 'scope' => $scope, 'message' => $message, 'action' => $action, 'retry' => $retry];
-    }
-
-    // ==================== المسار القديم (وضع الظل، يُحذف مع علم meta_error_v2) ====================
-
-    private const LEGACY_RATE = 'تجاوزنا حد الإرسال عند ميتا — أعد المحاولة بعد قليل.';
-
-    private const LEGACY_RESTRICTED = 'حساب واتساب مقيّد من ميتا — راجع حالة الحساب في لوحة ميتا.';
-
-    private const LEGACY_PERMISSION = 'صلاحيات رمز ميتا لا تسمح بهذه العملية — راجع صلاحيات مستخدم النظام والتطبيق في لوحة ميتا.';
-
-    /**
-     * @deprecated نصوص E06 ورموزها كما يراها الموظف اليوم؛ تبقى ما دام meta_error_v2 مطفأ.
-     * رمز ميتا => [رمزنا القديم، النص، الفعل]. والنطاق 200–299 في legacyEntry()
-     */
-    private const LEGACY = [
-        190 => ['TOKEN_INVALID', 'رمز ميتا منتهٍ أو مُلغى — يحدّثه المدير من إعدادات الواتساب.', 'alert'],
-        0 => ['TOKEN_INVALID', 'خطأ اعتماد عند ميتا — تحقق من رمز الوصول في إعدادات الواتساب.', 'alert'],
-        3 => ['PERMISSION_DENIED', 'التطبيق لا يملك قدرة هذه العملية عند ميتا — راجع إعداد التطبيق.', 'alert'],
-        10 => ['PERMISSION_DENIED', self::LEGACY_PERMISSION, 'alert'],
-        131005 => ['PERMISSION_DENIED', self::LEGACY_PERMISSION, 'alert'],
-        131042 => ['PAYMENT_ISSUE', 'مشكلة في وسيلة الدفع في حساب ميتا — راجع الفوترة في WhatsApp Manager.', 'alert'],
-        131047 => ['WINDOW_EXPIRED', 'انتهت نافذة الـ24 ساعة عند ميتا — لا يمكن الإرسال حتى يراسلنا العميل.', null],
-        131026 => ['UNDELIVERABLE', 'تعذّر التسليم: الرقم بلا واتساب، أو بنسخة قديمة، أو لم يقبل الشروط.', null],
-        131051 => ['UNSUPPORTED', 'نوع الرسالة غير مدعوم في واتساب.', null],
-        130429 => ['RATE_LIMITED', self::LEGACY_RATE, null],
-        131056 => ['RATE_LIMITED', self::LEGACY_RATE, null],
-        4 => ['RATE_LIMITED', self::LEGACY_RATE, null],
-        80007 => ['RATE_LIMITED', self::LEGACY_RATE, null],
-        131031 => ['ACCOUNT_RESTRICTED', self::LEGACY_RESTRICTED, 'alert'],
-        368 => ['ACCOUNT_RESTRICTED', self::LEGACY_RESTRICTED, 'suspend'],
-        131048 => ['SPAM_RESTRICTED', 'تقييد بسبب بلاغات السبام — راجع جودة الرقم في لوحة ميتا.', 'alert'],
-        100 => ['META_ERROR', 'معامل غير صالح في الطلب.', null],
-        131052 => ['MEDIA_ERROR', 'خطأ في تنزيل الوسائط.', null],
-        131053 => ['MEDIA_ERROR', 'خطأ في رفع الوسائط.', null],
-    ];
-
-    /** عنوان التنبيه حسب الرمز (والنص «[الرمز] الوصف») */
-    private const ALERT_TITLES = [
-        0 => '⛔ رمز ميتا منتهٍ أو ملغى — الإرسال متوقف',
-        190 => '⛔ رمز ميتا منتهٍ أو ملغى — الإرسال متوقف',
-        368 => '⛔ الحساب مقيّد من ميتا',
-        131031 => '⛔ الحساب مقيّد من ميتا',
-        131042 => '💳 مشكلة دفع في حساب ميتا',
-        3 => '⛔ صلاحيات ميتا ناقصة',
-        10 => '⛔ صلاحيات ميتا ناقصة',
-        131005 => '⛔ صلاحيات ميتا ناقصة',
-    ];
-
-    /** @return array{0: string, 1: string, 2: ?string}|null */
-    private static function legacyEntry(?int $metaCode): ?array
-    {
-        if ($metaCode === null) {
-            return null;
-        }
-        if (isset(self::LEGACY[$metaCode])) {
-            return self::LEGACY[$metaCode];
-        }
-
-        return $metaCode >= 200 && $metaCode <= 299 ? ['PERMISSION_DENIED', self::LEGACY_PERMISSION, 'alert'] : null;
-    }
-
-    /** @deprecated المسار القديم: الرمز الداخلي القديم */
-    public static function codeFor(?int $metaCode): string
-    {
-        return self::legacyEntry($metaCode)[0] ?? 'META_ERROR';
-    }
-
-    /** @deprecated المسار القديم */
-    public static function describe(?int $metaCode): ?string
-    {
-        return self::legacyEntry($metaCode)[1] ?? null;
-    }
-
-    /** @deprecated المسار القديم: «[رمز] النص العربي» أو «[رمز] نص ميتا» لما لا يعرفه الجدول */
-    public static function message(?int $metaCode, string $fallback): string
-    {
-        if ($metaCode === null) {
-            return $fallback;
-        }
-
-        return "[{$metaCode}] ".(self::describe($metaCode) ?? $fallback);
-    }
-
-    /** عنوان التنبيه للمسارين */
-    public static function alertTitle(?int $metaCode, string $category): string
-    {
-        return self::ALERT_TITLES[$metaCode] ?? match ($metaCode) {
-            131048 => '⚠️ تقييد سبام على رقم الواتساب',
-            133010 => '⛔ رقم الشركة غير مسجّل في Cloud API',
-            default => null,
-        } ?? match ($category) {
-            'auth' => '⛔ خطأ اعتماد من ميتا',
-            'integrity' => '⛔ تقييد من ميتا على الحساب',
-            'throttle' => '⚠️ ميتا تخنق الإرسال',
-            default => '⚠️ تنبيه من ميتا',
-        };
-    }
-
-    /** @deprecated المسار القديم: فعل الجدول القديم (تنبيه أو إيقاف). الجديد في MetaErrorReactor */
-    public static function react(?int $metaCode): void
-    {
-        $entry = self::legacyEntry($metaCode);
-        if ($entry === null) {
-            return;
-        }
-        $action = $entry[2];
-
-        self::rememberAccountError($metaCode);
-        // E22: صحة القناة تملك الرمز الباطل و368 (MetaErrorReactor → SendHealthMonitor::observe)، فلا إيقاف ولا تنبيه هنا
-        if (ChannelHealth::enabled() && in_array($metaCode, [0, 190, 368], true)) {
-            return;
-        }
-
-        if ($action === 'suspend' && self::autosuspends($metaCode)) {
-            self::suspend($metaCode, 'graph_error');
-
-            return;
-        }
-
-        // مرة في الساعة لكل رمز، والدفع للجهاز مباشرة (OpsAlerts). الرمز ووصفه فقط، بلا رقم عميل ولا نص
-        if ($action === 'alert' || $action === 'suspend') {
-            app(OpsAlerts::class)->notifyAdmins('meta:send:'.$metaCode, self::ALERT_TITLES[$metaCode] ?? (self::isAccountError($metaCode) ? '⛔ صلاحيات ميتا ناقصة' : '⚠️ تنبيه من ميتا'), "[{$metaCode}] ".$entry[1]);
-        }
-    }
-
-    // ==================== مشترك بين المسارين ====================
-
-    /** آخر خطأ اعتماد لبطاقة الصحة (E08) ووقت آخر 190 لـ whatsapp:doctor */
-    public static function rememberAccountError(?int $metaCode): void
-    {
-        if ($metaCode === 190 || $metaCode === 0) {
-            Cache::put('wa:last_auth_error_at', now()->toIso8601String(), now()->addDays(2));
-        }
-        if (self::isAccountError($metaCode)) {
-            Cache::put('wa:last_account_error', ['code' => $metaCode, 'at' => now()->getTimestamp()], now()->addDay());
-        }
-    }
-
-    public static function autosuspends(?int $metaCode): bool
-    {
-        if ($metaCode === null || !config('services.whatsapp.health_autosuspend')) {
-            return false;
-        }
-        $codes = array_map('intval', array_filter(array_map('trim', explode(',', (string) config('services.whatsapp.autosuspend_codes')))));
-
-        return in_array($metaCode, $codes, true);
-    }
-
-    /**
-     * إيقاف آلي واحد مع تدقيق آمن وتنبيه (المسار القديم، العلم channel_health مطفأ). لا رفع آلياً أبداً.
-     * مع العلم يُكتب BLOCKED في آلة صحة القناة بدل wa_suspended (A10، SendHealthMonitor::observe)
-     */
-    public static function suspend(int $metaCode, string $source): bool
-    {
-        if (ChannelHealth::enabled()) {
-            return false;
-        }
-        if (!ChannelHealth::suspendLegacy($source, 'رمز ميتا '.$metaCode, (string) $metaCode, ['meta_code' => $metaCode], 'system', 'graph:'.$metaCode, 'رمز '.$metaCode)) {
-            return false;
-        }
-        WaLog::error('graph.autosuspend', ['meta_code' => $metaCode]);
-        WhatsAppInbox::notifyAdmins('⛔ إيقاف إرسال الواتساب', "ردّت ميتا بالرمز {$metaCode} (تقييد الحساب)، فأُوقف كل الإرسال تلقائياً. راجع حالة الحساب قبل إعادة التشغيل.", '/whatsapp/settings', 'RB-03');
-
-        return true;
     }
 }

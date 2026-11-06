@@ -18,9 +18,6 @@ final class OpsRules
 {
     public const STATE_KEY = 'ops:rule:state:';
 
-    /** حالات E22 التي نبّهت عنها آلة صحة القناة بنفسها: لا تكرار لقاعدتي الاعتماد والقيود */
-    private const HEALTH_ALERTED = ['TOKEN_INVALID', 'BLOCKED'];
-
     /** طابور أرشفة المرفقات (E14) تأخره تحذير في البطاقة، لا تنبيه: لا يعطّل الرد */
     private const BACKLOG_IGNORED = ['wa-media'];
 
@@ -68,7 +65,7 @@ final class OpsRules
             'waiting_human' => [self::int($snap['waiting_human'] ?? null), []],
             'bot_latency' => [self::int($snap['bot_latency_p90_ms_1h'] ?? null), []],
             'daily_outbound' => [self::int($snap['outbound_today']['total'] ?? null), []],
-            'service_free_tier' => [self::int($snap['service_billable_month'] ?? null), []],
+            'channels_down' => [self::int($snap['channels_down'] ?? null), []],
             'automated_budget' => $this->overBudget($snap),
             default => [null, []],
         };
@@ -76,12 +73,6 @@ final class OpsRules
 
     private function skip(string $rule, array $snap): ?string
     {
-        // آلة صحة القناة (E22) نبّهت عن الرمز أو الحجب بنفسها: لا تكرار
-        if (in_array($rule, ['send_auth', 'send_integrity'], true) && ($snap['channel_health_enabled'] ?? false)
-            && in_array($snap['channel_health'] ?? null, self::HEALTH_ALERTED, true)) {
-            return 'channel_health';
-        }
-
         return null;
     }
 

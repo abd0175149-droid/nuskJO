@@ -298,7 +298,7 @@ final class StatusApplier
     /** قيمة لا نعرفها (deleted مثلاً): لا تُكتب، وسطر واحد في الساعة لكل قيمة */
     private static function unknownValue(string $status): void
     {
-        $value = WebhookFields::name($status);
+        $value = mb_substr(preg_replace('/[^a-z0-9_]/', '', strtolower($status)) ?: 'unknown', 0, 30);
         if (Cache::add('wa:status:unknown:'.$value, 1, now()->addHour())) {
             WaLog::info('wa.status.unknown_value', ['status' => $value]);
         }
