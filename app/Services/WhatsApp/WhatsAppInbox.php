@@ -158,6 +158,11 @@ class WhatsAppInbox
 
         $body = $in->body;
         $buttonId = $in->buttonId;
+        // لا أزرار في واتساب ويب: «2» جواباً على رسالة أزرار النظام (موافقة الملفات، الإيقاف) هو الزر نفسه.
+        // خيارات البوت (ch:…) يحلها ChoiceResolver::resolve أدناه بفحوصها
+        if ($buttonId === null && $in->type === 'text' && ($picked = ChoiceResolver::numbered($conv, $in)) && !preg_match(ChoiceResolver::PATTERN, $picked[0])) {
+            $buttonId = $picked[0];
+        }
         $type = $in->type;
         if ($type === 'unsupported') {
             WaLog::notice('webhook.inbound.unsupported', ['wamid' => $wamid, 'type' => $in->unsupportedType, 'channel_id' => $in->channelId]);

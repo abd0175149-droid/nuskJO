@@ -205,8 +205,7 @@ class AdminControlsTest extends TestCase
         $this->assertTrue($out['preview_sent']);
         $this->assertArrayNotHasKey('preview', $out, 'النموذج لا يُعطى نص المعاينة ليعيد صياغته');
         $preview = $this->lastLog()->summary;
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com')
-            && ($r['text']['body'] ?? null) === AdminTools::previewMessage($preview));
+        $this->assertContains(AdminTools::previewMessage($preview), $this->sentTexts());
         $this->assertStringContainsString(self::ADD['content'], $preview);
         $this->assertSame('system', $this->conv->messages()->where('direction', 'out')->sole()->source);
     }

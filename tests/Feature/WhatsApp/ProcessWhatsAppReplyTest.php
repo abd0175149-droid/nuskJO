@@ -62,7 +62,7 @@ class ProcessWhatsAppReplyTest extends TestCase
         $this->jobWithToken('tok-current')->handle();
 
         Http::assertSent(fn (Request $r) => str_starts_with($r->url(), 'https://generativelanguage.googleapis.com/'));
-        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v25.0/106540352242922/messages');
+        Http::assertSent(fn (Request $r) => $r->url() === 'http://nuskjo-openwa:2785/api/sessions/sess-1/messages/send-text');
         $this->assertSame(1, $this->outboundCount());
         $this->assertSame(self::BOT_REPLY, WaMessage::where('direction', 'out')->sole()->body);
 
@@ -115,9 +115,8 @@ class ProcessWhatsAppReplyTest extends TestCase
             $job->handle();
         }
 
-        Http::assertSentCount(2); // طلب Gemini واحد ورسالة Graph واحدة
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com')
-            && $r['text']['body'] === self::BOT_REPLY);
+        Http::assertSentCount(2); // طلب Gemini واحد ورسالة واحدة إلى البوابة
+        $this->assertSame([self::BOT_REPLY], $this->sentTexts());
         $this->assertSame(1, $this->outboundCount());
     }
 

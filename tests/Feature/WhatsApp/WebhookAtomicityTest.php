@@ -7,8 +7,9 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Events\RequestSending;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Concerns\ConfiguresWhatsApp;
@@ -16,8 +17,8 @@ use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * تخزين الوارد ذري (المحادثة والرسالة والنافذة أو لا شيء)، وعطل القاعدة وحده يرد 503 خلف العلم webhook_5xx
- * فتعيد ميتا الإرسال. ما خُزّن قبل خلل لاحق في الحمولة نفسها يُمرَّر للبوت، ومكرر وارد بلا رد يُعاد تمريره.
+ * تخزين الوارد ذري (المحادثة والرسالة أو لا شيء)، وعطل القاعدة وحده يرد 503 خلف العلم webhook_5xx فتعيد البوابة
+ * الإرسال. ما خُزّن قبل خلل لاحق يُمرَّر للبوت، ومكرر وارد بلا رد يُعاد تمريره.
  */
 #[Group('INV-02')]
 class WebhookAtomicityTest extends TestCase
@@ -140,11 +141,12 @@ class WebhookAtomicityTest extends TestCase
     {
         $base = DB::transactionLevel();   // RefreshDatabase يلف الاختبار بمعاملة
         $levels = [];
-        Http::fake(['graph.facebook.com/*' => function () use (&$levels) {
-            $levels[] = DB::transactionLevel();
-
-            return Http::response(['messages' => [['id' => 'wamid.OUT.1']]]);
-        }]);
+        // البوابة الوهمية مسجّلة في setUp: يُقرأ مستوى المعاملة لحظة طلب الإرسال
+        Event::listen(RequestSending::class, function (RequestSending $e) use (&$levels) {
+            if (str_contains($e->request->url(), '/messages/send-')) {
+                $levels[] = DB::transactionLevel();
+            }
+        });
 
         $this->postMessages($this->message('wamid.A', self::ALICE, 'ايقاف'))->assertOk();
 

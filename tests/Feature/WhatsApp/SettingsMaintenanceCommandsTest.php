@@ -15,8 +15,8 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * أوامر المشغّل (E10): إعادة تشفير الأسرار بعد تدوير APP_KEY، وإقفال الترقية (مسح النص الصريح لرمز التحقق
- * وتنظيف الأدوات المجهولة وإرجاع الموجّه المجمّد). لا قيمة سرية ولا مفتاح في المخرجات أو التدقيق.
+ * أوامر المشغّل (E10): إعادة تشفير الأسرار بعد تدوير APP_KEY، وإقفال الترقية (تنظيف الأدوات المجهولة وإرجاع الموجّه
+ * المجمّد). رمز التحقق من ميتا أُزيل مع ناقلها (2026-11-06). لا قيمة سرية ولا مفتاح في المخرجات أو التدقيق.
  */
 class SettingsMaintenanceCommandsTest extends TestCase
 {
@@ -35,19 +35,19 @@ class SettingsMaintenanceCommandsTest extends TestCase
         $old = 'base64:'.base64_encode(random_bytes(32));
         $new = 'base64:'.base64_encode(random_bytes(32));
         $this->useKeys($old);
-        $this->configureChannel(['wa_token' => 'EAAGrotatedtoken000000001', 'wa_app_secret' => 'rotatedappsecret000000001', 'api_key' => 'AIzaRotatedKey00000000000000001']);
+        $this->configureChannel(['api_key' => 'AIzaRotatedKey00000000000000001', 'fallback_api_key' => 'sk-ant-rotated-fallback-000001']);
         $this->useKeys($new, [$old]);
 
-        $this->assertFalse(AppKeys::decryptsWithCurrent(DB::table('wa_bot_settings')->value('wa_token')));
+        $this->assertFalse(AppKeys::decryptsWithCurrent(DB::table('wa_bot_settings')->value('api_key')));
         Artisan::call('whatsapp:reencrypt-secrets', ['--dry-run' => true]);
         $this->assertStringContainsString('بمفتاح سابق', Artisan::output());
-        $this->assertFalse(AppKeys::decryptsWithCurrent(DB::table('wa_bot_settings')->value('wa_token')), 'التجربة لا تكتب');
+        $this->assertFalse(AppKeys::decryptsWithCurrent(DB::table('wa_bot_settings')->value('api_key')), 'التجربة لا تكتب');
 
         $this->assertSame(0, Artisan::call('whatsapp:reencrypt-secrets'));
         $output = Artisan::output();
 
         $row = (array) DB::table('wa_bot_settings')->first();
-        foreach (['wa_token' => 'EAAGrotatedtoken000000001', 'wa_app_secret' => 'rotatedappsecret000000001', 'api_key' => 'AIzaRotatedKey00000000000000001'] as $column => $value) {
+        foreach (['api_key' => 'AIzaRotatedKey00000000000000001', 'fallback_api_key' => 'sk-ant-rotated-fallback-000001'] as $column => $value) {
             $this->assertTrue(AppKeys::decryptsWithCurrent($row[$column]), $column);
             $this->assertSame($value, AppKeys::current()->decryptString($row[$column]));
             $this->assertStringNotContainsString($value, $output);
@@ -58,25 +58,21 @@ class SettingsMaintenanceCommandsTest extends TestCase
         $this->assertSame(1, (int) WaBotSetting::current()->fresh()->settings_version, 'القيم نفسها: لا ترفع النسخة');
     }
 
-    public function test_finalize_clears_the_plain_verify_token_unknown_tools_and_a_frozen_prompt(): void
+    public function test_finalize_clears_unknown_tools_and_a_frozen_prompt(): void
     {
-        $this->configureChannel(['wa_verify_token' => 'typed-by-hand-token-0001', 'tools_config' => ['save_note' => false, 'old_tool' => true], 'system_prompt' => BotEngine::DEFAULT_PROMPT]);
+        $this->configureChannel(['tools_config' => ['save_note' => false, 'old_tool' => true], 'system_prompt' => BotEngine::DEFAULT_PROMPT]);
 
         Artisan::call('whatsapp:settings-finalize', ['--dry-run' => true, '--reset-prompt' => true]);
-        $this->assertSame('typed-by-hand-token-0001', WaBotSetting::current()->fresh()->wa_verify_token, 'التجربة لا تكتب');
+        $this->assertSame(['save_note' => false, 'old_tool' => true], WaBotSetting::current()->fresh()->tools_config, 'التجربة لا تكتب');
 
         $this->assertSame(0, Artisan::call('whatsapp:settings-finalize', ['--reset-prompt' => true]));
 
         $s = WaBotSetting::current()->fresh();
-        $this->assertNull($s->wa_verify_token);
-        $this->assertSame(hash('sha256', 'typed-by-hand-token-0001'), $s->wa_verify_token_hash);
         $this->assertSame(['save_note' => false], $s->tools_config);
         $this->assertNull($s->system_prompt);
-        $this->get('/api/whatsapp/webhook?'.http_build_query(['hub_mode' => 'subscribe', 'hub_verify_token' => 'typed-by-hand-token-0001', 'hub_challenge' => '7']))
-            ->assertOk()->assertSee('7');
 
         $audit = AuditLog::where('action', AuditAction::WaSettingsFinalize->value)->sole();
-        $this->assertSame(['verify_plain_cleared', 'unknown_tools_removed', 'prompt_reset'], $audit->changes['actions']);
+        $this->assertSame(['unknown_tools_removed', 'prompt_reset'], $audit->changes['actions']);
         $this->assertSame(['system', 'artisan:whatsapp:settings-finalize'], [$audit->actor_type, $audit->actor_ref]);
         $this->assertStringNotContainsString('typed-by-hand', json_encode($audit->toArray()));
     }

@@ -94,7 +94,7 @@ class OpsMetricsTest extends TestCase
         $this->assertSame(1, $today['test']);
     }
 
-    public function test_waiting_humans_latency_and_service_billable_month(): void
+    public function test_waiting_humans_latency_and_channels_down(): void
     {
         $this->travelTo(Carbon::parse('2026-10-16 05:00:00', 'UTC'));
         WaConversation::factory()->create(['needs_attention' => true, 'last_inbound_at' => now()->subMinutes(45)]);
@@ -104,18 +104,18 @@ class OpsMetricsTest extends TestCase
             WaBotUsage::create(['source' => 'live', 'model' => 'm', 'latency_ms' => $ms, 'created_at' => now()->subMinutes(5)]);
         }
         WaBotUsage::create(['source' => 'live', 'model' => 'm', 'latency_ms' => 99000, 'created_at' => now()->subHours(2)]);
-        $conv = WaConversation::factory()->windowOpen()->create();
-        $this->out(['conversation_id' => $conv->id, 'pricing_billable' => true, 'pricing_category' => 'service']);
-        $this->out(['conversation_id' => $conv->id, 'pricing_billable' => true, 'pricing_category' => 'service', 'created_at' => Carbon::parse('2026-09-30 21:30:00', 'UTC')]);  // 1 أكتوبر عمّان
-        $this->out(['conversation_id' => $conv->id, 'pricing_billable' => true, 'pricing_category' => 'service', 'created_at' => Carbon::parse('2026-09-30 20:00:00', 'UTC')]);  // سبتمبر
-        $this->out(['conversation_id' => $conv->id, 'pricing_billable' => false, 'pricing_category' => 'service']);
+        $base = ['api_key' => 'k', 'webhook_secret' => 'w', 'roles' => ['sales'], 'bot_mode' => 'full', 'is_active' => true];
+        \App\Models\WaChannel::create(['name' => 'جاهز', 'phone' => '962790000001', 'status' => 'ready', 'last_probe_ok_at' => now(), 'openwa_session_id' => 's1'] + $base);
+        \App\Models\WaChannel::create(['name' => 'منقطع', 'phone' => '962790000002', 'status' => 'disconnected', 'openwa_session_id' => 's2'] + $base);
+        \App\Models\WaChannel::create(['name' => 'موقوف التشغيل', 'phone' => '962790000003', 'status' => 'disconnected', 'is_active' => false, 'openwa_session_id' => 's3'] + $base);
 
         $snap = (new OpsMetrics)->snapshot();
 
         $this->assertSame(1, $snap['waiting_human']);
         $this->assertSame(70000, $snap['bot_latency_p90_ms_1h'], 'offset floor(0.9×10)=9 في القيم المرتبة');
-        $this->assertSame(2, $snap['service_billable_month']);
-        $this->assertNotNull($snap['channel_health']);
+        // OpenWA (2026-11-06): الأرقام الفعّالة غير الجاهزة بدل رسائل الخدمة المحتسبة وصحة قناة ميتا
+        $this->assertSame(1, $snap['channels_down']);
+        $this->assertArrayNotHasKey('service_billable_month', $snap);
     }
 
     public function test_the_snapshot_is_aggregate_only_and_fast_on_a_large_table(): void

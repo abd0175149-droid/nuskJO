@@ -22,7 +22,7 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * BlockService (E31.3): الحظر ذري بعد قبول ميتا وحده، بتدقيق صارم بخطورة warn، والمحادثة بلا بوت ولا «تدخّل».
+ * BlockService (E31.3؛ على البوابة منذ 2026-11-06): الحظر ذري بعد قبول البوابة وحده، بتدقيق صارم بخطورة warn، والمحادثة بلا بوت ولا «تدخّل».
  * رفض مسبق بلا نداء لمحادثات الإدارة والموظفين والمدموجة، وحظر واحد لنقرتين، وفك الحظر لا يعيد البوت،
  * ولا opt-out. و«حذف بياناتي» يجرّد الحظر ولا يحذفه (E31.10).
  */
@@ -42,9 +42,18 @@ class BlockServiceTest extends TestCase
         $this->admin = User::factory()->admin()->create(['name' => 'مدير الحظر']);
     }
 
-    private function fakeMeta(int $status = 200, ?array $body = null): void
+    /** البوابة: POST|DELETE /contacts/{jid}/block بالرد المعطى، وقائمة المحظورين $blocked */
+    private function fakeMeta(int $status = 200, ?array $body = null, array $blocked = []): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response($body ?? json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/block_users_ok.json')), true), $status)]);
+        $this->fakeGateway([
+            'nuskjo-openwa:2785/api/sessions/*/contacts/blocked' => Http::response(['data' => $blocked]),
+            'nuskjo-openwa:2785/api/sessions/*/contacts/*/block' => Http::response($body ?? ['success' => true], $status),
+        ]);
+    }
+
+    private function blockCalls(): int
+    {
+        return collect(Http::recorded())->filter(fn ($pair) => str_ends_with((string) parse_url($pair[0]->url(), PHP_URL_PATH), '/block'))->count();
     }
 
     private function customer(array $attrs = []): WaConversation
@@ -102,12 +111,13 @@ class BlockServiceTest extends TestCase
 
     public function test_a_meta_refusal_writes_no_local_block(): void
     {
-        $this->fakeMeta(400, ['error' => ['code' => 131021, 'message' => 'Recipient cannot be sender']]);
+        $this->fakeMeta(400, ['message' => 'cannot block']);
         $conv = $this->customer();
 
         $r = BlockService::block($conv, $this->admin, 'spam', self::REASON);
 
-        $this->assertSame([false, 'لا يمكن حظر رقمنا.'], [$r['ok'], $r['error']]);
+        $this->assertSame([false, 'GW_REJECTED'], [$r['ok'], $r['code']]);
+        $this->assertNotEmpty($r['error']);
         $this->assertSame(0, WaBlock::count());
         $this->assertNull($conv->fresh()->blocked_at);
         $this->assertTrue($conv->fresh()->bot_enabled);
@@ -156,7 +166,7 @@ class BlockServiceTest extends TestCase
         $this->fakeMeta();
         $conv = $this->customer();
 
-        // الأولى تمسك القفل: الثانية لا تنادي ميتا
+        // الأولى تمسك القفل: الثانية لا تنادي البوابة
         $held = Cache::lock("wa:block:{$conv->id}", 30);
         $this->assertTrue($held->get());
         $this->assertSame('BLOCK_BUSY', BlockService::block($conv, $this->admin, 'spam', self::REASON)['code']);
@@ -165,15 +175,13 @@ class BlockServiceTest extends TestCase
 
         $this->assertTrue(BlockService::block($conv, $this->admin, 'spam', self::REASON)['ok']);
         $this->assertSame('ALREADY_BLOCKED', BlockService::block($conv, $this->admin, 'spam', self::REASON)['code']);
-        Http::assertSentCount(1);
+        $this->assertSame(1, $this->blockCalls());
         $this->assertSame(1, WaBlock::count());
     }
 
     public function test_unblocking_keeps_the_bot_off_and_adds_no_optout(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
-            ->push(json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/block_users_ok.json')), true))
-            ->push(json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/block_users_removed.json')), true))]);
+        $this->fakeMeta();
         $conv = $this->customer();
         BlockService::block($conv, $this->admin, 'abuse', self::REASON);
 
@@ -224,9 +232,7 @@ class BlockServiceTest extends TestCase
     {
         config(['retention.erasure_ledger' => storage_path('framework/testing/erasure-ledger-e31.jsonl')]);
         // الحظر ثم قائمة ميتا في المزامنة: ميتا تعيد الرقم نفسه
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
-            ->push(json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/block_users_ok.json')), true))
-            ->push(['data' => [['messaging_product' => 'whatsapp', 'wa_id' => '16505551234']], 'paging' => ['cursors' => ['after' => 'x']]])]);
+        $this->fakeMeta(blocked: [['id' => '16505551234@c.us']]);
         $conv = $this->customer();
         BlockService::block($conv, $this->admin, 'fraud', self::REASON);
 

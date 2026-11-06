@@ -44,18 +44,8 @@ class BotNeverTouchesLedgerTest extends TestCase
         parent::setUp();
 
         $this->configureChannel();
-        // الحظر (E31) يرد بقائمة added_users للهدف نفسه، وما سواه رسالة مرسلة
-        $n = 0;
-        $this->fakeGraph(['graph.facebook.com/*' => function (Request $r) use (&$n) {
-            if (str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/block_users')) {
-                $user = (string) data_get($r->data(), 'block_users.0.user');
-
-                return Http::response(['messaging_product' => 'whatsapp', 'block_users' => ['added_users' => [['input' => $user, 'wa_id' => ltrim($user, '+')]]]]);
-            }
-
-            return Http::response(['messaging_product' => 'whatsapp', 'messages' => [['id' => 'wamid.OUT.'.(++$n)]]]);
-        }]);
-        // ميتا تجلب صورة البطاقة من رابط HTTPS عام
+        $this->fakeGateway();
+        // صورة البطاقة تُقرأ من القرص العام
         config(['filesystems.disks.public.url' => 'https://nusk.test/storage']);
 
         $user = User::factory()->create();
@@ -120,6 +110,10 @@ class BotNeverTouchesLedgerTest extends TestCase
     public function test_customer_bot_tools_never_write_to_the_ledger(): void
     {
         $optionRef = $this->offer->sellOptions()->first()->ref;
+        // resend_invoice_pdf: PDF وهمي بدل كروميوم، على قرص وسائط وهمي
+        \Illuminate\Support\Facades\Storage::fake('wa_media');
+        \App\Services\Rendering\HeadlessChromium::fake(fn (string $html, string $out) => file_put_contents($out, "%PDF-1.4\n%%EOF\n"));
+        $this->beforeApplicationDestroyed(fn () => \App\Services\Rendering\HeadlessChromium::fake(null));
         // E33: الدبوس والبطاقة من الجدولين المعتمدين، خلف العلم wa_share_cards
         config(['features.env.wa_share_cards' => true]);
         \App\Models\WaPlace::create(['name' => 'المكتب', 'latitude' => 31.9539, 'longitude' => 35.9106, 'kind' => 'office', 'is_default' => true, 'bot_allowed' => true]);
@@ -143,7 +137,12 @@ class BotNeverTouchesLedgerTest extends TestCase
             // E36: تجهيز بلا إرسال (لا تشغيل رد هنا)، ولا تمس الدفاتر
             'show_offers_menu' => [],
             'present_choices' => ['kind' => 'booking_actions', 'offer_id' => $this->offer->id],
-            'send_quote_form' => [],
+            // أدوات OpenWA (2026-11-06): قراءة، وإرسال PDF، وبلاغ، وتفضيلات الإشعارات — لا شيء منها يمس الدفاتر
+            'get_my_quote_status' => [],
+            'resend_invoice_pdf' => ['invoice_number' => 'INV-TEST-1'],
+            'get_trip_details' => [],
+            'report_issue' => ['summary' => 'الحافلة تأخرت ساعة'],
+            'manage_my_notifications' => ['action' => 'mute', 'group' => 'offers'],
             'handoff_to_human' => ['reason' => 'طلب موظفاً'],
         ];
         $this->assertEqualsCanonicalizing(BotTools::names(), array_keys($args), 'أداة جديدة في BotTools بلا حالة هنا');
@@ -153,7 +152,7 @@ class BotNeverTouchesLedgerTest extends TestCase
         $out = [];
         foreach ($args as $tool => $in) {
             $out[$tool] = BotTools::execute($tool, $in, $this->conv->fresh());
-            $this->assertArrayNotHasKey('error', $out[$tool], "{$tool} فشلت فلم تُختبر فعلاً");
+            $this->assertArrayNotHasKey('error', $out[$tool], "{$tool} فشلت فلم تُختبر فعلاً: ".json_encode($out[$tool], JSON_UNESCAPED_UNICODE));
         }
 
         // الأدوات عملت فعلاً على العميل المربوط
@@ -161,7 +160,9 @@ class BotNeverTouchesLedgerTest extends TestCase
         $this->assertSame('INV-TEST-1', $out['get_my_invoices']['invoices'][0]['invoice_number']);
         $this->assertSame(1, $out['get_my_trips']['count']);
         $this->assertTrue($out['send_offer_card']['sent']);
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com') && $r['type'] === 'image');
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages/send-image'));
+        $this->assertTrue($out['resend_invoice_pdf']['sent']);
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages/send-document'));
         $this->assertSame(2, QuoteRequest::where('conversation_id', $this->conv->id)->count());
         $this->assertFalse($this->conv->fresh()->bot_enabled);
 

@@ -51,7 +51,8 @@ final class BlockSync
             $after = $r['next_after'];
             $pages++;
         } while ($after !== null && $pages < self::MAX_PAGES);
-        $truncated = $after !== null;
+        // رقم فعّال غير جاهز لم تُقرأ قائمته: القائمة ناقصة، فلا يُحكم بغياب حظر ربما كان عليه
+        $truncated = $after !== null || \App\Models\WaChannel::query()->active()->get()->contains(fn ($c) => !$c->isReady());
 
         // ② فهرس المفاتيح: الرقم الموحّد، والمعرّف، وبصمتاهما (لصفوف جُرّدت بعد «حذف بياناتي»)
         $index = [];

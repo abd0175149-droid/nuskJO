@@ -51,6 +51,21 @@ trait SignsMetaWebhooks
         return $last;
     }
 
+    /**
+     * بديل WhatsAppInbox::handleWebhook القديم: الحمولة المحوّلة تُوزَّع مباشرة على الرقم الأول (بلا HTTP ولا سجل ويبهوك)،
+     * والنتيجة مجمّعة لكل الأحداث. لا جدولة للرد (كما كان)، فـ touched ما كان سيُجدول.
+     */
+    protected function routeMetaPayload(array $payload): \App\Services\WhatsApp\WebhookResult
+    {
+        $channel = $this->testChannel();
+        $result = new \App\Services\WhatsApp\WebhookResult;
+        foreach ($this->metaToOpenWa($payload) as [$event, $data]) {
+            \App\Services\WhatsApp\OpenWa\EventRouter::route($channel, ['event' => $event, 'sessionId' => $channel->openwa_session_id, 'data' => $data], $result);
+        }
+
+        return $result;
+    }
+
     /** @return list<array{0: string, 1: array}> */
     protected function metaToOpenWa(array $payload): array
     {

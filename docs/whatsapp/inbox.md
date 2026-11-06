@@ -10,7 +10,7 @@
 | قراءة كل أنواع الوارد بنص عربي مقروء | منفّذ ✅ | `app/Services/WhatsApp/InboundMessage.php` | E11، E33 |
 | هوية العميل: الرقم أو المعرّف الخاص (BSUID)، والدمج المشروط | منفّذ ✅ | `app/Services/WhatsApp/ContactIdentity.php` | E11 |
 | حالات التسليم بلا تراجع ولا تكرار | منفّذ ✅ (العلم `delivery_status_v2`) | `app/Services/WhatsApp/StatusApplier.php` | E21 |
-| أحداث الحساب بتفريعها الصحيح | منفّذ ✅ (العلم `channel_health`، والمسار القديم بدونه) | `app/Services/WhatsApp/AccountEventHandler.php` | E22 |
+| أحداث البوابة: الرسائل والإيصالات والتعديل والحذف والتفاعل والمكالمات وحالة الجلسة | منفّذ ✅ | `app/Services/WhatsApp/OpenWa/EventRouter.php` | OpenWA |
 | سياج الرؤية: الموظف يرى ما يخصه وحده | منفّذ ✅ | `app/Services/WhatsApp/TopicRouter.php` | E04 |
 | البث اللحظي لمن يرى المحادثة وحده | منفّذ ✅ (العلم `inbox_realtime`) | `app/Services/WhatsApp/Realtime/InboxBroadcaster.php` | E28 |
 | وارد المحظور وغير المدعوم لا يصل البوت | منفّذ ✅ | `app/Services/WhatsApp/WhatsAppInbox.php` | E31، E33 |

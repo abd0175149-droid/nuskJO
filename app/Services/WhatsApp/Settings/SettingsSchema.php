@@ -90,6 +90,10 @@ final class SettingsSchema
         'fallback_api_key_rotated_at',
         // E29: تأكيد الطبقة المدفوعة لمزوّد الذكاء (مساره الخاص، ويُمسح عند تغيير المزوّد أو المفتاح)
         'llm_terms_confirmed_at', 'llm_terms_confirmed_by', 'llm_terms_fp',
+        // OpenWA (2026-11-06): تكتبها صفحاتها بمساراتها المدقَّقة (الحدود ورسائل النظام وصلاحيات البوت)، لا PATCH الإعدادات
+        'warmup_ladder', 'system_test_mode', 'test_recipients', 'tool_profiles',
+        // حامل هاتف الرقم القديم: احتياط EchoHandler حين لا موظف أساسياً على الرقم
+        'coexistence_holder_user_id',
     ];
 
     /** النصوص الطويلة: طولها وبصمتها في التدقيق لا نصها */

@@ -59,8 +59,8 @@ class EnvExampleCoverageTest extends TestCase
     {
         $required = self::required();
 
-        $this->assertContains('WA_GRAPH_VERSION', $required['config/services.php'] ?? []);
-        $this->assertContains('WA_TOKEN', $required['config/services.php'] ?? []);
+        $this->assertContains('WA_REPLY_QUEUE', $required['config/services.php'] ?? []);
+        $this->assertContains('OPENWA_URL', $required['config/whatsapp.php'] ?? []);
         $this->assertContains('AUTHZ_MODE', $required['config/authz.php'] ?? []);
         $this->assertNotEmpty($required['config/whatsapp.php'] ?? []);
         $this->assertNotContains('POSTMARK_API_KEY', $required['config/services.php'] ?? []);

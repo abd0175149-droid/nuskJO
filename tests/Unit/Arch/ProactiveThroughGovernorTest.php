@@ -37,7 +37,7 @@ class ProactiveThroughGovernorTest extends TestCase
         $this->assertNotFalse($decide);
         $this->assertNotFalse($send);
         $this->assertLessThan($send, $decide);
-        $this->assertStringContainsString("'send_key' => 'ob:'.\$item->id", $code);
+        $this->assertStringContainsString("'send_key' => SendKey::outbox(\$item->id)", $code);
     }
 
     public function test_outbox_put_always_has_a_key(): void

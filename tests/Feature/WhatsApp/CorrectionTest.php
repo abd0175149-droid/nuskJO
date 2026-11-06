@@ -16,7 +16,7 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * رسالة التصحيح المقتبسة (E33، العلم wa_reply_quote، C009): لا تعديل في Cloud API. التصحيح نص مقتبس من الخاطئة،
+ * رسالة التصحيح المقتبسة (E33، العلم wa_reply_quote، C009): لا تعديل للرسالة المرسلة. التصحيح نص مقتبس من الخاطئة،
  * والأصل لا يتغيّر (دليل عند نزاع على سعر)، وصف تدقيق بلا نص، والبوت يعتمد التصحيح ولا يكرر الرقم الخاطئ.
  */
 class CorrectionTest extends TestCase
@@ -37,7 +37,7 @@ class CorrectionTest extends TestCase
         $this->configureChannel();
         config(['features.env.wa_reply_quote' => true]);
         $this->staff = $this->staffWith('desk', [...self::INBOX_PERMISSIONS, 'whatsapp.view_all']);
-        $this->conv = WaConversation::factory()->windowOpen()->create();
+        $this->conv = WaConversation::factory()->create();
         WaMessage::factory()->inbound()->create(['conversation_id' => $this->conv->id, 'body' => 'كم سعر الغرفة الثلاثية؟']);
         $this->original = WaMessage::factory()->fromStaff($this->staff)->create([
             'conversation_id' => $this->conv->id, 'wamid' => 'wamid.OUT.ORIG', 'body' => 'السعر 150 دينار للفرد',
@@ -59,9 +59,10 @@ class CorrectionTest extends TestCase
 
         $this->correct($this->original)->assertOk()->assertJson(['ok' => true]);
 
-        $request = collect(Http::recorded())->map(fn ($p) => $p[0])->sole();
-        $this->assertSame(['message_id' => 'wamid.OUT.ORIG'], $request['context']);
-        $this->assertSame('تصحيح: السعر 165 دينار للفرد', $request['text']['body']);
+        $send = $this->gatewaySends();
+        $this->assertCount(1, $send);
+        $this->assertSame('wamid.OUT.ORIG', $send[0]['body']['quotedMessageId']);
+        $this->assertSame('تصحيح: السعر 165 دينار للفرد', $send[0]['body']['text']);
 
         $original = $this->original->fresh();
         $correction = WaMessage::where('direction', 'out')->orderByDesc('id')->first();
@@ -113,14 +114,14 @@ class CorrectionTest extends TestCase
         $this->assertNull(data_get($elsewhere->fresh()->payload, '_corrected_by'));
     }
 
-    public function test_a_closed_window_refuses_without_http_and_the_flag_gates_the_route(): void
+    public function test_a_paused_number_refuses_without_http_and_the_flag_gates_the_route(): void
     {
         $this->fakeGraph();
-        $this->conv->update(['last_inbound_at' => now()->subDays(2)]);
+        $this->testChannel()->update(['paused_until' => now()->addHour(), 'pause_reason' => 'manual']);
 
-        $this->correct($this->original)->assertStatus(422)->assertJson(['error' => 'النافذة مغلقة — تواصل مع العميل هاتفياً.']);
+        $this->correct($this->original)->assertStatus(422)->assertJson(['code' => 'CHANNEL_PAUSED']);
 
-        $this->conv->update(['last_inbound_at' => now()->subHour()]);
+        $this->testChannel()->update(['paused_until' => null]);
         config(['features.env.wa_reply_quote' => false]);
         $this->correct($this->original)->assertStatus(422)->assertJson(['code' => 'FEATURE_OFF']);
         Http::assertNothingSent();

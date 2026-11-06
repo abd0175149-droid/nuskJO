@@ -64,10 +64,9 @@ final class ConversationEraser
         $done = ['media_meta_deleted' => 0, 'media_meta_failed' => 0];
         $step = fn (string $name, int $n) => $progress ? $progress($name, $n) : null;
 
-        // 1. الوسائط عند ميتا (forget وحده): فشل النداء لا يوقف الحذف
+        // 1. الوسائط عند طرف ثالث (forget وحده): فشل النداء لا يوقف الحذف. على بوابة OpenWA لا نسخة تُحذف (null)، فلا نداء يُعدّ
         foreach ($plan->mediaIds as $mediaId) {
-            WhatsAppChannel::deleteMedia($mediaId) ? $done['media_meta_deleted']++ : $done['media_meta_failed']++;
-            usleep(100_000);
+            $this->countRemote($done, WhatsAppChannel::deleteMedia($mediaId));
         }
         // 2. الملفات المؤرشفة (قرص E14) إن وُجد
         $done['files'] = $this->deleteArchivedFiles($ids);
@@ -311,10 +310,19 @@ final class ConversationEraser
             DB::table('wa_messages')->whereIn('conversation_id', $ids)->whereIn('media_status', ['pending', 'failed', 'too_large'])->update(['media_status' => 'skipped_consent', 'updated_at' => now()]);
         }
         foreach ($this->recentMediaIds($ids) as $mediaId) {
-            WhatsAppChannel::deleteMedia($mediaId) ? $done['media_meta_deleted']++ : $done['media_meta_failed']++;
+            $this->countRemote($done, WhatsAppChannel::deleteMedia($mediaId));
         }
 
         return $done;
+    }
+
+    /** null: لا نسخة عند الطرف الآخر (البوابة)، فلا حذف ولا فشل */
+    private function countRemote(array &$done, ?bool $deleted): void
+    {
+        if ($deleted !== null) {
+            $deleted ? $done['media_meta_deleted']++ : $done['media_meta_failed']++;
+            usleep(100_000);
+        }
     }
 
     /** @return list<string> */

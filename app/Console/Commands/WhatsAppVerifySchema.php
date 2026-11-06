@@ -20,20 +20,24 @@ class WhatsAppVerifySchema extends Command
 
     private const TABLES = ['wa_conversations', 'wa_messages', 'wa_optouts', 'quote_requests'];
 
-    /** الفهرس => الهجرة التي تنشئه (لا يُطلب قبل تشغيلها) */
+    /**
+     * الفهرس => الهجرة التي تنشئه (لا يُطلب قبل تشغيلها). منذ الأرقام المتعددة (2026-11-06) الهاتف والمعرّف فريدان مع
+     * channel_id، فالفريدان القديمان (phone وwamid وحدهما، وwa_user_id) أُسقطا.
+     */
     private const EXPECTED = [
         'wa_conversations' => [
-            'wa_conversations_phone_unique' => null,
+            'wa_conversations_channel_phone_unique' => '2026_11_07_000002_wa_conversations_channel',
+            'wa_conversations_channel_lid_unique' => '2026_11_07_000002_wa_conversations_channel',
             'wa_conversations_client_id_index' => null,
             'wa_conversations_user_id_index' => null,
             'wa_conversations_last_message_at_index' => null,
             'wa_conversations_needs_attention_index' => null,
             'wa_conversations_is_admin_chat_index' => '2026_10_14_000005_whatsapp_conversation_fence',
             'wa_conversations_last_inbound_at_index' => '2026_10_14_000007_whatsapp_reply_reliability',
-            'wa_conversations_wa_user_id_unique' => '2026_10_14_000009_wa_identity_bsuid',
+            'wa_conversations_wa_user_id_index' => '2026_11_07_000002_wa_conversations_channel',
         ],
         'wa_messages' => [
-            'wa_messages_wamid_unique' => null,
+            'wa_messages_channel_wamid_unique' => '2026_11_07_000003_wa_messages_channel',
             'wa_messages_conversation_id_index' => null,
             'wa_messages_conversation_id_id_index' => null,
             'wa_messages_reply_to_wamid_index' => '2026_10_14_000012_wa_inbound_types_and_client_link',

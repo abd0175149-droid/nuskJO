@@ -20,7 +20,7 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * «إرسال تجريبي» (E23): رقم إدارة معلَّم وحده، بنافذة مفتوحة، ونص ثابت من الكود، بالمصدر test عبر WhatsAppChannel،
+ * «إرسال تجريبي» (E23): رقم إدارة معلَّم وحده، له محادثة، ونص ثابت من الكود، بالمصدر test عبر WhatsAppChannel،
  * وحد 10 في الساعة للنظام. والرسالة التجريبية خارج سياق المساعد وبوابة «آخر رسالة».
  */
 class TestSendTest extends TestCase
@@ -62,7 +62,9 @@ class TestSendTest extends TestCase
         $row = WaMessage::findOrFail($res->json('message_id'));
         $this->assertSame(['test', 'out', 'sent'], [$row->source, $row->direction, $row->status]);
         $this->assertStringStartsWith('🧪 رسالة تجريبية من نُسك', $row->body);
-        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages') && $r['to'] === $this->conv->phone && $r['type'] === 'text');
+        $sends = $this->gatewaySends();
+        $this->assertSame(['send-text'], array_column($sends, 'path'));
+        $this->assertSame($this->conv->phone.'@c.us', $sends[0]['body']['chatId']);
         $audit = AuditLog::where('action', AuditAction::WaTestSend->value)->sole();
         $this->assertSame(['kind' => 'text', 'admin_number_id' => $this->number->id], array_intersect_key((array) $audit->changes, ['kind' => 1, 'admin_number_id' => 1]));
 
@@ -77,11 +79,16 @@ class TestSendTest extends TestCase
             $this->send(['kind' => $kind])->assertOk()->assertJson(['ok' => true]);
         }
 
-        $sent = collect(Http::recorded())->map(fn ($p) => $p[0])->filter(fn (Request $r) => str_ends_with($r->url(), '/messages'))->values();
-        $this->assertSame('https://nuskjo.example.test/images/wa-test-card.png', $sent[0]['image']['link']);
-        $this->assertSame(['test:1', 'test:2'], array_column(array_column($sent[1]['interactive']['action']['buttons'], 'reply'), 'id'));
-        $this->assertSame(['test:a', 'test:b'], array_column($sent[2]['interactive']['action']['sections'][0]['rows'], 'id'));
-        $this->assertSame(3, WaMessage::where('source', 'test')->count());
+        $sent = $this->gatewaySends();
+        $this->assertSame(['send-image', 'send-text', 'send-text'], array_column($sent, 'path'));
+        $this->assertSame('https://nuskjo.example.test/images/wa-test-card.png', $sent[0]['body']['url']);
+        $this->assertStringContainsString("1. زر تجريبي 1\n2. زر تجريبي 2", $sent[1]['body']['text']);
+        $this->assertStringContainsString("1. خيار تجريبي أ\n2. خيار تجريبي ب", $sent[2]['body']['text']);
+        // المعرّفات الثابتة في الحمولة المحفوظة (للحل بالرقم)
+        $rows = WaMessage::where('source', 'test')->orderBy('id')->get();
+        $this->assertSame(['test:1', 'test:2'], array_column(array_column($rows[1]->payload['interactive']['action']['buttons'], 'reply'), 'id'));
+        $this->assertSame(['test:a', 'test:b'], array_column($rows[2]->payload['interactive']['action']['sections'][0]['rows'], 'id'));
+        $this->assertCount(3, $rows);
     }
 
     public function test_free_text_is_never_accepted(): void
@@ -102,14 +109,14 @@ class TestSendTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_a_closed_window_is_refused_without_any_request(): void
+    public function test_a_number_without_a_conversation_is_refused_without_any_request(): void
     {
         $this->fakeGraph();
-        $this->conv->update(['last_inbound_at' => now()->subDays(2)]);
+        $this->conv->delete();
 
-        $res = $this->send()->assertUnprocessable();
+        $res = $this->send()->assertUnprocessable()->assertJson(['code' => 'NO_CONVERSATION']);
 
-        $this->assertSame('اطلب من صاحب الرقم مراسلة رقم الشركة أولاً — لا نرسل خارج نافذة 24 ساعة ولا قوالب.', $res->json('error'));
+        $this->assertSame('لا محادثة لهذا الرقم بعد — اطلب من صاحبه مراسلة رقم الشركة أولاً.', $res->json('error'));
         Http::assertNothingSent();
         $this->assertSame(0, WaMessage::count());
     }
@@ -127,9 +134,8 @@ class TestSendTest extends TestCase
         $this->assertSame(10, WaMessage::where('source', 'test')->count());
     }
 
-    public function test_the_same_idempotency_key_never_sends_twice_with_the_ledger(): void
+    public function test_the_same_idempotency_key_never_sends_twice(): void
     {
-        config(['features.env.send_ledger' => true]);
         $this->fakeGraph();
         $key = (string) Str::uuid();
 
@@ -183,7 +189,7 @@ class TestSendTest extends TestCase
             ->where('diagnostics.test_send', true)
             ->where('diagnostics.recipients.0.id', $this->number->id)
             ->where('diagnostics.recipients.0.last4', substr($this->conv->phone, -4))
-            ->where('diagnostics.recipients.0.window_open', true)
+            ->where('diagnostics.recipients.0.has_conversation', true)
             ->missing('diagnostics.recipients.0.phone'));
     }
 

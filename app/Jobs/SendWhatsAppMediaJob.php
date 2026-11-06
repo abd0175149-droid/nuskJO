@@ -20,13 +20,13 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 
 /**
- * إرسال ملف محجوز (E32.7): الرفع إلى ميتا مؤجل دائماً هنا، لا في طلب الويب. طابور wa-media-out يخدمه عامل laravel-media
+ * إرسال ملف محجوز (E32.7): الإرسال بملف مؤجل دائماً هنا، لا في طلب الويب. طابور wa-media-out يخدمه عامل laravel-media
  * قبل أرشفة الوارد، فلا يؤخر ردود البوت (wa-replies) ولا تؤخره دفعة صور واردة.
  *
- * الترتيب: الصف ما زال queued ولم تبدأ محاولته، ثم عمره (لا يصل العميلَ ملف بعد ساعات)، ثم preflight (النافذة قد
- * أُغلقت منذ الطلب)، ثم الرفع، ثم send() على الصف نفسه بالمفتاح نفسه، وفيه الأقفال كلها من جديد. لا إعادة آلية (tries=1):
- * رفع ملف كبير مرة ثانية بعد مهلة قد يكرر الإرسال. أي فشل قبل الإرسال يحسم الصف failed بنص عربي، والمفتاح محرَّر.
- * الحمولة رقم الصف وحده (لا اسم ملف ولا رقم هاتف).
+ * الترتيب: الصف ما زال queued ولم تبدأ محاولته، ثم عمره (لا يصل العميلَ ملف بعد ساعات)، ثم preflight (الرقم قد انقطع
+ * أو أُوقف منذ الطلب)، ثم send() على الصف نفسه بالمفتاح نفسه، وفيه الأقفال كلها من جديد، والملف من النسخة الخاصة base64
+ * إلى البوابة (منذ 2026-11-06 لا رفع إلى طرف ثالث). لا إعادة آلية (tries=1): إرسال ملف كبير مرة ثانية بعد مهلة قد يكرره.
+ * أي فشل قبل الإرسال يحسم الصف failed بنص عربي، والمفتاح محرَّر. الحمولة رقم الصف وحده (لا اسم ملف ولا رقم هاتف).
  */
 final class SendWhatsAppMediaJob implements ShouldBeUnique, ShouldQueue
 {
@@ -34,7 +34,7 @@ final class SendWhatsAppMediaJob implements ShouldBeUnique, ShouldQueue
 
     public int $tries = 1;
 
-    /** أقل من --timeout للعامل (125): الرفع حتى 85 ثانية والإرسال حتى 25 */
+    /** أقل من --timeout للعامل (125): الإرسال بملف حتى 90 ثانية (whatsapp.openwa.timeouts.send) ومهلة الاتصال */
     public int $timeout = 120;
 
     public bool $failOnTimeout = true;
@@ -80,17 +80,8 @@ final class SendWhatsAppMediaJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $local = OutboundFileStore::local((string) $row->media_path);
-        try {
-            $up = WhatsAppChannel::uploadMedia($conv, $local[0], (string) $row->media_mime, (string) ($row->media_filename ?: 'file'), (string) $row->source, $row->staff_id);
-        } finally {
-            OutboundFileStore::release($local);
-        }
-        if (!$up['ok']) {
-            WhatsAppChannel::failReserved($row, $up);
-
-            return;
-        }
+        // لا رفع: البوابة تأخذ الملف base64 مع الرسالة، والمعرّف يشير إلى النسخة الخاصة نفسها (PayloadMapper يقرؤها)
+        $up = ['media_id' => 'local:'.$row->media_path];
 
         $opts = [
             'row' => $row,
@@ -114,9 +105,6 @@ final class SendWhatsAppMediaJob implements ShouldBeUnique, ShouldQueue
             if ($voice) {
                 TranscribeStaffVoice::schedule($row->id);
             }
-        } elseif (empty($res['unknown'])) {
-            // رفض صريح بعد الرفع: لا يبقى الملف عند ميتا 30 يوماً بلا رسالة (محاولة واحدة، والفشل يُعدّ فقط)
-            WhatsAppChannel::deleteMedia($up['media_id']);
         }
     }
 

@@ -48,12 +48,6 @@ class AdminNumberMfaTest extends TestCase
         return $existing ? $this->put("/whatsapp/admin-numbers/{$existing->id}", $payload) : $this->post('/whatsapp/admin-numbers', $payload);
     }
 
-    private function sentTexts(): array
-    {
-        return Http::recorded(fn (Request $r) => str_contains($r->url(), '/messages'))
-            ->map(fn ($pair) => $pair[0]['text']['body'] ?? null)->filter()->values()->all();
-    }
-
     public function test_a_number_with_write_tools_needs_a_linked_account_and_requires_its_second_factor(): void
     {
         $manager = User::factory()->withPermissions(['whatsapp.settings'], 'wa_manager')->create();

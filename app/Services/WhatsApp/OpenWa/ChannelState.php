@@ -120,7 +120,7 @@ final class ChannelState
     public static function alert(WaChannel $channel, string $kind, string $title, string $body): void
     {
         if (Cache::add("wa:openwa:alert:{$kind}:{$channel->id}", 1, now()->addHour())) {
-            WhatsAppInbox::notifyAdmins($title, $body, '/whatsapp/channels');
+            WhatsAppInbox::notifyAdmins($title, $body, '/whatsapp/channels', 'RB-12');
         }
     }
 }

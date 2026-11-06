@@ -6,7 +6,6 @@ use App\Enums\AuditAction;
 use App\Models\Client;
 use App\Models\QuoteRequest;
 use App\Models\User;
-use App\Models\WaBotSetting;
 use App\Models\WaBotUsage;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
@@ -16,7 +15,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 
@@ -201,7 +199,7 @@ class AnalyticsSqlTest extends TestCase
 
         $this->actingAs($admin)->get('/whatsapp/analytics?period=24h')->assertOk()
             ->assertInertia(fn (AssertableInertia $p) => $p->component('WhatsApp/Analytics', false)->where('v2', true)->where('period', '24h')
-                ->has('traffic.series.series', 24)->has('traffic.peak.grid', 7)->has('metaCost.service_free_tier'));
+                ->has('traffic.series.series', 24)->has('traffic.peak.grid', 7)->missing('metaCost'));
         $this->actingAs($admin)->getJson('/api/whatsapp/analytics?period=1y')->assertStatus(422);
         $this->actingAs($admin)->getJson('/api/whatsapp/analytics')->assertOk()->assertJsonPath('period', '7d');
 
@@ -218,22 +216,5 @@ class AnalyticsSqlTest extends TestCase
         $this->assertSame([], PeriodAnalytics::topConversations('7d', $staff), 'بلا اختصاص لا يرى المحادثة');
         $admin = User::factory()->admin()->create();
         $this->assertSame('9627•••4567', PeriodAnalytics::topConversations('7d', $admin)[0]['name']);
-    }
-
-    public function test_meta_analytics_reconcile_is_read_daily_and_shown_for_comparison_only(): void
-    {
-        config(['features.env.meta_analytics_reconcile' => true, 'services.whatsapp.waba_id' => '102290129340398']);
-        WaBotSetting::current()->fill(['wa_token' => 'test-token', 'wa_phone_number_id' => '106540352242922'])->save();
-        Http::fake(['graph.facebook.com/*' => Http::response(['analytics' => ['granularity' => 'DAY',
-            'data_points' => [['start' => 1, 'end' => 2, 'sent' => 40, 'delivered' => 38]]], 'id' => '102290129340398'])]);
-
-        $this->artisan('whatsapp:meta-analytics')->assertSuccessful();
-
-        Http::assertSent(fn ($r) => str_contains(urldecode($r->url()), 'fields=analytics.start(') && $r->method() === 'GET');
-        $meta = PeriodAnalytics::metaCost('7d')['meta'];
-        $this->assertSame(['ok' => true, 'meta_sent' => 40, 'meta_delivered' => 38], array_intersect_key($meta, array_flip(['ok', 'meta_sent', 'meta_delivered'])));
-
-        config(['features.env.meta_analytics_reconcile' => false]);
-        $this->assertNull(PeriodAnalytics::metaCost('7d')['meta']);
     }
 }

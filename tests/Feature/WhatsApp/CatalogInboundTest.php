@@ -12,8 +12,8 @@ use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * طلبات كتالوج ميتا وأسئلة منتجاته (E36، C043): لا كتالوج عندنا، فإن وصل طلب order أو سؤال بـ referred_product (كتالوج
- * رُبط بالحساب من خارج النظام) يُحفظ بنص مقروء ويصل موظفاً بسببه، ولا يرد عليه البوت. لا تُقرأ معرّفات المنتجات.
+ * طلبات كتالوج واتساب وأسئلة منتجاته (E36، C043): لا كتالوج عندنا، فإن وصل طلب order أو سؤال عن منتج (product، كتالوج
+ * رُبط بالرقم من خارج النظام) يُحفظ بنص مقروء ويصل موظفاً بسببه، ولا يرد عليه البوت. لا تُقرأ معرّفات المنتجات.
  */
 class CatalogInboundTest extends TestCase
 {
@@ -29,19 +29,17 @@ class CatalogInboundTest extends TestCase
         $this->configureChannel();
     }
 
-    private function send(array $message): void
+    private function send(array $over): void
     {
-        $payload = json_decode(file_get_contents($this->fixturePath('text.json')), true);
-        data_set($payload, 'entry.0.changes.0.value.messages.0', $message + ['from' => '16505551234', 'id' => 'wamid.C'.uniqid(), 'timestamp' => (string) now()->timestamp]);
-        $this->postRawWebhook(json_encode($payload))->assertOk();
+        $this->postOpenWa('message.received', $this->incoming('16505551234', '', $over))->assertOk();
     }
 
     public function test_a_catalog_order_reaches_staff_not_the_bot(): void
     {
-        $this->send(['type' => 'order', 'order' => ['product_items' => [['quantity' => 1], ['quantity' => 2]], 'text' => 'للعائلة']]);
+        $this->send(['type' => 'order', 'orderId' => '9912', 'body' => '']);
 
         $conv = WaConversation::sole();
-        $this->assertSame('🛒 طلب من الكتالوج: 2 أصناف — للعائلة', WaMessage::sole()->body);
+        $this->assertSame('🛒 طلب من الكتالوج', WaMessage::sole()->body);
         $this->assertTrue($conv->needs_attention);
         $this->assertSame('catalog', $conv->attention_reason);
         Queue::assertNotPushed(ProcessWhatsAppReply::class);
@@ -49,9 +47,10 @@ class CatalogInboundTest extends TestCase
 
     public function test_a_question_about_a_catalog_product_is_marked_and_reaches_staff(): void
     {
-        $this->send(['type' => 'text', 'text' => ['body' => 'هل هذا متوفر؟'], 'context' => ['from' => '15550783881', 'id' => 'wamid.PRODUCT', 'referred_product' => []]]);
+        $this->send(['type' => 'product', 'product' => ['title' => 'باقة العمرة', 'productId' => 'P-1']]);
 
-        $this->assertSame('🛍️ [سؤال عن منتج من كتالوج واتساب] هل هذا متوفر؟', WaMessage::sole()->body);
+        $this->assertSame('🛍️ [سؤال عن منتج من كتالوج واتساب] باقة العمرة', WaMessage::sole()->body);
+        $this->assertStringNotContainsString('P-1', WaMessage::sole()->body);
         $this->assertSame('catalog', WaConversation::sole()->attention_reason);
         Queue::assertNotPushed(ProcessWhatsAppReply::class);
     }

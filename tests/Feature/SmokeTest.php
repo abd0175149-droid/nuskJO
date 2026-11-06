@@ -28,8 +28,8 @@ class SmokeTest extends TestCase
         $this->actingAs($admin)
             ->get('/whatsapp/inbox')
             ->assertOk()
-            // العلم inbox_v2 مطفأ افتراضياً فيُعرض الصندوق القديم (InboxFlagTest للجديد)
-            ->assertInertia(fn (Assert $page) => $page->component('WhatsApp/InboxLegacy', false));
+            // الصندوق الجديد وحده منذ OpenWA (2026-11-06)، والقديم InboxLegacy حُذف
+            ->assertInertia(fn (Assert $page) => $page->component('WhatsApp/Inbox', false));
     }
 
     public function test_public_legal_pages_state_backup_retention(): void

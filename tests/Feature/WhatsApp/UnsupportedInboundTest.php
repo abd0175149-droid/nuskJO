@@ -18,8 +18,9 @@ use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * رسالة لا تدعمها منصة ميتا (E33، بلا علم لأنه تصحيح خلل): نص عربي بحسب unsupported.type، تُحفظ وتفتح النافذة، لكن
- * البوت لا يرد على نص لا يراه: «تدخّل» بسبب «رسالة غير مدعومة» وإشعار واحد في نافذة التهدئة. لا رسالة أصلية تتغيّر.
+ * رسالة لا يعرضها واتساب ويب (E33، منذ 2026-11-06 من البوابة): نص عربي بحسب النوع، تُحفظ، لكن البوت لا يرد على نص
+ * لا يراه: «تدخّل» بسبب «رسالة غير مدعومة» وإشعار واحد في نافذة التهدئة. والحذف والتعديل حدثان على الأصل لا رسائل،
+ * ونص الأصل لا يتغيّر.
  */
 class UnsupportedInboundTest extends TestCase
 {
@@ -45,24 +46,29 @@ class UnsupportedInboundTest extends TestCase
     public static function kinds(): array
     {
         return [
-            'edit' => ['unsupported_edit.json', '✏️ عدّل العميل رسالة سابقة، ولا يظهر النص الجديد في منصة ميتا — راجع المحادثة واطلب منه إعادة كتابتها'],
-            'poll' => ['unsupported_poll.json', '📊 أرسل العميل استطلاعاً لا تعرضه منصة ميتا'],
-            'unknown' => ['unsupported.json', '⚠️ رسالة لا تدعمها منصة ميتا'],
+            'poll' => [['type' => 'poll_creation', 'poll' => ['name' => 'أي موعد يناسبكم؟']], '📊 أرسل العميل استطلاعاً: أي موعد يناسبكم؟'],
+            'masked' => [['type' => 'masked'], '🔒 رسالة لا يعرضها واتساب على الأجهزة المرتبطة — افتحها على هاتف الرقم'],
+            'unknown' => [['type' => 'list_response_v9'], '⚠️ رسالة لا يعرضها واتساب ويب (list_response_v9)'],
         ];
     }
 
+    private function postUnsupported(array $over): void
+    {
+        $this->postOpenWa('message.received', $this->incoming('16505551234', '', $over + ['timestamp' => now()->getTimestamp()]))->assertOk();
+    }
+
     #[DataProvider('kinds')]
-    public function test_an_arabic_text_reaches_staff_and_never_the_bot(string $fixture, string $body): void
+    public function test_an_arabic_text_reaches_staff_and_never_the_bot(array $over, string $body): void
     {
         Queue::fake();
 
-        $this->postMetaWebhook($fixture)->assertOk();
+        $this->postUnsupported($over);
 
         $message = WaMessage::where('msg_type', 'unsupported')->sole();
         $this->assertSame($body, $message->body);
         $conv = $this->conv->fresh();
         $this->assertSame([true, 'unsupported', 1], [$conv->needs_attention, $conv->attention_reason, $conv->unread_count]);
-        $this->assertTrue($conv->last_inbound_at->gt(now()->subMinutes(5)), 'رسالة حقيقية تفتح النافذة');
+        $this->assertTrue($conv->last_inbound_at->gt(now()->subMinutes(5)), 'رسالة حقيقية من العميل');
         Queue::assertNotPushed(ProcessWhatsAppReply::class);
         $this->assertSame('أريد غرفة ثلاثية', $this->earlier->fresh()->body);
     }
@@ -71,34 +77,34 @@ class UnsupportedInboundTest extends TestCase
     {
         Queue::fake();
 
-        $this->postMetaWebhook('unsupported_poll.json')->assertOk();
-        $this->postMetaWebhook('unsupported_edit.json')->assertOk();
+        $this->postUnsupported(['type' => 'poll_creation']);
+        $this->postUnsupported(['type' => 'masked']);
 
         $this->assertSame(2, WaMessage::where('msg_type', 'unsupported')->count());
         $this->assertSame(1, Notification::where('title', 'like', '%تحتاج تدخّلاً%')->count());
         Queue::assertNotPushed(ProcessWhatsAppReply::class);
     }
 
-    public function test_an_explicit_edit_or_revoke_type_is_treated_as_unsupported(): void
+    public function test_an_edit_or_revoke_marks_the_original_and_adds_no_message(): void
     {
-        $payload = json_decode((string) file_get_contents($this->fixturePath('unsupported_edit.json')), true);
-        data_set($payload, 'entry.0.changes.0.value.messages.0', [
-            'from' => '16505551234', 'id' => 'wamid.HBgLMTY1MDU1NTEyMzQVAgASGBQ5QzY5QjBDOUY5Rjg0ODM0QjlKRgA=', 'timestamp' => '1760425505',
-            'type' => 'revoke', 'revoke' => ['original_message_id' => 'wamid.X'],
-        ]);
+        Queue::fake();
+        $this->earlier->forceFill(['wamid' => 'false_16505551234@c.us_EARLY1'])->save();
 
-        $this->postRawWebhook(json_encode($payload))->assertOk();
+        $this->postOpenWa('message.edited', ['messageId' => 'false_16505551234@c.us_EARLY1', 'body' => 'أريد غرفة رباعية'])->assertOk();
+        $this->postOpenWa('message.revoked', ['revokedId' => 'false_16505551234@c.us_EARLY1'])->assertOk();
 
-        $message = WaMessage::latest('id')->first();
-        $this->assertSame(['unsupported', '🗑️ حذف العميل رسالة سابقة من جهازه، ويبقى نصها الأصلي هنا'], [$message->msg_type, $message->body]);
-        $this->assertSame('أريد غرفة ثلاثية', $this->earlier->fresh()->body);
-        $this->assertSame('unsupported', $this->conv->fresh()->attention_reason);
+        $earlier = $this->earlier->fresh();
+        $this->assertSame('أريد غرفة ثلاثية', $earlier->body, 'الأصل دليل لا يُمحى');
+        $this->assertSame('أريد غرفة رباعية', $earlier->payload['_edited_body']);
+        $this->assertNotNull($earlier->payload['_revoked_at']);
+        $this->assertSame(1, WaMessage::count());
+        Queue::assertNotPushed(ProcessWhatsAppReply::class);
     }
 
     public function test_the_attention_reason_has_a_label_and_the_system_rule_is_updated(): void
     {
         $this->assertSame('🧩 رسالة غير مدعومة', ReplyState::REASONS['unsupported']);
-        $this->assertStringContainsString('رسالة لا تدعمها منصة ميتا', BotEngine::SYSTEM_RULES);
+        $this->assertStringContainsString('رسالة لا يعرضها واتساب ويب', BotEngine::SYSTEM_RULES);
         $this->assertStringContainsString('لا تعلّق عليها، فقد وصلت لموظف', BotEngine::SYSTEM_RULES);
     }
 }

@@ -89,12 +89,4 @@ class MarkUnreadTest extends TestCase
         $this->assertNull($this->conv->fresh()->marked_unread_at);
         $this->assertSame(0, (int) $this->conv->fresh()->unread_count);
     }
-
-    public function test_window_reminders_still_see_a_marked_conversation(): void
-    {
-        $this->conv->update(['needs_attention' => true, 'last_inbound_at' => now()->subHours(22), 'assigned_to' => $this->staff->id]);
-        $this->mark();
-
-        $this->artisan('whatsapp:window-reminders')->expectsOutputToContain('أُرسل 1');
-    }
 }

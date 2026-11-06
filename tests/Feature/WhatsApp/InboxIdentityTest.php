@@ -2,20 +2,17 @@
 
 namespace Tests\Feature\WhatsApp;
 
-use App\Models\AuditLog;
 use App\Models\Client;
-use App\Models\Setting;
 use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
-use App\Services\WhatsApp\IdentityMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
  * الصندوق والإعدادات مع الهوية (E11.9): المدموجة لا تظهر، والبحث باسم المستخدم واللقب، وحقول الهوية والإعلان،
- * والاقتباس من المحادثة نفسها، والوسائط بلا رابط، ومفتاح الوضع بصلاحية الإعدادات وبسجل.
+ * والاقتباس من المحادثة نفسها، والوسائط بلا رابط. مفتاح «وضع الهوية» (BSUID من ميتا) أُزيل مع ناقلها (2026-11-06).
  */
 class InboxIdentityTest extends TestCase
 {
@@ -83,31 +80,14 @@ class InboxIdentityTest extends TestCase
         $this->assertTrue($m['🔄 غيّر العميل رقمه']['is_system']);
         $this->assertFalse($m['نعم']['is_system']);
         $this->assertStringNotContainsString('media.1', $res->getContent());
-        $this->assertSame(['store', false], [$res->json('conversation.identity_mode'), $res->json('conversation.phoneless')]);
+        $this->assertFalse($res->json('conversation.phoneless'));
     }
 
-    public function test_the_inbox_page_passes_link_permission_and_mode(): void
+    public function test_the_inbox_page_passes_the_link_permission(): void
     {
-        Setting::set('wa_identity_mode', IdentityMode::STAFF);
         $linker = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.link_client', 'clients.view'], 'linker')->create();
 
-        $this->actingAs($linker)->get('/whatsapp/inbox')->assertInertia(fn ($page) => $page
-            ->where('canLinkClient', true)->where('identityMode', 'staff'));
+        $this->actingAs($linker)->get('/whatsapp/inbox')->assertInertia(fn ($page) => $page->where('canLinkClient', true));
         $this->actingAs($this->staff)->get('/whatsapp/inbox')->assertInertia(fn ($page) => $page->where('canLinkClient', false));
-    }
-
-    public function test_the_identity_mode_switch_needs_settings_and_is_audited(): void
-    {
-        $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
-
-        $this->actingAs($this->staff)->patchJson('/api/whatsapp/settings/identity-mode', ['mode' => 'full'])->assertForbidden();
-        $this->actingAs($owner)->patchJson('/api/whatsapp/settings/identity-mode', ['mode' => 'everyone'])->assertJsonValidationErrors('mode');
-        $this->actingAs($owner)->patchJson('/api/whatsapp/settings/identity-mode', ['mode' => 'staff'])->assertOk()->assertJsonPath('identityMode', 'staff');
-        $this->actingAs($owner)->patchJson('/api/whatsapp/settings/identity-mode', ['mode' => 'staff'])->assertOk();
-
-        $this->assertSame(IdentityMode::STAFF, IdentityMode::current());
-        $row = AuditLog::where('action', 'wa.identity_mode')->sole();
-        $this->assertSame([['from' => 'store', 'to' => 'staff'], $owner->id], [$row->changes, $row->user_id]);
-        $this->actingAs($owner)->get('/whatsapp/settings')->assertInertia(fn ($page) => $page->where('identityMode', 'staff'));
     }
 }

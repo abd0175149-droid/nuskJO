@@ -14,13 +14,10 @@ use App\Services\WhatsApp\Outbound\OutboundMessage;
 use App\Services\WhatsApp\Outbound\RichTypes;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsWhatsAppStaff;
 use Tests\Concerns\ConfiguresWhatsApp;
-use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
@@ -32,7 +29,6 @@ class ShareContactCardTest extends TestCase
     use BuildsWhatsAppStaff;
     use ConfiguresWhatsApp;
     use RefreshDatabase;
-    use SignsMetaWebhooks;
 
     private WaConversation $conv;
 
@@ -55,9 +51,14 @@ class ShareContactCardTest extends TestCase
             'consent_note' => 'وافق كتابياً عبر البريد', 'consented_at' => now()->subDay()]);
     }
 
-    private function requests(): array
+    /** بطاقة الطرف الثالث كما تصل من البوابة: vCard في body، والرقم في TEL وحده */
+    private const VCARD = "BEGIN:VCARD\nVERSION:3.0\nN:Nelson;Sheena;;;\nFN:Sheena Nelson\nTEL;type=CELL;waid=16505553333:+1 650-555-3333\nEND:VCARD";
+
+    private function postCard(): WaMessage
     {
-        return collect(Http::recorded())->map(fn ($p) => $p[0])->filter(fn (Request $r) => str_contains($r->url(), '/messages'))->values()->all();
+        $this->postOpenWa('message.received', $this->incoming('16505551234', self::VCARD, ['type' => 'vcard']))->assertOk();
+
+        return WaMessage::where('msg_type', 'contacts')->sole();
     }
 
     public function test_the_payload_carries_the_name_org_phone_and_wa_id(): void
@@ -68,13 +69,17 @@ class ShareContactCardTest extends TestCase
         $res = WhatsAppChannel::sendContacts($this->conv, collect([$this->office]), 'bot', null, ['send_key' => 'reply:card:1']);
 
         $this->assertTrue($res['ok']);
+        $sends = $this->gatewaySends();
+        $this->assertSame(['send-contact'], array_column($sends, 'path'));
+        $this->assertSame(['chatId' => $this->conv->wa_phone.'@c.us', 'contactName' => 'مندوب نسك', 'contactNumber' => '16505553333'], $sends[0]['body']);
+        $row = WaMessage::where('direction', 'out')->sole();
+        // المحفوظ بشكله الداخلي كما طابقته السياسة مع الصف المعتمد
         $this->assertSame([[
             'name' => ['formatted_name' => 'مندوب نسك', 'first_name' => 'مندوب نسك'],
             'org' => ['company' => 'نسك الذهبية', 'title' => 'مندوب'],
             'phones' => [['phone' => '+16505553333', 'type' => 'WORK', 'wa_id' => '16505553333']],
             'urls' => [['url' => 'https://www.nusuk.sa', 'type' => 'WORK']],
-        ]], $this->requests()[0]['contacts']);
-        $row = WaMessage::where('direction', 'out')->sole();
+        ]], $row->payload['contacts']);
         $this->assertSame(['contacts', '👤 بطاقة: مندوب نسك', [$this->office->id]], [$row->msg_type, $row->body, data_get($row->payload, '_meta.card_ids')]);
         $this->assertSame([$this->office->id], AuditLog::where('action', 'wa.share_card')->sole()->changes['card_ids']);
     }
@@ -109,21 +114,19 @@ class ShareContactCardTest extends TestCase
         $post([$inactive->id])->assertStatus(422)->assertJson(['code' => 'CARD_INACTIVE']);
         $post([$this->office->id, $more[0]])->assertOk()->assertJson(['ok' => true]);
 
-        $this->assertCount(1, $this->requests());
-        $this->assertCount(2, $this->requests()[0]['contacts']);
+        // واتساب ويب يرسل بطاقة لكل رسالة: رسالتان بمفتاحين مشتقين
+        $this->assertSame(['send-contact', 'send-contact'], array_column($this->gatewaySends(), 'path'));
+        $this->assertSame(2, WaMessage::where('direction', 'out')->where('msg_type', 'contacts')->count());
     }
 
     public function test_an_inbound_card_keeps_its_number_out_of_the_body_and_the_model_context(): void
     {
-        $this->travelTo(Carbon::createFromTimestamp(1760425540, config('app.timezone')));
-        $conv = WaConversation::factory()->create(['phone' => '16505551234', 'wa_phone' => '16505551234', 'last_inbound_at' => now()->subHour()]);
+        $row = $this->postCard();
+        $conv = $row->conversation;
 
-        $this->postMetaWebhook('contacts.json')->assertOk();
-
-        $row = WaMessage::where('msg_type', 'contacts')->sole();
         $this->assertSame('👤 بطاقة جهة اتصال: Sheena Nelson', $row->body);
         $this->assertDoesNotMatchRegularExpression('/\d{4}/', (string) $conv->fresh()->last_message_preview);
-        $this->assertSame('16505553333', data_get($row->payload, 'contacts.0.phones.0.wa_id'), 'الرقم في payload وحده');
+        $this->assertStringContainsString('16505553333', json_encode($row->payload), 'الرقم في payload وحده');
 
         $messages = (new \ReflectionMethod(BotEngine::class, 'buildMessages'))->invoke(null, $conv->fresh(), WaBotSetting::current(), null);
         $this->assertDoesNotMatchRegularExpression('/555|3333/', implode("\n", array_column($messages, 'text')));
@@ -131,9 +134,7 @@ class ShareContactCardTest extends TestCase
 
     public function test_the_thread_returns_card_numbers_to_reply_holders_only(): void
     {
-        $this->travelTo(Carbon::createFromTimestamp(1760425540, config('app.timezone')));
-        $conv = WaConversation::factory()->create(['phone' => '16505551234', 'wa_phone' => '16505551234', 'last_inbound_at' => now()->subHour()]);
-        $this->postMetaWebhook('contacts.json')->assertOk();
+        $conv = $this->postCard()->conversation;
         $replier = $this->staffWith('desk', [...self::INBOX_PERMISSIONS, 'whatsapp.view_all']);
         $viewer = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.view_all'], 'viewer')->create();
         $card = fn (User $u) => collect($this->actingAs($u)->getJson("/api/whatsapp/conversations/{$conv->id}/messages")->assertOk()->json('messages'))
@@ -170,6 +171,6 @@ class ShareContactCardTest extends TestCase
 
         $sent = BotTools::execute('send_contact_card', ['card_key' => 'card_'.$this->office->id], $this->conv);
         $this->assertTrue($sent['sent']);
-        $this->assertSame('+16505553333', $this->requests()[0]['contacts'][0]['phones'][0]['phone']);
+        $this->assertSame('16505553333', $this->gatewaySends()[0]['body']['contactNumber']);
     }
 }

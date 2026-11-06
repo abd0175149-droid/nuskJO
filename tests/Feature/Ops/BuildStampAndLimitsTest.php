@@ -39,7 +39,7 @@ class BuildStampAndLimitsTest extends TestCase
 
         $this->actingAs($admin)->get('/whatsapp/settings')->assertOk()
             ->assertInertia(fn (AssertableInertia $p) => $p->where('build.sha', 'abc1234')->where('build.time', '2026-10-16T08:40:00Z')
-                ->has('outbound.today')->where('outbound.system_daily_cap', 50));
+                ->has('outbound.today')->missing('outbound.system_daily_cap'));
         $this->assertStringNotContainsString('abc1234', $this->get('/up')->getContent());
 
         Artisan::call('whatsapp:doctor');
@@ -58,21 +58,19 @@ class BuildStampAndLimitsTest extends TestCase
         $this->assertStringContainsString('BUILD_UNSTAMPED', Artisan::output());
     }
 
+    /** حد تنبيه الصادر اليومي وحده (E24). سقف الإرسال المبادر وسعر رسالة ميتا أُزيلا: الحدود في wa_send_limits (2026-11-06) */
     public function test_the_limits_are_saved_through_the_settings_writer_and_audited(): void
     {
         $admin = User::factory()->admin()->create();
         WaBotSetting::current();
 
-        $this->patchSettings($admin, ['wa_daily_alert_threshold' => 500, 'wa_system_daily_cap' => 0, 'wa_service_rate_usd' => 0.0045])->assertOk();
+        $this->patchSettings($admin, ['wa_daily_alert_threshold' => 500])->assertOk();
 
-        $s = WaBotSetting::current()->fresh();
-        $this->assertSame([500, 0, 0.0045], [$s->wa_daily_alert_threshold, $s->wa_system_daily_cap, $s->wa_service_rate_usd]);
+        $this->assertSame(500, WaBotSetting::current()->fresh()->wa_daily_alert_threshold);
         $audit = AuditLog::where('action', AuditAction::WaSettingsUpdate->value)->latest('id')->first();
-        $this->assertSame(['from' => 50, 'to' => 0], $audit->changes['changed']['wa_system_daily_cap']);
+        $this->assertSame(500, $audit->changes['changed']['wa_daily_alert_threshold']['to']);
 
-        $this->patchSettings($admin, ['wa_service_rate_usd' => 2])->assertStatus(422);
-        $this->patchSettings($admin, ['wa_system_daily_cap' => -1])->assertStatus(422);
-        $this->patchSettings($admin, ['wa_service_rate_usd' => null])->assertOk();
-        $this->assertNull(WaBotSetting::current()->fresh()->wa_service_rate_usd);
+        $this->patchSettings($admin, ['wa_system_daily_cap' => 0])->assertStatus(422);
+        $this->patchSettings($admin, ['wa_service_rate_usd' => 0.0045])->assertStatus(422);
     }
 }

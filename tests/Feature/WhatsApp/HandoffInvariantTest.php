@@ -46,9 +46,8 @@ class HandoffInvariantTest extends TestCase
 
     private function isGraphText(Request $r, ?string $body = null): bool
     {
-        return str_contains($r->url(), 'graph.facebook.com')
-            && $r['type'] === 'text'
-            && ($body === null || $r['text']['body'] === $body);
+        return str_contains($r->url(), '/messages/send-text')
+            && ($body === null || $r['text'] === $body);
     }
 
     private function toolsUsed(WaConversation $conv): array

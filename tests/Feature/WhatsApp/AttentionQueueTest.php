@@ -74,7 +74,7 @@ class AttentionQueueTest extends TestCase
         $this->assertSame(['عمرة'], $second['topics']);
         $this->assertSame('موظفة المبيعات', $second['assignee']);
         $this->assertSame('🙋 طلب موظفاً', $second['reason']);
-        $this->assertIsInt($second['window_minutes_left']);
+        $this->assertArrayNotHasKey('window_minutes_left', $second, 'لا نافذة 24 ساعة على OpenWA');
         $this->assertStringEndsWith('/whatsapp/inbox?conv='.$linked->id, $second['url']);
 
         $json = json_encode($out, JSON_UNESCAPED_UNICODE);

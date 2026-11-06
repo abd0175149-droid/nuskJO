@@ -9,6 +9,7 @@ use App\Models\WaMessage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
@@ -39,9 +40,11 @@ class SendOutcomeTest extends TestCase
             ['Idempotency-Key' => (string) Str::uuid()]);
     }
 
+    private const SEND_PATH = 'nuskjo-openwa:2785/api/sessions/*/messages/*';
+
     private function timeout(): void
     {
-        Http::fake(['graph.facebook.com/*' => fn () => throw new ConnectionException('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received for https://graph.facebook.com/v25.0/106540352242922/messages')]);
+        $this->fakeGateway([self::SEND_PATH => fn () => throw new ConnectionException('cURL error 28: Operation timed out after 90001 milliseconds with 0 bytes received for http://nuskjo-openwa:2785/api/sessions/sess-1/messages/send-text')]);
     }
 
     private function assertMaybeSent($response): void
@@ -49,23 +52,13 @@ class SendOutcomeTest extends TestCase
         $response->assertStatus(202)->assertJsonPath('ok', false)->assertJsonPath('code', 'OUTCOME_UNKNOWN')->assertJsonPath('unknown', true);
         $error = $response->json('error');
         $this->assertStringStartsWith('قد تكون الرسالة أُرسلت — راجع المحادثة قبل الإعادة', $error);
-        foreach (['http', 'graph.facebook.com', 'cURL', 'timed out', 'Exception'] as $raw) {
+        foreach (['http', 'nuskjo-openwa', 'cURL', 'timed out', 'Exception'] as $raw) {
             $this->assertStringNotContainsString($raw, $error);
         }
     }
 
-    public function test_a_timeout_on_the_old_path_is_maybe_sent_not_failed(): void
+    public function test_a_timeout_is_maybe_sent_not_failed(): void
     {
-        $this->timeout();
-        $conversation = WaConversation::factory()->windowOpen()->create();
-
-        $this->assertMaybeSent($this->send($conversation));
-        $this->assertSame(WaMessage::STATUS_UNKNOWN, WaMessage::where('conversation_id', $conversation->id)->sole()->status);
-    }
-
-    public function test_a_timeout_with_the_send_ledger_is_maybe_sent(): void
-    {
-        config(['features.env.send_ledger' => true]);
         $this->timeout();
         $conversation = WaConversation::factory()->windowOpen()->create();
 
@@ -74,19 +67,20 @@ class SendOutcomeTest extends TestCase
         $this->assertMaybeSent($response);
         $this->assertSame('unknown', $response->json('status'));
         $this->assertNotNull($response->json('row_id'));
+        $this->assertSame(WaMessage::STATUS_UNKNOWN, WaMessage::where('conversation_id', $conversation->id)->sole()->status);
     }
 
     public function test_a_connection_that_never_opened_is_an_explicit_failure(): void
     {
-        config(['features.env.meta_error_v2' => true]);
-        Http::fake(['graph.facebook.com/*' => fn () => throw new ConnectionException('cURL error 7: Failed to connect to graph.facebook.com port 443')]);
+        Sleep::fake();
+        $this->fakeGateway([self::SEND_PATH => fn () => throw new ConnectionException('cURL error 7: Failed to connect to nuskjo-openwa port 2785')]);
 
-        $this->send(WaConversation::factory()->windowOpen()->create())->assertStatus(422)->assertJsonPath('code', 'HTTP_CONNECT_FAILED');
+        $this->send(WaConversation::factory()->windowOpen()->create())->assertStatus(422)->assertJsonPath('code', 'GW_UNREACHABLE');
     }
 
-    public function test_a_meta_rejection_stays_422(): void
+    public function test_a_gateway_rejection_stays_422(): void
     {
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/error_131026.json')), true), 400)]);
+        $this->fakeGateway([self::SEND_PATH => Http::response(['statusCode' => 400, 'message' => ['chatId must be a string']], 400)]);
 
         $response = $this->send(WaConversation::factory()->windowOpen()->create());
 
@@ -94,12 +88,13 @@ class SendOutcomeTest extends TestCase
         $this->assertNotSame('OUTCOME_UNKNOWN', $response->json('code'));
     }
 
-    public function test_without_the_flag_the_old_answers_stay(): void
+    public function test_without_the_flag_the_raw_unknown_answer_stays(): void
     {
         config(['features.env.connection_resilience' => false]);
         $this->timeout();
 
-        $this->send(WaConversation::factory()->windowOpen()->create())->assertStatus(422)->assertJsonPath('code', 'HTTP_ERROR');
+        $this->send(WaConversation::factory()->windowOpen()->create())->assertStatus(202)
+            ->assertJsonPath('code', 'GW_TIMEOUT')->assertJsonPath('unknown', true);
     }
 
     public function test_the_thirty_first_send_in_a_minute_is_slowed_down(): void

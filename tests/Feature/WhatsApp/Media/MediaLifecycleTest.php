@@ -139,8 +139,11 @@ class MediaLifecycleTest extends TestCase
         Cache::flush();
         $this->assertFalse(MediaConsent::maybeNotify($this->conv->fresh()), 'خلال 30 يوماً لا يتكرر');
 
-        Http::assertSent(fn (Request $r) => data_get($r->data(), 'interactive.action.buttons.1.reply.id') === MediaConsent::NO
-            && str_contains(data_get($r->data(), 'interactive.body.text'), '120 يوماً'));
+        // لا أزرار في واتساب ويب: نص مرقّم، والرد «2» يُحل إلى MediaConsent::NO
+        $this->assertCount(1, $this->sentTexts());
+        $this->assertStringContainsString('120 يوماً', $this->sentTexts()[0]);
+        $this->assertStringContainsString('1. موافق', $this->sentTexts()[0]);
+        $this->assertStringContainsString('2. احذف ملفاتي', $this->sentTexts()[0]);
         $this->assertSame(1, WaMessage::where('direction', 'out')->where('source', 'system')->count());
     }
 
@@ -181,13 +184,25 @@ class MediaLifecycleTest extends TestCase
         $this->assertSame(['refused', true, 'media_refused'], [$conv->media_consent, $conv->needs_attention, $conv->attention_reason]);
         $this->assertFalse(Storage::disk('wa_media')->exists('2026/10/passport.jpg'));
         $this->assertSame(['purged', null], [$file->fresh()->media_status, $file->fresh()->media_path]);
-        Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && str_contains($r->url(), $file->media_id));
         $this->assertSame(MediaConsent::REFUSED_REPLY, WaMessage::where('direction', 'out')->sole()->body);
         Queue::assertNotPushed(ProcessWhatsAppReply::class);
 
         $this->postMetaWebhook('image_with_sha.json')->assertOk();
         $this->assertSame('skipped_consent', WaMessage::where('direction', 'in')->latest('id')->first()->media_status);
         Queue::assertNotPushed(ArchiveWhatsAppMedia::class);
+    }
+
+    public function test_typing_the_option_number_answers_the_notice(): void
+    {
+        Queue::fake();
+        $this->fakeGraph();
+        config(['features.env.media_consent_prompt' => true]);
+        $this->assertTrue(MediaConsent::maybeNotify($this->conv));
+
+        $this->postOpenWa('message.received', $this->incoming(self::PHONE, '2'))->assertOk();
+
+        $this->assertSame('refused', $this->conv->fresh()->media_consent);
+        Queue::assertNotPushed(ProcessWhatsAppReply::class);
     }
 
     // ==================== بطاقة العرض الصادرة ====================

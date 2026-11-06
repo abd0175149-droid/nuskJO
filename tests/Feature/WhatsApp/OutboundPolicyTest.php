@@ -54,10 +54,10 @@ class OutboundPolicyTest extends TestCase
         return $conv;
     }
 
+    /** نصوص ما وصل البوابة */
     private function graphTexts(): array
     {
-        return Http::recorded(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com'))
-            ->map(fn ($p) => $p[0]['text']['body'] ?? null)->filter()->values()->all();
+        return array_values(array_filter($this->sentTexts()));
     }
 
     public function test_log_mode_sends_and_records_the_decision(): void
@@ -71,7 +71,7 @@ class OutboundPolicyTest extends TestCase
         $out = $conv->messages()->where('direction', 'out')->sole();
         $this->assertSame('sent', $out->status);
         $this->assertSame(['mode' => 'log', 'context' => 'reply', 'reasons' => ['card']], $out->payload['_policy']);
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com') && !isset($r['_policy']));
+        $this->assertArrayNotHasKey('_policy', $this->gatewaySends()[0]['body']);
     }
 
     public function test_enforced_block_keeps_no_content_and_hands_off_without_a_second_message(): void
@@ -83,7 +83,7 @@ class OutboundPolicyTest extends TestCase
         $result = BotEngine::reply($conv);
 
         $this->assertFalse($result['sent']);
-        $this->assertSame([], $this->graphTexts(), 'لا شيء يصل ميتا');
+        $this->assertSame([], $this->graphTexts(), 'لا شيء يصل البوابة');
         $out = $conv->messages()->where('direction', 'out')->sole();
         $this->assertSame('blocked', $out->status);
         $this->assertSame('POLICY_CARD', $out->error_code);

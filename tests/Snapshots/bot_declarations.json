@@ -114,6 +114,59 @@
         "enums": []
     },
     {
+        "name": "get_my_quote_status",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "resend_invoice_pdf",
+        "required": [],
+        "properties": [
+            "invoice_number"
+        ],
+        "enums": []
+    },
+    {
+        "name": "get_trip_details",
+        "required": [],
+        "properties": [],
+        "enums": []
+    },
+    {
+        "name": "report_issue",
+        "required": [
+            "summary"
+        ],
+        "properties": [
+            "summary"
+        ],
+        "enums": []
+    },
+    {
+        "name": "manage_my_notifications",
+        "required": [
+            "action"
+        ],
+        "properties": [
+            "action",
+            "group"
+        ],
+        "enums": {
+            "action": [
+                "mute",
+                "unmute",
+                "status"
+            ],
+            "group": [
+                "invoice",
+                "trip",
+                "quote",
+                "lead"
+            ]
+        }
+    },
+    {
         "name": "handoff_to_human",
         "required": [
             "reason"

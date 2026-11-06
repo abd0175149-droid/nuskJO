@@ -130,7 +130,12 @@ return [
         // E36: تجهّز رسالة تفاعلية لرد البوت التالي ولا ترسل بنفسها
         'show_offers_menu' => ['status' => 'implemented', 'escalating' => false, 'flag' => 'interactive_choices'],
         'present_choices' => ['status' => 'implemented', 'escalating' => false, 'flag' => 'interactive_choices'],
-        'send_quote_form' => ['status' => 'implemented', 'escalating' => false, 'flag' => 'quote_flow'],
+        // OpenWA (2026-11-06): أدوات بحسب ملف المرسل (docs/whatsapp/bot-profiles.md)
+        'get_my_quote_status' => ['status' => 'implemented', 'escalating' => false],
+        'resend_invoice_pdf' => ['status' => 'implemented', 'escalating' => false],
+        'get_trip_details' => ['status' => 'implemented', 'escalating' => false],
+        'report_issue' => ['status' => 'implemented', 'escalating' => true],
+        'manage_my_notifications' => ['status' => 'implemented', 'escalating' => false],
     ],
 
     // أدوات المساعد الإداري (AdminTools::TOOLS): كل تعديل معاينة ثم «تأكيد»

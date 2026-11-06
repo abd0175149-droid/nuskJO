@@ -23,7 +23,7 @@ use Tests\TestCase;
 
 /**
  * الإيصال اليتيم (E21): حالة وصلت قبل أن نحفظ معرّف الرسالة لا تضيع. تنتظر في الكاش عشر دقائق وتُطبَّق لحظة كتابة
- * wamid بعد ردّ ميتا، في المسار القديم وفي دفتر الإرسال، ثم يُحذف المفتاح. وبعد المهلة لا يبقى أثر يُطبَّق.
+ * wamid بعد ردّ البوابة (دفتر الإرسال)، ثم يُحذف المفتاح. وبعد المهلة لا يبقى أثر يُطبَّق.
  */
 class OrphanStatusTest extends TestCase
 {
@@ -44,11 +44,10 @@ class OrphanStatusTest extends TestCase
         config(['features.env.delivery_status_v2' => true]);
     }
 
-    /** ميتا تقبل الرسالة وتعيد هذا المعرّف */
-    private function graphAccepts(string $wamid): void
+    /** البوابة تقبل الرسالة وتعيد هذا المعرّف */
+    private function gatewayAccepts(string $wamid): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response(['messaging_product' => 'whatsapp',
-            'contacts' => [['input' => '16505551234', 'wa_id' => '16505551234']], 'messages' => [['id' => $wamid]]])]);
+        $this->fakeGateway(['*/messages/send-text' => Http::response(['messageId' => $wamid, 'timestamp' => now()->getTimestamp()], 201)]);
     }
 
     public function test_an_early_delivered_waits_in_the_cache_and_applies_when_the_row_gets_its_id(): void
@@ -58,7 +57,7 @@ class OrphanStatusTest extends TestCase
         $this->assertSame(0, WaMessage::count(), 'الإيصال لا ينشئ صفاً');
         $this->assertSame('delivered', Cache::get(OrphanStatus::PREFIX.self::WAMID)[0]['status']);
 
-        $this->graphAccepts(self::WAMID);
+        $this->gatewayAccepts(self::WAMID);
         $conv = WaConversation::factory()->windowOpen()->create();
         $this->assertTrue(WhatsAppChannel::sendText($conv, 'مرحباً', 'system', sendKey: SendKey::optout('wamid.IN.1'))['ok']);
 
@@ -68,19 +67,19 @@ class OrphanStatusTest extends TestCase
         $this->assertNull(Cache::get(OrphanStatus::PREFIX.self::WAMID), 'المفتاح حُذف بعد التطبيق');
     }
 
-    public function test_an_early_failure_without_opaque_value_applies_through_the_send_ledger(): void
+    public function test_an_early_failure_applies_through_the_send_ledger(): void
     {
         config(['features.env.send_ledger' => true, 'features.env.meta_error_v2' => true]);
         Event::fake([NewNotification::class, WaMessageFailed::class]);
         $this->postMetaWebhook('status_failed_no_opaque.json')->assertOk();
 
-        $this->graphAccepts(self::FAILED_WAMID);
+        $this->gatewayAccepts(self::FAILED_WAMID);
         $conv = WaConversation::factory()->windowOpen()->create();
         WhatsAppChannel::sendText($conv, 'مرحباً', 'bot', sendKey: SendKey::reply($conv, 1, 'text'));
 
         $row = WaMessage::sole();
-        $this->assertSame(['failed', 131047, 'WINDOW_EXPIRED'], [$row->status, $row->meta_code, $row->error_code]);
-        $this->assertNotNull($row->sent_at, 'قبلت ميتا الطلب أولاً ثم فشل التسليم');
+        $this->assertSame(['failed', null, 'DELIVERY_FAILED'], [$row->status, $row->meta_code, $row->error_code]);
+        $this->assertNotNull($row->sent_at, 'قبلت البوابة الطلب أولاً ثم فشل التسليم');
         Event::assertDispatched(WaMessageFailed::class, fn ($e) => $e->origin === 'webhook' && $e->messageId === $row->id);
         $this->assertSame('send_failed', $conv->fresh()->attention_reason);
     }
@@ -89,8 +88,9 @@ class OrphanStatusTest extends TestCase
     {
         $this->postMetaWebhook('status_read.json')->assertOk();
         $this->travel(11)->minutes();
+        $this->testChannel()->forceFill(['last_probe_ok_at' => now()])->save();   // الرقم ما زال متصلاً
 
-        $this->graphAccepts(self::WAMID);
+        $this->gatewayAccepts(self::WAMID);
         $conv = WaConversation::factory()->windowOpen()->create();
         WhatsAppChannel::sendText($conv, 'مرحباً', 'system', sendKey: SendKey::optout('wamid.IN.2'));
 

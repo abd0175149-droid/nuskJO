@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\WhatsApp\Search\FtsSchema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,10 @@ return new class extends Migration
                 $t->dropIndex('wa_messages_channel_type_sent_index');
                 $t->dropColumn('type_key');
             });
+            // up() يضيف عموداً وفهرساً فقط؛ الحذف قد يعيد بناء الجدول على SQLite قديم فيُسقط triggers البحث (E30.2)
+            if (FtsSchema::missingTriggers() !== []) {
+                FtsSchema::repair();
+            }
         }
         if (Schema::hasColumn('wa_bot_settings', 'warmup_ladder')) {
             Schema::table('wa_bot_settings', fn (Blueprint $t) => $t->dropColumn('warmup_ladder'));

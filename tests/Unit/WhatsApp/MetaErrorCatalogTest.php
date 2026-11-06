@@ -6,7 +6,6 @@ use App\Services\WhatsApp\MetaError;
 use App\Services\WhatsApp\MetaErrorCatalog;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -139,30 +138,5 @@ class MetaErrorCatalogTest extends TestCase
         foreach (array_keys(MetaErrorCatalog::CATEGORIES) as $category) {
             $this->assertLessThanOrEqual(12, strlen($category), $category);
         }
-    }
-
-    private function assertCatalogReviewedFor(?string $version): void
-    {
-        $this->assertSame(MetaErrorCatalog::REVIEWED_FOR_VERSION, $version,
-            'راجع جدول الرموز: ترقية graph_version تفرض مراجعة MetaErrorCatalog ثم تحديث REVIEWED_FOR_VERSION');
-    }
-
-    public function test_the_table_was_reviewed_for_the_configured_graph_version(): void
-    {
-        $this->assertCatalogReviewedFor(config('services.whatsapp.graph_version'));
-    }
-
-    public function test_the_version_guard_fails_on_an_unreviewed_version(): void
-    {
-        config(['services.whatsapp.graph_version' => 'v26.0']);
-
-        try {
-            $this->assertCatalogReviewedFor(config('services.whatsapp.graph_version'));
-        } catch (AssertionFailedError $e) {
-            $this->assertStringContainsString('راجع جدول الرموز', $e->getMessage());
-
-            return;
-        }
-        $this->fail('الحارس لم يفشل على إصدار غير مُراجَع');
     }
 }

@@ -8,6 +8,7 @@ use App\Services\WhatsApp\Outbound\OutboundMessage;
 use App\Services\WhatsApp\Sending\Attachments;
 use App\Services\WhatsApp\Sending\Recipient;
 use App\Services\WhatsApp\Sending\SendGovernor;
+use App\Services\WhatsApp\SendKey;
 use App\Services\WhatsApp\WaLog;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Bus\Queueable;
@@ -101,7 +102,7 @@ class DispatchOutboxItem implements ShouldQueue
         }
         [$m, $media] = $message;
         $res = WhatsAppChannel::send($conv, $m, 'system', null, [
-            'send_key' => 'ob:'.$item->id, 'type_key' => $item->type_key, 'context' => 'system', 'media' => $media,
+            'send_key' => SendKey::outbox($item->id), 'type_key' => $item->type_key, 'context' => 'system', 'media' => $media,
             'meta' => array_filter(['outbox_id' => $item->id, 'type_key' => $item->type_key, 'is_test' => $item->is_test ?: null]),
         ]);
         $row = isset($res['row_id']) ? (int) $res['row_id'] : null;

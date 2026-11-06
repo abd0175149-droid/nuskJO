@@ -307,9 +307,9 @@ class ReplyBudgetTest extends TestCase
     {
         $voice = $this->voiceMessage();
         $timeouts = [];
+        // الوسيط من البوابة (GET /messages/{chat}/{id}/media)
+        $this->fakeGateway();
         Http::fake([
-            'graph.facebook.com/*' => Http::response(['url' => 'https://lookaside.fbsbx.com/x', 'mime_type' => 'audio/ogg', 'sha256' => hash('sha256', 'MEDIA-BYTES')]),
-            'lookaside.fbsbx.com/*' => Http::response('MEDIA-BYTES'),
             'generativelanguage.googleapis.com/*' => function (Request $r, array $o) use (&$timeouts) {
                 $timeouts[] = (int) $o['timeout'];
 
@@ -350,6 +350,6 @@ class ReplyBudgetTest extends TestCase
         $out = BotTools::execute('send_offer_card', ['offer_id' => $offer->id], $this->conv);
 
         $this->assertTrue($out['sent']);
-        Http::assertSent(fn (Request $r) => $r['type'] === 'image');
+        $this->assertSame(['send-image'], array_column($this->gatewaySends(), 'path'));
     }
 }

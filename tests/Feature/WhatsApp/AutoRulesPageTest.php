@@ -88,7 +88,8 @@ class AutoRulesPageTest extends TestCase
                 ->where('mode', 'shadow')
                 ->where('flag.on', false)
                 ->has('variables', 6)
-                ->where('automation', null));
+                // مزامنة الأوامر وأسئلة البداية عند ميتا أُزيلت (2026-11-06)
+                ->missing('automation'));
     }
 
     public function test_a_new_rule_is_saved_off_and_audited(): void

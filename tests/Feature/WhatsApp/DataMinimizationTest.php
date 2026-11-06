@@ -93,22 +93,22 @@ class DataMinimizationTest extends TestCase
         }
     }
 
-    public function test_window_reminders_and_assignment_keep_the_number_out(): void
+    public function test_assignment_keeps_the_number_out(): void
     {
+        // تذكير النافذة أُزيل مع ميتا (2026-11-06): لا نافذة 24 ساعة على OpenWA
         $conv = $this->customer(['needs_attention' => true, 'last_inbound_at' => now()->subHours(22)]);
-        $this->artisan('whatsapp:window-reminders')->assertSuccessful();
 
         $agent = User::factory()->withPermissions(['whatsapp.view'])->create();
         $this->actingAs($this->admin)->postJson("/api/whatsapp/conversations/{$conv->id}/assign", ['user_id' => $agent->id])->assertOk();
 
         $bells = Notification::whereIn('user_id', [$this->admin->id, $agent->id])->get();
-        $this->assertCount(2, $bells);
+        $this->assertCount(1, $bells);
         foreach ($bells as $b) {
             $this->assertStringNotContainsString(self::PHONE, $b->body);
             $this->assertSame('/whatsapp/inbox?conv='.$conv->id, $b->action_url);
         }
         $pushes = $this->pushes();
-        $this->assertCount(2, $pushes);
+        $this->assertCount(1, $pushes);
         foreach ($pushes as $p) {
             $this->assertNoPersonalData($p['title'].' '.$p['body'], 'إشعار الجهاز');
         }

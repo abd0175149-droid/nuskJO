@@ -8,7 +8,7 @@ nuskJO يعمل على خادم مشترك مع مشاريع أخرى، بقاع
 |---|---|---|
 | عمّال الطابور كلهم معاً (numprocs) | «4» | `ops.load_budget.max_workers` |
 | أقل sleep لكل عامل | «3» ثوانٍ | `ops.load_budget.min_sleep` |
-| مهام تعمل كل دقيقة | «6» | `ops.load_budget.max_per_minute` |
+| مهام تعمل كل دقيقة | «7» | `ops.load_budget.max_per_minute` |
 
 العمّال اليوم في `docker/supervisord.conf`:
 
@@ -16,7 +16,7 @@ nuskJO يعمل على خادم مشترك مع مشاريع أخرى، بقاع
 |---|---|---|---|
 | `laravel-queue` | default | 1 | 3 |
 | `laravel-wa` | wa-replies | 1 | 3 |
-| `laravel-media` | wa-media-out، wa-media | 1 | 5 |
+| `laravel-media` | wa-media-out، wa-system، wa-media | 1 | 3 |
 | `laravel-integrations` | integrations (E40، خامل والعلم `integration_outbox` مطفأ) | 1 | 5 |
 
 ومعهم `reverb` (البث، E28) و`laravel-schedule` (المجدول) بلا طابور.
@@ -26,6 +26,7 @@ nuskJO يعمل على خادم مشترك مع مشاريع أخرى، بقاع
 - **عامل جديد أو عملية جديدة:** يُقاس استهلاك الحاوية قبله وبعده بـ `docker stats --no-stream nuskjo-app` على nuskJO نفسه في ساعة هادئة، ويُرفع الحد هنا بقرار مكتوب.
 - **مهمة مجدولة جديدة:** تُضاف إلى الجدول أدناه في التغيير نفسه، وإلا فشل `LoadBudgetTest`. ما يعمل كل دقيقة يدخل في الحد أعلاه.
 - الأفضل دائماً: مهمة أقل تكراراً، أو داخل أمر قائم، أو `Schedule::call` في عملية المجدول نفسها بدل عملية PHP جديدة.
+- **رفع الحد إلى 7 (2026-11-06، OpenWA):** `wa:outbox-tick` يحجز صفوف الطابور ويوزّعها، فهو ما يُخرج رسائل النظام في وقتها، ولا يدخل في `ops:tick` كي لا يتعلق بعلمه. الحاوية يقل حملها في المقابل: مهام ميتا الدورية (فحص الرمز، وصحة القناة، والإصدار، والتحليلات، وتذكير النافذة) حُذفت.
 - العلم `ops_tick` يجمع أمري الدقيقة (إعادة الويبهوك والمُصالِح) في عملية واحدة `ops:tick`، فيوفّر إقلاع PHP كاملاً كل دقيقة. يُفعَّل بعد قياس على nuskJO.
 
 ## القائمة الموحدة للمهام المجدولة
@@ -40,6 +41,8 @@ nuskJO يعمل على خادم مشترك مع مشاريع أخرى، بقاع
 | `whatsapp:replay-webhooks` | كل دقيقة | E20 | العلم `ops_tick` مطفأ |
 | `whatsapp:reconcile-replies` | كل دقيقة | E07 | العلم `ops_tick` مطفأ |
 | `ops:tick` | كل دقيقة | E24 | العلم `ops_tick` |
+| `wa:outbox-tick` | كل دقيقة | OpenWA | — |
+| `whatsapp:channel-watch` | كل دقيقتين (في الخلفية) | OpenWA | — |
 | `whatsapp:llm-probe` | كل دقيقتين | E12 | القاطع مفتوح |
 | `whatsapp:snooze-wake` | كل 5 دقائق | E17 | — |
 | `whatsapp:ops-check` | كل 5 دقائق | E24 | — |
@@ -47,15 +50,12 @@ nuskJO يعمل على خادم مشترك مع مشاريع أخرى، بقاع
 | `whatsapp:stuck-replies` | كل 10 دقائق | E17 | — |
 | `whatsapp:reap-pending` | كل 10 دقائق | E19 | العلم `send_ledger` |
 | `whatsapp:inbound-silence` | كل 15 دقيقة | E37 | — |
+| `wa:schedule-system` | كل 15 دقيقة | OpenWA | — |
+| `whatsapp:resolve-lids` | كل 30 دقيقة | OpenWA | — |
 | `users:sync-last-seen` | كل 15 دقيقة | E27 | — |
-| `whatsapp:health-expiry` | كل 15 دقيقة | E22 | العلم `channel_health` |
-| `whatsapp:window-reminders` | كل 15 دقيقة | قبل الخطة | — |
-| `whatsapp:health` | الدقيقة 7 و37 (الثانية بالعلم `channel_monitor`) | E23 (بدل `whatsapp:health-status` من E08) | `WA_META_CHECKS` |
 | `whatsapp:voice-tmp-sweep` | كل ساعة عند :35 | E34 | — |
-| `whatsapp:coexistence-history` | كل ساعة عند :35 (`--prune`) | E39 | العلم `coexistence_history_hold` |
 | `whatsapp:media-sweep` | كل ساعة | E14 | — |
 | `whatsapp:webhook-events-prune` | كل ساعة عند :15 | E20 | — |
-| `whatsapp:outbound-media-cleanup` | كل ساعة عند :25 | E32 | العلم `outbound_media_remote_delete` |
 | `backup:watchdog` | كل ساعة | E01 | `BACKUP_ENABLED` |
 | `queue:prune-failed` | يومياً 00:00 | E08 | — |
 | `accounting:reconcile` | يومياً 01:00 | قبل الخطة | — |
@@ -68,10 +68,6 @@ nuskJO يعمل على خادم مشترك مع مشاريع أخرى، بقاع
 | `whatsapp:blocks-check` | يومياً 04:10 عمّان | E31 | العلم `wa_block` |
 | `integrations:prune` | يومياً 04:20 عمّان | E40 | — |
 | `whatsapp:doctor` | يومياً 07:50 عمّان (`--budget=20 --store`) | E23 | التنبيه بالعلم `channel_monitor` |
-| `whatsapp:graph-version-check` | يومياً 08:00 عمّان | E05 | — |
-| `whatsapp:credentials-check` | يومياً 08:00 عمّان | E08 | `WA_META_CHECKS` |
-| `whatsapp:meta-analytics` | يومياً 08:20 عمّان | E24 | العلم `meta_analytics_reconcile` |
 | `whatsapp:erasure-sla` | يومياً 09:10 عمّان | E13 | — |
 | `whatsapp:usage-rollup` | شهرياً يوم 1 03:10 عمّان | E13 | — |
 | `users:idle-report` | الأحد 08:47 عمّان | E27 | العلم `idle_report` |
-| `whatsapp:qr-sync` | الأحد 04:25 عمّان | E38 | العلم `wa_qr_links` |

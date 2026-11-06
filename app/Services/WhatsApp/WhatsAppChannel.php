@@ -367,9 +367,9 @@ class WhatsAppChannel
                 return ['ok' => false, 'code' => 'ALREADY'];
             }
 
-            $res = self::transport()->call($ch, 'POST', '/chats/read', ['chatId' => $chat]);
+            $res = self::transport()->call($ch, 'POST', '/chats/read', ['chatId' => $chat], 'receipt');
             if ($res->ok && $typing && ReadReceipts::typingEnabled()) {
-                self::transport()->call($ch, 'POST', '/chats/typing', ['chatId' => $chat, 'state' => 'typing']);
+                self::transport()->call($ch, 'POST', '/chats/typing', ['chatId' => $chat, 'state' => 'typing'], 'receipt');
             }
         } catch (\Throwable $e) {
             ReadReceipts::failed($conv, 'ERROR');
@@ -396,7 +396,7 @@ class WhatsAppChannel
             return false;
         }
 
-        return self::transport()->call($ch, 'POST', '/chats/typing', ['chatId' => $chat, 'state' => 'typing'])->ok;
+        return self::transport()->call($ch, 'POST', '/chats/typing', ['chatId' => $chat, 'state' => 'typing'], 'receipt')->ok;
     }
 
     // ==================== المغلف الموحّد والملفات (E32) ====================

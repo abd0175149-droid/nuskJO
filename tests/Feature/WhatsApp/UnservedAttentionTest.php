@@ -48,7 +48,6 @@ class UnservedAttentionTest extends TestCase
             'bot off system-wide' => [['enabled' => false], [], 'bot_off'],
             'bot switched off for the conversation' => [[], ['bot_enabled' => false], 'with_staff'],
             'bot paused after a staff reply' => [[], ['bot_paused_until' => now()->addMinutes(20)], 'bot_paused'],
-            'window closed' => [[], ['last_inbound_at' => now()->subDays(2)], 'window_closed'],
         ];
     }
 

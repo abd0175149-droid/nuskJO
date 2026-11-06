@@ -115,7 +115,7 @@ class TranslateReplySendTest extends TestCase
 
         $this->send($this->translation($edited))->assertOk()->assertJsonPath('ok', true);
 
-        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages') && $r->data()['text']['body'] === $edited);
+        $this->assertSame([$edited], $this->sentTexts());
         $row = WaMessage::where('direction', 'out')->sole();
         $this->assertSame([$edited, 'staff', $this->agent->id], [$row->body, $row->source, $row->staff_id]);
         $this->assertSame(self::SOURCE, $row->payload['_source_text']);
@@ -125,9 +125,8 @@ class TranslateReplySendTest extends TestCase
         $this->assertSame(['to' => 'en', 'to_label' => 'الإنجليزية', 'source_text' => self::SOURCE], $thread['translated']);
     }
 
-    public function test_with_the_ledger_one_key_sends_once(): void
+    public function test_one_key_sends_once(): void
     {
-        config(['features.env.send_ledger' => true]);
         $this->fakeGraph();
         $key = (string) Str::uuid();
 
@@ -138,15 +137,14 @@ class TranslateReplySendTest extends TestCase
         $this->assertSame(self::SOURCE, WaMessage::where('direction', 'out')->sole()->payload['_source_text']);
     }
 
-    public function test_a_closed_window_refuses_both_the_preview_and_the_send(): void
+    public function test_a_paused_channel_refuses_the_send(): void
     {
         $this->fakeGraph();
-        $this->conv->forceFill(['last_inbound_at' => now()->subDays(2)])->save();
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
 
-        $this->actingAs($this->agent)->postJson("/api/whatsapp/conversations/{$this->conv->id}/translate-reply", ['text' => self::SOURCE, 'target' => 'en'])
-            ->assertStatus(422)->assertJsonPath('code', 'WINDOW_CLOSED');
-        $this->send($this->translation(self::ENGLISH))->assertStatus(422)->assertJsonPath('ok', false);
+        $this->send($this->translation(self::ENGLISH))->assertStatus(422)->assertJsonPath('ok', false)->assertJsonPath('code', 'CHANNEL_PAUSED');
 
-        Http::assertNothingSent();
+        $this->assertSame([], $this->gatewaySends());
+        $this->assertSame(0, WaMessage::where('direction', 'out')->count());
     }
 }

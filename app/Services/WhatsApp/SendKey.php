@@ -71,16 +71,16 @@ final class SendKey
         return self::make('consent', $conv->id, $upto ?? self::upto($conv), $kind);
     }
 
-    /** المتابعة النصية بعد المكالمة الفائتة (E39): واحدة لكل مكالمة، فإعادة ميتا للانتهاء لا تكررها */
-    public static function call(string $waCallId): string
+    /** صف طابور الإرسال الاستباقي: رسالة واحدة لكل صف، فإعادة الوظيفة أو المُصالِح لا تكررها */
+    public static function outbox(int $outboxId): string
     {
-        return self::make('call', $waCallId);
+        return self::make('ob', $outboxId);
     }
 
-    /** تأكيد وصول نموذج طلب التسعير (E36): واحد لكل رد نموذج وارد */
-    public static function flow(int $messageId): string
+    /** إعادة إرسال PDF الفاتورة من البوت: مرة في الساعة للمحادثة والفاتورة */
+    public static function invoicePdf(WaConversation $conv, int $invoiceId): string
     {
-        return self::make('flow', $messageId);
+        return self::make('bot-invoice', $conv->id, $invoiceId, now()->format('YmdH'));
     }
 
     /**

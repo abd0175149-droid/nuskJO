@@ -16,8 +16,9 @@ use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * الحفظ قبل الإقرار (E20.5): الجسم مشفّر في wa_webhook_events بهاش فريد، يُمحى فور النجاح، والإعادة من ميتا
+ * الحفظ قبل الإقرار (E20.5): الجسم مشفّر في wa_webhook_events بهاش فريد، يُمحى فور النجاح، والإعادة من البوابة
  * ترد 200 بلا معالجة ثانية. 503 لفشل الحفظ العابر وحده (خلف webhook_5xx)، والمعطوب 200 ولا يُعاد.
+ * الأجسام هنا أحداث OpenWA كما ترسلها البوابة بايتاً ببايت (2026-11-06).
  */
 class WebhookEventLogTest extends TestCase
 {
@@ -32,21 +33,30 @@ class WebhookEventLogTest extends TestCase
         config(['features.env.inbound_event_log' => true]);
     }
 
-    private function raw(string $fixture = 'text.json'): string
+    /** حدث message.received ثابت البايتات (البصمة على الجسم الخام) */
+    private function raw(string $id = 'false_16505551234@c.us_AAA1'): string
     {
-        return (string) file_get_contents($this->fixturePath($fixture));
+        return (string) json_encode([
+            'event' => 'message.received', 'timestamp' => '2026-11-06T10:00:00.000Z', 'sessionId' => $this->testChannel()->openwa_session_id,
+            'idempotencyKey' => 'idem-'.$id, 'deliveryId' => 'd-1', 'data' => $this->incoming('16505551234', 'Does it come in another color?', ['id' => $id]),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function postBody(string $raw)
+    {
+        return $this->postOpenWaRaw($raw, $this->testChannel());
     }
 
     public function test_a_processed_payload_keeps_only_its_hash_and_counts(): void
     {
         $raw = $this->raw();
-        $this->postRawWebhook($raw)->assertOk()->assertExactJson(['ok' => true]);
+        $this->postBody($raw)->assertOk()->assertExactJson(['ok' => true]);
 
         $event = WaWebhookEvent::sole();
         $this->assertSame(WaWebhookEvent::PROCESSED, $event->status);
         $this->assertSame(hash('sha256', $raw), $event->body_sha256);
         $this->assertNull($event->getRawOriginal('raw_body'));
-        $this->assertSame('messages:1', $event->field_summary);
+        $this->assertSame('message.received:1', $event->field_summary);
         $this->assertSame(1, $event->attempts);
         $this->assertNotNull($event->processed_at);
         $this->assertSame(1, WaMessage::count());
@@ -55,10 +65,11 @@ class WebhookEventLogTest extends TestCase
     public function test_a_retry_of_the_same_body_answers_at_once_without_processing_again(): void
     {
         $raw = $this->raw();
-        $this->postRawWebhook($raw)->assertOk();
+        $this->postBody($raw)->assertOk();
         WaMessage::query()->delete();   // لو عولجت ثانية لعادت الرسالة
+        \Illuminate\Support\Facades\Cache::flush();   // البصمة وحدها تحمي، لا مفتاح التكرار
 
-        $this->postRawWebhook($raw)->assertOk();
+        $this->postBody($raw)->assertOk();
 
         $this->assertSame(0, WaMessage::count());
         $this->assertSame(1, WaWebhookEvent::count());
@@ -68,12 +79,12 @@ class WebhookEventLogTest extends TestCase
     public function test_the_stored_body_is_encrypted_and_never_serialized(): void
     {
         WaMessage::creating(fn () => throw new \RuntimeException('boom'));   // يبقى الجسم محفوظاً
-        $this->postRawWebhook($this->raw())->assertOk();
+        $this->postBody($this->raw())->assertOk();
 
         $row = (array) DB::table('wa_webhook_events')->first();
         $this->assertNotNull($row['raw_body']);
         $this->assertStringNotContainsString('16505551234', $row['raw_body']);
-        $this->assertStringNotContainsString('messaging_product', $row['raw_body']);
+        $this->assertStringNotContainsString('message.received', $row['raw_body']);
 
         $event = WaWebhookEvent::sole();
         $this->assertSame($this->raw(), $event->raw_body);
@@ -87,7 +98,7 @@ class WebhookEventLogTest extends TestCase
         // insertOrIgnore لا يمر بأحداث النموذج: القاعدة نفسها ترفض
         $this->failInsertsInto('wa_webhook_events');
 
-        $this->postRawWebhook($this->raw())->assertStatus(503)->assertHeader('Retry-After', '30');
+        $this->postBody($this->raw())->assertStatus(503)->assertHeader('Retry-After', '30');
 
         $this->assertSame(0, WaMessage::count());
         $this->assertSame(0, WaConversation::count());
@@ -97,7 +108,7 @@ class WebhookEventLogTest extends TestCase
     {
         $this->failInsertsInto('wa_webhook_events');
 
-        $this->postRawWebhook($this->raw())->assertOk();
+        $this->postBody($this->raw())->assertOk();
 
         $this->assertSame(1, WaMessage::count());
         $this->assertSame(0, WaWebhookEvent::count());
@@ -105,7 +116,7 @@ class WebhookEventLogTest extends TestCase
 
     public function test_a_malformed_body_answers_200_is_kept_encrypted_and_never_replayed(): void
     {
-        $this->postRawWebhook('{"entry": [')->assertOk();
+        $this->postBody('{"event": [')->assertOk();
 
         $event = WaWebhookEvent::sole();
         $this->assertSame(WaWebhookEvent::MALFORMED, $event->status);
@@ -121,7 +132,7 @@ class WebhookEventLogTest extends TestCase
     {
         config(['features.env.inbound_event_log' => false]);
 
-        $this->postRawWebhook($this->raw())->assertOk();
+        $this->postBody($this->raw())->assertOk();
 
         $this->assertSame(0, WaWebhookEvent::count());
         $this->assertSame(1, WaMessage::count());
@@ -131,11 +142,11 @@ class WebhookEventLogTest extends TestCase
     {
         config(['whatsapp.webhook.log_mode' => 'failures']);
 
-        $this->postRawWebhook($this->raw())->assertOk();
+        $this->postBody($this->raw())->assertOk();
         $this->assertSame(0, WaWebhookEvent::count());
 
-        WaMessage::creating(fn (WaMessage $m) => $m->wamid === 'wamid.FIXTURE.batch.2' ? throw new \RuntimeException('boom') : null);
-        $this->postRawWebhook($this->raw('batch_mixed.json'))->assertOk();
+        WaMessage::creating(fn (WaMessage $m) => $m->wamid === 'false_16505551234@c.us_BBB2' ? throw new \RuntimeException('boom') : null);
+        $this->postBody($this->raw('false_16505551234@c.us_BBB2'))->assertOk();
 
         $event = WaWebhookEvent::sole();
         $this->assertSame(WaWebhookEvent::FAILED, $event->status);

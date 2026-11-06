@@ -20,7 +20,8 @@ use Tests\TestCase;
 
 /**
  * أداتا القوائم والأزرار (E36، العلم interactive_choices): الأداة تجهّز ولا ترسل، ونص رد النموذج يصير body الرسالة
- * التفاعلية فتخرج رسالة واحدة. لا إعلان بلا العلم أو قرب انتهاء النافذة أو لمحادثة إدارة أو خارج المحادثات التجريبية.
+ * فتخرج رسالة واحدة: نصاً بخيارات مرقمة عبر البوابة (لا أزرار في واتساب ويب)، والمحفوظ interactive بمعرّفاته.
+ * لا إعلان بلا العلم أو لمحادثة إدارة أو خارج المحادثات التجريبية.
  */
 class InteractiveToolsTest extends TestCase
 {
@@ -41,10 +42,16 @@ class InteractiveToolsTest extends TestCase
         $this->offer = Offer::factory()->create(['title' => 'عمرة الربيع']);
     }
 
-    /** @return list<Request> */
+    /** نصوص ما أُرسل إلى البوابة بالترتيب */
     private function sends(): array
     {
-        return collect(Http::recorded())->map(fn ($p) => $p[0])->filter(fn (Request $r) => str_contains($r->url(), '/messages'))->values()->all();
+        return $this->sentTexts();
+    }
+
+    /** أنواع الصادر المحفوظة بالترتيب */
+    private function outTypes(): array
+    {
+        return WaMessage::where('direction', 'out')->orderBy('id')->pluck('msg_type')->all();
     }
 
     private function declared(?WaConversation $conv = null): array
@@ -60,15 +67,17 @@ class InteractiveToolsTest extends TestCase
         $res = BotEngine::reply($this->conv->fresh());
 
         $this->assertTrue($res['sent'], json_encode($res, JSON_UNESCAPED_UNICODE));
-        $this->assertCount(1, $this->sends());
-        $req = $this->sends()[0];
-        $this->assertSame(['interactive', 'list'], [$req['type'], $req['interactive']['type']]);
-        $this->assertSame('هذه عروضنا المتاحة، اختر ما يناسبك.', $req['interactive']['body']['text']);
-        $this->assertSame('عمرة الربيع', $req['interactive']['action']['sections'][0]['rows'][0]['title']);
-        $this->assertArrayNotHasKey('_meta', $req->data());
+        $sends = $this->gatewaySends();
+        $this->assertCount(1, $sends);
+        $this->assertSame('send-text', $sends[0]['path']);
+        $this->assertStringStartsWith('هذه عروضنا المتاحة، اختر ما يناسبك.', $sends[0]['body']['text']);
+        $this->assertStringContainsString("\n1. عمرة الربيع", $sends[0]['body']['text']);
+        $this->assertArrayNotHasKey('_meta', $sends[0]['body']);
 
         $set = WaChoiceSet::sole();
         $row = WaMessage::where('direction', 'out')->sole();
+        $this->assertSame('list', data_get($row->payload, 'interactive.type'));
+        $this->assertSame('عمرة الربيع', data_get($row->payload, 'interactive.action.sections.0.rows.0.title'));
         $this->assertSame(['offers_menu', 'wamid.OUT.1', $row->id], [$set->kind, $set->wamid, (int) $set->message_id]);
         $this->assertSame($set->id, (int) data_get($row->payload, '_meta.choice_set_id'));
         $this->assertSame("هذه عروضنا المتاحة، اختر ما يناسبك.\n[قائمة: عمرة الربيع]", $row->body);
@@ -85,14 +94,15 @@ class InteractiveToolsTest extends TestCase
 
         $sends = $this->sends();
         $this->assertCount(2, $sends);
-        $this->assertSame('text', $sends[0]['type']);
-        $this->assertSame(['button', 'اختر من الخيارات:'], [$sends[1]['interactive']['type'], $sends[1]['interactive']['body']['text']]);
-        $this->assertSame(['احجز هذا', 'سؤال آخر', 'كلّم موظفاً'], array_column(array_column($sends[1]['interactive']['action']['buttons'], 'reply'), 'title'));
+        $this->assertSame(trim($long), trim($sends[0]));
+        $this->assertStringContainsString('اختر من الخيارات:', $sends[1]);
+        $this->assertStringContainsString("1. احجز هذا\n2. سؤال آخر\n3. كلّم موظفاً", $sends[1]);
+        $this->assertSame(['text', 'interactive'], $this->outTypes());
         $this->assertSame('booking_actions', WaChoiceSet::sole()->kind);
         $this->assertSame('wamid.OUT.2', WaChoiceSet::sole()->wamid);
     }
 
-    public function test_the_tools_are_announced_only_with_the_flag_a_long_enough_window_and_a_customer_chat(): void
+    public function test_the_tools_are_announced_only_with_the_flag_and_a_customer_chat(): void
     {
         $this->assertContains('show_offers_menu', $this->declared());
         $this->assertContains('present_choices', $this->declared());
@@ -101,9 +111,8 @@ class InteractiveToolsTest extends TestCase
         $this->assertNotContains('show_offers_menu', $this->declared());
         config(['features.env.interactive_choices' => true]);
 
-        $this->conv->forceFill(['last_inbound_at' => now()->subDay()->addMinutes(9)])->save();
-        $this->assertNotContains('show_offers_menu', $this->declared(), 'أقل من 10 دقائق من النافذة');
-        $this->conv->forceFill(['last_inbound_at' => now()->subDay()->addMinutes(11)])->save();
+        // لا نافذة 24 ساعة: محادثة قديمة تُعرض لها الخيارات
+        $this->conv->forceFill(['last_inbound_at' => now()->subDays(3)])->save();
         $this->assertContains('show_offers_menu', $this->declared());
 
         config(['whatsapp.interactive_pilot_conversations' => [$this->conv->id + 100]]);
@@ -115,22 +124,15 @@ class InteractiveToolsTest extends TestCase
         $this->assertNotContains('show_offers_menu', $this->declared(), 'محادثة إدارة');
     }
 
-    public function test_a_format_rejection_sends_the_text_alone_and_keeps_no_choice_set(): void
+    public function test_a_rejected_send_keeps_no_choice_set(): void
     {
-        $n = 0;
-        $this->fakeGraph(['graph.facebook.com/*' => function () use (&$n) {
-            $n++;
-
-            return $n === 1
-                ? Http::response(['error' => ['code' => 131009, 'message' => 'Parameter value is not valid', 'fbtrace_id' => 'AxTest']], 400)
-                : Http::response(['messages' => [['id' => 'wamid.OUT.TEXT']]]);
-        }]);
+        $this->fakeGraph(['nuskjo-openwa:2785/api/sessions/*/messages/send-text' => Http::response(['statusCode' => 400, 'message' => ['text too long']], 400)]);
         $this->fakeGemini(['call' => 'show_offers_menu', 'args' => []], 'اختر من عروضنا:');
 
-        $this->assertTrue(BotEngine::reply($this->conv->fresh())['sent']);
+        $this->assertFalse(BotEngine::reply($this->conv->fresh())['sent']);
 
-        $this->assertSame(['interactive', 'text'], array_map(fn ($r) => $r['type'], $this->sends()));
-        $this->assertSame('اختر من عروضنا:', $this->sends()[1]['text']['body']);
+        $this->assertCount(1, $this->sends());
+        $this->assertSame(['failed'], WaMessage::where('direction', 'out')->pluck('status')->all());
         $this->assertSame(0, WaChoiceSet::count());
     }
 
@@ -164,7 +166,8 @@ class InteractiveToolsTest extends TestCase
 
         $this->assertTrue(BotEngine::reply($this->conv->fresh())['sent']);
 
-        $this->assertSame(['text'], array_map(fn ($r) => $r['type'], $this->sends()));
+        $this->assertCount(1, $this->sends());
+        $this->assertSame(['text'], $this->outTypes());
         $this->assertSame(0, WaChoiceSet::count());
     }
 

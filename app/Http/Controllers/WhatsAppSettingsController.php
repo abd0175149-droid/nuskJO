@@ -162,7 +162,6 @@ class WhatsAppSettingsController extends Controller
             'state' => 'required|in:on,off',
             'reason' => 'required|string|min:10|max:500',
             'confirm_text' => 'nullable|string|max:20',
-            'acknowledge' => 'sometimes|boolean',
         ], ['reason.min' => 'اكتب السبب (10 أحرف على الأقل)']);
         $user = $request->user();
         $on = $data['state'] === 'on';

@@ -15,8 +15,8 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * المزامنة القرائية (E31.6): قائمة ميتا بالصفحات (after) تُطابق بالحظر عندنا، فيظهر ما لم تجده ميتا وما عندها بلا
- * سجل، ولا يُرسل POST ولا DELETE أثناءها. وكل إصلاح بزر من مدير (تسجيل سبب أو فك).
+ * المزامنة القرائية (E31.6؛ على البوابة منذ 2026-11-06): قائمة /contacts/blocked لكل رقم جاهز تُطابق بالحظر عندنا،
+ * فيظهر ما لم تجده البوابة وما عندها بلا سجل، ولا يُرسل POST ولا DELETE أثناءها. وكل إصلاح بزر من مدير.
  */
 class BlockSyncTest extends TestCase
 {
@@ -33,10 +33,13 @@ class BlockSyncTest extends TestCase
         $this->admin = User::factory()->admin()->create();
     }
 
-    private function page(array $waIds, ?string $after = null): array
+    /** البوابة: قائمة المحظورين على الرقم الأول، وحظر/فك يقبل */
+    private function fakeList(array $phones, int $status = 200): void
     {
-        return ['data' => array_map(fn ($id) => ['messaging_product' => 'whatsapp', 'wa_id' => $id], $waIds),
-            'paging' => array_filter(['cursors' => ['before' => 'b', 'after' => $after ?? 'end'], 'next' => $after ? 'https://example.invalid/next' : null])];
+        $this->fakeGateway([
+            'nuskjo-openwa:2785/api/sessions/*/contacts/blocked' => Http::response($status === 200 ? ['data' => array_map(fn ($p) => ['id' => $p.'@c.us'], $phones)] : ['message' => 'x'], $status),
+            'nuskjo-openwa:2785/api/sessions/*/contacts/*/block' => Http::response(['success' => true]),
+        ]);
     }
 
     private function localBlock(string $phone, array $attrs = []): WaBlock
@@ -44,15 +47,12 @@ class BlockSyncTest extends TestCase
         return WaBlock::create($attrs + ['phone' => $phone, 'reason_code' => 'spam', 'reason' => 'إزعاج متكرر طوال اليوم', 'blocked_at' => now()->subDay(), 'meta_state' => 'blocked']);
     }
 
-    public function test_two_pages_are_compared_without_changing_anything_at_meta(): void
+    public function test_the_list_is_compared_without_changing_anything_at_the_gateway(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
-            ->push($this->page(['16505551234'], 'CURSOR2'))
-            ->push($this->page(['16505553333']))]);
+        $this->fakeList(['16505551234', '16505553333']);
         $matched = $this->localBlock('16505551234');
         $gone = $this->localBlock('16505550000');
         $mismatch = $this->localBlock('16505553333', ['meta_state' => 'mismatch']);
-        $conv = WaConversation::factory()->create(['phone' => '16505557777', 'display_name' => 'عميل قديم']);
 
         $r = BlockSync::run();
 
@@ -64,21 +64,17 @@ class BlockSyncTest extends TestCase
         $this->assertSame(['blocked', 'not_found', 'blocked'], [$matched->fresh()->meta_state, $gone->fresh()->meta_state, $mismatch->fresh()->meta_state]);
         $this->assertNotNull($gone->fresh()->meta_checked_at);
 
-        Http::assertSentCount(2);
         Http::assertNotSent(fn (Request $req) => $req->method() !== 'GET');
-        Http::assertSent(fn (Request $req) => str_contains($req->url(), 'after=CURSOR2'));
         $this->assertSame(1, BlockSync::lastSummary()['not_found']);
         $this->assertSame(['meta' => 2, 'local' => 3, 'not_found' => 1, 'untracked' => 0],
             array_intersect_key(AuditLog::where('action', 'wa.block_sync')->sole()->changes, array_flip(['meta', 'local', 'not_found', 'untracked'])));
-        unset($conv);
     }
 
-    public function test_a_number_blocked_at_meta_without_a_record_is_shown_by_last_four_and_a_reference(): void
+    public function test_a_number_blocked_at_the_gateway_without_a_record_is_shown_by_last_four_and_a_reference(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
-            ->push($this->page(['16505553333']))
-            ->push(json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/block_users_removed.json')), true))]);
-        $conv = WaConversation::factory()->windowOpen()->create(['phone' => '16505553333', 'wa_phone' => '16505553333', 'display_name' => 'عميل بلا سجل']);
+        $this->fakeList(['16505553333']);
+        $conv = WaConversation::factory()->windowOpen()->create(['phone' => '16505553333', 'wa_phone' => '16505553333', 'display_name' => 'عميل بلا سجل',
+            'channel_id' => $this->testChannel()->id]);
 
         $r = $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/sync')->assertOk()->json();
 
@@ -87,47 +83,57 @@ class BlockSyncTest extends TestCase
         $this->assertSame(['3333', 'phone', 'عميل بلا سجل', $conv->id], [$row['last4'], $row['kind'], $row['name'], $row['conversation_id']]);
         $this->assertStringNotContainsString('16505553333', json_encode($r));
 
-        // «تسجيل سبب»: لا نداء لميتا، والمحادثة تصير محظورة عندنا
+        // «تسجيل سبب»: لا نداء حظر، والمحادثة تصير محظورة عندنا
         $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/untracked/register', ['ref' => $row['ref'], 'reason_code' => 'fraud', 'reason' => 'محتال معروف حظرناه من قبل'])->assertOk();
         $block = WaBlock::sole();
         $this->assertSame(['meta_sync', 'blocked', $conv->id, '16505553333'], [$block->blocked_via, $block->meta_state, $block->conversation_id, $block->phone]);
         $this->assertNotNull($conv->fresh()->blocked_at);
-        Http::assertSentCount(1);
+        Http::assertNotSent(fn (Request $req) => $req->method() !== 'GET');
         // المرجع استُهلك
         $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/untracked/register', ['ref' => $row['ref'], 'reason_code' => 'fraud', 'reason' => 'محتال معروف حظرناه من قبل'])
             ->assertStatus(422)->assertJsonPath('code', 'SYNC_EXPIRED');
     }
 
-    public function test_an_untracked_block_can_be_lifted_with_a_reason(): void
+    public function test_an_untracked_block_with_a_conversation_can_be_lifted_with_a_reason(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
-            ->push($this->page(['16505553333']))
-            ->push(['messaging_product' => 'whatsapp', 'block_users' => ['removed_users' => [['input' => '16505553333', 'wa_id' => '16505553333']]]])]);
+        $this->fakeList(['16505553333']);
+        WaConversation::factory()->create(['phone' => '16505553333', 'wa_phone' => '16505553333', 'channel_id' => $this->testChannel()->id]);
         $ref = $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/sync')->json('untracked.0.ref');
 
         $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/untracked/unblock', ['ref' => $ref, 'reason' => 'قرار المالك'])->assertOk();
 
-        Http::assertSent(fn (Request $req) => $req->method() === 'DELETE' && $req->data()['block_users'] === [['user' => '+16505553333']]);
+        Http::assertSent(fn (Request $req) => $req->method() === 'DELETE' && str_contains($req->url(), rawurlencode('16505553333@c.us').'/block'));
         $this->assertSame(1, AuditLog::where('action', 'wa.unblock')->count());
         $this->assertSame(0, WaBlock::count());
     }
 
-    public function test_a_truncated_list_never_declares_a_block_missing(): void
+    public function test_an_untracked_block_without_a_conversation_is_lifted_from_the_phone(): void
     {
-        Http::fake(['graph.facebook.com/*' => fn () => Http::response($this->page(['16505553333'], 'MORE'))]);
+        $this->fakeList(['16505553333']);
+        $ref = $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/sync')->json('untracked.0.ref');
+
+        $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/untracked/unblock', ['ref' => $ref, 'reason' => 'قرار المالك'])
+            ->assertStatus(422)->assertJsonPath('code', 'NO_RECIPIENT');
+        Http::assertNotSent(fn (Request $req) => $req->method() === 'DELETE');
+    }
+
+    public function test_a_disconnected_number_is_not_read_and_no_block_is_declared_missing_from_it(): void
+    {
+        $this->fakeList([]);
+        $this->testChannel()->forceFill(['status' => 'disconnected'])->save();
         $local = $this->localBlock('16505550000');
 
         $r = BlockSync::run();
 
-        $this->assertTrue($r['truncated']);
-        Http::assertSentCount(BlockSync::MAX_PAGES);
+        $this->assertTrue($r['ok']);
+        Http::assertNotSent(fn (Request $req) => str_contains($req->url(), '/contacts/blocked'));
+        $this->assertSame([0, true, []], [$r['meta'], $r['truncated'], $r['not_found']]);
         $this->assertSame('blocked', $local->fresh()->meta_state);
-        $this->assertSame([], $r['not_found']);
     }
 
-    public function test_a_meta_failure_changes_nothing(): void
+    public function test_a_gateway_failure_changes_nothing(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['code' => 190, 'message' => 'Session has expired']], 401)]);
+        $this->fakeList([], 401);
         $local = $this->localBlock('16505550000');
 
         $r = BlockSync::run();
@@ -139,7 +145,7 @@ class BlockSyncTest extends TestCase
 
     public function test_the_daily_check_runs_behind_the_flag_and_alerts_when_differences_grow(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response($this->page([]))]);
+        $this->fakeList([]);
         $this->localBlock('16505550000');
 
         config(['features.env.wa_block' => false]);
@@ -158,7 +164,7 @@ class BlockSyncTest extends TestCase
 
     public function test_sync_is_limited_to_three_runs_in_ten_minutes(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response($this->page([]))]);
+        $this->fakeList([]);
 
         foreach (range(1, 3) as $_) {
             $this->actingAs($this->admin)->postJson('/api/whatsapp/blocks/sync')->assertOk();

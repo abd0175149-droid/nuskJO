@@ -16,7 +16,7 @@ use Tests\TestCase;
 
 /**
  * مسار الويبهوك (E20.2–E20.3): الحجم قبل التوقيع، والتوقيع الفاشل وحده يُعدّ ويُدقَّق بالعيّنات وينبّه عند الكثرة،
- * ولا 429 أبداً. (خروج المسار من الجلسة في WebhookSessionlessTest.)
+ * ولا 429 أبداً. الحد منذ البوابة (2026-11-06) 2MB افتراضياً ولا يقل عن 1MB: البوابة لا تضمّن الوسائط.
  */
 class WebhookRouteTest extends TestCase
 {
@@ -50,14 +50,11 @@ class WebhookRouteTest extends TestCase
         $this->assertSame(1, WaMessage::count());
     }
 
-    public function test_a_three_megabyte_signed_body_is_accepted(): void
+    public function test_a_signed_body_just_under_the_limit_is_accepted(): void
     {
-        $payload = json_decode((string) file_get_contents($this->fixturePath('text.json')), true);
-        $payload['entry'][0]['changes'][0]['value']['messages'][0]['text']['body'] = str_repeat('a', 3 * 1024 * 1024 - 2048);
-        $raw = json_encode($payload);
-        $this->assertGreaterThan(3 * 1024 * 1024 - 4096, strlen($raw));
+        $limit = (int) config('whatsapp.webhook.max_bytes');
+        $this->postOpenWa('message.received', $this->incoming('16505551234', str_repeat('كلمة ', intdiv($limit - 4096, 11))))->assertOk();
 
-        $this->postRawWebhook($raw)->assertOk();
         $this->assertSame(1, WaMessage::count());
     }
 
@@ -70,14 +67,14 @@ class WebhookRouteTest extends TestCase
         $this->assertSame(0, WebhookIntake::badSignatureCounts()['hour']);
     }
 
-    public function test_the_size_limit_never_goes_below_three_megabytes(): void
+    public function test_the_size_limit_never_goes_below_one_megabyte(): void
     {
         config(['whatsapp.webhook.max_bytes' => 1024]);
-        $this->assertSame(4 * 1024 * 1024, (int) (require config_path('whatsapp.php'))['webhook']['max_bytes']);
+        $this->assertSame(2 * 1024 * 1024, (int) (require config_path('whatsapp.php'))['webhook']['max_bytes']);
 
         putenv('WA_WEBHOOK_MAX_BYTES=1000');
         try {
-            $this->assertSame(3 * 1024 * 1024, (require config_path('whatsapp.php'))['webhook']['max_bytes']);
+            $this->assertSame(1024 * 1024, (require config_path('whatsapp.php'))['webhook']['max_bytes']);
         } finally {
             putenv('WA_WEBHOOK_MAX_BYTES');
         }

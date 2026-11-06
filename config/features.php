@@ -15,7 +15,6 @@ return [
         'media_consent_prompt' => env('WA_FEATURE_MEDIA_CONSENT_PROMPT'),
         'tool_validation_enforce' => env('WA_FEATURE_TOOL_VALIDATION_ENFORCE'),
         'admin_readonly' => env('WA_FEATURE_ADMIN_READONLY'),
-        'inbox_v2' => env('WA_FEATURE_INBOX_V2'),
         'admin_rbac_enforce' => env('WA_FEATURE_ADMIN_RBAC_ENFORCE'),
         'inbox_followup' => env('WA_FEATURE_INBOX_FOLLOWUP'),
         'quote_dedupe' => env('WA_FEATURE_QUOTE_DEDUPE'),

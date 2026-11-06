@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\User;
+use App\Models\WaChannel;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
+use App\Services\WhatsApp\Sending\FailureBreaker;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -13,22 +16,29 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * الأقفال الثلاثة في WhatsAppChannel::dispatch وترتيبها:
- *   1) القناة مهيّأة  2) لا قفل طارئ  3) نافذة 24 ساعة مفتوحة.
- *
- * Graph مزيّف في كل حالة، فلو تجاوز الكود قفلاً لسُجّل الطلب وفشل assertNothingSent.
+ * أقفال WhatsAppChannel::gate وترتيبها منذ OpenWA (2026-11-06):
+ *   1) للمحادثة رقم فعّال  2) لا إيقاف طارئ  3) الرقم غير موقوف ولا مقيّد  4) الرقم جاهز وقاطعه مغلق  5) العميل غير محظور.
+ * لا نافذة 24 ساعة. البوابة مزيّفة في كل حالة، فلو تجاوز الكود قفلاً لسُجّل الطلب وفشل assertNothingSent.
  */
 class WhatsAppChannelGateTest extends TestCase
 {
     use ConfiguresWhatsApp;
     use RefreshDatabase;
 
+    private WaChannel $channel;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->configureChannel();
-        $this->fakeGraph();
+        $this->fakeGateway();
+        $this->channel = $this->testChannel();
+    }
+
+    private function conv(array $attrs = []): WaConversation
+    {
+        return WaConversation::factory()->windowOpen()->create(['channel_id' => $this->channel->id] + $attrs);
     }
 
     private function assertBlocked(array $result, string $code, WaConversation $conv): void
@@ -43,120 +53,151 @@ class WhatsAppChannelGateTest extends TestCase
         $this->assertNull($conv->fresh()->last_outbound_at);
     }
 
-    public static function unconfiguredChannels(): array
+    #[Group('INV-05')]
+    public function test_a_conversation_without_any_active_number_returns_no_channel(): void
     {
-        return [
-            'no token' => [['wa_token' => null]],
-            'no phone number id' => [['wa_phone_number_id' => null]],
-            'nothing configured' => [['wa_token' => null, 'wa_phone_number_id' => null]],
-        ];
+        $this->channel->forceFill(['is_active' => false])->save();
+        WaChannel::forgetCache();
+        $conv = $this->conv();
+
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_NO_CHANNEL, $conv);
     }
 
     #[Group('INV-05')]
-    #[DataProvider('unconfiguredChannels')]
-    public function test_unconfigured_channel_returns_not_configured_and_sends_nothing(array $overrides): void
+    public function test_a_conversation_without_a_number_is_not_guessed_when_two_numbers_exist(): void
     {
-        $this->configureChannel($overrides);
-        $conv = WaConversation::factory()->windowOpen()->create();
+        $this->makeChannel();
+        $conv = WaConversation::factory()->windowOpen()->create(['channel_id' => null]);
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_NO_CHANNEL, $conv);
+        $this->assertNull($conv->fresh()->channel_id);
+    }
 
-        $this->assertBlocked($result, WhatsAppChannel::ERR_NOT_CONFIGURED, $conv);
+    public function test_a_conversation_without_a_number_adopts_the_only_number(): void
+    {
+        $conv = WaConversation::factory()->windowOpen()->create(['channel_id' => null]);
+
+        $this->assertTrue(WhatsAppChannel::sendText($conv, 'مرحبا')['ok']);
+        $this->assertSame($this->channel->id, $conv->fresh()->channel_id);
     }
 
     #[Group('INV-05')]
     public function test_suspended_flag_in_settings_returns_sending_suspended(): void
     {
         $this->configureChannel(['wa_suspended' => true]);
-        $conv = WaConversation::factory()->windowOpen()->create();
+        $conv = $this->conv();
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_SUSPENDED, $conv);
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_SUSPENDED, $conv);
     }
 
     #[Group('INV-05')]
     public function test_suspended_flag_in_config_returns_sending_suspended(): void
     {
         config(['services.whatsapp.suspended' => true]);
-        $conv = WaConversation::factory()->windowOpen()->create();
+        $conv = $this->conv();
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_SUSPENDED, $conv);
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_SUSPENDED, $conv);
     }
 
     #[Group('INV-05')]
-    public function test_closed_window_returns_window_expired(): void
+    public function test_a_paused_number_returns_channel_paused(): void
     {
-        $conv = WaConversation::factory()->windowClosed()->create();
+        $this->channel->forceFill(['paused_until' => now()->addHour(), 'pause_reason' => 'manual'])->save();
+        $conv = $this->conv();
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_WINDOW, $conv);
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_PAUSED, $conv);
     }
 
     #[Group('INV-05')]
-    public function test_conversation_without_any_inbound_message_has_no_window(): void
+    public function test_a_restricted_number_returns_channel_restricted(): void
     {
-        $conv = WaConversation::factory()->create(['last_inbound_at' => null]);
+        $this->channel->forceFill(['paused_until' => now()->addDays(7), 'pause_reason' => 'restriction'])->save();
+        $conv = $this->conv();
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_WINDOW, $conv);
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), 'CHANNEL_RESTRICTED', $conv);
     }
 
-    #[Group('INV-05')]
-    public function test_window_closes_exactly_24_hours_after_last_inbound(): void
+    public function test_an_expired_pause_no_longer_blocks(): void
     {
-        $this->freezeSecond();
-        $conv = WaConversation::factory()->create(['last_inbound_at' => now()->subDay()]);
+        $this->channel->forceFill(['paused_until' => now()->subMinute(), 'pause_reason' => 'manual'])->save();
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_WINDOW, $conv);
+        $this->assertTrue(WhatsAppChannel::sendText($this->conv(), 'مرحبا')['ok']);
     }
 
-    #[Group('INV-05')]
-    public function test_window_is_still_open_one_minute_before_24_hours(): void
-    {
-        $this->freezeSecond();
-        $conv = WaConversation::factory()->create(['last_inbound_at' => now()->subDay()->addMinute()]);
-
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertTrue($result['ok']);
-        Http::assertSentCount(1);
-        $this->assertSame(1, WaMessage::count());
-    }
-
-    public static function sources(): array
+    public static function notReadyChannels(): array
     {
         return [
-            'bot' => ['bot'],
-            'staff' => ['staff'],
-            'system' => ['system'],
+            'disconnected' => [['status' => 'disconnected']],
+            'waiting for qr' => [['status' => 'qr_ready']],
+            'no phone yet' => [['phone' => null]],
+            'stale probe after failures' => [['last_probe_ok_at' => null, 'status_at' => null, 'probe_failures' => 2]],
         ];
     }
 
     #[Group('INV-05')]
-    #[DataProvider('sources')]
-    public function test_no_source_bypasses_the_window(string $source): void
+    #[DataProvider('notReadyChannels')]
+    public function test_a_number_that_is_not_ready_returns_channel_not_ready(array $state): void
     {
-        $conv = WaConversation::factory()->windowClosed()->create();
+        $this->channel->forceFill($state)->save();
+        $conv = $this->conv();
 
-        // مرسل «موظف» يرى المحادثة، حتى يُختبر قفل النافذة لا قفل السياج
-        $staffId = $source === 'staff'
-            ? \App\Models\User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create()->id
-            : null;
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا', $source, $staffId);
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_NOT_READY, $conv);
+    }
 
-        $this->assertBlocked($result, WhatsAppChannel::ERR_WINDOW, $conv);
+    #[Group('INV-05')]
+    public function test_an_open_breaker_returns_channel_not_ready(): void
+    {
+        for ($i = 0; $i < FailureBreaker::threshold(); $i++) {
+            FailureBreaker::failure($this->channel, 'GW_UNREACHABLE');
+        }
+        $conv = $this->conv();
+
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_NOT_READY, $conv);
+    }
+
+    #[Group('INV-05')]
+    public function test_a_blocked_customer_returns_blocked(): void
+    {
+        $conv = $this->conv(['blocked_at' => now()]);
+
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_BLOCKED, $conv);
+    }
+
+    #[Group('INV-05')]
+    public function test_no_channel_wins_over_suspended(): void
+    {
+        $this->configureChannel(['wa_suspended' => true]);
+        $this->channel->forceFill(['is_active' => false])->save();
+        $conv = $this->conv();
+
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_NO_CHANNEL, $conv);
+    }
+
+    #[Group('INV-05')]
+    public function test_suspended_wins_over_a_paused_and_disconnected_number(): void
+    {
+        $this->configureChannel(['wa_suspended' => true]);
+        $this->channel->forceFill(['paused_until' => now()->addHour(), 'status' => 'disconnected'])->save();
+        $conv = $this->conv();
+
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_SUSPENDED, $conv);
+    }
+
+    #[Group('INV-05')]
+    public function test_paused_wins_over_not_ready_and_not_ready_wins_over_blocked(): void
+    {
+        $this->channel->forceFill(['paused_until' => now()->addHour(), 'status' => 'disconnected'])->save();
+        $conv = $this->conv(['blocked_at' => now()]);
+        $this->assertBlocked(WhatsAppChannel::sendText($conv, 'مرحبا'), WhatsAppChannel::ERR_PAUSED, $conv);
+
+        $this->channel->forceFill(['paused_until' => null])->save();
+        $this->assertBlocked(WhatsAppChannel::sendText($conv->fresh(), 'مرحبا'), WhatsAppChannel::ERR_NOT_READY, $conv);
     }
 
     public static function sendMethods(): array
     {
         return [
+            'text' => [fn (WaConversation $c) => WhatsAppChannel::sendText($c, 'مرحبا')],
             'buttons' => [fn (WaConversation $c) => WhatsAppChannel::sendButtons($c, 'اختر', [['id' => 'offer:1', 'title' => 'العرض']])],
             'list' => [fn (WaConversation $c) => WhatsAppChannel::sendList($c, 'اختر', 'العروض', [['id' => 'offer:1', 'title' => 'العرض']])],
             'image' => [fn (WaConversation $c) => WhatsAppChannel::sendImage($c, 'https://example.com/card.png', 'بطاقة')],
@@ -167,43 +208,30 @@ class WhatsAppChannelGateTest extends TestCase
     #[DataProvider('sendMethods')]
     public function test_every_send_method_goes_through_the_gates(\Closure $send): void
     {
-        $conv = WaConversation::factory()->windowClosed()->create();
+        $this->channel->forceFill(['status' => 'disconnected'])->save();
+        $conv = $this->conv();
 
-        $result = $send($conv);
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_WINDOW, $conv);
+        $this->assertBlocked($send($conv), WhatsAppChannel::ERR_NOT_READY, $conv);
     }
 
-    #[Group('INV-05')]
-    public function test_not_configured_wins_over_suspended(): void
+    public static function sources(): array
     {
-        $this->configureChannel(['wa_token' => null, 'wa_suspended' => true]);
-        $conv = WaConversation::factory()->windowOpen()->create();
-
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_NOT_CONFIGURED, $conv);
+        return ['bot' => ['bot'], 'staff' => ['staff'], 'system' => ['system']];
     }
 
-    #[Group('INV-05')]
-    public function test_not_configured_wins_over_suspended_and_closed_window(): void
+    /** لا نافذة 24 ساعة على البوابة: عميل كتب قبل يومين يصله الرد من كل مصدر */
+    #[DataProvider('sources')]
+    public function test_there_is_no_24_hour_window_for_any_source(string $source): void
     {
-        $this->configureChannel(['wa_phone_number_id' => null, 'wa_suspended' => true]);
-        $conv = WaConversation::factory()->windowClosed()->create();
+        $conv = WaConversation::factory()->windowClosed()->create(['channel_id' => $this->channel->id]);
+        $staffId = $source === 'staff'
+            ? User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create()->id
+            : null;
 
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
+        $result = WhatsAppChannel::sendText($conv, 'مرحبا', $source, $staffId);
 
-        $this->assertBlocked($result, WhatsAppChannel::ERR_NOT_CONFIGURED, $conv);
-    }
-
-    #[Group('INV-05')]
-    public function test_suspended_wins_over_closed_window(): void
-    {
-        $this->configureChannel(['wa_suspended' => true]);
-        $conv = WaConversation::factory()->windowClosed()->create();
-
-        $result = WhatsAppChannel::sendText($conv, 'مرحبا');
-
-        $this->assertBlocked($result, WhatsAppChannel::ERR_SUSPENDED, $conv);
+        $this->assertTrue($result['ok']);
+        $this->assertSame(['مرحبا'], $this->sentTexts());
+        $this->assertSame(1, WaMessage::count());
     }
 }

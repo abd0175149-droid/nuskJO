@@ -96,7 +96,7 @@ final class FailuresCenter
             'attempts' => (int) $m->attempts,
             'redrives' => (int) data_get($payload, '_redrive.n', 0),
             'maybe_delivered' => $maybeDelivered,
-            'can_redrive' => $redrivable && $windowOpen && FeatureFlags::on('failures_redrive'),
+            'can_redrive' => $redrivable && FeatureFlags::on('failures_redrive'),
         ];
     }
 

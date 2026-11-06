@@ -39,7 +39,8 @@ class InboxBroadcasterTest extends TestCase
 
     private function customer(): WaConversation
     {
-        return WaConversation::firstOrCreate(['phone' => '16505551234'], ['wa_phone' => '16505551234', 'last_inbound_at' => now()]);
+        return WaConversation::firstOrCreate(['channel_id' => $this->testChannel()->id, 'phone' => '16505551234'],
+            ['wa_phone' => '16505551234', 'last_inbound_at' => now()]);
     }
 
     private function outbound(string $wamid): WaMessage
@@ -47,23 +48,24 @@ class InboxBroadcasterTest extends TestCase
         return WaMessage::factory()->outbound()->create(['conversation_id' => $this->customer()->id, 'wamid' => $wamid, 'status' => 'sent']);
     }
 
-    public function test_a_webhook_batch_gives_one_event_per_conversation_after_the_response(): void
+    public function test_a_webhook_event_gives_one_event_per_conversation_after_the_response(): void
     {
         $this->captureBroadcasts();
         $this->enableInboxRealtime();
-        $this->outbound('wamid.FIXTURE.out.1');
-        $this->outbound('wamid.FIXTURE.out.2');
-        $atResponse = null;
+        $this->outbound('out.1');
+        $atResponse = [];
         Event::listen(RequestHandled::class, function () use (&$atResponse) {
-            $atResponse = count($this->inboxBroadcasts());
+            $atResponse[] = count($this->inboxBroadcasts());
         });
 
-        // رسالتان وحالتان للمحادثة نفسها في حمولة واحدة
-        $this->postMetaWebhook('batch_mixed.json')->assertOk();
+        // البوابة ترسل حدثاً لكل طلب: رسالة ثم إيصال للمحادثة نفسها
+        $this->postOpenWa('message.received', $this->incoming('16505551234', 'هل العرض متاح؟'))->assertOk();
+        $this->postOpenWa('message.ack', ['messageId' => 'out.1', 'status' => 'read', 'timestamp' => now()->getTimestamp()])->assertOk();
 
-        $this->assertSame(0, $atResponse, 'لا بث قبل إرسال الرد');
-        $this->assertCount(1, $this->inboxBroadcasts());
+        $this->assertSame([0, 1], $atResponse, 'لا بث قبل إرسال الرد');
+        $this->assertCount(2, $this->inboxBroadcasts());
         $this->assertSame(['c' => $this->customer()->id, 'k' => 'message'], $this->inboxBroadcasts()[0]['payload']);
+        $this->assertSame($this->customer()->id, $this->inboxBroadcasts()[1]['payload']['c']);
         $this->assertSame([$this->admin->id], $this->recipientsOf($this->customer()->id));
     }
 

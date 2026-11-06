@@ -78,11 +78,16 @@ class AdminConfirmButtonsTest extends TestCase
         return WaAdminAction::where('conversation_id', $this->conv->id)->orderBy('id')->get()->map(fn ($a) => "{$a->tool}:{$a->action}:{$a->status}")->all();
     }
 
+    /** نص آخر ما خرج إلى البوابة (الأزرار تصل نصاً مرقماً منذ 2026-11-06) */
     private function lastText(): string
     {
-        $r = collect(Http::recorded())->map(fn ($p) => $p[0])->filter(fn (Request $r) => str_contains($r->url(), '/messages'))->last();
+        return (string) (last($this->sentTexts()) ?: '');
+    }
 
-        return (string) ($r['text']['body'] ?? $r['interactive']['body']['text'] ?? '');
+    /** الحمولة الداخلية (شكل Cloud API) لأول رسالة صادرة: ما تفحصه السياسة ويُحفظ */
+    private function firstOutPayload(): array
+    {
+        return (array) WaMessage::where('conversation_id', $this->conv->id)->where('direction', 'out')->orderBy('id')->firstOrFail()->payload;
     }
 
     public function test_the_preview_carries_two_buttons_bound_to_its_nonce(): void
@@ -90,13 +95,16 @@ class AdminConfirmButtonsTest extends TestCase
         $out = $this->stage();
 
         $this->assertTrue($out['preview_sent']);
-        $req = collect(Http::recorded())->map(fn ($p) => $p[0])->first(fn (Request $r) => str_contains($r->url(), '/messages'));
+        $req = $this->firstOutPayload();
         $nonce = $this->pending()['nonce'];
         $this->assertMatchesRegularExpression('/^[A-Za-z0-9]{12}$/', $nonce);
         $this->assertSame('button', $req['interactive']['type']);
         $this->assertStringContainsString('مواعيد الدوام', $req['interactive']['body']['text']);
         $this->assertSame([["adm:{$nonce}:y", '✅ تأكيد'], ["adm:{$nonce}:n", '✖️ إلغاء']],
             array_map(fn ($b) => [$b['reply']['id'], $b['reply']['title']], $req['interactive']['action']['buttons']));
+        // عند العميل: نص مرقم بالخيارين
+        $this->assertStringContainsString('مواعيد الدوام', $this->sentTexts()[0]);
+        $this->assertStringContainsString('✅ تأكيد', $this->sentTexts()[0]);
         $this->assertSame('wamid.OUT.1', $this->pending()['wamid']);
         $this->assertSame(0, WaKnowledgeEntry::count());
     }
@@ -211,8 +219,7 @@ class AdminConfirmButtonsTest extends TestCase
 
         $this->stage();
 
-        $req = collect(Http::recorded())->map(fn ($p) => $p[0])->first(fn (Request $r) => str_contains($r->url(), '/messages'));
-        $this->assertSame('text', $req['type']);
+        $this->assertSame('text', $this->firstOutPayload()['type']);
         $this->assertNull($this->pending()['wamid']);
     }
 }

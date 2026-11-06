@@ -14,15 +14,15 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * عقد الإرسال إلى Graph: الرابط والنسخة من config، وPOST، وBearer، وشكل الجسم،
- * وحفظ wamid الراجع، وأثر رد الموظف على المحادثة.
+ * عقد الإرسال إلى البوابة (منذ 2026-11-06): مسار جلسة الرقم ومفتاحه المحصور، وPOST، وشكل الجسم، وحفظ معرّف الرسالة
+ * الراجع، وأثر رد الموظف على المحادثة. الحمولة المحفوظة بشكلها الداخلي (Cloud API) كما تفحصها السياسة.
  */
 class WhatsAppChannelSendTest extends TestCase
 {
     use ConfiguresWhatsApp;
     use RefreshDatabase;
 
-    private const SEND_URL = 'https://graph.facebook.com/v25.0/106540352242922/messages';
+    private const SEND_BASE = 'http://nuskjo-openwa:2785/api/sessions/sess-1/messages/';
 
     protected function setUp(): void
     {
@@ -32,7 +32,7 @@ class WhatsAppChannelSendTest extends TestCase
         $this->fakeGraph();
     }
 
-    /** الطلب الوحيد الذي خرج إلى Graph */
+    /** طلب الإرسال الوحيد الذي خرج إلى البوابة */
     private function sentRequest(): Request
     {
         Http::assertSentCount(1);
@@ -41,30 +41,26 @@ class WhatsAppChannelSendTest extends TestCase
     }
 
     #[Group('INV-06')]
-    public function test_send_text_posts_to_graph_with_bearer_token_and_text_body(): void
+    public function test_send_text_posts_to_the_channel_session_with_its_scoped_key(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create();
 
         $result = WhatsAppChannel::sendText($conv, 'أهلاً، كيف نخدمك؟');
 
-        $this->assertSame(['ok' => true, 'error' => null, 'code' => null, 'message_id' => 'wamid.OUT.1'], $result);
-
-        Http::assertSent(fn (Request $r) => $r->url() === self::SEND_URL
-            && $r->method() === 'POST'
-            && $r->hasHeader('Authorization', 'Bearer test-token')
-            && $r->isJson());
+        $this->assertSame(['ok' => true, 'error' => null, 'code' => null, 'message_id' => 'wamid.OUT.1'],
+            array_intersect_key($result, array_flip(['ok', 'error', 'code', 'message_id'])));
 
         $request = $this->sentRequest();
-        $this->assertSame('whatsapp', $request['messaging_product']);
-        $this->assertSame('individual', $request['recipient_type']);
-        $this->assertSame($conv->wa_phone, $request['to']);
-        $this->assertSame('text', $request['type']);
-        $this->assertSame('أهلاً، كيف نخدمك؟', $request['text']['body']);
-        $this->assertFalse($request['text']['preview_url']);
+        $this->assertSame(self::SEND_BASE.'send-text', $request->url());
+        $this->assertSame('POST', $request->method());
+        $this->assertTrue($request->hasHeader('X-API-Key', 'key-1'));
+        $this->assertTrue($request->isJson());
+        $this->assertSame(['chatId' => $conv->wa_phone.'@c.us', 'text' => 'أهلاً، كيف نخدمك؟', 'linkPreview' => false], $request->data());
+        $this->assertSame('nj-m-'.WaMessage::sole()->id, $request->header('Idempotency-Key')[0]);
     }
 
     #[Group('INV-06')]
-    public function test_returned_wamid_is_stored_on_the_outbound_message(): void
+    public function test_returned_message_id_is_stored_on_the_outbound_message(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create();
 
@@ -73,13 +69,15 @@ class WhatsAppChannelSendTest extends TestCase
         $msg = WaMessage::sole();
         $this->assertSame('wamid.OUT.1', $msg->wamid);
         $this->assertSame($conv->id, $msg->conversation_id);
+        $this->assertSame($this->testChannel()->id, $msg->channel_id);
         $this->assertSame('out', $msg->direction);
         $this->assertSame('bot', $msg->source);
         $this->assertSame('text', $msg->msg_type);
         $this->assertSame('sent', $msg->status);
         $this->assertSame('أهلاً', $msg->body);
         $this->assertNull($msg->error_message);
-        $this->assertSame($this->sentRequest()->data(), $msg->payload);
+        $this->assertSame('أهلاً', $msg->payload['text']['body']);
+        $this->assertSame($conv->wa_phone.'@c.us', $msg->payload['to']);
     }
 
     #[Group('INV-06')]
@@ -104,7 +102,7 @@ class WhatsAppChannelSendTest extends TestCase
 
         WhatsAppChannel::sendText($conv, str_repeat('ع', 5000));
 
-        $this->assertSame(4096, mb_strlen($this->sentRequest()['text']['body']));
+        $this->assertSame(4096, mb_strlen($this->sentRequest()['text']));
     }
 
     #[Group('INV-06')]
@@ -121,7 +119,7 @@ class WhatsAppChannelSendTest extends TestCase
         $result = WhatsAppChannel::sendText($conv, 'معك فريق المبيعات', 'staff', $staff->id);
 
         $this->assertTrue($result['ok']);
-        Http::assertSent(fn (Request $r) => $r->url() === self::SEND_URL);
+        $this->assertSame(self::SEND_BASE.'send-text', $this->sentRequest()->url());
 
         $conv->refresh();
         $this->assertTrue($conv->bot_paused_until->equalTo(now()->addMinutes(30)));
@@ -166,7 +164,7 @@ class WhatsAppChannelSendTest extends TestCase
     }
 
     #[Group('INV-06')]
-    public function test_send_buttons_keeps_at_most_three_buttons_with_20_character_titles(): void
+    public function test_send_buttons_keeps_at_most_three_options_and_sends_them_numbered(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create();
 
@@ -178,30 +176,29 @@ class WhatsAppChannelSendTest extends TestCase
         ]);
 
         $this->assertSame('wamid.OUT.1', $result['message_id']);
-        Http::assertSent(fn (Request $r) => $r->url() === self::SEND_URL
-            && $r->hasHeader('Authorization', 'Bearer test-token'));
-
         $request = $this->sentRequest();
-        $this->assertSame($conv->wa_phone, $request['to']);
-        $this->assertSame('interactive', $request['type']);
-        $this->assertSame('button', $request['interactive']['type']);
-        $this->assertSame('أي عرض يناسبك؟', $request['interactive']['body']['text']);
+        $this->assertSame(self::SEND_BASE.'send-text', $request->url());
+        $this->assertSame($conv->wa_phone.'@c.us', $request['chatId']);
+        $text = $request['text'];
+        $this->assertStringStartsWith('أي عرض يناسبك؟', $text);
+        $this->assertStringContainsString("\n2. عمرة المولد", $text);
+        $this->assertStringContainsString("\n3. موظف", $text);
+        $this->assertStringNotContainsString('زر رابع', $text);
 
-        $buttons = $request['interactive']['action']['buttons'];
-        $this->assertCount(3, $buttons);
+        // المحفوظ بشكله الداخلي: المعرّفات للحل (ChoiceResolver) والعناوين المقصوصة
+        $msg = WaMessage::sole();
+        $this->assertSame('interactive', $msg->msg_type);
+        $this->assertSame('button', $msg->payload['interactive']['type']);
+        $buttons = $msg->payload['interactive']['action']['buttons'];
         $this->assertSame(['offer:12', 'offer:13', 'human'], array_column(array_column($buttons, 'reply'), 'id'));
         foreach ($buttons as $button) {
-            $this->assertSame('reply', $button['type']);
             $this->assertLessThanOrEqual(20, mb_strlen($button['reply']['title']));
         }
-        $this->assertSame(20, mb_strlen($buttons[0]['reply']['title']));
         $this->assertStringStartsWith($buttons[0]['reply']['title'], 'عمرة رمضان الاقتصادية جداً جداً');
-
-        $this->assertSame('interactive', WaMessage::sole()->msg_type);
     }
 
     #[Group('INV-06')]
-    public function test_send_list_keeps_at_most_ten_rows_within_meta_limits(): void
+    public function test_send_list_keeps_at_most_ten_rows(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create();
         $items = [];
@@ -216,12 +213,13 @@ class WhatsAppChannelSendTest extends TestCase
         WhatsAppChannel::sendList($conv, 'اختر العرض', 'عرض كل الخيارات المتاحة', $items);
 
         $request = $this->sentRequest();
-        $this->assertSame(self::SEND_URL, $request->url());
-        $this->assertSame('interactive', $request['type']);
-        $this->assertSame('list', $request['interactive']['type']);
-        $this->assertLessThanOrEqual(20, mb_strlen($request['interactive']['action']['button']));
+        $this->assertSame(self::SEND_BASE.'send-text', $request->url());
+        $this->assertStringContainsString("\n10. ", $request['text']);
+        $this->assertStringNotContainsString("\n11. ", $request['text']);
 
-        $rows = $request['interactive']['action']['sections'][0]['rows'];
+        $payload = WaMessage::sole()->payload;
+        $this->assertSame('list', $payload['interactive']['type']);
+        $rows = $payload['interactive']['action']['sections'][0]['rows'];
         $this->assertCount(10, $rows);
         $this->assertSame('offer:1', $rows[0]['id']);
         foreach ($rows as $row) {
@@ -231,7 +229,7 @@ class WhatsAppChannelSendTest extends TestCase
     }
 
     #[Group('INV-06')]
-    public function test_send_image_posts_link_and_caption(): void
+    public function test_send_image_passes_an_external_link_and_caption(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create();
 
@@ -239,9 +237,9 @@ class WhatsAppChannelSendTest extends TestCase
 
         $this->assertTrue($result['ok']);
         $request = $this->sentRequest();
-        $this->assertSame(self::SEND_URL, $request->url());
-        $this->assertSame('image', $request['type']);
-        $this->assertSame(['link' => 'https://nusk.example/storage/cards/12.png', 'caption' => 'عرض عمرة رمضان'], $request['image']);
+        $this->assertSame(self::SEND_BASE.'send-image', $request->url());
+        $this->assertSame(['chatId' => $conv->wa_phone.'@c.us', 'url' => 'https://nusk.example/storage/cards/12.png',
+            'mimetype' => 'image/jpeg', 'caption' => 'عرض عمرة رمضان'], $request->data());
 
         $msg = WaMessage::sole();
         $this->assertSame('image', $msg->msg_type);
@@ -250,7 +248,27 @@ class WhatsAppChannelSendTest extends TestCase
     }
 
     #[Group('INV-06')]
-    public function test_send_image_rejects_non_https_link_before_calling_meta(): void
+    public function test_send_image_on_our_storage_is_read_from_disk_not_fetched(): void
+    {
+        config(['app.url' => 'https://nusk.example']);
+        $dir = storage_path('app/public/cards');
+        @mkdir($dir, 0777, true);
+        file_put_contents($dir.'/t-12.png', 'PNG-BYTES');
+        $conv = WaConversation::factory()->windowOpen()->create();
+
+        try {
+            WhatsAppChannel::sendImage($conv, 'https://nusk.example/storage/cards/t-12.png', 'عرض');
+        } finally {
+            @unlink($dir.'/t-12.png');
+        }
+
+        $request = $this->sentRequest();
+        $this->assertSame(base64_encode('PNG-BYTES'), $request['base64']);
+        $this->assertArrayNotHasKey('url', $request->data());
+    }
+
+    #[Group('INV-06')]
+    public function test_send_image_rejects_non_https_link_before_calling_the_gateway(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create();
 
@@ -263,30 +281,15 @@ class WhatsAppChannelSendTest extends TestCase
     }
 
     #[Group('INV-06')]
-    public function test_graph_version_comes_from_config(): void
+    public function test_the_gateway_url_comes_from_config(): void
     {
-        config(['services.whatsapp.graph_version' => 'v26.0']);
+        config(['whatsapp.openwa.url' => 'http://other-gateway:2785']);
+        Http::fake(['other-gateway:2785/*' => Http::response(['messageId' => 'X.1'], 201)]);
         $conv = WaConversation::factory()->windowOpen()->create();
 
         WhatsAppChannel::sendText($conv, 'أهلاً');
 
-        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v26.0/106540352242922/messages');
-        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/v25.0/'));
-    }
-
-    #[Group('INV-06')]
-    public function test_environment_credentials_take_precedence_over_stored_ones(): void
-    {
-        config([
-            'services.whatsapp.token' => 'env-token',
-            'services.whatsapp.phone_number_id' => '200000000000001',
-        ]);
-        $conv = WaConversation::factory()->windowOpen()->create();
-
-        WhatsAppChannel::sendText($conv, 'أهلاً');
-
-        Http::assertSent(fn (Request $r) => $r->url() === 'https://graph.facebook.com/v25.0/200000000000001/messages'
-            && $r->hasHeader('Authorization', 'Bearer env-token'));
-        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $r) => $r->url() === 'http://other-gateway:2785/api/sessions/sess-1/messages/send-text');
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'nuskjo-openwa'));
     }
 }

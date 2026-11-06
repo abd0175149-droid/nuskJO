@@ -89,7 +89,9 @@ class UnlinkedNumberTest extends TestCase
         $bodies = $this->geminiBodies();
         $this->assertCount(2, $bodies);
         $this->assertStringContainsString('غير مربوط', $bodies[0]);
-        $this->assertStringContainsString('"linked":false', $bodies[1]);
+        // منذ 2026-11-06 أدوات الحساب لا تُعلن لرقم غير مربوط أصلاً (Bot\ToolPolicy)، والاستدعاء رغم ذلك يرفضه ToolInvoker
+        $this->assertStringNotContainsString('"name":"get_my_balance","description"', $bodies[0]);
+        $this->assertStringContainsString('"error":"أداة غير متاحة"', $bodies[1]);
 
         foreach ($bodies as $i => $body) {
             $this->assertStringNotContainsString(self::BALANCE_LINE, $body, "طلب Gemini رقم {$i}");

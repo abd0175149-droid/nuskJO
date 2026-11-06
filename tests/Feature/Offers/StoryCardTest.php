@@ -6,7 +6,6 @@ use App\Models\AuditLog;
 use App\Models\Offer;
 use App\Models\OfferOption;
 use App\Models\User;
-use App\Models\WaQrLink;
 use App\Services\OfferCardService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -130,21 +129,5 @@ class StoryCardTest extends TestCase
 
         $this->actingAs($this->admin)->postJson("/offers/{$offer->id}/story")->assertNotFound();
         $this->actingAs($this->admin)->get("/offers/{$offer->id}/story/download")->assertNotFound();
-    }
-
-    public function test_the_chosen_code_is_printed_on_the_a4_card_only_when_active(): void
-    {
-        $offer = Offer::factory()->create();
-        Storage::disk('public')->put('wa-qr/one.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='));
-        $link = WaQrLink::create(['offer_id' => $offer->id, 'channel' => 'print', 'code' => 'P1', 'prefilled_message' => 'x', 'status' => 'active', 'qr_png_path' => 'wa-qr/one.png']);
-
-        $this->assertStringNotContainsString('امسح', OfferCardService::html($offer));
-        $offer->forceFill(['card_qr_link_id' => $link->id])->save();
-        $html = OfferCardService::html($offer->fresh());
-        $this->assertStringContainsString('امسح', $html);
-        $this->assertStringContainsString('src="data:image/png;base64,', $html);
-
-        $link->update(['status' => 'deleted']);
-        $this->assertStringNotContainsString('امسح', OfferCardService::html($offer->fresh()));
     }
 }

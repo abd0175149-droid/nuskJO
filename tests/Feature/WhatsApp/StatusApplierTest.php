@@ -22,8 +22,9 @@ use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * حالات التسليم الذرية (E21، العلم delivery_status_v2): الحالة لا تتراجع أياً كان ترتيب الوصول، وstatus_at وقت ميتا،
- * والتاريخ يُلحق بلا تكرار، وfailed المتأخرة تبقى في التاريخ، ومطابقة biz_opaque (E19) وأعمدة E18 كما هي.
+ * حالات التسليم الذرية (E21، العلم delivery_status_v2): الحالة لا تتراجع أياً كان ترتيب الوصول، وstatus_at وقت الحدث،
+ * والتاريخ يُلحق بلا تكرار، وfailed المتأخرة تبقى في التاريخ، وأعمدة E18 كما هي. المصدر منذ 2026-11-06 أحداث
+ * message.ack وmessage.failed من البوابة (حمولات ميتا القديمة تمر بمحوّل SignsMetaWebhooks).
  */
 class StatusApplierTest extends TestCase
 {
@@ -35,8 +36,6 @@ class StatusApplierTest extends TestCase
 
     /** wamid حمولات status_sent/delivered/read.json */
     private const WAMID = 'wamid.HBgLMTY1MDU1NTEyMzQVAgARGBI0MkZERjYwREJFODBFQTIxNDEA';
-
-    private const OPAQUE_WAMID = 'wamid.HBgLMTY1MDU1NTEyMzQVAgARGBJPUEFRVUVMRURHRVIwMDAxAA==';
 
     protected function setUp(): void
     {
@@ -52,18 +51,6 @@ class StatusApplierTest extends TestCase
         $conv = WaConversation::factory()->windowOpen()->create();
 
         return WaMessage::factory()->outbound()->create($attrs + ['conversation_id' => $conv->id, 'wamid' => self::WAMID]);
-    }
-
-    /** حمولة حالة واحدة بشكل المرجع */
-    private function statusPayload(string $wamid, string $status, ?int $ts, array $extra = []): string
-    {
-        $st = ['id' => $wamid, 'status' => $status, 'recipient_id' => '16505551234'] + ($ts !== null ? ['timestamp' => (string) $ts] : []) + $extra;
-
-        return (string) json_encode(['object' => 'whatsapp_business_account', 'entry' => [['id' => '102290129340398', 'changes' => [['field' => 'messages', 'value' => [
-            'messaging_product' => 'whatsapp',
-            'metadata' => ['display_phone_number' => '15550783881', 'phone_number_id' => self::TEST_PHONE_NUMBER_ID],
-            'statuses' => [$st],
-        ]]]]]]);
     }
 
     private function history(WaMessage $m): array
@@ -98,28 +85,23 @@ class StatusApplierTest extends TestCase
         Event::assertDispatched(WaMessageStatusChanged::class, fn ($e) => $e->messageId === $out->id && $e->status === 'delivered' && $e->metaTs === 1760425803);
     }
 
-    public function test_failed_131047_on_a_sent_row_fills_the_error_columns_once(): void
+    public function test_a_failed_event_on_a_sent_row_fills_the_error_columns_once(): void
     {
         config(['features.env.meta_error_v2' => true]);
         Event::fake([NewNotification::class, WaMessageFailed::class]);
-        $out = $this->outbound(['wamid' => 'wamid.HBgLMTY1MDU1NTEyMzQVAgARGBI4NjAzMUVGQzhCN0UxMTc1NkQA']);
+        $out = $this->outbound(['wamid' => 'true_16505551234@c.us_FAILED1']);
+        $failed = ['messageId' => 'true_16505551234@c.us_FAILED1', 'status' => 'failed', 'timestamp' => 1760425900];
 
-        $this->postMetaWebhook('status_failed_131047.json')->assertOk();
+        $this->postOpenWa('message.failed', $failed)->assertOk();
 
         $out->refresh();
-        $meaning = MetaErrorCatalog::classify(131047);
-        $this->assertSame(['failed', 131047, 'WINDOW_EXPIRED', 'window', $meaning['message']],
+        $meaning = MetaErrorCatalog::byCode('DELIVERY_FAILED');
+        $this->assertSame(['failed', null, 'DELIVERY_FAILED', 'quality', $meaning['message']],
             [$out->status, $out->meta_code, $out->error_code, $out->error_category, $out->error_message]);
-        $this->assertSame(1, (int) Cache::get('wa:meta:cat:window:'.now()->format('Ymd')), 'المفاعل مرة واحدة');
-        // تفاصيل ميتا لا تُكتب في أي عمود ولا تُعرض: payload._meta_error مقنّعة للدعم وحدها (E18)
-        $row = (array) DB::table('wa_messages')->where('id', $out->id)->first();
-        unset($row['payload']);
-        $this->assertStringNotContainsString('more than 24 hours', json_encode($row));
-        Event::assertDispatched(WaMessageFailed::class, fn ($e) => $e->origin === 'webhook' && $e->metaCode === 131047 && $e->scope === 'recipient');
+        Event::assertDispatched(WaMessageFailed::class, fn ($e) => $e->origin === 'webhook' && $e->metaCode === null && $e->scope === 'recipient');
 
-        // إعادة ميتا للحمولة نفسها: لا عدّ ثانٍ ولا حدث ثانٍ
-        $this->postMetaWebhook('status_failed_131047.json')->assertOk();
-        $this->assertSame(1, (int) Cache::get('wa:meta:cat:window:'.now()->format('Ymd')));
+        // إعادة البوابة للحدث نفسه: لا حدث ثانٍ
+        $this->postOpenWa('message.failed', $failed)->assertOk();
         Event::assertDispatchedTimes(WaMessageFailed::class, 1);
     }
 
@@ -128,13 +110,13 @@ class StatusApplierTest extends TestCase
         $out = $this->outbound(['source' => 'staff']);
         $this->postMetaWebhook('status_read.json')->assertOk();
 
-        $this->postRawWebhook($this->statusPayload(self::WAMID, 'failed', 1760425900, ['errors' => [['code' => 131026, 'title' => 'Message undeliverable']]]))->assertOk();
+        $this->postOpenWa('message.failed', ['messageId' => self::WAMID, 'status' => 'failed', 'timestamp' => 1760425900])->assertOk();
 
         $out->refresh();
         $this->assertSame('read', $out->status);
         $this->assertNull($out->error_code);
         $this->assertSame(['read', 'failed'], array_column($this->history($out), 's'));
-        $this->assertSame(131026, $this->history($out)[1]['c']);
+        $this->assertNull($this->history($out)[1]['c'], 'لا رقم ميتا من البوابة');
 
         $agent = $this->staffWith('desk', ['whatsapp.view', 'whatsapp.view_all']);
         $this->actingAs($agent)->getJson("/api/whatsapp/conversations/{$out->conversation_id}/messages")->assertOk()
@@ -152,34 +134,17 @@ class StatusApplierTest extends TestCase
         $this->assertSame(['delivered', null, null, null], [$out->status, $out->error_code, $out->error_category, $out->error_message]);
     }
 
-    public function test_a_queued_row_is_resolved_by_its_opaque_value_and_another_prefix_matches_nothing(): void
-    {
-        $conv = WaConversation::factory()->windowOpen()->create();
-        $queued = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'queued', 'wamid' => null]);
-        $foreign = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'queued', 'wamid' => null]);
-
-        $raw = (string) file_get_contents($this->fixturePath('status_sent_with_opaque.json'));
-        $this->postRawWebhook(str_replace('"nj:m:1"', '"tw:m:'.$foreign->id.'"', $raw))->assertOk();
-        $this->postRawWebhook(str_replace('"nj:m:1"', '"nj:m:'.$queued->id.'"', $raw))->assertOk();
-
-        $queued->refresh();
-        $this->assertSame(['sent', self::OPAQUE_WAMID], [$queued->status, $queued->wamid]);
-        $this->assertNotNull($queued->sent_at);
-        $this->assertSame(['queued', null], [$foreign->fresh()->status, $foreign->fresh()->wamid]);
-        $this->assertSame(2, WaMessage::count(), 'لا صف جديد');
-    }
-
     public function test_a_reaped_unknown_row_becomes_delivered_and_loses_its_mark(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create(['needs_attention' => true, 'attention_reason' => 'send_unknown']);
-        $row = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'unknown', 'wamid' => null,
-            'error_code' => 'HTTP_TIMEOUT', 'error_message' => 'انتهت مهلة ميتا', 'payload' => ['_reaped' => now()->toIso8601String(), 'keep' => 1]]);
+        // مهلة بعد الإرسال ثم حسم الصدى معرّفه (EchoHandler): الصف unknown بمعرّف حتى يصل الإيصال
+        $row = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'unknown', 'wamid' => 'true_16505551234@c.us_REAPED1',
+            'error_code' => 'GW_TIMEOUT', 'error_message' => 'انتهت مهلة البوابة', 'payload' => ['_reaped' => now()->toIso8601String(), 'keep' => 1]]);
 
-        $raw = (string) file_get_contents($this->fixturePath('status_delivered_with_biz_opaque.json'));
-        $this->postRawWebhook(str_replace('"nj:m:1"', '"nj:m:'.$row->id.'"', $raw))->assertOk();
+        $this->postOpenWa('message.ack', ['messageId' => 'true_16505551234@c.us_REAPED1', 'status' => 'delivered', 'timestamp' => 1760425803])->assertOk();
 
         $row->refresh();
-        $this->assertSame(['delivered', self::OPAQUE_WAMID, null, null], [$row->status, $row->wamid, $row->error_code, $row->error_message]);
+        $this->assertSame(['delivered', null, null], [$row->status, $row->error_code, $row->error_message]);
         $this->assertArrayNotHasKey('_reaped', $row->payload);
         $this->assertSame(1, $row->payload['keep']);
         $this->assertNotNull($row->sent_at);
@@ -276,28 +241,6 @@ class StatusApplierTest extends TestCase
         $conv = WaConversation::find($out->conversation_id);
         $this->assertTrue($conv->needs_attention);
         $this->assertSame('send_failed', $conv->attention_reason);
-    }
-
-    public function test_with_the_flag_off_the_legacy_path_runs(): void
-    {
-        config(['features.env.delivery_status_v2' => false]);
-        $out = $this->outbound();
-
-        $this->postMetaWebhook('status_delivered.json')->assertOk();
-
-        $out->refresh();
-        $this->assertSame('delivered', $out->status);
-        $this->assertNull($out->status_at);
-        $this->assertSame('delivered', $this->history($out)[0]['status']);
-    }
-
-    public function test_a_status_from_meta_v24_without_a_conversation_object_applies(): void
-    {
-        $out = $this->outbound(['wamid' => 'wamid.HBgLMTY1MDU1NTEyMzQVAgARGBJFMjFSRUFEVjI0Tk9DT05WAA==']);
-
-        $this->postMetaWebhook('status_read_v24_no_conversation.json')->assertOk();
-
-        $this->assertSame('read', $out->fresh()->status);
     }
 
     public function test_an_inbound_message_with_the_same_id_is_never_touched(): void

@@ -8,7 +8,6 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\BotEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -17,7 +16,7 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * تفاعل الموظف (E33، العلم wa_staff_reactions، مراجعة C008): نوع reaction بلا context، من قائمة بيضاء، على رسالة عميل
+ * تفاعل الموظف (E33، العلم wa_staff_reactions، مراجعة C008): POST /messages/react بلا اقتباس، من قائمة بيضاء، على رسالة عميل
  * عمرها 30 يوماً أو أقل، عبر dispatch بأقفاله كلها. إقرار لا رد: لا يُسكت البوت ولا يخفي شارة التدخّل ولا يغيّر المعاينة
  * ولا العلامة، والبوت ما زال يجيب رسالة العميل المعلّقة.
  */
@@ -61,24 +60,18 @@ class ReactionOutboundTest extends TestCase
             $c->last_message_preview, (string) $c->last_outbound_at, (string) $c->last_message_at];
     }
 
-    public static function ledgerModes(): array
+    public function test_a_reaction_is_sent_without_a_quote_and_changes_nothing_of_a_reply(): void
     {
-        return ['legacy path' => [false], 'send ledger' => [true]];
-    }
-
-    #[DataProvider('ledgerModes')]
-    public function test_a_reaction_is_sent_without_context_and_changes_nothing_of_a_reply(bool $ledger): void
-    {
-        config(['features.env.send_ledger' => $ledger, 'audit.extended' => true]);
+        config(['audit.extended' => true]);
         $this->fakeGraph();
         $before = $this->snapshot();
 
         $this->react($this->in, '✅')->assertOk()->assertJson(['ok' => true]);
 
-        $request = collect(Http::recorded())->map(fn ($p) => $p[0])->sole();
-        $this->assertSame('reaction', $request['type']);
-        $this->assertSame(['message_id' => 'wamid.IN.PASS', 'emoji' => '✅'], $request['reaction']);
-        $this->assertArrayNotHasKey('context', $request->data());
+        $sends = $this->gatewaySends();
+        $this->assertCount(1, $sends);
+        $this->assertSame('react', $sends[0]['path']);
+        $this->assertSame(['chatId' => $this->conv->wa_phone.'@c.us', 'messageId' => 'wamid.IN.PASS', 'emoji' => '✅'], $sends[0]['body']);
         $this->assertSame($before, $this->snapshot(), 'لا إيقاف للبوت ولا مسح لشارة التدخّل ولا معاينة ولا علامة');
         $this->assertSame('✅', data_get($this->in->fresh()->payload, 'reactions.business.emoji'));
         $this->assertSame($this->staff->id, data_get($this->in->fresh()->payload, 'reactions.business.staff_id'));
@@ -94,7 +87,7 @@ class ReactionOutboundTest extends TestCase
 
         $this->react($this->in, '')->assertOk();
 
-        $this->assertSame('', collect(Http::recorded())->map(fn ($p) => $p[0])->last()['reaction']['emoji']);
+        $this->assertSame('', collect($this->gatewaySends())->last()['body']['emoji']);
         $this->assertNull(data_get($this->in->fresh()->payload, 'reactions'));
         $this->assertSame('↩️ أُزيل التفاعل', WaMessage::where('direction', 'out')->orderByDesc('id')->first()->body);
     }
@@ -121,15 +114,15 @@ class ReactionOutboundTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_a_closed_window_is_refused_and_the_flag_gates_the_route(): void
+    public function test_a_paused_channel_is_refused_and_the_flag_gates_the_route(): void
     {
         $this->fakeGraph();
-        $this->conv->update(['last_inbound_at' => now()->subDays(2)]);
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
 
-        $this->react($this->in, '✅')->assertStatus(422)->assertJson(['code' => 'WINDOW_EXPIRED']);
+        $this->react($this->in, '✅')->assertStatus(422)->assertJson(['code' => 'CHANNEL_PAUSED']);
 
         config(['features.env.wa_staff_reactions' => false]);
-        $this->conv->update(['last_inbound_at' => now()->subHour()]);
+        $this->testChannel()->update(['paused_until' => null]);
         $this->react($this->in, '✅')->assertStatus(422)->assertJson(['code' => 'FEATURE_OFF']);
         Http::assertNothingSent();
     }
@@ -145,11 +138,12 @@ class ReactionOutboundTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_meta_131009_is_explained_in_arabic(): void
+    public function test_a_gateway_rejection_is_refused_and_leaves_no_badge(): void
     {
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => ['code' => 131009, 'message' => '(#131009) Parameter value is not valid']], 400)]);
+        $this->fakeGraph(['nuskjo-openwa:2785/api/sessions/*/messages/react' => Http::response(['statusCode' => 404, 'message' => 'Message not found'], 404)]);
 
-        $this->react($this->in, '✅')->assertStatus(422)->assertJson(['error' => 'تعذّر التفاعل: الرسالة قديمة أو محذوفة.']);
+        $this->react($this->in, '✅')->assertStatus(422)->assertJson(['ok' => false, 'code' => 'GW_REJECTED']);
+        $this->assertNull(data_get($this->in->fresh()->payload, 'reactions'));
     }
 
     public static function watermarkModes(): array
@@ -172,6 +166,6 @@ class ReactionOutboundTest extends TestCase
         $result = BotEngine::reply($this->conv->fresh());
         $this->assertTrue($result['sent'], (string) ($result['reason'] ?? ''));
         $this->assertSame(['أهلاً، وصلنا الجواز وسيتابع معك الموظف'], WaMessage::where('source', 'bot')->pluck('body')->all());
-        $this->assertTrue(collect(Http::recorded())->contains(fn ($p) => $p[0] instanceof Request && ($p[0]['type'] ?? null) === 'text'));
+        $this->assertSame(['react', 'send-text'], array_column($this->gatewaySends(), 'path'));
     }
 }

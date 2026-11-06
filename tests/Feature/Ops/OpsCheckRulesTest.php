@@ -97,22 +97,6 @@ class OpsCheckRulesTest extends TestCase
         $this->assertSame('error', $n->type);
     }
 
-    public function test_send_auth_is_skipped_when_channel_health_already_alerted(): void
-    {
-        config(['features.env.channel_health' => true]);
-        WaBotSetting::current();
-        DB::table('wa_bot_settings')->update(['wa_health' => 'TOKEN_INVALID']);
-        $conv = WaConversation::factory()->windowOpen()->create();
-        WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'status' => 'failed', 'error_category' => 'auth', 'meta_code' => 190]);
-
-        $this->check();
-        $this->assertSame(0, $this->alerts(config('ops.rules.send_auth.title')));
-
-        DB::table('wa_bot_settings')->update(['wa_health' => 'AVAILABLE']);
-        $this->check();
-        $this->assertSame(1, $this->alerts(config('ops.rules.send_auth.title')));
-    }
-
     public function test_alert_texts_carry_numbers_and_categories_only(): void
     {
         $conv = WaConversation::factory()->windowOpen()->create(['display_name' => 'عميل اسمه سري', 'needs_attention' => true, 'last_inbound_at' => now()->subHour()]);

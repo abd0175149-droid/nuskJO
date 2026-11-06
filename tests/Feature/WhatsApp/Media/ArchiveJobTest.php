@@ -18,23 +18,22 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * وظيفة الأرشفة (E14.4): GET /{media-id} جديد في كل محاولة، والسقف قبل التنزيل وأثناءه وبعده، وsha256 بصيغتيه،
- * والنوع بالفحص لا بالتصريح، والرمز لا يذهب لمضيف غريب، ولا يظهر الرابط في أي سجل.
+ * وظيفة الأرشفة (E14.4، منذ 2026-11-06 من البوابة): GET /messages/{chatId}/{id}/media بمفتاح رقم الرسالة في كل محاولة،
+ * والسقف، وsha256 تُحسب هنا، والنوع بالفحص لا بالتصريح، والمفتاح لا يظهر في أي سجل.
  */
 class ArchiveJobTest extends TestCase
 {
     use ConfiguresWhatsApp;
     use RefreshDatabase;
 
-    private const MEDIA_ID = '1104480873777230';
-
-    private const URL = 'https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=1104480873777230&ext=1760425300&hash=SECRETHASH';
+    private const WAMID = 'false_16505551234@c.us_3EB0MEDIA1';
 
     protected function setUp(): void
     {
         parent::setUp();
         Storage::fake('wa_media');
         $this->configureChannel();
+        config(['whatsapp.openwa.url' => 'http://nuskjo-openwa:2785', 'whatsapp.transport' => 'openwa']);
     }
 
     public static function jpeg(int $bytes = 200_000): string
@@ -46,17 +45,17 @@ class ArchiveJobTest extends TestCase
 
     private function message(array $attrs = []): WaMessage
     {
-        return WaMessage::factory()->inbound()->create($attrs + ['msg_type' => 'image', 'body' => '📷 صورة', 'media_id' => self::MEDIA_ID, 'media_status' => 'pending']);
+        static $n = 0;
+        $wamid = self::WAMID.(++$n);
+
+        return WaMessage::factory()->inbound()->create($attrs + ['msg_type' => 'image', 'body' => '📷 صورة', 'wamid' => $wamid, 'media_id' => $wamid,
+            'media_status' => 'pending', 'payload' => ['_openwa' => true, 'chatId' => '16505551234@c.us']]);
     }
 
-    /** ردود ميتا: بيانات الوسيط ثم الملف */
-    private function fakeMeta(string $bytes, array $meta = [], array $headers = [], ?string $url = null): void
+    /** البوابة تعيد الملف (أو ردها) */
+    private function fakeMedia(string $bytes, int $status = 200, array $headers = []): void
     {
-        $url ??= self::URL;
-        Http::fake([
-            'graph.facebook.com/*' => Http::response($meta + ['url' => $url, 'mime_type' => 'image/jpeg', 'sha256' => hash('sha256', $bytes), 'file_size' => strlen($bytes), 'id' => self::MEDIA_ID]),
-            '*' => Http::response($bytes, 200, $headers + ['Content-Type' => 'image/jpeg']),
-        ]);
+        Http::fake(['*/media' => Http::response($bytes, $status, $headers + ['Content-Type' => 'image/jpeg'])]);
     }
 
     private function runJob(WaMessage $m, ?int $cap = null): ArchiveWhatsAppMedia
@@ -67,39 +66,36 @@ class ArchiveJobTest extends TestCase
         return $job;
     }
 
-    private function downloads(): int
-    {
-        return Http::recorded(fn (Request $r) => !str_contains($r->url(), 'graph.facebook.com'))->count();
-    }
-
     private function tmpLeft(): array
     {
         return glob(storage_path('app/wa-media/.tmp/*.part')) ?: [];
     }
 
-    public function test_a_jpeg_with_a_hex_hash_is_stored_under_a_uuid_path(): void
+    public function test_a_jpeg_is_stored_under_a_uuid_path_with_its_hash(): void
     {
         $bytes = self::jpeg();
-        $this->fakeMeta($bytes);
+        $this->fakeMedia($bytes);
         $m = $this->message(['media_sha256' => null]);
 
         $this->runJob($m)->assertNotReleased();
 
         $m->refresh();
-        $this->assertSame(['stored', 'image/jpeg', strlen($bytes), null], [$m->media_status, $m->media_mime, $m->media_size, $m->media_error]);
+        $this->assertSame(['stored', 'image/jpeg', strlen($bytes), null, hash('sha256', $bytes)],
+            [$m->media_status, $m->media_mime, $m->media_size, $m->media_error, $m->media_sha256]);
         $this->assertMatchesRegularExpression('#^\d{4}/\d{2}/[0-9a-f-]{36}\.jpg$#', $m->media_path);
         $this->assertSame($bytes, Storage::disk('wa_media')->get($m->media_path));
         $this->assertNotNull($m->media_archived_at);
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com') && str_contains($r->url(), self::MEDIA_ID) && $r->hasHeader('Authorization'));
-        Http::assertSent(fn (Request $r) => str_starts_with($r->url(), 'https://lookaside.fbsbx.com/') && $r->hasHeader('Authorization', 'Bearer test-token'));
+        Http::assertSent(fn (Request $r) => $r->method() === 'GET'
+            && str_ends_with($r->url(), '/sessions/sess-1/messages/'.rawurlencode('16505551234@c.us').'/'.rawurlencode($m->wamid).'/media')
+            && $r->hasHeader('X-API-Key', 'key-1'));
         $this->assertSame([], $this->tmpLeft());
     }
 
-    public function test_a_base64_hash_from_the_webhook_also_matches(): void
+    public function test_a_pdf_is_stored_by_its_detected_type(): void
     {
         $bytes = "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n";
-        $this->fakeMeta($bytes, ['sha256' => 'ignored-when-the-webhook-has-one', 'mime_type' => 'application/pdf']);
-        $m = $this->message(['msg_type' => 'document', 'media_sha256' => base64_encode(hash('sha256', $bytes, true))]);
+        $this->fakeMedia($bytes, headers: ['Content-Type' => 'application/octet-stream']);
+        $m = $this->message(['msg_type' => 'document']);
 
         $this->runJob($m);
 
@@ -108,26 +104,14 @@ class ArchiveJobTest extends TestCase
         $this->assertStringEndsWith('.pdf', $m->media_path);
     }
 
-    public function test_a_file_over_the_cap_is_never_downloaded(): void
+    public function test_a_file_over_the_cap_is_never_stored(): void
     {
-        $this->fakeMeta('x', ['file_size' => 26 * 1024 * 1024]);
+        $this->fakeMedia(self::jpeg(5000));
         $m = $this->message();
 
-        $this->runJob($m);
+        $this->runJob($m, 1000);
 
-        $this->assertSame(['too_large', 26 * 1024 * 1024], [$m->fresh()->media_status, $m->fresh()->media_size]);
-        $this->assertSame(0, $this->downloads());
-    }
-
-    public function test_a_large_content_length_stops_the_download(): void
-    {
-        $this->fakeMeta(self::jpeg(1000), ['file_size' => 1000], ['Content-Length' => (string) (30 * 1024 * 1024)]);
-        $m = $this->message();
-
-        $this->runJob($m);
-
-        $this->assertSame('too_large', $m->fresh()->media_status);
-        $this->assertNull($m->fresh()->media_path);
+        $this->assertSame(['too_large', 1001, null], [$m->fresh()->media_status, $m->fresh()->media_size, $m->fresh()->media_path]);
         $this->assertSame([], Storage::disk('wa_media')->allFiles());
         $this->assertSame([], $this->tmpLeft());
     }
@@ -135,7 +119,7 @@ class ArchiveJobTest extends TestCase
     public function test_svg_and_html_disguised_as_jpeg_are_rejected(): void
     {
         foreach (['<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', "<!DOCTYPE html>\n<html><body><script>alert(1)</script></body></html>"] as $bytes) {
-            $this->fakeMeta($bytes);
+            $this->fakeMedia($bytes);
             $m = $this->message(['media_sha256' => null]);
 
             $this->runJob($m);
@@ -149,51 +133,22 @@ class ArchiveJobTest extends TestCase
         $this->assertSame([], $this->tmpLeft());
     }
 
-    public function test_a_hash_mismatch_is_kept_in_log_mode_and_fails_in_enforce_mode(): void
+    public function test_media_gone_from_the_phone_expires_without_retry(): void
     {
-        $this->fakeMeta(self::jpeg(), ['sha256' => str_repeat('0', 64)]);
-        $logged = $this->message(['media_sha256' => null]);
-        $this->runJob($logged);
-        $this->assertSame(['stored', 'sha_mismatch'], [$logged->fresh()->media_status, $logged->fresh()->media_error]);
-
-        config(['whatsapp.media.sha_mode' => 'enforce']);
-        $enforced = $this->message(['media_sha256' => null]);
-        $this->runJob($enforced);
-        $this->assertSame(['failed', 'MEDIA_INTEGRITY', null], [$enforced->fresh()->media_status, $enforced->fresh()->media_error, $enforced->fresh()->media_path]);
-    }
-
-    public function test_the_token_never_goes_to_a_host_outside_the_list(): void
-    {
-        $this->fakeMeta(self::jpeg(), url: 'https://cdn.example.net/file.jpg');
+        $this->fakeMedia('{"message":"Media not found"}', 404, ['Content-Type' => 'application/json']);
         $m = $this->message();
 
-        $this->runJob($m);
+        $this->runJob($m)->assertNotReleased();
 
-        $this->assertSame(['failed', 'MEDIA_HOST_BLOCKED'], [$m->fresh()->media_status, $m->fresh()->media_error]);
-        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'example.net'));
+        $this->assertSame(['expired', 'MEDIA_EXPIRED'], [$m->fresh()->media_status, $m->fresh()->media_error]);
     }
 
-    public function test_a_missing_media_id_expires_without_retry(): void
-    {
-        foreach ([[404, 100], [400, 100]] as [$http, $code]) {
-            Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['code' => $code, 'message' => 'Unsupported get request. Object does not exist']], $http)]);
-            $m = $this->message();
-
-            $this->runJob($m)->assertNotReleased();
-
-            $this->assertSame(['expired', 'META_NOT_FOUND'], [$m->fresh()->media_status, $m->fresh()->media_error]);
-        }
-    }
-
-    public function test_throttling_releases_and_every_attempt_asks_meta_for_a_fresh_url(): void
+    public function test_an_unreachable_gateway_releases_and_every_attempt_asks_again(): void
     {
         $bytes = self::jpeg();
-        Http::fake([
-            'graph.facebook.com/*' => Http::sequence()
-                ->push(['error' => ['code' => 130429, 'message' => 'Rate limit hit']], 429)
-                ->push(['url' => self::URL, 'mime_type' => 'image/jpeg', 'sha256' => hash('sha256', $bytes), 'file_size' => strlen($bytes)]),
-            '*' => Http::response($bytes, 200),
-        ]);
+        Http::fake(['*/media' => Http::sequence()
+            ->push(['message' => 'Session not ready'], 503)
+            ->push($bytes, 200, ['Content-Type' => 'image/jpeg'])]);
         $m = $this->message(['media_sha256' => null]);
 
         $this->runJob($m)->assertReleased(60);
@@ -201,32 +156,29 @@ class ArchiveJobTest extends TestCase
         $this->runJob($m);
 
         $this->assertSame('stored', $m->fresh()->media_status);
-        $this->assertSame(2, Http::recorded(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com'))->count());
+        $this->assertSame(2, Http::recorded(fn (Request $r) => str_ends_with($r->url(), '/media'))->count());
     }
 
     public function test_it_is_idempotent(): void
     {
-        $this->fakeMeta(self::jpeg());
+        $this->fakeMedia(self::jpeg());
         $m = $this->message(['media_sha256' => null]);
         $this->runJob($m);
         $path = $m->fresh()->media_path;
 
         $this->runJob($m->fresh());
 
-        $this->assertSame(2, Http::recorded()->count(), 'المحاولة الثانية لا تطلب شيئاً');
+        $this->assertSame(1, Http::recorded()->count(), 'المحاولة الثانية لا تطلب شيئاً');
         $this->assertSame([$path], Storage::disk('wa_media')->allFiles());
     }
 
-    public function test_the_meta_url_never_reaches_a_log_or_failed_jobs(): void
+    public function test_the_api_key_never_reaches_a_log_or_failed_jobs(): void
     {
         $lines = [];
         Event::listen(MessageLogged::class, function (MessageLogged $e) use (&$lines) {
             $lines[] = $e->message.' '.json_encode($e->context);
         });
-        Http::fake([
-            'graph.facebook.com/*' => Http::response(['url' => self::URL, 'mime_type' => 'image/jpeg', 'sha256' => str_repeat('a', 64), 'file_size' => 10]),
-            '*' => fn () => throw new ConnectionException('cURL error 28: timed out for '.self::URL),
-        ]);
+        Http::fake(['*/media' => fn () => throw new ConnectionException('cURL error 28: timed out (X-API-Key: key-1)')]);
         $m = $this->message();
 
         $this->runJob($m)->assertReleased();
@@ -235,15 +187,14 @@ class ArchiveJobTest extends TestCase
         $this->assertSame(['failed', 'RETRY_EXPIRED'], [$m->fresh()->media_status, $m->fresh()->media_error]);
         $this->assertNotEmpty($lines);
         foreach ($lines as $line) {
-            $this->assertStringNotContainsString('SECRETHASH', $line);
-            $this->assertStringNotContainsString('lookaside', $line);
+            $this->assertStringNotContainsString('key-1', $line);
         }
         $this->assertSame(0, DB::table('failed_jobs')->count());
     }
 
     public function test_a_message_erased_during_the_download_leaves_no_file(): void
     {
-        $this->fakeMeta(self::jpeg());
+        $this->fakeMedia(self::jpeg());
         $m = $this->message(['media_sha256' => null]);
         $archiver = app(MediaArchiver::class);
         $result = $archiver->archive($m, 25 * 1024 * 1024);

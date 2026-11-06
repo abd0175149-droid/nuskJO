@@ -70,7 +70,7 @@ class DrillRehearsalTest extends TestCase
         Artisan::call('migrate:rollback', ['--step' => 1, '--force' => true]);
         DB::table('users')->insert(['name' => 'مدير', 'email' => 'a@example.test', 'password' => 'x', 'created_at' => now(), 'updated_at' => now()]);
         if ($token) {
-            DB::table('wa_bot_settings')->insert(['wa_token' => $token, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('wa_bot_settings')->insert(['api_key' => $token, 'created_at' => now(), 'updated_at' => now()]);
         }
 
         $path = (new SnapshotService($live, $this->dir.'/spool'))->run('manual')['path'];

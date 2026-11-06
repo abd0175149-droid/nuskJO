@@ -5,10 +5,12 @@ namespace Tests\Unit\Arch;
 use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
+use App\Services\WhatsApp\Media\MediaArchiver;
 use App\Services\WhatsApp\Outbound\VoiceNote;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
@@ -107,15 +109,18 @@ class NoBotAudioTest extends TestCase
     public function test_a_staff_voice_note_is_sent_with_the_staff_source(): void
     {
         Http::preventStrayRequests();
-        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.VOICE.9']]])]);
         $this->configureChannel();
-        $conv = WaConversation::factory()->windowOpen()->create();
+        $this->fakeGateway();
+        Storage::fake((string) config('whatsapp.media.disk'));
+        MediaArchiver::disk()->put('openwa-staging/voice.ogg', 'OGG-BYTES');
+        $conv = WaConversation::factory()->create(['channel_id' => $this->testChannel()->id]);
         $staff = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create();
 
-        $res = WhatsAppChannel::sendVoice($conv, '7731450912836654', $staff->id, ['seconds' => 7, 'send_key' => 'staff:5b0e7c3a-91d2-4f6e-8a4b-3c2d1e0f9a87']);
+        $res = WhatsAppChannel::sendVoice($conv, 'local:openwa-staging/voice.ogg', $staff->id, ['seconds' => 7, 'send_key' => 'staff:5b0e7c3a-91d2-4f6e-8a4b-3c2d1e0f9a87']);
 
         $this->assertTrue($res['ok']);
         $row = WaMessage::sole();
-        $this->assertSame(['staff', 'audio', '🎤 رسالة صوتية من الموظف (0:07)', '7731450912836654'], [$row->source, $row->msg_type, $row->body, $row->media_id]);
+        $this->assertSame(['staff', 'audio', '🎤 رسالة صوتية من الموظف (0:07)'], [$row->source, $row->msg_type, $row->body]);
+        $this->assertSame('send-audio', $this->gatewaySends()[0]['path'] ?? null);
     }
 }

@@ -53,11 +53,9 @@ return [
             // واتساب: الإعدادات والأسرار والأعلام والأسعار وأرقام الإدارة والتوجيه
             'whatsapp.settings.patch', 'whatsapp.settings.update',
             'POST api/whatsapp/settings/secrets/{secret}', 'DELETE api/whatsapp/settings/secrets/{secret}',
-            'POST api/whatsapp/settings/verify-token', 'PATCH api/whatsapp/settings/flags/{flag}', 'PATCH api/whatsapp/settings/identity-mode',
+            'PATCH api/whatsapp/settings/flags/{flag}',
             'whatsapp.prices', 'whatsapp.admin-numbers.store', 'whatsapp.admin-numbers.update', 'whatsapp.admin-numbers.destroy',
             'whatsapp.routing.save',
-            // E39: طريقة الرد ونص المتابعة بعد المكالمة، وحامل جهاز التعايش (يرى كل المحادثات)
-            'PUT api/whatsapp/calling/settings', 'PUT api/whatsapp/coexistence/settings',
             // الاعتمادات وفتح المعتمد للتعديل والحذف
             'invoices.approve', 'invoices.start-edit', 'invoices.destroy',
             'receipts.approve', 'receipts.start-edit', 'receipts.update-approved', 'receipts.destroy',

@@ -9,17 +9,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\ConfiguresWhatsApp;
-use Tests\Concerns\FakesMetaReads;
 use Tests\TestCase;
 
 /**
- * whatsapp:doctor الموسَّع (E23): تعارضات البيئة، وقراءات ميتا بميزانية زمنية كلية، و--offline و--store، والزر.
+ * whatsapp:doctor الموسَّع (E23): تعارضات البيئة، وقراءات البوابة وكل رقم بميزانية زمنية كلية (منذ OpenWA)، و--offline و--store، والزر.
  * لا يطبع أي قيمة سرية، ولا يمنع الإقلاع أبداً.
  */
 class DoctorTest extends TestCase
 {
     use ConfiguresWhatsApp;
-    use FakesMetaReads;
     use RefreshDatabase;
 
     protected function tearDown(): void
@@ -75,72 +73,91 @@ class DoctorTest extends TestCase
         $this->assertSame('ok', $this->local('LOCK_TTL')['level']);
     }
 
+    /** بوابة وهمية: /health بإصدار، وwebhook كل جلسة إلى رابط رقمها بكل الأحداث، إلا ما يغلبه $hooks (الجلسة => الرد) */
+    private function fakeDoctorGateway(array $hooks = [], ?\Closure $each = null): void
+    {
+        $routes = ['nuskjo-openwa:2785/api/health' => fn () => ($each ? $each() : null) ?? Http::response(['status' => 'ok', 'version' => '0.24.0'])];
+        foreach (\App\Models\WaChannel::all() as $ch) {
+            $routes["nuskjo-openwa:2785/api/sessions/{$ch->openwa_session_id}/webhooks"] = fn () => ($each ? $each() : null)
+                ?? ($hooks[$ch->openwa_session_id] ?? Http::response(['data' => [['url' => $ch->webhookUrl(), 'events' => config('whatsapp.openwa.events'), 'active' => true]]]));
+        }
+        $this->fakeGateway($routes);
+    }
+
     public function test_output_never_contains_a_secret_value(): void
     {
-        config(['app.url' => self::OUR_URL]);
-        $this->configureChannel(['wa_app_id' => self::OUR_APP_ID, 'wa_token' => 'EAAG-doctor-secret-token', 'wa_app_secret' => 'app-secret-doctor-0001', 'api_key' => 'AIza-doctor-llm-key']);
-        $this->fakeMetaReads();
+        $this->configureChannel(['api_key' => 'AIza-doctor-llm-key']);
+        $this->testChannel()->forceFill(['api_key' => 'doctor-channel-key-0001', 'webhook_secret' => 'doctor-hook-secret-0001'])->save();
+        $this->fakeDoctorGateway();
 
         $this->assertSame(0, Artisan::call('whatsapp:doctor', ['--budget' => 20]));
         $output = Artisan::output().json_encode(ChannelDoctor::run(20), JSON_UNESCAPED_UNICODE);
 
-        foreach (['EAAG-doctor-secret-token', 'app-secret-doctor-0001', 'AIza-doctor-llm-key', (string) config('app.key')] as $secret) {
+        foreach (['AIza-doctor-llm-key', 'doctor-channel-key-0001', 'doctor-hook-secret-0001', 'admin-test-key', 'sess-1', (string) config('app.key')] as $secret) {
             $this->assertStringNotContainsString($secret, $output);
         }
-        $this->assertStringContainsString('META_TOKEN', $output);
-        $this->assertStringContainsString('WEBHOOK_APP', $output);
+        $this->assertStringContainsString('GATEWAY', $output);
+        $this->assertStringContainsString('CHANNEL_WEBHOOK', $output);
     }
 
-    public function test_remote_reads_report_a_healthy_channel(): void
+    public function test_remote_reads_report_a_healthy_gateway_and_number(): void
     {
-        config(['app.url' => self::OUR_URL, 'services.whatsapp.waba_id' => '102290129340398']);
-        $this->configureChannel(['wa_app_id' => self::OUR_APP_ID]);
-        $this->fakeMetaReads();
+        $this->configureChannel();
+        $this->fakeDoctorGateway();
 
         $remote = collect(ChannelDoctor::remote(20))->keyBy('code');
 
-        foreach (['META_TOKEN', 'META_NUMBER', 'WEBHOOK_APP', 'WEBHOOK_WABA'] as $code) {
+        foreach (['GATEWAY', 'CHANNEL_READY', 'CHANNEL_WEBHOOK'] as $code) {
             $this->assertSame('ok', $remote[$code]['level'], $code);
         }
-        $this->assertSame(['token', 'node', 'app', 'waba'], $this->metaCalls);
-        $this->assertSame([], array_filter($this->metaRequests, fn ($r) => $r->method() !== 'GET'));
+        $this->assertStringContainsString('0.24.0', $remote['GATEWAY']['message']);
+        $this->assertSame([], Http::recorded(fn ($request) => $request->method() !== 'GET')->all());
     }
 
-    public function test_remote_reads_find_a_foreign_callback_and_an_override(): void
+    public function test_remote_reads_find_a_missing_webhook_and_a_disconnected_number(): void
     {
-        config(['app.url' => self::OUR_URL, 'services.whatsapp.waba_id' => '102290129340398']);
-        $this->configureChannel(['wa_app_id' => self::OUR_APP_ID]);
-        $this->fakeMetaReads(['node' => 'phone_node_override', 'app' => 'app_subscriptions_wrong_url']);
+        $this->configureChannel();
+        $this->makeChannel(['status' => 'disconnected']);
+        $this->fakeDoctorGateway(['sess-1' => Http::response(['data' => [['url' => 'http://elsewhere.test/hook', 'events' => ['message.received']]]])]);
 
-        $codes = array_column(array_filter(ChannelDoctor::remote(20), fn ($c) => $c['level'] === 'error'), 'code');
+        $errors = array_values(array_filter(ChannelDoctor::remote(20), fn ($c) => $c['level'] === 'error'));
 
-        $this->assertContains('WEBHOOK_CALLBACK', $codes);
-        $this->assertContains('WEBHOOK_OVERRIDE', $codes);
+        $this->assertSame(['CHANNEL_WEBHOOK', 'CHANNEL_READY'], array_column($errors, 'code'));
+    }
+
+    public function test_an_unreachable_gateway_is_one_error_and_no_number_is_read(): void
+    {
+        $this->configureChannel();
+        $this->fakeDoctorGateway(each: fn () => Http::response(['message' => 'down'], 503));
+
+        $remote = ChannelDoctor::remote(20);
+
+        $this->assertSame([['GATEWAY', 'error']], array_map(fn ($c) => [$c['code'], $c['level']], $remote));
     }
 
     public function test_the_budget_skips_what_time_does_not_allow(): void
     {
-        $this->configureChannel(['wa_app_id' => self::OUR_APP_ID]);
+        $this->configureChannel();
+        $this->makeChannel();
         $this->freezeTime();
         // كل نداء «يستغرق» 4 ثوانٍ على ساعة الاختبار
-        $this->fakeMetaReads(array_fill_keys(['token', 'node', 'app', 'waba'], function () {
+        $this->fakeDoctorGateway(each: function () {
             $this->travel(4)->seconds();
 
-            return Http::response(['error' => ['code' => 2, 'message' => 'slow']], 500);
-        }));
+            return null;
+        });
         $started = microtime(true);
 
         $this->assertSame(0, Artisan::call('whatsapp:doctor', ['--budget' => 5]));
 
         $this->assertLessThan(3, microtime(true) - $started);
-        $this->assertSame(['token', 'node'], $this->metaCalls);
         $this->assertStringContainsString('لم يُفحص — الوقت', Artisan::output());
     }
 
     public function test_offline_makes_no_call(): void
     {
-        $this->configureChannel(['wa_app_id' => self::OUR_APP_ID]);
-        $this->fakeMetaReads();
+        $this->configureChannel();
+        $this->fakeDoctorGateway();
 
         $this->assertSame(0, Artisan::call('whatsapp:doctor', ['--offline' => true]));
 

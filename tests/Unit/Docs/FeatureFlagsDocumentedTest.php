@@ -15,8 +15,9 @@ class FeatureFlagsDocumentedTest extends TestCase
 {
     /** متغيرات بيئة تعمل مقبض تراجع لا ضبطاً. متغير تشغيلي جديد بهذا الدور يُضاف هنا وفي الجدول */
     public const ENV_FLAGS = [
-        'WA_SUSPENDED', 'OPS_HEALTH_CHECKS', 'WA_META_CHECKS', 'AUTHZ_MODE', 'WA_FENCE_QUOTES', 'WA_APPSECRET_PROOF',
-        'WA_MEDIA_HOST_MODE', 'WA_AUTOSUSPEND_CODES', 'OUTBOUND_HTTP_NO_REDIRECTS', 'CHROMIUM_NET_ISOLATION', 'CSP_MODE',
+        // أعلام ميتا (WA_META_CHECKS وWA_APPSECRET_PROOF وWA_MEDIA_HOST_MODE وWA_AUTOSUSPEND_CODES) أُزيلت مع ناقلها (2026-11-06)
+        'WA_SUSPENDED', 'OPS_HEALTH_CHECKS', 'AUTHZ_MODE', 'WA_FENCE_QUOTES',
+        'OUTBOUND_HTTP_NO_REDIRECTS', 'CHROMIUM_NET_ISOLATION', 'CSP_MODE',
         'MFA_ENFORCE', 'MFA_CHALLENGE', 'BACKUP_ENABLED', 'BACKUP_PRE_MIGRATE', 'AUDIT_EXTENDED', 'WA_TRANSPORT',
         'BOOT_GUARD', 'NUSKJO_STORAGE_PERMS',
     ];
@@ -53,7 +54,8 @@ class FeatureFlagsDocumentedTest extends TestCase
         $this->assertDocumented(self::ENV_FLAGS, 'أعلام البيئة التشغيلية');
 
         $config = implode("\n", array_map('file_get_contents', glob(config_path('*.php'))));
-        $docker = implode("\n", array_map('file_get_contents', glob(base_path('docker/*'))));
+        // docker/openwa مجلد البوابة (2026-11-06): الملفات وحدها
+        $docker = implode("\n", array_map('file_get_contents', array_filter(glob(base_path('docker/*')), 'is_file')));
         foreach (self::ENV_FLAGS as $flag) {
             $this->assertTrue(str_contains($config, "'{$flag}'") || str_contains($docker, $flag), "{$flag} لم يعد يُقرأ: احذفه من الجدول ومن ENV_FLAGS");
         }

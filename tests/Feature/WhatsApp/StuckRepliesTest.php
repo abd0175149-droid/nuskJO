@@ -135,7 +135,6 @@ class StuckRepliesTest extends TestCase
 
     public function test_reprocess_explains_why_it_cannot_help(): void
     {
-        $this->reprocess($this->stuck(['last_inbound_at' => now()->subDays(2)]))->assertStatus(422);
         $this->reprocess($this->stuck(['bot_enabled' => false]))->assertStatus(422)->assertJsonPath('error', 'البوت موقوف لهذه المحادثة — فعّله أو رد يدوياً');
         $this->reprocess(WaConversation::factory()->windowOpen()->create())->assertStatus(422)->assertJsonPath('error', 'لا رسالة معلّقة');
         $this->reprocess($this->stuck([], 60))->assertStatus(422)->assertJsonPath('error', fn ($e) => str_contains($e, 'رد يدوياً'));

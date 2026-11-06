@@ -23,9 +23,10 @@ class LlmProviderContractTest extends TestCase
     use ConfiguresWhatsApp;
     use RefreshDatabase;
 
-    private function conversationWithMessage(string $body = 'مرحبا'): WaConversation
+    private function conversationWithMessage(string $body = 'مرحبا', bool $linked = false): WaConversation
     {
-        $conv = WaConversation::factory()->windowOpen()->create();
+        // أدوات الحساب (get_my_*) تُعلن لعميل مربوط وحده (Bot\ToolPolicy)
+        $conv = WaConversation::factory()->windowOpen()->create($linked ? ['client_id' => \App\Models\Client::factory()->create()->id] : []);
         WaMessage::factory()->inbound()->create(['conversation_id' => $conv->id, 'body' => $body]);
 
         return $conv;
@@ -50,7 +51,7 @@ class LlmProviderContractTest extends TestCase
         $this->fakeGraph();
         $this->fakeGemini('أهلاً بك');
 
-        BotEngine::reply($this->conversationWithMessage());
+        BotEngine::reply($this->conversationWithMessage(linked: true));
 
         Http::assertSent(function (Request $r) {
             if (!$this->isGemini($r)) {

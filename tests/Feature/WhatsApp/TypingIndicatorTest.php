@@ -51,21 +51,28 @@ class TypingIndicatorTest extends TestCase
     }
 
     /**
-     * Graph: طلب القراءة/المؤشر (status=read) يعيد $read، والرسائل تعيد معرّفاً. Gemini بالترتيب: نص، أو أداة،
-     * أو Closure تُنفَّذ قبل الرد (لتقديم الساعة المزيفة) وتعيد أحدهما.
+     * البوابة: /chats/read يعيد $read، و/chats/typing ينجح، والرسائل تعيد معرّفاً، والوسائط بايتات صوت. Gemini بالترتيب:
+     * نص، أو أداة، أو Closure تُنفَّذ قبل الرد (لتقديم الساعة المزيفة) وتعيد أحدهما.
      */
     private function fake(array $turns, ?\Closure $read = null): void
     {
         $n = 0;
         $i = 0;
+        config(['whatsapp.openwa.url' => 'http://nuskjo-openwa:2785', 'whatsapp.transport' => 'openwa']);
         Http::fake([
-            'graph.facebook.com/*' => function (Request $r) use (&$n, $read) {
-                if (($r->data()['status'] ?? null) === 'read') {
+            'nuskjo-openwa:2785/*' => function (Request $r) use (&$n, $read) {
+                if (str_ends_with($r->url(), '/chats/read')) {
                     return $read ? $read($r) : Http::response(['success' => true]);
+                }
+                if (str_ends_with($r->url(), '/media')) {
+                    return Http::response('MEDIA-BYTES', 200, ['Content-Type' => 'audio/ogg']);
+                }
+                if (!str_contains($r->url(), '/messages/send-')) {
+                    return Http::response(['success' => true]);
                 }
                 $n++;
 
-                return Http::response(['messaging_product' => 'whatsapp', 'messages' => [['id' => 'wamid.OUT.'.$n]]]);
+                return Http::response(['messageId' => 'wamid.OUT.'.$n], 201);
             },
             'generativelanguage.googleapis.com/*' => function () use (&$i, $turns) {
                 $turn = $turns[min($i++, count($turns) - 1)];
@@ -83,7 +90,12 @@ class TypingIndicatorTest extends TestCase
 
     private function typingRequests(): int
     {
-        return Http::recorded(fn (Request $r) => ($r->data()['status'] ?? null) === 'read' && isset($r->data()['typing_indicator']))->count();
+        return Http::recorded(fn (Request $r) => str_ends_with($r->url(), '/chats/typing'))->count();
+    }
+
+    private static function isRead(Request $r): bool
+    {
+        return str_ends_with($r->url(), '/chats/read');
     }
 
     /** ترتيب الطلبات: موضع أول طلب يطابق */
@@ -114,12 +126,14 @@ class TypingIndicatorTest extends TestCase
         $this->runJob();
 
         $this->assertSame(1, $this->typingRequests());
-        Http::assertSent(fn (Request $r) => $r->data() === [
-            'messaging_product' => 'whatsapp', 'status' => 'read', 'message_id' => 'wamid.IN.1', 'typing_indicator' => ['type' => 'text'],
-        ]);
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/chats/typing') && $r->data() === ['chatId' => $this->conv->wa_phone.'@c.us', 'state' => 'typing']);
         $this->assertLessThan(
             $this->position(fn (Request $r) => str_contains($r->url(), 'generativelanguage')),
-            $this->position(fn (Request $r) => ($r->data()['status'] ?? null) === 'read'),
+            $this->position(fn (Request $r) => str_ends_with($r->url(), '/chats/typing')),
+        );
+        $this->assertLessThan(
+            $this->position(fn (Request $r) => str_ends_with($r->url(), '/chats/typing')),
+            $this->position(fn (Request $r) => self::isRead($r)),
         );
         $this->assertSame([self::REPLY], $this->botReplies());
         // المؤشر يعلّم القراءة أيضاً
@@ -134,15 +148,15 @@ class TypingIndicatorTest extends TestCase
 
         $this->runJob();
 
-        $typing = $this->position(fn (Request $r) => ($r->data()['status'] ?? null) === 'read');
-        $media = $this->position(fn (Request $r) => str_contains($r->url(), 'MEDIA123'));
+        $typing = $this->position(fn (Request $r) => str_ends_with($r->url(), '/chats/typing'));
+        $media = $this->position(fn (Request $r) => str_ends_with($r->url(), '/wamid.IN.VOICE/media'));
         $this->assertGreaterThan(0, $media, 'التفريغ طلب الوسائط');
         $this->assertLessThan($media, $typing);
     }
 
     public static function silentCases(): array
     {
-        return ['bot_enabled=false' => ['disabled'], 'paused' => ['paused'], 'window_closed' => ['window'],
+        return ['bot_enabled=false' => ['disabled'], 'paused' => ['paused'], 'channel_paused' => ['channel'],
             'mode_off' => ['mode_off'], 'flag_off' => ['flag_off'], 'bot_off' => ['bot_off'], 'suspended' => ['suspended']];
     }
 
@@ -153,7 +167,7 @@ class TypingIndicatorTest extends TestCase
         match ($case) {
             'disabled' => $this->conv->update(['bot_enabled' => false]),
             'paused' => $this->conv->update(['bot_paused_until' => now()->addMinutes(20)]),
-            'window' => $this->conv->update(['last_inbound_at' => now()->subDays(2)]),
+            'channel' => $this->testChannel()->update(['paused_until' => now()->addHour()]),
             'mode_off' => WaBotSetting::current()->forceFill(['send_read_receipts' => 'off'])->save(),
             'flag_off' => config(['features.env.read_receipts' => false]),
             'bot_off' => WaBotSetting::current()->forceFill(['enabled' => false])->save(),
@@ -226,7 +240,7 @@ class TypingIndicatorTest extends TestCase
     public function test_a_failing_indicator_never_blocks_the_reply(string $failure): void
     {
         $this->fake([self::REPLY], $failure === 'http500'
-            ? fn () => Http::response(['error' => ['code' => 1, 'message' => 'x']], 500)
+            ? fn () => Http::response(['statusCode' => 500, 'message' => 'x'], 500)
             : fn () => throw new ConnectionException('cURL error 28: Operation timed out after 5001 milliseconds'));
 
         $this->runJob();
@@ -234,7 +248,8 @@ class TypingIndicatorTest extends TestCase
         // طلب واحد فشل (المهلة لا تُسجَّل في Http::recorded)، ولا تجديد بعده
         $this->assertSame(1, ReadReceipts::failuresToday());
         $this->assertSame([self::REPLY], $this->botReplies());
-        $this->assertNull(WaBotSetting::current()->fresh()->wa_last_error);
+        $this->assertSame(0, $this->typingRequests(), 'لا مؤشر بعد قراءة فشلت');
+        $this->assertSame('ready', $this->testChannel()->fresh()->status);
         $this->assertNull($this->conv->fresh()->read_receipt_upto_id);
     }
 

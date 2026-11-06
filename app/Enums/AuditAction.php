@@ -223,8 +223,43 @@ enum AuditAction: string
     case McpToolCall = 'mcp.tool_call';
     case McpAuthFailed = 'mcp.auth_failed';
 
-    /** حالة => سبب عدم إصدارها في app/ (تبدأ فارغة) */
-    public const INTENTIONALLY_UNEMITTED = [];
+    /**
+     * حالة => سبب عدم إصدارها في app/. أفعال Cloud API (ميتا) أُزيل مصدرها مع ناقلها (2026-11-06)، وتبقى
+     * الحالات لتُقرأ صفوف السجل القديمة بعناوينها.
+     */
+    public const INTENTIONALLY_UNEMITTED = [
+        'WaIdentityMode' => self::META_REMOVED,
+        'WaVerifyRotate' => self::META_REMOVED,
+        'WaIdentityChange' => self::META_REMOVED,
+        'WaLastErrorCleared' => self::META_REMOVED,
+        'WaConvAutomationSync' => self::META_REMOVED,
+        'WaMediaRemoteDelete' => self::META_REMOVED,
+        'WaBusinessProfileUpdate' => self::META_REMOVED,
+        'WaBusinessProfilePhoto' => self::META_REMOVED,
+        'WaQrCreate' => self::META_REMOVED,
+        'WaQrDelete' => self::META_REMOVED,
+        'WaQrCardToggle' => self::META_REMOVED,
+        'WaHealthUnblock' => self::META_REMOVED,
+        'WaHealthAck' => self::META_REMOVED,
+        'WaCallsFollowupUpdate' => self::META_REMOVED,
+        'WaCallingSettingsApply' => self::META_REMOVED,
+        'WaCoexistenceHolderSet' => self::META_REMOVED,
+        'WaHistoryDiscard' => self::META_REMOVED,
+        'WaAccountUpdate' => self::META_REMOVED,
+        'WaAccountAlert' => self::META_REMOVED,
+        'WaSecurity' => self::META_REMOVED,
+        'WaQualityUpdate' => self::META_REMOVED,
+        'WaReviewUpdate' => self::META_REMOVED,
+        'WaCapabilityUpdate' => self::META_REMOVED,
+        'WaWebhookOther' => self::META_REMOVED,
+        'WaWebhookVerifyFailed' => self::META_REMOVED,
+        'WaOptoutMeta' => self::META_REMOVED,
+        'WaOptinMeta' => self::META_REMOVED,
+        'WaHealthChange' => self::META_REMOVED,
+        'WaAccountEventCritical' => self::META_REMOVED,
+    ];
+
+    private const META_REMOVED = 'ناقل ميتا أُزيل (OpenWA منذ 2026-11-06)، والحالة للسجل القديم';
 
     public function severity(): AuditSeverity
     {

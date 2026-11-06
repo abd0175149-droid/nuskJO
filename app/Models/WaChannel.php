@@ -56,7 +56,13 @@ class WaChannel extends Model
         static::creating(function (self $c) {
             $c->uuid ??= (string) Str::uuid();
         });
-        static::saved(fn () => self::$readyCache = null);
+        static::saved(function (self $c) {
+            self::$readyCache = null;
+            // مفتاح جديد أو سر جديد يُقنَّع فوراً في السجلات
+            if ($c->wasChanged(['api_key', 'webhook_secret']) || $c->wasRecentlyCreated) {
+                \App\Support\SecretRedactor::forget();
+            }
+        });
     }
 
     public function users(): BelongsToMany

@@ -12,7 +12,6 @@ use App\Services\WhatsApp\Outbound\OutboundMediaPolicy;
 use App\Services\WhatsApp\Outbound\OutboundMessage;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -21,8 +20,9 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * الإرسال المؤجل للملف (E32.7): صف محجوز بالمفتاح والنسخة الخاصة، ثم الوظيفة: preflight من جديد، فالرفع، فالإرسال على
- * الصف نفسه بالمفتاح نفسه. أي فشل قبل الإرسال يحسم الصف failed والمفتاح محرَّر، ولا إعادة آلية، ولا ملف يتيم عند ميتا.
+ * الإرسال المؤجل للملف (E32.7): صف محجوز بالمفتاح والنسخة الخاصة، ثم الوظيفة: preflight من جديد، فالإرسال على الصف نفسه
+ * بالمفتاح نفسه، والملف من النسخة الخاصة base64 إلى البوابة (منذ 2026-11-06 لا رفع إلى طرف ثالث). أي فشل قبل الإرسال
+ * يحسم الصف failed والمفتاح محرَّر، ولا إعادة آلية.
  */
 class SendWhatsAppMediaJobTest extends TestCase
 {
@@ -51,14 +51,10 @@ class SendWhatsAppMediaJobTest extends TestCase
         parent::tearDown();
     }
 
-    private function fakeMeta(int $messagesStatus = 200): void
+    private function fakeMeta(int $messagesStatus = 201): void
     {
-        Http::fake([
-            'graph.facebook.com/v25.0/106540352242922/media' => Http::response(['id' => '4490709327384033']),
-            'graph.facebook.com/v25.0/106540352242922/messages' => $messagesStatus === 200
-                ? Http::response(['messages' => [['id' => 'wamid.OUT.1']]])
-                : Http::response(['error' => ['code' => 131026, 'message' => 'Message undeliverable']], $messagesStatus),
-            'graph.facebook.com/*' => Http::response(['success' => true]),
+        $this->fakeGateway($messagesStatus === 201 ? [] : [
+            'nuskjo-openwa:2785/api/sessions/*/messages/*' => Http::response(['statusCode' => $messagesStatus, 'message' => 'Payload Too Large'], $messagesStatus),
         ]);
     }
 
@@ -92,14 +88,19 @@ class SendWhatsAppMediaJobTest extends TestCase
         $this->run_($row->id);
 
         $row->refresh();
-        $this->assertSame(['sent', 'wamid.OUT.1', '4490709327384033', self::KEY, 1], [$row->status, $row->wamid, $row->media_id, $row->send_key, $row->attempts]);
+        $mediaId = 'local:'.$row->media_path;
+        $this->assertSame(['sent', 'wamid.OUT.1', $mediaId, self::KEY, 1], [$row->status, $row->wamid, $row->media_id, $row->send_key, $row->attempts]);
         $this->assertSame(1, WaMessage::count());
         $this->assertSame('ticket', $row->payload['_doc_kind']);
-        $this->assertSame(['id' => '4490709327384033', 'filename' => 'تذكرة الطيران.pdf', 'caption' => 'تذكرتك للرحلة'], $row->payload['document']);
+        $this->assertSame(['id' => $mediaId, 'filename' => 'تذكرة الطيران.pdf', 'caption' => 'تذكرتك للرحلة'], $row->payload['document']);
 
-        $urls = Http::recorded()->map(fn ($pair) => $pair[0]->url())->all();
-        $this->assertSame(['https://graph.facebook.com/v25.0/106540352242922/media', 'https://graph.facebook.com/v25.0/106540352242922/messages'], $urls);
-        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages') && str_starts_with((string) $r['biz_opaque_callback_data'], 'nj:m:'));
+        // طلب واحد: الملف من النسخة الخاصة base64 مع الرسالة، بمفتاح الصف
+        $sends = $this->gatewaySends();
+        $this->assertCount(1, Http::recorded());
+        $this->assertSame('send-document', $sends[0]['path']);
+        $this->assertSame(['chatId' => $this->conv->wa_phone.'@c.us', 'base64' => base64_encode($this->pdfBytes()), 'mimetype' => 'application/pdf',
+            'filename' => 'تذكرة الطيران.pdf', 'caption' => 'تذكرتك للرحلة'], $sends[0]['body']);
+        $this->assertSame('nj-m-'.$row->id, $sends[0]['headers']['Idempotency-Key'][0]);
 
         // رد الموظف بملف: البوت موقوف، وغير المقروء والتدخّل صُفّرا
         $this->conv->refresh();
@@ -114,16 +115,16 @@ class SendWhatsAppMediaJobTest extends TestCase
         $this->assertStringNotContainsString('تذكرة', json_encode($audit->getAttributes(), JSON_UNESCAPED_UNICODE));
     }
 
-    public function test_a_window_closed_before_the_job_runs_fails_without_any_upload(): void
+    public function test_a_channel_paused_before_the_job_runs_fails_without_any_request(): void
     {
         $this->fakeMeta();
         $row = WaMessage::find($this->reserve()['row_id']);
-        $this->conv->update(['last_inbound_at' => now()->subHours(25)]);
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
 
         $this->run_($row->id);
 
         $row->refresh();
-        $this->assertSame(['failed', 'WINDOW_EXPIRED', null], [$row->status, $row->error_code, $row->send_key]);
+        $this->assertSame(['failed', 'CHANNEL_PAUSED', null], [$row->status, $row->error_code, $row->send_key]);
         $this->assertSame(self::KEY, $row->payload['_released_key']);
         $this->assertSame(1, (new SendWhatsAppMediaJob($row->id))->tries);
         Http::assertNothingSent();
@@ -153,28 +154,17 @@ class SendWhatsAppMediaJobTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_an_upload_rejection_fails_the_row_and_never_calls_messages(): void
+    public function test_a_gateway_rejection_fails_the_row_with_its_key_released_and_no_file_audit(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['code' => 131053, 'message' => 'Media upload error', 'fbtrace_id' => 'TraceUp']], 400)]);
+        $this->fakeMeta(413);
         $row = WaMessage::find($this->reserve()['row_id']);
 
         $this->run_($row->id);
 
         $row->refresh();
-        $this->assertSame(['failed', 131053, 'TraceUp', null], [$row->status, $row->meta_code, $row->fbtrace_id, $row->send_key]);
-        Http::assertSentCount(1);
-        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/messages'));
-    }
-
-    public function test_a_rejection_after_upload_deletes_the_orphan_at_meta(): void
-    {
-        $this->fakeMeta(400);
-        $row = WaMessage::find($this->reserve()['row_id']);
-
-        $this->run_($row->id);
-
-        $this->assertSame('failed', $row->fresh()->status);
-        Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && str_contains($r->url(), '/4490709327384033'));
+        $this->assertSame(['failed', 'GW_REJECTED', null], [$row->status, $row->error_code, $row->send_key]);
+        $this->assertSame(self::KEY, $row->payload['_released_key']);
+        $this->assertCount(1, $this->gatewaySends());
         $this->assertSame(0, AuditLog::where('action', 'wa.file_sent')->count());
     }
 
@@ -186,7 +176,7 @@ class SendWhatsAppMediaJobTest extends TestCase
         $this->run_($row->id);
         $this->run_($row->id);
 
-        Http::assertSentCount(2);
+        Http::assertSentCount(1);
         $this->assertSame('sent', $row->fresh()->status);
     }
 
@@ -210,17 +200,16 @@ class SendWhatsAppMediaJobTest extends TestCase
 
     public function test_reserving_runs_the_locks_first(): void
     {
-        $this->conv->update(['last_inbound_at' => now()->subHours(25)]);
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
 
         $res = $this->reserve();
 
-        $this->assertSame([false, 'WINDOW_EXPIRED'], [$res['ok'], $res['code']]);
+        $this->assertSame([false, 'CHANNEL_PAUSED'], [$res['ok'], $res['code']]);
         $this->assertSame(0, WaMessage::count());
     }
 
     public function test_the_reaper_reports_a_never_attempted_file_as_not_sent(): void
     {
-        config(['features.env.send_ledger' => true]);
         Http::fake();
         $file = WaMessage::find($this->reserve()['row_id']);
         $text = WaMessage::factory()->outbound()->create(['conversation_id' => $this->conv->id, 'status' => 'queued', 'wamid' => null, 'send_key' => 'reply:9:9:text']);

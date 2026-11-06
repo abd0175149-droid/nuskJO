@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\WhatsApp\Search\FtsSchema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -37,6 +38,10 @@ return new class extends Migration
         }
         if (Schema::hasColumn('wa_messages', 'channel_id')) {
             Schema::table('wa_messages', fn (Blueprint $t) => $t->dropColumn('channel_id'));
+        }
+        // up() يضيف عموداً وفهارس فقط؛ الحذف قد يعيد بناء الجدول على SQLite قديم فيُسقط triggers البحث (E30.2)
+        if (FtsSchema::missingTriggers() !== []) {
+            FtsSchema::repair();
         }
     }
 };

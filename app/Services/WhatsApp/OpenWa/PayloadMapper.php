@@ -170,9 +170,9 @@ final class PayloadMapper
         if ($rel === '' || str_contains($rel, '..')) {
             return null;
         }
-        $path = storage_path('app/public/'.$rel);
+        $path = (string) rescue(fn () => \Illuminate\Support\Facades\Storage::disk('public')->path($rel), '', false);
 
-        return is_file($path) ? $path : null;
+        return $path !== '' && is_file($path) ? $path : null;
     }
 
     private static function sniff(string $path, string $fallback): string

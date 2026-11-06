@@ -7,11 +7,10 @@ use App\Models\WaMessage;
 use App\Services\Ops\OpsAlerts;
 use App\Services\WhatsApp\ReplyState;
 use App\Services\WhatsApp\WaLog;
-use App\Support\FeatureFlags;
 use Illuminate\Console\Command;
 
 /**
- * منظّف دفتر الإرسال (E19.8، كل 10 دقائق مع العلم send_ledger): صف queued أقدم من 15 دقيقة انقطع إرساله قبل الحسم
+ * منظّف دفتر الإرسال (E19.8، كل 10 دقائق؛ الدفتر دائم منذ 2026-11-06 فلا علم يوقفه): صف queued أقدم من 15 دقيقة انقطع إرساله قبل الحسم
  * (قُتل العامل أو انهارت الحاوية) وربما خرج الطلب، فيصير «غير مؤكد» (unknown) لا «فشل»، والمفتاح يبقى محجوزاً.
  * والمحادثة «تدخّل» بالسبب send_unknown مع إشعار مقيّد. لا Http إطلاقاً، ولا يعيد الإرسال أبداً: ذاك قرار موظف.
  */
@@ -26,12 +25,6 @@ class ReapPendingWhatsAppSends extends Command
 
     public function handle(OpsAlerts $alerts): int
     {
-        if (!FeatureFlags::on('send_ledger')) {
-            $this->line('العلم send_ledger مطفأ: لا شيء.');
-
-            return self::SUCCESS;
-        }
-
         $cutoff = now()->subMinutes(max(1, (int) $this->option('minutes')));
         $dry = (bool) $this->option('dry-run');
         $reaped = [];

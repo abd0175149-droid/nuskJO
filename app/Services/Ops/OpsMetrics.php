@@ -83,7 +83,7 @@ final class OpsMetrics
             'outbound_today' => $outbound,
             'automated_today' => $part('automated_today', fn () => OutboundCounter::automatedToday(), []),
             // الأرقام الفعّالة غير الجاهزة الآن (OpenWA): للتنبيه channels_down
-            'channels_down' => $part('channels_down', fn () => \App\Models\WaChannel::query()->active()->get()->reject(fn ($c) => $c->isReady())->count()),
+            'channels_down' => $part('channels_down', fn () => self::channelsDown()),
             'scheduler_beat_age_s' => $part('scheduler', function () {
                 $beat = Cache::get(OpsHealth::SCHEDULE_BEAT);
 
@@ -188,5 +188,22 @@ final class OpsMetrics
         $ages = array_filter(array_map(fn ($q) => $q['oldest_age_s'] ?? null, (array) ($snap['queue'] ?? [])), fn ($v) => $v !== null);
 
         return $ages === [] ? null : (int) max($ages);
+    }
+
+    /**
+     * أرقام فعّالة غير جاهزة، بشرط WaChannel::isReady نفسه في استعلامي عدّ (اللقطة تجميعية وحدها، OpsMetricsTest):
+     * مربوط (ready ورقم وجلسة) وفحص ناجح خلال المدة، أو ربط حديث بلا إخفاق.
+     */
+    private static function channelsDown(): int
+    {
+        $window = now()->subMinutes(max(1, (int) config('whatsapp.openwa.ready_probe_minutes', 5)));
+        $active = fn () => \App\Models\WaChannel::query()->where('is_active', true);
+        $ready = $active()->whereIn('status', \App\Models\WaChannel::LINKED)->whereNotNull('phone')->where('phone', '!=', '')
+            ->whereNotNull('openwa_session_id')
+            ->where(fn ($q) => $q->where('last_probe_ok_at', '>=', $window)
+                ->orWhere(fn ($w) => $w->where('probe_failures', 0)->where('status_at', '>=', $window)))
+            ->count();
+
+        return max(0, $active()->count() - $ready);
     }
 }

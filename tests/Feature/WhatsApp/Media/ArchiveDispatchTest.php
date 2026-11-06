@@ -15,7 +15,7 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
-/** الجدولة عند الاستلام (E14.3): العلم، ومحادثات الإدارة، والرفض، والسقف، و131052. الحمولة معرّف الرسالة وحده */
+/** الجدولة عند الاستلام (E14.3): العلم، ومحادثات الإدارة، والرفض، والسقف. الحمولة معرّف الرسالة وحده، ومعرّف الوسيط معرّفها عند البوابة */
 class ArchiveDispatchTest extends TestCase
 {
     use ConfiguresWhatsApp;
@@ -42,7 +42,8 @@ class ArchiveDispatchTest extends TestCase
         $this->postMetaWebhook('image_with_sha.json')->assertOk();
 
         $m = $this->last();
-        $this->assertSame(['pending', '1104480873777230', 'image'], [$m->media_status, $m->media_id, $m->msg_type]);
+        $this->assertSame(['pending', 'wamid.HBgLMTY1MDU1NTEyMzQVAgASGBRFMTRBMUIyQzNENEU1RjYwNzE4MgA=', 'image'], [$m->media_status, $m->media_id, $m->msg_type]);
+        $this->assertSame($m->wamid, $m->media_id, 'يُجلب بمعرّف الرسالة');
         Queue::assertPushedOn('wa-media', ArchiveWhatsAppMedia::class, fn ($job) => $job->messageId === $m->id && $job->capOverride === null);
         Queue::assertPushed(ArchiveWhatsAppMedia::class, fn ($job) => !str_contains(serialize($job), '16505551234') && !str_contains(serialize($job), 'lookaside'));
     }
@@ -98,15 +99,5 @@ class ArchiveDispatchTest extends TestCase
         $this->assertSame(['skipped_quota', 'skipped_quota'], WaMessage::where('direction', 'in')->orderBy('id')->pluck('media_status')->all());
         Queue::assertNotPushed(ArchiveWhatsAppMedia::class);
         $this->assertSame(1, Notification::where('title', 'like', '%سقفه%')->count());
-    }
-
-    public function test_a_131052_message_is_stored_as_failed_without_any_reply(): void
-    {
-        $this->postMetaWebhook('media_131052.json')->assertOk();
-
-        $m = $this->last();
-        $this->assertSame(['failed', '131052'], [$m->media_status, $m->media_error]);
-        $this->assertSame(0, WaMessage::where('direction', 'out')->count());
-        Queue::assertNotPushed(ArchiveWhatsAppMedia::class);
     }
 }

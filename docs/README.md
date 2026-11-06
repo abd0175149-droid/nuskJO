@@ -14,8 +14,12 @@
 - [ops/load-budget.md](ops/load-budget.md) — ميزانية الحمل والقائمة الموحدة للمهام المجدولة (E24).
 
 طبقة الواتساب:
-- [whatsapp/channel.md](whatsapp/channel.md) — قناة الإرسال والأقفال والمغلف.
-- [whatsapp/webhook.md](whatsapp/webhook.md) — استقبال الويبهوك، ومعه العقد [whatsapp-webhook-contract.md](whatsapp-webhook-contract.md).
+- [whatsapp/openwa.md](whatsapp/openwa.md) — بوابة OpenWA الخاصة بنُسك: التشغيل الأول والمفاتيح والهوية (منذ 2026-11-06).
+- [whatsapp/channel.md](whatsapp/channel.md) — قناة الإرسال والأقفال ودفتر الإرسال، عبر البوابة.
+- [whatsapp/webhook.md](whatsapp/webhook.md) — استقبال webhook البوابة، بعقده وأرقامه.
+- [whatsapp/limits.md](whatsapp/limits.md) — حدود الإرسال الاستباقي لكل رقم ونوع، وسلّم التسخين وقاطع الإخفاقات.
+- [whatsapp/system-messages.md](whatsapp/system-messages.md) — رسائل النظام الآلية: الأنواع والمراحل والطابور.
+- [whatsapp/bot-profiles.md](whatsapp/bot-profiles.md) — صلاحيات أدوات البوت حسب المرسل ووضع الرقم.
 - [whatsapp/inbox.md](whatsapp/inbox.md) — طبقة الوارد والهوية والحالات وسياج الرؤية.
 - [whatsapp/bot-engine.md](whatsapp/bot-engine.md) — محرّك البوت وبواباته والقاطع.
 - [whatsapp/bot-tools.md](whatsapp/bot-tools.md) — أدوات بوت العملاء وحدودها.
@@ -25,16 +29,14 @@
 - [whatsapp/offers-costing.md](whatsapp/offers-costing.md) — العروض وطلبات التسعير والفاتورة.
 - [whatsapp/settings-secrets.md](whatsapp/settings-secrets.md) — الإعدادات والأسرار والأعلام.
 - [whatsapp/health-monitoring.md](whatsapp/health-monitoring.md) — الصحة والمراقبة، خريطة تحيل إلى التفصيل.
-- [whatsapp/capabilities.md](whatsapp/capabilities.md) — مصفوفة قدرات Cloud API (مولَّدة).
-- [whatsapp/channel-health.md](whatsapp/channel-health.md) — صحة القناة كآلة حالات (E22).
+- [whatsapp/capabilities.md](whatsapp/capabilities.md) — مصفوفة القدرات عبر البوابة (مولَّدة).
+- [whatsapp/channel-health.md](whatsapp/channel-health.md) — حالة كل رقم ومراقبته وقاطع إخفاقاته.
 - [whatsapp/diagnostics.md](whatsapp/diagnostics.md) — المراقب الدوري وأدوات التشخيص (E23).
 - [whatsapp/ops-alerts.md](whatsapp/ops-alerts.md) — قواعد التنبيه ومركز الإخفاقات (E24).
 - [whatsapp/events.md](whatsapp/events.md) — أحداث الواتساب الداخلية (E21).
 - [whatsapp/auto-rules.md](whatsapp/auto-rules.md) — الردود الحتمية وصمت الوارد (E37).
 - [whatsapp/voice-notes.md](whatsapp/voice-notes.md) — رسائل الموظف الصوتية (E34).
-- [whatsapp/calls.md](whatsapp/calls.md) — المكالمات، جاهزية مشروطة (E39).
-- [whatsapp/coexistence.md](whatsapp/coexistence.md) — التعايش مع تطبيق الأعمال (E39).
-- [whatsapp/interactive-choices.md](whatsapp/interactive-choices.md) — الاختيارات التفاعلية ونموذج طلب التسعير (E36).
+- [whatsapp/interactive-choices.md](whatsapp/interactive-choices.md) — الاختيارات المرقمة (E36).
 
 التكاملات والأمن:
 - [integrations/webhooks.md](integrations/webhooks.md) — الأحداث الصادرة للتكاملات (E40).
@@ -49,10 +51,10 @@
 
 المستودع عام. تحققتُ في 2026-10-16 أن إتاحته public، وقرار جعله خاصاً عند المالك. حتى ذلك الحين:
 
-- **يدخل المستودع:** جداول الحالة، و«لماذا وُجد»، والقواعد الثابتة مع روابط ميتا الرسمية، و«ما لا تضمنه الطبقة» بصياغة عامة، والكتيّبات، وخارطة الطريق.
-- **يبقى خارج المستودع**، عند المالك في مكانه الخاص: تفصيل أي فجوة مفتوحة (اسم الملف والسطر وخطوات الاستغلال)، ونموذج التهديد التفصيلي، ودليل تدوير الأسرار التفصيلي، وروابط نماذج ميتا الخاصة بالحساب.
+- **يدخل المستودع:** جداول الحالة، و«لماذا وُجد»، والقواعد الثابتة مع روابطها الرسمية، و«ما لا تضمنه الطبقة» بصياغة عامة، والكتيّبات، وخارطة الطريق.
+- **يبقى خارج المستودع**، عند المالك في مكانه الخاص: تفصيل أي فجوة مفتوحة (اسم الملف والسطر وخطوات الاستغلال)، ونموذج التهديد التفصيلي، ودليل تدوير الأسرار التفصيلي.
 - **مكان الفجوة المفتوحة في الوثيقة العامة** سطر واحد: «⚠️ فجوة — المرجع OPS-NN، التفاصيل خارج المستودع». حين تُغلق بملحمتها يُكتب «أُغلق في EXX» بلا تفاصيل استغلال.
-- **لا قيمة لأي سر، ولا رقم هاتف حقيقي، ولا معرّف حساب ميتا** (phone_number_id أو WABA ID أو App ID)، ولا مقتطف محادثة. أسماء المتغيرات وحدها، وأمثلة الصيغ بين <> مثل <PHONE_NUMBER_ID>.
+- **لا قيمة لأي سر، ولا رقم هاتف حقيقي، ولا مفتاح بوابة أو معرّف جلسة**، ولا مقتطف محادثة. أسماء المتغيرات وحدها، وأمثلة الصيغ بين <> مثل <SESSION_ID>.
 - **الاختبارات ورسائل commit** بصياغة سلوكية («غير المدير لا يسند دور مدير») لا استغلالية.
 
 إن صار المستودع خاصاً: يُجهَّز قبله مفتاح نشر للقراءة فقط على الخادم ويُجرَّب السحب به، ثم تُحدَّث خطوة السحب في `scripts/deploy.sh` و[RELEASE.md](RELEASE.md)، ويتغيّر Policy في `security.txt` إن لزم.

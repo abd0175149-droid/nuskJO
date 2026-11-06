@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WhatsApp\Tools;
 
+use App\Models\Client;
 use App\Models\User;
 use App\Models\WaAdminNumber;
 use App\Models\WaBotSetting;
@@ -41,6 +42,12 @@ class ToolRegistryTest extends TestCase
         return json_decode(file_get_contents(base_path("tests/Snapshots/{$name}.json")), true);
     }
 
+    /** محادثة عميل مربوط: ملف client يرى كل أدوات البوت (Bot\ToolPolicy)، فاللقطة للكتالوج كاملاً */
+    private function clientConv(): WaConversation
+    {
+        return WaConversation::factory()->linkedTo(Client::factory()->create())->create();
+    }
+
     private function allPermissionsNumber(): WaAdminNumber
     {
         return new WaAdminNumber(['permissions' => array_keys(AdminTools::CATALOG), 'is_active' => true]);
@@ -50,7 +57,7 @@ class ToolRegistryTest extends TestCase
 
     public function test_bot_declarations_match_the_snapshot(): void
     {
-        $this->assertSame(self::snapshot('bot_declarations'), self::shape(BotTools::declarations(new WaBotSetting(['tools_config' => []]), new WaConversation)));
+        $this->assertSame(self::snapshot('bot_declarations'), self::shape(BotTools::declarations(new WaBotSetting(['tools_config' => []]), $this->clientConv())));
     }
 
     public function test_admin_declarations_and_permissions_match_the_snapshots(): void
@@ -74,13 +81,13 @@ class ToolRegistryTest extends TestCase
     {
         $names = BotTools::names();
         // ما شُحن مطفأً (E33: الدبوس والبطاقة) لا يُعلن حتى يُفعَّل
-        $this->assertSame(array_values(array_filter($names, [BotTools::class, 'defaultEnabled'])), array_column(BotTools::declarations(new WaBotSetting(['tools_config' => []]), new WaConversation), 'name'));
-        // E36: القوائم والأزرار ونموذج طلب التسعير مطفأة كذلك
-        $this->assertSame(['send_office_location', 'send_contact_card', 'show_offers_menu', 'present_choices', 'send_quote_form'],
+        $this->assertSame(array_values(array_filter($names, [BotTools::class, 'defaultEnabled'])), array_column(BotTools::declarations(new WaBotSetting(['tools_config' => []]), $this->clientConv()), 'name'));
+        // E36: القوائم والأزرار مطفأة كذلك (نموذج Flow أُزيل مع ميتا)
+        $this->assertSame(['send_office_location', 'send_contact_card', 'show_offers_menu', 'present_choices'],
             array_values(array_filter($names, fn ($n) => !BotTools::defaultEnabled($n))));
         $this->assertSame($names, array_keys(BotTools::labels()));
         $this->assertSame([], array_diff(HandoffGuard::escalatingTools(), $names));
-        $this->assertEqualsCanonicalizing(['handoff_to_human', 'request_quote', 'confirm_booking'], HandoffGuard::escalatingTools());
+        $this->assertEqualsCanonicalizing(['handoff_to_human', 'request_quote', 'confirm_booking', 'report_issue'], HandoffGuard::escalatingTools());
         $this->assertContains('array:'.implode(',', $names), SettingsSchema::fieldRules('tools_config'), 'مفاتيح tools_config المقبولة = أسماء الأدوات');
 
         foreach (BotTools::TOOLS as $name => $t) {
@@ -180,6 +187,6 @@ class ToolRegistryTest extends TestCase
 
         $this->actingAs($owner)->get('/whatsapp/settings')->assertInertia(fn ($page) => $page
             ->where('toolMeta', fn ($meta) => collect($meta)->firstWhere('key', 'handoff_to_human')['disableable'] === false
-                && collect($meta)->where('escalates', true)->pluck('key')->sort()->values()->all() === ['confirm_booking', 'handoff_to_human', 'request_quote']));
+                && collect($meta)->where('escalates', true)->pluck('key')->sort()->values()->all() === ['confirm_booking', 'handoff_to_human', 'report_issue', 'request_quote']));
     }
 }

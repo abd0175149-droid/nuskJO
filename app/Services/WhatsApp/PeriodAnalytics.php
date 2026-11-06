@@ -371,9 +371,8 @@ final class PeriodAnalytics
 
         return self::cached('quality', $period, function () use ($period) {
             $since = self::since($period);
-            $ledger = FeatureFlags::on('send_ledger');
             $notTest = fn ($q) => $q->where('source', '!=', OutboundCounter::TEST_SOURCE);
-            $base = fn () => WaMessage::query()->where('created_at', '>=', $since)->tap($notTest)->when($ledger, fn ($q) => $q->whereRaw(self::deliveredSql()));
+            $base = fn () => WaMessage::query()->where('created_at', '>=', $since)->tap($notTest)->whereRaw(self::deliveredSql());
 
             // القمع: من تحدّث، ومن أبدى نيّة (LIKE على كلمات النية في الوارد)، ونقطة الحسم والحجز في الفترة
             $talked = (int) WaMessage::query()->where('direction', 'in')->where('created_at', '>=', $since)->tap($notTest)->distinct()->count('conversation_id');
@@ -394,7 +393,7 @@ final class PeriodAnalytics
             $systemMsgs = (int) ($bySource['system'] ?? 0);
             $voice = $base()->where('direction', 'in')->where('msg_type', 'audio')->count();
 
-            [$latencies, $unanswered] = self::replyLatencies($since, $ledger);
+            [$latencies, $unanswered] = self::replyLatencies($since);
             $handoffs = self::handoffs($since);
 
             $usage = fn () => WaBotUsage::query()->where('source', 'live')->where('model', '!=', 'rule')->where('created_at', '>=', $since);
@@ -417,10 +416,9 @@ final class PeriodAnalytics
                 ['key' => 'llm_incidents', 'label' => 'حوادث المزوّد', 'value' => rescue(fn () => WaLlmIncident::where('opened_at', '>=', $since)->count(), 0, false), 'unit' => '', 'good' => 'low'],
                 ['key' => 'tools_denied', 'label' => 'استدعاءات أدوات مرفوضة', 'value' => $tools['status']['denied'] ?? 0, 'unit' => '', 'good' => 'low'],
                 ['key' => 'tools_failed', 'label' => 'أدوات فشلت', 'value' => $tools['status']['failed'] ?? 0, 'unit' => '', 'good' => 'low'],
-                ...($ledger ? [
-                    ['key' => 'send_unknown', 'label' => 'إرسال غير مؤكد', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_UNKNOWN)->where('created_at', '>=', $since)->count(), 'unit' => '', 'good' => 'low'],
-                    ['key' => 'send_failed', 'label' => 'فشل إرسال', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->where('created_at', '>=', $since)->count(), 'unit' => '', 'good' => 'low'],
-                ] : []),
+                // دفتر الإرسال دائماً منذ OpenWA (2026-11-06)
+                ['key' => 'send_unknown', 'label' => 'إرسال غير مؤكد', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_UNKNOWN)->where('created_at', '>=', $since)->count(), 'unit' => '', 'good' => 'low'],
+                ['key' => 'send_failed', 'label' => 'فشل إرسال', 'value' => WaMessage::where('direction', 'out')->where('status', WaMessage::STATUS_FAILED)->where('created_at', '>=', $since)->count(), 'unit' => '', 'good' => 'low'],
                 ...(MessageTranslator::enabled() ? [
                     ['key' => 'translations', 'label' => 'ترجمات للموظفين', 'value' => WaBotUsage::where('source', 'translate')->where('created_at', '>=', $since)->count(), 'unit' => '', 'good' => 'neutral'],
                 ] : []),
@@ -448,9 +446,9 @@ final class PeriodAnalytics
      *
      * @return array{0: list<int>, 1: int}
      */
-    private static function replyLatencies(Carbon $since, bool $ledger): array
+    private static function replyLatencies(Carbon $since): array
     {
-        $delivered = $ledger ? ' AND '.self::deliveredSql('x') : '';
+        $delivered = ' AND '.self::deliveredSql('x');
         $rows = DB::table('wa_messages as m')
             ->leftJoin('wa_messages as n', 'n.id', '=', DB::raw("(SELECT x.id FROM wa_messages x WHERE x.conversation_id = m.conversation_id AND x.id > m.id
                 AND NOT (x.direction = 'out' AND x.source = 'system') AND x.source != 'test' AND x.msg_type != 'reaction'{$delivered} ORDER BY x.id LIMIT 1)"))

@@ -53,7 +53,7 @@ class AdminTools
         'tools.toggle' => ['group' => 'إدارة الأدوات', 'label' => 'تفعيل أو إيقاف أداة', 'desc' => 'يشغّل أو يوقف أداة لبوت العملاء (مثل إرسال البطاقات).', 'write' => true],
         'bot.toggle' => ['group' => 'إدارة الأدوات', 'label' => 'تشغيل أو إيقاف بوت العملاء', 'desc' => 'يوقف ردود البوت على كل العملاء أو يعيدها.', 'write' => true],
         // E31: خلف العلم wa_block_admin_tool، وبشرط أن يملك المستخدم المرتبط whatsapp.block. فك الحظر من لوحة التحكم وحدها
-        'contacts.block' => ['group' => 'جهات الاتصال', 'label' => 'حظر رقم مزعج', 'desc' => 'يحظر رقماً راسلنا خلال 24 ساعة، بعد معاينة وتأكيد. فك الحظر من لوحة التحكم فقط.', 'write' => true],
+        'contacts.block' => ['group' => 'جهات الاتصال', 'label' => 'حظر رقم مزعج', 'desc' => 'يحظر رقماً له محادثة معنا، بعد معاينة وتأكيد. فك الحظر من لوحة التحكم فقط.', 'write' => true],
         // E23: قراءة فقط. لا تعمل حين تتعطل القناة نفسها (رمز باطل أو ويبهوك لمكان آخر): الأساس صفحة الحالة وwhatsapp:doctor
         'channel.view' => ['group' => 'التشخيص', 'label' => 'حالة قناة الواتساب', 'desc' => 'هل الإرسال يعمل، وصحة الرقم عند ميتا، وآخر خطأ، وسلامة الويبهوك. لا تعمل إن تعطلت القناة نفسها.', 'write' => false],
     ];
@@ -787,7 +787,7 @@ class AdminTools
         }
         $target = WaConversation::where('phone', $canonical)->where('status', '!=', 'merged')->whereNull('erased_at')->orderByDesc('id')->first();
         if (!$target) {
-            return ['error' => 'لا توجد محادثة لهذا الرقم', 'note' => 'تأكد من الرقم كاملاً. الحظر لمن راسلنا خلال 24 ساعة وحده.'];
+            return ['error' => 'لا توجد محادثة لهذا الرقم', 'note' => 'تأكد من الرقم كاملاً. الحظر لمن له محادثة معنا وحده.'];
         }
         $code = (string) ($in['reason_code'] ?? '');
         $reason = (string) TextNormalizer::untrustedName((string) ($in['reason'] ?? ''), 2000);

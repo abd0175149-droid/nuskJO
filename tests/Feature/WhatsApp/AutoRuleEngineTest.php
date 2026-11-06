@@ -46,7 +46,7 @@ class AutoRuleEngineTest extends TestCase
 
     private int $modelCalls = 0;
 
-    /** Http::fake يراكم الأنماط والأول يغلب: رد ميتا من خاصية يبدّلها الاختبار */
+    /** Http::fake يراكم الأنماط والأول يغلب: رد البوابة من خاصية يبدّلها الاختبار */
     private int $graphStatus = 200;
 
     protected function setUp(): void
@@ -58,12 +58,13 @@ class AutoRuleEngineTest extends TestCase
         $this->conv = WaConversation::factory()->windowOpen()->create();
         $this->modelCalls = 0;
         $n = 0;
-        Http::fake(['graph.facebook.com/*' => function () use (&$n) {
+        // البوابة (2026-11-06): الإرسال برد يبدّله الاختبار، والباقي من fakeGateway
+        $this->fakeGateway(['nuskjo-openwa:2785/api/sessions/*/messages/send-*' => function () use (&$n) {
             $n++;
 
             return $this->graphStatus === 200
-                ? Http::response(['messaging_product' => 'whatsapp', 'messages' => [['id' => 'wamid.OUT.'.$n]]])
-                : Http::response(['error' => ['code' => 1, 'message' => 'x']], $this->graphStatus);
+                ? Http::response(['messageId' => 'wamid.OUT.'.$n, 'timestamp' => now()->getTimestamp()], 201)
+                : Http::response(['message' => 'x'], $this->graphStatus);
         }]);
         Http::fake(['generativelanguage.googleapis.com/*' => function () {
             $this->modelCalls++;
@@ -113,7 +114,7 @@ class AutoRuleEngineTest extends TestCase
         $this->assertSame(['sent' => true, 'reason' => 'auto_rule'], $result);
         $this->assertSame(0, $this->modelCalls);
         $this->assertSame(['مكتبنا في '.self::ADDRESS.'.'], $this->sent('rule'));
-        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages') && ($r['text']['body'] ?? null) === 'مكتبنا في '.self::ADDRESS.'.');
+        $this->assertContains('مكتبنا في '.self::ADDRESS.'.', $this->sentTexts());
         $this->assertSame([], $this->sent('bot'));
 
         $usage = WaBotUsage::where('conversation_id', $this->conv->id)->sole();
@@ -140,7 +141,8 @@ class AutoRuleEngineTest extends TestCase
         return [
             'bot disabled' => ['disabled', false],
             'paused after staff' => ['paused', false],
-            'window closed' => ['window', false],
+            // لا نافذة على البوابة (2026-11-06): رقم المحادثة غير متصل بدلها
+            'number down' => ['down', false],
             'flag off' => ['flag_off', true],
             'open quote request' => ['quote', true],
             'long message' => ['long', true],
@@ -158,7 +160,7 @@ class AutoRuleEngineTest extends TestCase
         match ($case) {
             'disabled' => $this->conv->update(['bot_enabled' => false]),
             'paused' => $this->conv->update(['bot_paused_until' => now()->addMinutes(20)]),
-            'window' => $this->conv->update(['last_inbound_at' => now()->subDays(2)]),
+            'down' => $this->testChannel()->update(['status' => 'disconnected']),
             'flag_off' => config(['features.env.auto_rules' => false]),
             'quote' => QuoteRequest::factory()->create(['conversation_id' => $this->conv->id, 'status' => 'priced', 'created_at' => now()->subHour()]),
             'long' => null,
@@ -214,6 +216,8 @@ class AutoRuleEngineTest extends TestCase
         $this->assertSame([self::MODEL_REPLY], $this->sent('bot'), 'أثناء التهدئة يجيب النموذج');
 
         $this->travel(61)->minutes();
+        // الرقم جاهز بفحص حقيقي حديث (WaChannel::isReady)، والساعة تقدّمت
+        $this->testChannel()->forceFill(['last_probe_ok_at' => now()])->save();
         $this->inbound('العنوان');
         BotEngine::reply($this->conv);
         $this->assertCount(2, $this->sent('rule'));
@@ -299,7 +303,8 @@ class AutoRuleEngineTest extends TestCase
 
     public function test_a_failed_send_does_not_move_the_watermark(): void
     {
-        $this->graphStatus = 500;
+        // رفض صريح من البوابة (400): لم يُرسل شيء. أما 5xx فقد تكون وصلت («غير مؤكد»)
+        $this->graphStatus = 400;
         $this->rule();
         $this->inbound('وين موقعكم');
         $mark = $this->conv->fresh()->bot_answered_in_id;
@@ -364,7 +369,7 @@ class AutoRuleEngineTest extends TestCase
 
         $row = WaMessage::where('source', 'rule')->sole();
         $this->assertSame('blocked', $row->status);
-        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/messages'));
+        $this->assertSame([], $this->gatewaySends());
     }
 
     public function test_the_engine_fails_closed(): void

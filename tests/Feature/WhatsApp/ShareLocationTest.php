@@ -13,13 +13,10 @@ use App\Services\WhatsApp\Outbound\RichTypes;
 use App\Services\WhatsApp\ReplyRun;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsWhatsAppStaff;
 use Tests\Concerns\ConfiguresWhatsApp;
-use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
@@ -31,7 +28,6 @@ class ShareLocationTest extends TestCase
     use BuildsWhatsAppStaff;
     use ConfiguresWhatsApp;
     use RefreshDatabase;
-    use SignsMetaWebhooks;
 
     private WaConversation $conv;
 
@@ -48,9 +44,10 @@ class ShareLocationTest extends TestCase
             'longitude' => 35.9106456, 'kind' => 'office', 'is_default' => true, 'bot_allowed' => true]);
     }
 
+    /** أجسام طلبات الإرسال إلى البوابة */
     private function requests(): array
     {
-        return collect(Http::recorded())->map(fn ($p) => $p[0])->filter(fn (Request $r) => str_contains($r->url(), '/messages'))->values()->all();
+        return array_column($this->gatewaySends(), 'body');
     }
 
     public function test_send_location_builds_the_payload_from_the_approved_row(): void
@@ -60,11 +57,13 @@ class ShareLocationTest extends TestCase
         $res = WhatsAppChannel::sendLocation($this->conv, $this->office, 'bot', null, ['send_key' => 'reply:loc:1']);
 
         $this->assertTrue($res['ok'], json_encode($res, JSON_UNESCAPED_UNICODE));
-        $this->assertSame(['latitude' => '31.9539123', 'longitude' => '35.9106456', 'name' => 'مكتب نسك الذهبية', 'address' => 'عمّان، الشميساني'],
-            $this->requests()[0]['location']);
+        $this->assertSame(['send-location'], array_column($this->gatewaySends(), 'path'));
+        $this->assertSame(['chatId' => $this->conv->wa_phone.'@c.us', 'latitude' => 31.9539123, 'longitude' => 35.9106456,
+            'description' => 'مكتب نسك الذهبية', 'address' => 'عمّان، الشميساني'], $this->requests()[0]);
         $row = WaMessage::where('direction', 'out')->sole();
         $this->assertSame(['location', '📍 مكتب نسك الذهبية', $this->office->id], [$row->msg_type, $row->body, data_get($row->payload, '_meta.place_id')]);
-        $this->assertArrayNotHasKey('_meta', $this->requests()[0]->data());
+        // المحفوظ بشكله الداخلي كما طابقته السياسة مع الصف حرفياً
+        $this->assertSame(['latitude' => '31.9539123', 'longitude' => '35.9106456', 'name' => 'مكتب نسك الذهبية', 'address' => 'عمّان، الشميساني'], $row->payload['location']);
     }
 
     public function test_the_policy_refuses_a_location_that_does_not_match_an_active_place(): void
@@ -98,14 +97,13 @@ class ShareLocationTest extends TestCase
 
     public function test_the_bot_tool_sends_the_default_office_with_a_key(): void
     {
-        config(['features.env.send_ledger' => true]);
         $this->fakeGraph();
 
         $out = BotTools::execute('send_office_location', [], $this->conv);
 
         $this->assertTrue($out['sent']);
         $this->assertStringEndsWith(':place'.$this->office->id, (string) WaMessage::where('msg_type', 'location')->sole()->send_key);
-        $this->assertSame('31.9539123', $this->requests()[0]['location']['latitude']);
+        $this->assertSame(31.9539123, $this->requests()[0]['latitude']);
     }
 
     public function test_the_tool_is_absent_until_enabled_and_its_flag_is_on(): void
@@ -157,11 +155,10 @@ class ShareLocationTest extends TestCase
 
     public function test_an_inbound_location_gets_a_maps_link_built_from_numbers(): void
     {
-        $this->travelTo(Carbon::createFromTimestamp(1760425530, config('app.timezone')));
-        $conv = WaConversation::factory()->create(['phone' => '16505551234', 'wa_phone' => '16505551234', 'last_inbound_at' => now()->subHour()]);
         $staff = $this->staffWith('desk', [...self::INBOX_PERMISSIONS, 'whatsapp.view_all']);
-
-        $this->postMetaWebhook('location.json')->assertOk();
+        $this->postOpenWa('message.received', $this->incoming('16505551234', '', ['type' => 'location',
+            'location' => ['latitude' => 31.9539, 'longitude' => 35.9106, 'description' => 'Sample Place', 'address' => 'Sample Street 1']]))->assertOk();
+        $conv = WaMessage::where('msg_type', 'location')->sole()->conversation;
 
         $m = collect($this->actingAs($staff)->getJson("/api/whatsapp/conversations/{$conv->id}/messages")->assertOk()->json('messages'))->firstWhere('type', 'location');
         $this->assertSame(['lat' => 31.9539, 'lng' => 35.9106, 'name' => 'Sample Place', 'address' => 'Sample Street 1',

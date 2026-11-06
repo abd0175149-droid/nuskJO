@@ -10,7 +10,6 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\Rendering\HeadlessChromium;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -77,10 +76,7 @@ class InvoiceSendWhatsAppTest extends TestCase
 
     private function fakeMeta(): void
     {
-        Http::fake([
-            'graph.facebook.com/v25.0/106540352242922/media' => Http::response(['id' => '4490709327384033']),
-            'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.OUT.1']]]),
-        ]);
+        $this->fakeGateway();
     }
 
     public function test_an_approved_invoice_goes_as_a_document_and_lands_in_its_trail(): void
@@ -93,8 +89,10 @@ class InvoiceSendWhatsAppTest extends TestCase
         $name = 'فاتورة-'.$this->invoice->invoice_number.'.pdf';
         $this->assertSame(['sent', 'document', $name, $this->invoice->id, 'invoice'],
             [$row->status, $row->msg_type, $row->media_filename, $row->payload['_invoice_id'], $row->payload['_doc_kind']]);
-        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages')
-            && $r['document'] === ['id' => '4490709327384033', 'filename' => $name, 'caption' => 'تفضّل فاتورتك']);
+        $send = $this->gatewaySends()[0];
+        $this->assertSame(['send-document', 'application/pdf', $name, 'تفضّل فاتورتك'],
+            [$send['path'], $send['body']['mimetype'], $send['body']['filename'], $send['body']['caption']]);
+        $this->assertSame(base64_encode(Storage::disk('wa_media')->get($row->media_path)), $send['body']['base64']);
         $this->assertMatchesRegularExpression('#^outbound/#', $row->media_path);
 
         $trail = AuditLog::where('action', 'wa.invoice_sent')->sole();
@@ -145,26 +143,26 @@ class InvoiceSendWhatsAppTest extends TestCase
         $this->actingAs($this->staff)->getJson("/api/invoices/{$this->invoice->id}/whatsapp-targets")->assertNotFound();
     }
 
-    public function test_targets_show_name_last_four_and_window_only(): void
+    public function test_targets_show_name_last_four_and_the_channel_only(): void
     {
         $response = $this->actingAs($this->staff)->getJson("/api/invoices/{$this->invoice->id}/whatsapp-targets")->assertOk();
 
         $this->assertSame([['conversation_id' => $this->conv->id, 'name' => 'سعيد الخطيب', 'last4' => '1234', 'client_code' => $this->client->code,
-            'window_open' => true, 'window_left' => $this->conv->windowMinutesLeft()]], $response->json('targets'));
+            'reachable' => true, 'channel' => $this->testChannel()->name]], $response->json('targets'));
         $this->assertStringNotContainsString('16505551234', $response->getContent());
         $this->assertSame('فاتورة-'.$this->invoice->invoice_number.'.pdf', $response->json('filename'));
         $this->assertNull($response->json('message'));
     }
 
-    public function test_no_open_conversation_explains_why(): void
+    public function test_an_unreachable_conversation_explains_why(): void
     {
-        $this->conv->update(['last_inbound_at' => now()->subDays(3)]);
+        $this->testChannel()->update(['status' => 'disconnected']);
 
         $response = $this->actingAs($this->staff)->getJson("/api/invoices/{$this->invoice->id}/whatsapp-targets")->assertOk();
 
-        $this->assertStringContainsString('لا توجد محادثة واتساب مفتوحة النافذة لهذا العميل', $response->json('message'));
-        $this->assertFalse($response->json('targets.0.window_open'));
-        $this->sendInvoice()->assertStatus(422)->assertJsonPath('code', 'WINDOW_EXPIRED');
+        $this->assertStringContainsString('لا توجد محادثة واتساب لهذا العميل بعد', $response->json('message'));
+        $this->assertFalse($response->json('targets.0.reachable'));
+        $this->sendInvoice()->assertStatus(422)->assertJsonPath('code', 'CHANNEL_NOT_READY');
     }
 
     public function test_a_conversation_matched_by_the_invoice_phone_counts(): void

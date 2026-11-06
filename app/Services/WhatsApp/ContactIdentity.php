@@ -41,6 +41,34 @@ final class ContactIdentity
             channelId: $in->channelId, jid: $in->jid, lid: $in->lid);
     }
 
+    /**
+     * محادثة بلا channel_id بالهاتف (ثم بمعرّف الخصوصية) تُنسب إلى $channelId بتحديث مشروط. تعارض الفهرس الفريد (محادثة
+     * على الرقم نفسه كُتبت بالتوازي) يعيد تلك المحادثة. @return WaConversation|null
+     */
+    private static function adoptChannelless(int $channelId, ?string $phone, ?string $lid): ?WaConversation
+    {
+        [$column, $value] = $phone ? ['phone', $phone] : ['lid', $lid];
+        if ($value === null) {
+            return null;
+        }
+        $legacy = WaConversation::query()->whereNull('channel_id')->where('status', '!=', 'merged')->where($column, $value)
+            ->orderByDesc('last_message_at')->orderByDesc('id')->first();
+        if (!$legacy) {
+            return null;
+        }
+        try {
+            $adopted = WaConversation::whereKey($legacy->id)->whereNull('channel_id')->update(['channel_id' => $channelId]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            return WaConversation::query()->where('channel_id', $channelId)->where('status', '!=', 'merged')->where($column, $value)->first();
+        }
+        if ($adopted === 0) {
+            return null;
+        }
+        WaLog::info('wa.identity.adopted', ['conv_id' => $legacy->id, 'channel_id' => $channelId]);
+
+        return $legacy->refresh();
+    }
+
     /** محادثة قائمة على الرقم بالرقم الكامل ثم بمعرّف الخصوصية، بلا إنشاء ولا تعديل */
     public static function find(?string $from, ?string $lid, ?int $channelId = null): ?WaConversation
     {
@@ -86,6 +114,12 @@ final class ContactIdentity
             }
         }
         $conv = $byPhone ?? $byId;
+
+        // محادثة قديمة بلا رقم (قبل الأرقام المتعددة) للعميل نفسه: يتبنّاها رقم الحدث، كما يتبنّاها الإرسال
+        // (WhatsAppChannel::channelFor)، فلا تنقسم المحادثة عند أول وارد
+        if (!$conv && $channelId !== null) {
+            $conv = self::adoptChannelless($channelId, $phone, $lid);
+        }
 
         if (!$conv) {
             $conv = WaConversation::createOrFirst(

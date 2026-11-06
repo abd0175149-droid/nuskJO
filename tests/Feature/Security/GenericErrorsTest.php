@@ -35,11 +35,11 @@ class GenericErrorsTest extends TestCase
     {
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
 
-        $this->actingAs($owner)->postJson('/api/whatsapp/settings/secrets/wa_token', ['value' => 'EAAG-very-secret-token-1', 'reason' => 'setup'])->assertOk();
+        $this->actingAs($owner)->postJson('/api/whatsapp/settings/secrets/api_key', ['value' => 'AIza-very-secret-key-00001', 'reason' => 'setup'])->assertOk();
         $this->actingAs($owner)->patchJson('/whatsapp/settings', ['version' => (int) WaBotSetting::current()->settings_version, 'changes' => ['model' => 'gemini-2.5-pro']])->assertOk();
 
         $this->assertSame(['model'], array_keys(AuditLog::where('action', 'wa.settings_update')->sole()->changes['changed']));
-        $this->assertSame('wa_token', AuditLog::where('action', 'wa.secret_set')->sole()->changes['credentials'][0]['field']);
+        $this->assertSame('api_key', AuditLog::where('action', 'wa.secret_set')->sole()->changes['credentials'][0]['field']);
         $this->assertStringNotContainsString('very-secret', json_encode(AuditLog::all()->toArray()));
     }
 }

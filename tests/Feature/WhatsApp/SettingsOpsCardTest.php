@@ -3,22 +3,19 @@
 namespace Tests\Feature\WhatsApp;
 
 use App\Models\User;
-use App\Models\WaBotSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\ConfiguresWhatsApp;
-use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\TestCase;
 
 /**
- * بطاقة «صحة النظام والقناة» وحقل App ID وزر «افحص الآن»: خلف whatsapp.settings في الخادم،
- * بلا رمز ولا سر في props، والزر 6 في الدقيقة. وشريط الصندوق عام بلا تفاصيل.
+ * بطاقتا «صحة النظام» و«📱 أرقام واتساب» في الإعدادات (منذ OpenWA في 2026-11-06 بدل بطاقة ميتا وزر «افحص الآن»):
+ * خلف whatsapp.settings في الخادم، والبوابة للقراءة بنداء واحد بالمفتاح الرئيس، بلا مفتاح ولا سر ولا معرّف جلسة في props.
  */
 class SettingsOpsCardTest extends TestCase
 {
     use ConfiguresWhatsApp;
-    use PatchesWhatsAppSettings;
     use RefreshDatabase;
 
     private User $owner;
@@ -26,74 +23,44 @@ class SettingsOpsCardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->configureChannel(['wa_app_id' => '1234567890', 'wa_token' => 'EAAtokenvalue1234567890abcdef']);
+        $this->configureChannel();
         $this->owner = User::factory()->withPermissions(['whatsapp.settings', 'whatsapp.view'], 'owner')->create();
     }
 
-    public function test_the_card_and_the_check_need_the_settings_permission(): void
+    public function test_the_card_needs_the_settings_permission_and_the_meta_check_is_gone(): void
     {
         $agent = User::factory()->withPermissions(['whatsapp.view'], 'agent')->create();
 
         $this->actingAs($agent)->get('/whatsapp/settings')->assertForbidden();
-        $this->actingAs($agent)->postJson('/api/whatsapp/meta-check')->assertForbidden();
+        $this->actingAs($this->owner)->postJson('/api/whatsapp/meta-check')->assertNotFound();
     }
 
-    public function test_the_page_carries_ops_and_meta_without_any_secret(): void
+    public function test_the_page_carries_ops_and_the_gateway_without_any_secret(): void
     {
-        $response = $this->actingAs($this->owner)->get('/whatsapp/settings');
+        $this->fakeGateway(['nuskjo-openwa:2785/api/health' => Http::response(['status' => 'ok', 'version' => '0.24.0'])]);
+        $this->makeChannel(['status' => 'disconnected']);
+
+        $response = $this->actingAs($this->owner)->get('/whatsapp/settings')->assertOk();
 
         $response->assertInertia(fn (Assert $page) => $page
             ->has('ops.codes')
             ->has('ops.queues')
-            ->where('meta.ready', true)
-            ->where('settings.wa_app_id', '1234567890')
-            ->where('settings.env_app_id', false));
+            ->where('gateway.reachable', true)
+            ->where('gateway.version', '0.24.0')
+            ->where('gateway.channels', 2)
+            ->where('gateway.linked', 1)
+            ->missing('meta'));
         $html = $response->getContent();
-        $this->assertStringNotContainsString('EAAtokenvalue1234567890abcdef', $html);
-        $this->assertStringNotContainsString(self::TEST_APP_SECRET, $html);
-    }
-
-    public function test_the_app_id_must_be_digits(): void
-    {
-        $this->patchSettings($this->owner, ['wa_app_id' => 'abc'])
-            ->assertJsonValidationErrors(['changes.wa_app_id' => 'معرّف التطبيق أرقام فقط (من App settings › Basic)']);
-
-        $this->patchSettings($this->owner, ['wa_app_id' => '9876543210'])->assertOk();
-        $this->assertSame('9876543210', WaBotSetting::current()->wa_app_id);
-    }
-
-    public function test_check_now_runs_both_checks_and_returns_the_summary_only(): void
-    {
-        Http::fake(['graph.facebook.com/*' => function ($request) {
-            return str_contains($request->url(), 'debug_token')
-                ? Http::response(['data' => ['app_id' => '1234567890', 'is_valid' => true, 'expires_at' => 0, 'scopes' => ['whatsapp_business_messaging', 'whatsapp_business_management']]])
-                : Http::response(['health_status' => ['can_send_message' => 'AVAILABLE', 'entities' => []], 'quality_rating' => 'GREEN']);
-        }]);
-
-        $response = $this->actingAs($this->owner)->postJson('/api/whatsapp/meta-check')->assertOk();
-
-        $response->assertJsonPath('meta.credentials.state', 'ok')->assertJsonPath('meta.channel.state', 'ok');
-        $this->assertStringNotContainsString('EAAtokenvalue', $response->getContent());
-    }
-
-    public function test_check_now_is_limited_to_six_a_minute(): void
-    {
-        Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['code' => 1]], 500)]);
-
-        for ($i = 0; $i < 6; $i++) {
-            $this->actingAs($this->owner)->postJson('/api/whatsapp/meta-check')->assertOk();
+        foreach (['key-1', 'key-2', 'sess-1', self::TEST_WEBHOOK_SECRET, 'admin-test-key'] as $secret) {
+            $this->assertStringNotContainsString($secret, $html);
         }
-        $this->actingAs($this->owner)->postJson('/api/whatsapp/meta-check')->assertStatus(429);
     }
 
-    public function test_the_inbox_shows_a_generic_banner_when_meta_blocks_the_channel(): void
+    public function test_an_unreachable_gateway_shows_its_code_only(): void
     {
-        $this->actingAs($this->owner)->get('/whatsapp/inbox')
-            ->assertInertia(fn (Assert $page) => $page->where('status.meta_blocked', false));
+        $this->fakeGateway(['nuskjo-openwa:2785/api/health' => Http::response(['message' => 'down'], 503)]);
 
-        WaBotSetting::current()->forceFill(['wa_channel_health' => ['state' => 'critical', 'can_send_message' => 'BLOCKED']])->save();
-
-        $this->actingAs($this->owner)->get('/whatsapp/inbox')
-            ->assertInertia(fn (Assert $page) => $page->where('status.meta_blocked', true));
+        $this->actingAs($this->owner)->get('/whatsapp/settings')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('gateway.reachable', false)->where('gateway.version', null)->whereNot('gateway.error', null));
     }
 }

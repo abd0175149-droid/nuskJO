@@ -798,18 +798,18 @@ class BotTools
     }
 
     /**
-     * محادثة بلا رقم (E11.7): زر «مشاركة الرقم» يصل للعميل مع الطلب إن سمح وضع الهوية، فيعرف الموظف رقمه.
-     * يعيد سطراً يُضاف لملاحظة النموذج، أو '' إن لم يُرسل.
+     * محادثة بلا رقم (E11.7؛ منذ 2026-11-06 عميل خلف معرّف خصوصية @lid): طلب نصي لرقمه مع الطلب، فيعرف الموظف رقمه.
+     * لا زر «مشاركة الرقم» في واتساب ويب. يعيد سطراً يُضاف لملاحظة النموذج، أو '' إن لم يُرسل.
      */
     private static function askForPhone(WaConversation $conv): string
     {
-        if ($conv->hasPhone() || !IdentityMode::botServesWithoutPhone()) {
+        if ($conv->hasPhone()) {
             return '';
         }
-        $sent = WhatsAppChannel::sendContactRequest($conv, 'ليتابع معك موظفنا بالسعر والتفاصيل، شارك رقم هاتفك بالضغط على الزر أدناه.', 'system',
+        $sent = WhatsAppChannel::sendContactRequest($conv, 'ليتابع معك موظفنا بالسعر والتفاصيل نحتاج رقم هاتفك.', 'system',
             sendKey: SendKey::reqcontact($conv, ReplyRun::current()?->uptoId));
 
-        return $sent['ok'] ? ' وصل العميلَ الآن زرٌّ لمشاركة رقم هاتفه: اطلب منه الضغط عليه، ولا تطلب منه كتابة الرقم.' : '';
+        return $sent['ok'] ? ' طُلب من العميل الآن كتابة رقم هاتفه: لا تكرر الطلب في ردك.' : '';
     }
 
     /** ★ تأكيد حجز عرض → إشعار الموظف + تحويل المحادثة */

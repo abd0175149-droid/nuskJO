@@ -3,7 +3,7 @@
 نظام إدارة وكالة نُسك للسياحة والسفر (الأردن): العروض والفواتير والمحاسبة والموظفون، ومعها طبقة واتساب للأعمال فيها صندوق محادثات للموظفين وبوت ذكاء اصطناعي ومساعد إداري.
 
 - **الحزمة:** Laravel 13 وPHP 8.3، وInertia مع Vue 3 وVite، وقاعدة SQLite، وReverb للبث اللحظي، في حاوية Docker واحدة خلف Cloudflare.
-- **قاعدة ثابتة:** واتساب عبر WhatsApp Cloud API الرسمية وحدها. لا whatsapp-web.js ولا Baileys ولا أي عميل غير رسمي، فهذا يخالف شروط واتساب ويعرّض رقم الشركة الوحيد للحظر. يحرسها `tests/Unit/Arch/OfficialChannelOnlyTest.php`.
+- **واتساب:** عبر بوابة OpenWA الخاصة بنُسك (`docker/openwa`)، بعدة أرقام، بقرار المالك (2026-11-06). كل نداء للبوابة من `OpenWaClient` وحده، والإرسال الاستباقي عبر طابور بحدود لكل رقم ونوع. يحرسها `tests/Unit/Arch/GatewayOnlyTest.php`، والتفصيل في [docs/whatsapp/channel.md](docs/whatsapp/channel.md).
 - **الوثائق:** الفهرس في [docs/README.md](docs/README.md)، ومعه سياسة ما يدخل هذا المستودع العام.
 - **الأمن:** للإبلاغ عن ثغرة اقرأ [SECURITY.md](SECURITY.md). لا تفتح issue عامة لثغرة.
 

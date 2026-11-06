@@ -350,7 +350,7 @@ class WhatsAppController extends Controller
             array_push($columns, ...$errorCols);
         }
         // دفتر الإرسال (E19): عدد المحاولات وزر «انسخ إلى خانة الكتابة» لما فشل (مفتاحه محرَّر) أو بقي غير مؤكد بعد المنظّف
-        $ledger = \App\Support\FeatureFlags::on('send_ledger') && \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'attempts');
+        $ledger = \Illuminate\Support\Facades\Schema::hasColumn('wa_messages', 'attempts');
         if ($ledger) {
             array_push($columns, 'attempts', 'payload');
         }
@@ -897,7 +897,8 @@ class WhatsAppController extends Controller
         return self::sendResponse($res);
     }
 
-    private const CONTACT_REQUEST_BODY = 'لنكمل خدمتك، شارك رقم هاتفك بالضغط على الزر أدناه.';
+    // لا زر «مشاركة الرقم» في واتساب ويب: sendContactRequest يضيف سطر «اكتب رقم هاتفك هنا»
+    private const CONTACT_REQUEST_BODY = 'لنكمل خدمتك، نحتاج رقم هاتفك.';
 
     /**
      * تشغيل البوت في المحادثة أو إيقافه بقيمة صريحة (E21): enabled يُكتب كما هو، فالنقرتان بالقيمة نفسها تعطيان النتيجة

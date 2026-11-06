@@ -25,8 +25,7 @@ class MetricLabelsTest extends TestCase
             'waiting_human' => 1,
             'bot_latency_p90_ms_1h' => 1200,
             'outbound_today' => ['by_source' => ['bot' => 3, $leak => 7, 'عميل' => 1], 'total' => 11, 'test' => 0],
-            'service_billable_month' => 5,
-            'channel_health' => 'AVAILABLE',
+            'channels_down' => 1,
             'scheduler_beat_age_s' => 12,
         ];
 
@@ -41,7 +40,6 @@ class MetricLabelsTest extends TestCase
             'window' => ['1h', '24h'],
             'source' => InternalMetricsController::SOURCES,
             'category' => OpsMetrics::categories(),
-            'state' => InternalMetricsController::HEALTH_STATES,
         ];
         preg_match_all('/(\w+)="([^"]*)"/', $out, $m, PREG_SET_ORDER);
         $this->assertNotEmpty($m);
@@ -49,8 +47,9 @@ class MetricLabelsTest extends TestCase
             $this->assertArrayHasKey($label, $allowed, "تسمية غير معروفة: {$label}");
             $this->assertContains($value, $allowed[$label], "{$label}={$value} خارج القائمة الثابتة");
         }
-        $this->assertStringContainsString('nuskjo_wa_channel_health{state="AVAILABLE"} 1', $out);
-        $this->assertStringContainsString('nuskjo_wa_channel_health{state="BLOCKED"} 0', $out);
+        // OpenWA (2026-11-06): عدد الأرقام غير الجاهزة بدل حالة قناة ميتا الواحدة
+        $this->assertStringContainsString('nuskjo_wa_channels_down 1', $out);
+        $this->assertStringNotContainsString('channel_health', $out);
     }
 
     public function test_every_sample_line_is_valid_exposition_format(): void

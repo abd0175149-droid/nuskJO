@@ -13,7 +13,7 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * get_channel_status (E23): للقراءة، بالصلاحية channel.view وحدها (إخفاء ثم إعادة فحص في التنفيذ)، بلا أسرار ولا نص
+ * get_channel_status (E23، أرقام OpenWA منذ 2026-11-06): للقراءة، بالصلاحية channel.view وحدها (إخفاء ثم إعادة فحص في التنفيذ)، بلا أسرار ولا نص
  * المدير ولا أرقام عملاء، وكل استدعاء في wa_admin_actions.
  */
 class AdminChannelStatusToolTest extends TestCase
@@ -26,7 +26,7 @@ class AdminChannelStatusToolTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->configureChannel(['wa_token' => 'EAAG-tool-secret-token', 'wa_app_secret' => 'tool-app-secret-0001']);
+        $this->configureChannel();
         $this->conv = WaConversation::factory()->windowOpen()->create();
     }
 
@@ -51,29 +51,25 @@ class AdminChannelStatusToolTest extends TestCase
     public function test_with_the_permission_it_reports_the_channel_without_secrets(): void
     {
         $a = $this->number(['channel.view']);
-        DB::table('wa_bot_settings')->update([
-            'wa_suspended' => true, 'wa_suspended_source' => 'manual', 'wa_suspended_reason' => 'نص المدير الخاص 0791234567',
-            'wa_channel_health' => json_encode(['state' => 'ok', 'quality_rating' => 'GREEN', 'can_send_message' => 'AVAILABLE',
-                'webhook' => ['ok' => false, 'issues' => ['callback_mismatch']], 'checked_at' => now()->toIso8601String()]),
-            'wa_last_error' => json_encode(['meta_code' => 190, 'error_code' => 'TOKEN_INVALID', 'message' => 'رمز ميتا منتهٍ أو مُلغى', 'at' => now()->toIso8601String()]),
-        ]);
+        DB::table('wa_bot_settings')->update(['wa_suspended' => true, 'wa_suspended_source' => 'manual', 'wa_suspended_reason' => 'نص المدير الخاص 0791234567']);
+        $this->testChannel()->update(['api_key' => 'gw-secret-key-0001', 'paused_until' => now()->addHour(), 'pause_reason' => 'manual']);
+        $this->makeChannel(['name' => 'رقم الإشعارات', 'status' => 'disconnected']);
         WaConversation::factory()->create(['phone' => '16505551234', 'last_inbound_at' => now()->subMinutes(5)]);
+        \App\Models\WaMessage::factory()->create(['conversation_id' => $this->conv->id, 'direction' => 'out', 'status' => 'failed', 'error_code' => 'CHANNEL_NOT_READY']);
 
         $this->assertContains('get_channel_status', array_column(AdminTools::declarations($a), 'name'));
         $out = AdminTools::execute('get_channel_status', [], $this->conv, $a->fresh());
 
         $this->assertTrue($out['sending']['manual_suspended']);
         $this->assertSame('إيقاف طارئ يدوي', $out['sending']['suspended_by']);
-        $this->assertSame('UNKNOWN', $out['sending']['health']);
-        $this->assertSame('GREEN', $out['meta']['quality_rating']);
-        $this->assertFalse($out['meta']['webhook_ok']);
-        $this->assertSame('callback_mismatch', $out['meta']['webhook_issue']);
-        $this->assertSame(['code' => 'TOKEN_INVALID', 'label' => 'رمز ميتا منتهٍ أو مُلغى'], array_intersect_key($out['last']['last_failure'], ['code' => 1, 'label' => 1]));
+        $channels = collect($out['channels'])->keyBy('name');
+        $this->assertNotNull($channels[$this->testChannel()->name]['paused_until']);
+        $this->assertSame(['disconnected', false], [$channels['رقم الإشعارات']['status'], $channels['رقم الإشعارات']['ready']]);
+        $this->assertSame('CHANNEL_NOT_READY', $out['last']['last_failure']['code']);
         $this->assertNotNull($out['last']['last_inbound_at']);
-        $this->assertSame('v25.0', $out['graph']['version']);
 
         $json = json_encode($out, JSON_UNESCAPED_UNICODE);
-        foreach (['EAAG-tool-secret-token', 'tool-app-secret-0001', 'test-llm-key', 'نص المدير الخاص', '16505551234', 'token"', 'secret', 'api_key'] as $needle) {
+        foreach (['gw-secret-key-0001', self::TEST_WEBHOOK_SECRET, 'test-llm-key', 'نص المدير الخاص', '16505551234', 'api_key', 'sess-'] as $needle) {
             $this->assertStringNotContainsString($needle, $json);
         }
         $this->assertSame('done', WaAdminAction::where('tool', 'get_channel_status')->value('status'));

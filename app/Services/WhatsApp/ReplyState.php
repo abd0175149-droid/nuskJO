@@ -27,7 +27,6 @@ final class ReplyState
         'budget' => '⏳ تجاوز زمن الرد',
         'bot_off' => '🔕 البوت مطفأ',
         'rate_limit' => '🚦 تجاوز الحد',
-        'window_closed' => '🔒 النافذة مغلقة',
         'handoff' => '🙋 طلب موظفاً',
         'no_phone' => '📵 رقم غير ظاهر',
         'identity_conflict' => '🔀 محادثتان لعميل واحد',

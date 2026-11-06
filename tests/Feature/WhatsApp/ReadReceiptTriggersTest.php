@@ -81,27 +81,25 @@ class ReadReceiptTriggersTest extends TestCase
         Bus::assertDispatchedAfterResponse(SendWhatsAppReadReceipt::class, fn ($job) => $job->uptoMessageId === $this->in->id);
     }
 
-    /** وارد يصل أثناء نداء الإرسال لا يُعلَّم مقروءاً: الدفتر يكتب صف الرد قبل النداء، والمسار القديم يحسب قبله */
+    /** وارد يصل أثناء نداء الإرسال لا يُعلَّم مقروءاً: الدفتر يكتب صف الرد قبل النداء */
     public function test_an_inbound_arriving_during_the_send_is_not_covered(): void
     {
-        foreach ([false, true] as $ledger) {
-            config(['features.env.send_ledger' => $ledger]);
-            Http::fake(['graph.facebook.com/*' => function () {
-                WaMessage::factory()->inbound()->create(['conversation_id' => $this->conv->id]);
+        config(['whatsapp.openwa.url' => 'http://nuskjo-openwa:2785', 'whatsapp.transport' => 'openwa']);
+        Http::fake(['nuskjo-openwa:2785/*' => function () {
+            WaMessage::factory()->inbound()->create(['conversation_id' => $this->conv->id]);
 
-                return Http::response(['messages' => [['id' => 'wamid.OUT.'.Str::random(6)]]]);
-            }]);
-            $before = (int) WaMessage::where('direction', 'in')->max('id');
+            return Http::response(['messageId' => 'wamid.OUT.'.Str::random(6)], 201);
+        }]);
+        $before = (int) WaMessage::where('direction', 'in')->max('id');
 
-            $this->assertTrue($this->sendAsStaff()['ok']);
+        $this->assertTrue($this->sendAsStaff()['ok']);
 
-            Bus::assertDispatchedAfterResponse(SendWhatsAppReadReceipt::class, fn ($job) => $job->uptoMessageId === $before);
-        }
+        Bus::assertDispatchedAfterResponse(SendWhatsAppReadReceipt::class, fn ($job) => $job->uptoMessageId === $before);
     }
 
     public function test_a_failed_staff_send_schedules_nothing(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['code' => 131047, 'message' => 'Re-engagement message']], 400)]);
+        $this->fakeGateway(['nuskjo-openwa:2785/api/sessions/*/messages/*' => Http::response(['statusCode' => 400, 'message' => 'bad'], 400)]);
 
         $this->assertFalse($this->sendAsStaff()['ok']);
 
@@ -137,7 +135,7 @@ class ReadReceiptTriggersTest extends TestCase
 
         (new SendWhatsAppReadReceipt($this->conv->id, $this->in->id, 'reply'))->handle();
 
-        Http::assertSent(fn (Request $r) => $r->data() === ['messaging_product' => 'whatsapp', 'status' => 'read', 'message_id' => 'wamid.IN.1']);
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/chats/read') && $r->data() === ['chatId' => WhatsAppChannel::chatId($this->conv)]);
         Http::assertSentCount(1);
         $this->assertSame($this->in->id, $this->conv->fresh()->read_receipt_upto_id);
     }

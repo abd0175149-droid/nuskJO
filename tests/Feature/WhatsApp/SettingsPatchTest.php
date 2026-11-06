@@ -14,10 +14,8 @@ use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\Settings\SettingsSchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\Concerns\PatchesWhatsAppSettings;
-use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
@@ -29,7 +27,6 @@ class SettingsPatchTest extends TestCase
     use ConfiguresWhatsApp;
     use PatchesWhatsAppSettings;
     use RefreshDatabase;
-    use SignsMetaWebhooks;
 
     private User $owner;
 
@@ -122,21 +119,6 @@ class SettingsPatchTest extends TestCase
         $this->assertSame($open + 1, (int) $this->row()['settings_version']);
         $this->patchSettings($this->owner, ['pause_minutes' => 50], version: $open)->assertStatus(409);
         $this->assertFalse(WaBotSetting::current()->fresh()->toolEnabled('save_note'));
-    }
-
-    public function test_a_page_opened_before_an_automatic_stop_cannot_undo_it(): void
-    {
-        Queue::fake();
-        $this->configureChannel();
-        $open = (int) WaBotSetting::current()->settings_version;
-
-        $this->postMetaWebhook('account_update_ban.json')->assertOk();
-
-        $this->assertTrue((bool) WaBotSetting::current()->fresh()->wa_suspended);
-        $this->assertSame('meta_event', WaBotSetting::current()->fresh()->wa_suspended_source);
-        $this->patchSettings($this->owner, ['pause_minutes' => 50], version: $open)->assertStatus(409);
-        $this->patchSettings($this->owner, ['wa_suspended' => false])->assertUnprocessable();
-        $this->assertTrue((bool) WaBotSetting::current()->fresh()->wa_suspended);
     }
 
     public function test_one_audit_row_with_resulting_values_and_the_prompt_only_as_a_fingerprint(): void

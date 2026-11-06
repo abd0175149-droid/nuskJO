@@ -33,7 +33,7 @@
    docker exec nuskjo-app curl -fsS http://nuskjo-openwa:2785/api/health/ready
    docker exec nuskjo-app php artisan whatsapp:doctor
    ```
-4. **الصلاحيات.** امنح صلاحية `whatsapp.channels` للمدير بسكربت موجّه: `scripts/permissions/grant-openwa.php`.
+4. **الصلاحيات.** الهجرة تُنشئ الصلاحيتين `whatsapp.channels` و`whatsapp.outbox` ولا تمنحهما لأحد. المدير يملك كل شيء، ومنحهما لدور آخر من صفحة «الأدوار».
    - ⚠ لا تشغّل `RolePermissionSeeder` على الإنتاج، لأن `sync()` فيه يمسح المنح المخصصة.
 5. **ربط الأرقام.** من صفحة «الأرقام»: إضافة رقم ← «ربط» ← مسح QR من واتساب الهاتف (الأجهزة المرتبطة)، أو إدخال كود الربط.
 

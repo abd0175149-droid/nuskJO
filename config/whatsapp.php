@@ -6,10 +6,10 @@
 */
 
 return [
-    // استقبال الويبهوك (E20، docs/whatsapp-webhook-contract.md؛ أرقامها يحرسها WebhookContractDocTest)
+    // استقبال webhook البوابة (E20، docs/whatsapp/webhook.md؛ أرقامها يحرسها WebhookContractDocTest)
     'webhook' => [
-        // حد الجسم قبل حساب التوقيع (413)، مساوٍ لكتلة nginx ولا يقل عن 3MB (أقصى حمولة عند ميتا)
-        'max_bytes' => max(3 * 1024 * 1024, (int) env('WA_WEBHOOK_MAX_BYTES', 4 * 1024 * 1024)),
+        // حد الجسم قبل حساب التوقيع (413)، مساوٍ لكتلة nginx (2m). البوابة لا تضمّن الوسائط، وأقصى حمولتها 1MB
+        'max_bytes' => max(1024 * 1024, (int) env('WA_WEBHOOK_MAX_BYTES', 2 * 1024 * 1024)),
         // all: كل توصيلة موقّعة تُحفظ مشفّرة قبل المعالجة. failures: تُحفظ عند الخطأ وحده (إن ظهر ضغط كتابة)
         'log_mode' => env('WA_WEBHOOK_LOG_MODE', 'all') === 'failures' ? 'failures' : 'all',
         // الجسم المشفّر للفاشل حداً أقصى، والأثر الوصفي بلا جسم
@@ -191,8 +191,9 @@ return [
         'admin_key' => (string) env('OPENWA_ADMIN_KEY', ''),
         // عنوان nuskjo-app كما تراه البوابة داخل الشبكة (SSRF_ALLOWED_HOSTS=nuskjo-app)
         'webhook_base' => rtrim((string) env('OPENWA_WEBHOOK_BASE', 'http://nuskjo-app:4020'), '/'),
-        // مهلات الطلب (ثوانٍ): الإرسال يحمل base64 حتى 19MB، والتشغيل يفتح كروميوم
-        'timeouts' => ['default' => 20, 'send' => 90, 'start' => 150, 'connect' => 5],
+        // مهلات الطلب (ثوانٍ): الإرسال يحمل base64 حتى 19MB، والتشغيل يفتح كروميوم، وإشعار القراءة ومؤشر الكتابة قصيران
+        // (receipt) فلا يؤخران الرد
+        'timeouts' => ['default' => 20, 'send' => 90, 'start' => 150, 'connect' => 5, 'receipt' => 5],
         // الأحداث المسجلة في webhook كل رقم
         'events' => [
             'message.received', 'message.sent', 'message.ack', 'message.failed', 'message.revoked',

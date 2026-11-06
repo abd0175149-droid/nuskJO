@@ -6,33 +6,31 @@ use App\Jobs\SendWhatsAppMediaJob;
 use App\Models\WaConversation;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
-use Psr\Http\Message\StreamInterface;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsMediaSamples;
-use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * الرفع إلى ميتا (E32.5): POST {pnid}/media متعدد الأجزاء بالحقول الرسمية والملف من مورد لا من نص، ومهلة محسوبة من
- * الحجم، وخطأ ميتا مصنّف بلا إعادة آلية، وسطر سجل بلا اسم الملف.
+ * «رفع» الملف قبل إرساله (E32.5، منذ 2026-11-06): البوابة تأخذ الملف base64 مع الرسالة نفسها، فلا رفع إلى طرف ثالث.
+ * المعرّف «local:{مسار}» على قرص wa_media الخاص: الملف نفسه إن كان عليه، وإلا نسخة في openwa-staging/ باسم عشوائي
+ * (لا اسم الملف). الأقفال قبل أي نسخ، ومهلة الإرسال بملف محسوبة من الحجم تحت مهلة الوظيفة.
  */
 class UploadMediaTest extends TestCase
 {
     use BuildsMediaSamples;
-    use CapturesLogs;
     use ConfiguresWhatsApp;
     use RefreshDatabase;
-
-    private const MEDIA_URL = 'https://graph.facebook.com/v25.0/106540352242922/media';
 
     private WaConversation $conv;
 
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('wa_media');
         $this->configureChannel();
+        $this->fakeGateway();
         $this->conv = WaConversation::factory()->windowOpen()->create();
     }
 
@@ -42,33 +40,48 @@ class UploadMediaTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_the_upload_is_multipart_with_the_official_fields_and_a_streamed_file(): void
+    public function test_a_file_outside_the_private_disk_is_staged_under_a_random_name_without_any_request(): void
     {
-        $options = [];
-        Http::fake(['graph.facebook.com/*' => function (Request $r, array $o) use (&$options) {
-            $options = $o;
+        $bytes = $this->pdfBytes();
+        $path = $this->sampleFile($bytes, 'pdf');
 
-            return Http::response(['id' => '4490709327384033']);
-        }]);
-        $path = $this->sampleFile($this->pdfBytes(), 'pdf');
+        $result = WhatsAppChannel::uploadMedia($this->conv, $path, 'application/pdf', 'جواز-أحمد.pdf', 'bot');
 
-        $result = WhatsAppChannel::uploadMedia($this->conv, $path, 'application/pdf', 'فاتورة-7.pdf', 'bot');
+        $this->assertTrue($result['ok']);
+        $this->assertNull($result['code']);
+        $this->assertMatchesRegularExpression('#^local:openwa-staging/\d{4}/\d{2}/[0-9a-f-]{36}\.pdf$#', $result['media_id']);
+        $this->assertStringNotContainsString('جواز', $result['media_id']);
+        $this->assertSame($bytes, Storage::disk('wa_media')->get(substr($result['media_id'], 6)));
+        Http::assertNothingSent();
+    }
 
-        $this->assertSame(['ok' => true, 'media_id' => '4490709327384033', 'code' => null, 'error' => null], $result);
-        Http::assertSent(function (Request $r) {
-            $parts = collect($r->data())->keyBy('name');
+    public function test_a_file_already_on_the_private_disk_is_used_in_place(): void
+    {
+        Storage::disk('wa_media')->put('outbound/2026/11/x.pdf', 'PDF');
 
-            return $r->url() === self::MEDIA_URL && $r->method() === 'POST' && $r->isMultipart()
-                && $r->hasHeader('Authorization', 'Bearer test-token')
-                && $parts['messaging_product']['contents'] === 'whatsapp'
-                && $parts['type']['contents'] === 'application/pdf'
-                && $r->hasFile('file', null, 'فاتورة-7.pdf')
-                // مورد مفتوح يقرؤه Guzzle، لا نص الملف في الذاكرة
-                && (is_resource($parts['file']['contents']) || $parts['file']['contents'] instanceof StreamInterface);
-        });
-        // ملف صغير: 30 ثانية (وثانية لكل 256KB فوقها)
-        $this->assertSame(30, $options['timeout']);
-        Http::assertSentCount(1);
+        $result = WhatsAppChannel::uploadMedia($this->conv, Storage::disk('wa_media')->path('outbound/2026/11/x.pdf'), 'application/pdf', 'x.pdf', 'staff',
+            \App\Models\User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create()->id);
+
+        $this->assertSame(['ok' => true, 'media_id' => 'local:outbound/2026/11/x.pdf', 'code' => null, 'error' => null], $result);
+        $this->assertSame([], Storage::disk('wa_media')->allFiles('openwa-staging'));
+    }
+
+    public function test_locks_refuse_before_any_copy(): void
+    {
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
+
+        $result = WhatsAppChannel::uploadMedia($this->conv, $this->sampleFile($this->pdfBytes(), 'pdf'), 'application/pdf', 'x.pdf', 'bot');
+
+        $this->assertSame([false, WhatsAppChannel::ERR_PAUSED, null], [$result['ok'], $result['code'], $result['media_id']]);
+        $this->assertSame([], Storage::disk('wa_media')->allFiles());
+    }
+
+    public function test_a_missing_or_empty_file_is_refused(): void
+    {
+        $result = WhatsAppChannel::uploadMedia($this->conv, sys_get_temp_dir().'/nusk-missing-'.uniqid().'.pdf', 'application/pdf', 'x.pdf', 'bot');
+
+        $this->assertSame([false, 'MEDIA_FILE_MISSING', null], [$result['ok'], $result['code'], $result['media_id']]);
+        $this->assertNotEmpty($result['error']);
     }
 
     public function test_the_timeout_grows_with_size_and_stays_under_the_job_budget(): void
@@ -76,55 +89,7 @@ class UploadMediaTest extends TestCase
         $this->assertSame(30, WhatsAppChannel::uploadTimeout(0));
         $this->assertSame(31, WhatsAppChannel::uploadTimeout(262144));
         $this->assertSame(85, WhatsAppChannel::uploadTimeout(16 * 1024 * 1024));
-        // الرفع (85) والإرسال (25) ومهلة الاتصال تحت مهلة الوظيفة (120)
+        // الإرسال بملف (85) ومهلة الاتصال تحت مهلة الوظيفة (120)
         $this->assertLessThan((new SendWhatsAppMediaJob(1))->timeout, WhatsAppChannel::uploadTimeout(PHP_INT_MAX >> 8) + 25 + 5);
-    }
-
-    public function test_a_meta_rejection_is_classified_and_not_retried(): void
-    {
-        Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['code' => 131053, 'message' => 'Media upload error', 'fbtrace_id' => 'AbCdTrace']], 400)]);
-        config(['features.env.meta_error_v2' => true, 'features.env.send_retry' => true]);
-
-        $result = WhatsAppChannel::uploadMedia($this->conv, $this->sampleFile($this->pdfBytes(), 'pdf'), 'application/pdf', 'x.pdf', 'bot');
-
-        $this->assertFalse($result['ok']);
-        $this->assertSame([131053, 'AbCdTrace', null], [$result['meta_code'], $result['fbtrace_id'], $result['media_id']]);
-        $this->assertNotEmpty($result['error']);
-        Http::assertSentCount(1);
-    }
-
-    public function test_a_connection_failure_is_one_attempt_and_says_nothing_was_sent(): void
-    {
-        Http::fake(['graph.facebook.com/*' => Http::failedConnection('cURL error 7: Failed to connect')]);
-
-        $result = WhatsAppChannel::uploadMedia($this->conv, $this->sampleFile($this->pdfBytes(), 'pdf'), 'application/pdf', 'x.pdf', 'bot');
-
-        $this->assertSame([false, 'HTTP_CONNECT_FAILED'], [$result['ok'], $result['code']]);
-        $this->assertStringContainsString('لم يُرسل', $result['error']);
-        Http::assertSentCount(1);
-    }
-
-    public function test_the_log_line_carries_size_and_type_but_never_the_file_name(): void
-    {
-        Http::fake(['graph.facebook.com/*' => Http::response(['id' => '1'])]);
-        $this->captureLogs();
-
-        WhatsAppChannel::uploadMedia($this->conv, $this->sampleFile($this->pdfBytes(), 'pdf'), 'application/pdf', 'جواز-أحمد.pdf', 'bot');
-
-        $line = collect($this->logged)->firstWhere('message', 'wa.media.uploaded');
-        $this->assertNotNull($line);
-        $this->assertSame('application/pdf', $line['context']['mime']);
-        $this->assertArrayHasKey('bytes', $line['context']);
-        $this->assertStringNotContainsString('جواز', json_encode($this->logged, JSON_UNESCAPED_UNICODE));
-    }
-
-    public function test_appsecret_proof_rides_on_the_upload_too(): void
-    {
-        config(['services.whatsapp.appsecret_proof' => true]);
-        Http::fake(['graph.facebook.com/*' => Http::response(['id' => '1'])]);
-
-        WhatsAppChannel::uploadMedia($this->conv, $this->sampleFile($this->pdfBytes(), 'pdf'), 'application/pdf', 'x.pdf', 'bot');
-
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'appsecret_proof='.hash_hmac('sha256', 'test-token', self::TEST_APP_SECRET)));
     }
 }

@@ -53,7 +53,7 @@ class WhatsAppConversationStateController extends Controller
         return $this->state($conversation);
     }
 
-    /** until (وقت) أو minutes (من الآن)؛ بين 10 دقائق وقبل إغلاق النافذة بربع ساعة */
+    /** until (وقت) أو minutes (من الآن)؛ بين 10 دقائق و30 يوماً (لا نافذة 24 ساعة على OpenWA منذ 2026-11-06) */
     public function snooze(Request $request, WaConversation $conversation)
     {
         abort_unless(auth()->user()->can('whatsapp.reply'), 403);
@@ -63,9 +63,6 @@ class WhatsAppConversationStateController extends Controller
         ]);
 
         $limit = InboxFollowup::snoozeLimit($conversation);
-        if (!$limit) {
-            return response()->json(['error' => 'لا يمكن التأجيل بعد إغلاق نافذة الرد — لا قوالب لدينا'], 422);
-        }
         $until = isset($data['until'])
             ? Carbon::parse($data['until'])->setTimezone(config('app.timezone'))
             : now()->addMinutes((int) $data['minutes']);
@@ -73,7 +70,7 @@ class WhatsAppConversationStateController extends Controller
             return response()->json(['error' => 'التأجيل '.InboxFollowup::SNOOZE_MIN_MINUTES.' دقائق على الأقل'], 422);
         }
         if ($until->gt($limit)) {
-            return response()->json(['error' => 'أبعد موعد ممكن '.$limit->format('H:i').' — قبل إغلاق نافذة الرد بربع ساعة'], 422);
+            return response()->json(['error' => 'أبعد موعد ممكن '.$limit->format('Y-m-d').' — التأجيل 30 يوماً على الأكثر'], 422);
         }
 
         $conversation->forceFill(['snoozed_until' => $until, 'snoozed_by' => auth()->id()])->save();

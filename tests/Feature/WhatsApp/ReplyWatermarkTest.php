@@ -133,7 +133,7 @@ class ReplyWatermarkTest extends TestCase
 
     public function test_a_failed_send_keeps_the_message_pending(): void
     {
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => ['message' => 'x', 'code' => 130429]], 400)]);
+        $this->fakeGraph(['nuskjo-openwa:2785/*/messages/send-text' => Http::response(['statusCode' => 400, 'message' => 'Invalid chat'], 400)]);
         Http::fake(['generativelanguage.googleapis.com/*' => Http::response($this->geminiResponse('رد'))]);
 
         $this->assertFalse(BotEngine::reply($this->conv)['sent']);

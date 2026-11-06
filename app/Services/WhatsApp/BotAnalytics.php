@@ -192,7 +192,7 @@ class BotAnalytics
     public static function quality(): array
     {
         // دفتر الإرسال (E19.9): غير المسلَّم خارج الأتمتة وزمن الرد و«بلا جواب»، ومؤشران منفصلان له أدناه
-        $ledger = \App\Support\FeatureFlags::on('send_ledger');
+        $ledger = true; // الدفتر دائم منذ OpenWA
         // الإرسال التجريبي (E23، source=test) خارج الجودة والأتمتة (E24)
         $msgs = WaMessage::where('source', '!=', 'test')->when($ledger, fn ($q) => $q->excludeUndelivered())
             ->orderBy('id')->get(['id', 'conversation_id', 'direction', 'source', 'msg_type', 'body', 'created_at']);

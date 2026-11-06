@@ -340,8 +340,8 @@ TXT;
         if (Cache::add('wa:llm:outage:'.($incident ?? 'isolated').':'.$conv->id, 1, now()->addHours($incident ? 6 : 1))) {
             $res = WhatsAppChannel::sendText($conv, HandoffGuard::confirmation(HandoffGuard::isLatin($pending)), 'system', sendKey: SendKey::outage($conv, $run?->uptoId));
             $sent = (bool) $res['ok'];
-            // خنق من ميتا (فئة throttle في MetaErrorCatalog): إعادة واحدة مؤجلة. وما في NEVER_RETRY لا يُعاد أبداً
-            if (!$res['ok'] && MetaErrorCatalog::isThrottle($res['meta_code'] ?? null)) {
+            // خنق من البوابة (فئة throttle، مثل GW_RATE): إعادة واحدة مؤجلة. وما سواه لا يُعاد أبداً
+            if (!$res['ok'] && ($res['category'] ?? null) === 'throttle') {
                 \App\Jobs\SendOutageNotice::dispatch($conv->id, false)->delay(now()->addSeconds(30));
             }
         }
@@ -565,7 +565,7 @@ TXT;
             ->whereIn('source', ['customer', 'bot', 'staff', 'injected', 'rule', 'staff_phone'])
             // رد إذن الاتصال وعلامة الحذف من الهاتف ليسا كلاماً (E39)
             ->whereNotIn('msg_type', ['reaction', 'call_permission', 'revoke'])
-            ->when(\App\Support\FeatureFlags::on('send_ledger'), fn ($q) => $q->excludeUndelivered())
+            ->excludeUndelivered()
             ->orderByDesc('id')->limit($take)->get()->reverse()->values();
 
         // الوارد بعد العلامة دورٌ أخير للمستخدم: لا يرى النموذج رسالة B قبل رد A فيظنها مُجابة

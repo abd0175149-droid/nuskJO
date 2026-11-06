@@ -113,14 +113,15 @@ class NginxConfigTest extends TestCase
         $this->assertStringContainsString('deny all;', $locations['~ /\.']['own'] ?? '', 'الملفات النقطية محجوبة داخل /storage أيضاً');
     }
 
-    public function test_csp_reports_are_capped_at_the_edge_and_the_webhook_block_is_untouched(): void
+    public function test_csp_reports_are_capped_at_the_edge_and_the_webhook_block_is_bounded(): void
     {
         $locations = collect($this->locations($this->code($this->conf())))->keyBy('head');
 
         $this->assertStringContainsString('client_max_body_size 16k;', $locations['= /csp-report']['own'] ?? '');
         $this->assertSame(16384, config('csp.report_max_bytes'));
-        // E20: كتلة الويبهوك وkeepalive كما هي (WebhookContractDocTest)
-        $this->assertStringContainsString('client_max_body_size 4m;', $locations['= /api/whatsapp/webhook']['own'] ?? '');
+        // webhook بوابة OpenWA (2026-11-06): مسار الرقم بمعرّفه، والوسائط لا تُضمَّن فيه (WEBHOOK_MEDIA_INLINE_MAX_BYTES=0)
+        $this->assertStringContainsString('client_max_body_size 2m;', $locations['~ ^/api/openwa/webhook/[0-9a-fA-F-]+$']['own'] ?? '');
+        $this->assertArrayNotHasKey('= /api/whatsapp/webhook', $locations->all(), 'مسار ميتا القديم أُزيل');
         $this->assertMatchesRegularExpression('/^\s*keepalive_timeout 100s;/m', $this->conf());
     }
 

@@ -91,16 +91,16 @@ class DeliveryTicksPropsTest extends TestCase
         $this->assertSame(['delivered', '07:10', false], [$byId[$delivered->id]['status'], $byId[$delivered->id]['status_at'], $byId[$delivered->id]['multi_fail']]);
         $this->assertSame(['read', true], [$byId[$multi->id]['status'], $byId[$multi->id]['multi_fail']]);
         $f = $byId[$failed->id];
-        $meaning = MetaErrorCatalog::classify(131026);
-        $this->assertSame(['failed', 131026, 'RECIPIENT_UNREACHABLE', $meaning['message'], $meaning['action'], false],
-            [$f['status'], $f['meta_code'], $f['error_code'], $f['error'], $f['action'], $f['multi_fail']]);
+        // من البوابة: message.failed بلا رقم ميتا، فرمزنا DELIVERY_FAILED (2026-11-06)
+        $meaning = MetaErrorCatalog::byCode('DELIVERY_FAILED');
+        $this->assertSame(['failed', null, 'DELIVERY_FAILED', $meaning['message'], $meaning['action'], false],
+            [$f['status'], $f['meta_code'] ?? null, $f['error_code'], $f['error'], $f['action'], $f['multi_fail']]);
 
         $keys = $this->keys($res->json());
         $this->assertNotContains('payload', $keys);
         $this->assertNotContains('details', $keys);
         $this->assertNotContains('statusHistory', $keys);
         $this->assertStringNotContainsString('16505551234', $res->getContent());
-        $this->assertStringContainsString('•••', (string) data_get($failed->fresh()->payload, '_meta_error.details'), 'التفاصيل مقنّعة للدعم وحدها');
     }
 
     public function test_the_poll_returns_the_same_fields_for_messages_whose_status_changed(): void

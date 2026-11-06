@@ -20,7 +20,8 @@ use Tests\TestCase;
 
 /**
  * «لم تصل رسالتك» (E21): إشعار واحد للمرسل من مسار واحد (المستمع مع wa_event_bus، أو مسار E18 المباشر بدونه)،
- * لأسباب تخص العميل أو الرسالة وحدها، ولا يتكرر بإعادة الويبهوك. رسالة النظام التي رفضتها ميتا فوراً تصل لموكَّل المحادثة.
+ * لأسباب تخص العميل أو الرسالة وحدها، ولا يتكرر بإعادة الويبهوك. رسالة النظام التي رفضتها البوابة فوراً تصل لموكَّل المحادثة.
+ * منذ 2026-11-06 الفشل بعد الإرسال حدث message.failed (DELIVERY_FAILED)، والرفض الفوري رد البوابة.
  */
 class DeliveryFailureNotifyTest extends TestCase
 {
@@ -83,7 +84,7 @@ class DeliveryFailureNotifyTest extends TestCase
 
         $bells = $this->bells($this->staff);
         $this->assertCount(1, $bells);
-        $meaning = MetaErrorCatalog::classify(131047);
+        $meaning = MetaErrorCatalog::byCode('DELIVERY_FAILED');
         $this->assertStringContainsString($meaning['message'], $bells[0]->body);
         $this->assertStringContainsString($meaning['action'], $bells[0]->body);
         $this->assertStringContainsString('عميل تجريبي', $bells[0]->body);
@@ -98,17 +99,6 @@ class DeliveryFailureNotifyTest extends TestCase
         $this->postMetaWebhook('status_failed_131047.json')->assertOk();
 
         $this->assertCount(1, $this->bells($this->staff));
-    }
-
-    public function test_a_channel_wide_failure_is_left_to_the_channel_alerts(): void
-    {
-        config(['features.env.wa_event_bus' => true]);
-        $this->staffMessage('wamid.E21.CHANNEL');
-
-        $this->postRawWebhook($this->failedStatus('wamid.E21.CHANNEL', 190))->assertOk();
-
-        $this->assertSame('failed', WaMessage::sole()->status);
-        $this->assertCount(0, $this->bells($this->staff));
     }
 
     public function test_two_failures_in_one_conversation_within_minutes_send_one_notice(): void
@@ -126,7 +116,7 @@ class DeliveryFailureNotifyTest extends TestCase
     public function test_a_staff_send_rejected_on_the_spot_is_not_notified_again(): void
     {
         config(['features.env.wa_event_bus' => true]);
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(json_decode((string) file_get_contents($this->fixturePath('error_131026.json')), true), 400)]);
+        $this->fakeGraph(['nuskjo-openwa:2785/*/messages/send-text' => Http::response(['statusCode' => 400, 'message' => 'Number is not registered on WhatsApp'], 400)]);
 
         $res = WhatsAppChannel::sendText($this->conv, 'مرحباً', 'staff', $this->staff->id, sendKey: SendKey::staff((string) Str::uuid()));
 
@@ -137,7 +127,7 @@ class DeliveryFailureNotifyTest extends TestCase
     public function test_a_system_message_rejected_on_the_spot_goes_to_the_assignee_or_the_admins(): void
     {
         config(['features.env.wa_event_bus' => true]);
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(json_decode((string) file_get_contents($this->fixturePath('error_131026.json')), true), 400)]);
+        $this->fakeGraph(['nuskjo-openwa:2785/*/messages/send-text' => Http::response(['statusCode' => 400, 'message' => 'Number is not registered on WhatsApp'], 400)]);
 
         WhatsAppChannel::sendText($this->conv, 'تم إيقاف الرسائل التسويقية.', 'system', sendKey: SendKey::optout('wamid.IN.1'));
         $orphanConv = WaConversation::factory()->windowOpen()->create();

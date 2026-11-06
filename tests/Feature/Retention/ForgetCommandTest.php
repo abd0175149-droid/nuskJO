@@ -136,18 +136,18 @@ class ForgetCommandTest extends TestCase
         $this->assertSame(5, Retention::shrinkAllowance()['wa_messages']);
     }
 
-    public function test_only_recent_media_is_deleted_at_meta_and_failures_do_not_stop_it(): void
+    /** OpenWA (2026-11-06): البوابة لا تحتفظ بالوسائط، فلا نداء حذف عند طرف ثالث ولا فشل يُعدّ */
+    public function test_no_remote_media_delete_is_attempted_on_the_gateway(): void
     {
         $this->seedConversation();
-        Http::fake(['graph.facebook.com/*' => Http::response(['error' => ['message' => 'x']], 500)]);
+        Http::fake();
         $token = $this->token();
 
         Artisan::call('whatsapp:forget', ['--conversation' => $this->conv->id, '--token' => $token]);
 
-        Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && str_contains($r->url(), 'media.NEW'));
-        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'media.OLD'));
+        Http::assertNotSent(fn (Request $r) => $r->method() === 'DELETE');
         $this->assertSame('erased', $this->conv->fresh()->status);
-        $this->assertSame(1, WaErasureRequest::sole()->counts['media_meta_failed']);
+        $this->assertSame(0, WaErasureRequest::sole()->counts['media_meta_failed']);
     }
 
     public function test_a_request_must_be_verified_and_match_the_number(): void
@@ -250,7 +250,7 @@ class ForgetCommandTest extends TestCase
 
         $this->assertSame(0, WaMessage::where('conversation_id', $back->id)->count());
         $this->assertSame('erased', $back->fresh()->status);
-        $this->assertSame(1, Http::recorded(fn (Request $r) => $r->method() === 'DELETE')->count(), 'إعادة التطبيق بلا نداءات لميتا');
+        $this->assertSame(0, Http::recorded(fn (Request $r) => $r->method() === 'DELETE')->count(), 'لا نداءات حذف عند طرف ثالث');
     }
 
     public function test_after_losing_the_host_the_ledger_from_the_backup_is_enough(): void

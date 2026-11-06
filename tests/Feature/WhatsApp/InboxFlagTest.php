@@ -8,8 +8,8 @@ use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
- * الصندوق الجديد (E16) خلف العلم inbox_v2، والقديم للتراجع بلا نشر، والبيانات نفسها في الحالتين.
- * والمدير وحده يجرّب الجديد قبل التفعيل بـ ?v2=1.
+ * الصندوق الجديد (E16) وحده منذ OpenWA (2026-11-06): القديم قام على نافذة الـ24 ساعة فأُزيل مع علمه inbox_v2، فلا
+ * ?v2=1 ولا إعداد قديم باقٍ في البيئة يغيّران الصفحة ولا بياناتها.
  */
 class InboxFlagTest extends TestCase
 {
@@ -25,25 +25,24 @@ class InboxFlagTest extends TestCase
         return [$out['component'], array_keys($out['props'])];
     }
 
-    public function test_the_flag_switches_between_the_two_inboxes_with_the_same_props(): void
+    public function test_the_flag_no_longer_switches_the_inbox_and_the_props_stay_the_same(): void
     {
         $admin = User::factory()->admin()->create();
 
-        [$legacy, $legacyProps] = $this->pageOf($admin);
+        [$off, $offProps] = $this->pageOf($admin);
         config(['features.env.inbox_v2' => true]);
-        [$v2, $v2Props] = $this->pageOf($admin);
+        [$on, $onProps] = $this->pageOf($admin);
 
-        $this->assertSame('WhatsApp/InboxLegacy', $legacy);
-        $this->assertSame('WhatsApp/Inbox', $v2);
-        $this->assertEqualsCanonicalizing($legacyProps, $v2Props);
-        $this->assertContains('listMeta', $v2Props);
+        $this->assertSame(['WhatsApp/Inbox', 'WhatsApp/Inbox'], [$off, $on]);
+        $this->assertEqualsCanonicalizing($offProps, $onProps);
+        $this->assertContains('listMeta', $onProps);
     }
 
-    public function test_only_an_administrator_can_preview_the_new_inbox_before_the_flag(): void
+    public function test_staff_and_administrators_see_the_same_inbox(): void
     {
         $this->assertSame('WhatsApp/Inbox', $this->pageOf(User::factory()->admin()->create(), '/whatsapp/inbox?v2=1')[0]);
 
         $staff = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply'])->create();
-        $this->assertSame('WhatsApp/InboxLegacy', $this->pageOf($staff, '/whatsapp/inbox?v2=1')[0]);
+        $this->assertSame('WhatsApp/Inbox', $this->pageOf($staff, '/whatsapp/inbox?v2=1')[0]);
     }
 }

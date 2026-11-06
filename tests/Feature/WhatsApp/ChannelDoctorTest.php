@@ -31,8 +31,7 @@ class ChannelDoctorTest extends TestCase
 
     public function test_a_healthy_setup_reports_nothing(): void
     {
-        // رمز تحقق مولَّد (هاشه وحده محفوظ)، لا مكتوب يدوياً
-        $this->configureChannel(['wa_verify_token' => null, 'wa_verify_token_hash' => hash('sha256', str_repeat('v', 64))]);
+        $this->configureChannel();
 
         $this->assertSame([], ChannelDoctor::checks());
         $this->artisan('whatsapp:doctor', ['--strict' => true, '--offline' => true])->expectsOutputToContain('لا ملاحظات')->assertExitCode(0);
@@ -40,61 +39,72 @@ class ChannelDoctorTest extends TestCase
 
     public function test_the_doctor_lists_sources_and_warns_about_shadowing_and_old_keys_without_values(): void
     {
-        $this->configureChannel(['wa_verify_token' => 'typed-by-hand-token-0001']);
-        config(['services.whatsapp.token' => 'env-token-value-0000000001']);
+        $this->configureChannel(['provider' => 'google']);
+        config(['services.llm.google_key' => 'AIza-env-key-value-0000000001']);
         // سر مشفّر بمفتاح سابق ما زال في APP_PREVIOUS_KEYS
         $old = 'base64:'.base64_encode(random_bytes(32));
-        $raw = (new Encrypter(base64_decode(substr($old, 7)), 'AES-256-CBC'))->encryptString('old-key-app-secret-00001');
-        DB::table('wa_bot_settings')->update(['wa_app_secret' => $raw]);
+        $raw = (new Encrypter(base64_decode(substr($old, 7)), 'AES-256-CBC'))->encryptString('old-key-fallback-00001');
+        DB::table('wa_bot_settings')->update(['fallback_api_key' => $raw]);
         config(['app.previous_keys' => [$old]]);
         $this->app->forgetInstance('encrypter');
         \Illuminate\Support\Facades\Crypt::clearResolvedInstance('encrypter');
 
-        $this->assertSame(1, \Illuminate\Support\Facades\Artisan::call('whatsapp:doctor', ['--strict' => true]));
+        $this->assertSame(1, \Illuminate\Support\Facades\Artisan::call('whatsapp:doctor', ['--strict' => true, '--offline' => true]));
         $output = \Illuminate\Support\Facades\Artisan::output();
 
-        foreach (['wa_phone_number_id', 'WA_TOKEN', 'ENV_SHADOWS_DB', 'SECRET_ON_PREVIOUS_KEY', 'VERIFY_TOKEN_PLAIN'] as $expected) {
+        foreach (['api_key', 'ENV_SHADOWS_DB', 'SECRET_ON_PREVIOUS_KEY'] as $expected) {
             $this->assertStringContainsString($expected, $output);
         }
-        foreach (['old-key-app-secret', 'env-token-value', 'typed-by-hand-token'] as $secret) {
+        foreach (['old-key-fallback', 'AIza-env-key-value', 'test-llm-key'] as $secret) {
             $this->assertStringNotContainsString($secret, $output);
         }
     }
 
-    public function test_secret_saved_under_another_app_key_is_reported_without_its_value(): void
+    public function test_secrets_saved_under_another_app_key_are_reported_without_their_value(): void
     {
-        $this->configureChannel(['wa_verify_token' => str_repeat('v', 32)]);
-        $foreign = (new Encrypter(random_bytes(32), 'AES-256-CBC'))->encryptString('EAAG-secret-token');
-        DB::table('wa_bot_settings')->update(['wa_token' => $foreign]);
+        $this->configureChannel();
+        $foreign = fn (string $v) => (new Encrypter(random_bytes(32), 'AES-256-CBC'))->encryptString($v);
+        DB::table('wa_bot_settings')->update(['api_key' => $foreign('AIza-foreign-llm-key')]);
+        DB::table('wa_channels')->update(['api_key' => $foreign('foreign-channel-key')]);
 
         $checks = ChannelDoctor::checks();
 
         $this->assertContains('SECRET_UNREADABLE', array_column($checks, 'code'));
-        $this->assertStringNotContainsString('EAAG', json_encode($checks, JSON_UNESCAPED_UNICODE));
+        $this->assertContains('CHANNEL_KEY_UNREADABLE', array_column($checks, 'code'));
+        $this->assertStringNotContainsString('foreign', json_encode($checks, JSON_UNESCAPED_UNICODE));
     }
 
     public function test_weak_settings_are_reported(): void
     {
-        $this->configureChannel(['wa_app_secret' => null, 'wa_verify_token' => 'short']);
+        $this->configureChannel();
         User::factory()->create(['email' => 'admin@nusuk-jo.com', 'password' => Hash::make('password')]);
-        Cache::put('wa:last_auth_error_at', now()->subHour()->toIso8601String());
         config(['trustedproxy.proxies' => '*', 'logging.channels.daily.level' => 'error']);
 
         $codes = $this->codes();
 
-        foreach (['NO_APP_SECRET', 'SHORT_VERIFY_TOKEN', 'DEFAULT_ADMIN_PASSWORD', 'META_TOKEN_REJECTED', 'TRUST_ALL_PROXIES', 'LOG_LEVEL_TOO_STRICT'] as $code) {
+        foreach (['DEFAULT_ADMIN_PASSWORD', 'TRUST_ALL_PROXIES', 'LOG_LEVEL_TOO_STRICT'] as $code) {
             $this->assertContains($code, $codes);
         }
-        $this->artisan('whatsapp:doctor')->assertExitCode(0);
-        $this->artisan('whatsapp:doctor', ['--strict' => true])->assertExitCode(1);
+        $this->artisan('whatsapp:doctor', ['--offline' => true])->assertExitCode(0);
+        $this->artisan('whatsapp:doctor', ['--strict' => true, '--offline' => true])->assertExitCode(1);
+    }
+
+    public function test_a_missing_gateway_key_in_production_is_an_error(): void
+    {
+        $this->configureChannel();
+        config(['whatsapp.openwa.admin_key' => '']);
+        $this->app['env'] = 'production';
+
+        $this->assertContains('OPENWA_ADMIN_KEY_MISSING', $this->codes());
     }
 
     public function test_settings_page_carries_the_health_list(): void
     {
-        $this->configureChannel(['wa_verify_token' => 'short']);
+        $this->configureChannel();
+        config(['trustedproxy.proxies' => '*']);
         $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
 
         $this->actingAs($owner)->get('/whatsapp/settings')->assertInertia(fn ($page) => $page
-            ->where('health.0.code', 'SHORT_VERIFY_TOKEN'));
+            ->where('health.0.code', 'TRUST_ALL_PROXIES'));
     }
 }

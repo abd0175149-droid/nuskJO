@@ -19,9 +19,6 @@ namespace App\Services\WhatsApp;
  */
 final class MetaErrorCatalog
 {
-    /** الإصدار الذي رُوجع عليه الجدول: ترقية graph_version تفرض مراجعته وتحديث هذا الثابت في التغيير نفسه */
-    public const REVIEWED_FOR_VERSION = 'v25.0';
-
     public const DOC_URL = 'https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes';
 
     public const STATUS_URL = 'https://metastatus.com';
@@ -138,7 +135,7 @@ final class MetaErrorCatalog
         'HTTP_5XX_NO_BODY' => ['transient', 'channel', 'خلل عند ميتا بلا رد مفهوم — قد تكون الرسالة وصلت.', 'افتح محادثة العميل وتأكد قبل إعادة الإرسال.', 'none'],
         'HTTP_NO_RESPONSE' => ['transient', 'channel', 'انقطع الاتصال بميتا بعد إرسال الطلب — قد تكون الرسالة وصلت.', 'افتح محادثة العميل وتأكد قبل إعادة الإرسال.', 'none'],
         // دفتر الإرسال (E19)
-        'OUTCOME_UNKNOWN' => ['transient', 'message', 'قد تكون الرسالة وصلت، ولم تؤكدها ميتا بعد.', 'تحقق من الخيط أو اسأل العميل قبل إعادة الإرسال.', 'none'],
+        'OUTCOME_UNKNOWN' => ['transient', 'message', 'قد تكون الرسالة وصلت، ولم تؤكدها البوابة بعد.', 'تحقق من الخيط أو اسأل العميل قبل إعادة الإرسال.', 'none'],
         'SEND_IN_PROGRESS' => ['transient', 'message', 'الرسالة نفسها قيد الإرسال الآن.', 'انتظر ثواني حتى تظهر في الخيط.', 'none'],
         'IDEMPOTENCY_MISMATCH' => ['caller', 'message', 'مفتاح الإرسال مستعمل لنص آخر.', 'اضغط «إرسال» مرة أخرى.', 'none'],
         'REPLY_STALE' => ['caller', 'message', 'أُلغي الرد الآلي لأن المحادثة تغيّرت أثناء الانتظار (ردّ موظف أو أُطفئ البوت).', 'لا شيء: المحادثة مع موظف.', 'none'],

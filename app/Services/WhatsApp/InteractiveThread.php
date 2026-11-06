@@ -8,7 +8,6 @@ use App\Models\WaChoiceSet;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\Outbound\InteractiveTypes;
-use App\Support\FeatureFlags;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
@@ -30,8 +29,8 @@ final class InteractiveThread
     /** @param  Collection<int, WaMessage>  $rows  تحتاج الأعمدة direction وmsg_type وpayload */
     public static function prepare(WaConversation $conv, Collection $rows, User $user): self
     {
-        // الصندوق الجديد يعرض العناوين حبوباً (ChoiceChips)؛ القديم يبقى على سطر «[قائمة: …]» في النص
-        $self = new self($user->can('quotes.view'), FeatureFlags::on('inbox_v2'));
+        // الصندوق يعرض العناوين حبوباً (ChoiceChips). العلم inbox_v2 أُزيل مع الصندوق القديم (2026-11-06)
+        $self = new self($user->can('quotes.view'), true);
         $setIds = $rows->filter(fn ($m) => $m->direction === 'out' && $m->msg_type === InteractiveTypes::TYPE)
             ->map(fn ($m) => (int) data_get($m->payload, '_meta.choice_set_id'))->filter()->unique()->values()->all();
         if ($setIds !== [] && Schema::hasTable('wa_choice_sets')) {

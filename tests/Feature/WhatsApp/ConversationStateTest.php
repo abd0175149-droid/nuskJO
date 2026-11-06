@@ -109,22 +109,18 @@ class ConversationStateTest extends TestCase
         $this->assertEqualsCanonicalizing([$snoozed->id, $quiet->id], $this->listIds('snoozed'));
     }
 
-    public function test_snooze_is_bounded_by_the_reply_window(): void
+    public function test_snooze_is_bounded_to_thirty_days_even_after_a_long_silence(): void
     {
-        $c = $this->conv(['last_inbound_at' => now()->subHours(20)]);
+        // لا نافذة 24 ساعة على OpenWA (2026-11-06): العميل الصامت منذ يومين يُؤجَّل كغيره
+        $c = $this->conv(['last_inbound_at' => now()->subDays(2)]);
         $url = "/api/whatsapp/conversations/{$c->id}/snooze";
 
-        // النافذة تُغلق بعد 4 ساعات: أبعد موعد بعد 3:45
-        $this->actingAs($this->staff)->postJson($url, ['until' => now()->addHours(4)->toIso8601String()])->assertStatus(422);
+        $this->actingAs($this->staff)->postJson($url, ['until' => now()->addDays(31)->toIso8601String()])->assertStatus(422);
         $this->actingAs($this->staff)->postJson($url, ['minutes' => 5])->assertStatus(422);
-        $this->actingAs($this->staff)->postJson($url, ['until' => now()->addHours(3)->toIso8601String()])->assertOk()->assertJsonPath('snoozed_until', fn ($v) => $v !== null);
+        $this->actingAs($this->staff)->postJson($url, ['until' => now()->addDays(20)->toIso8601String()])->assertOk()->assertJsonPath('snoozed_until', fn ($v) => $v !== null);
         $this->assertDatabaseHas('audit_logs', ['action' => 'wa.conv_snooze', 'entity_id' => $c->id]);
 
         $this->actingAs($this->staff)->deleteJson($url)->assertOk()->assertJsonPath('snoozed_until', null);
-
-        $closedWindow = $this->conv(['last_inbound_at' => now()->subDays(2)]);
-        $this->actingAs($this->staff)->postJson("/api/whatsapp/conversations/{$closedWindow->id}/snooze", ['minutes' => 60])
-            ->assertStatus(422)->assertJsonPath('error', 'لا يمكن التأجيل بعد إغلاق نافذة الرد — لا قوالب لدينا');
     }
 
     public function test_snooze_wake_raises_attention_once_and_notifies_who_snoozed(): void

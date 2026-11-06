@@ -173,7 +173,8 @@ final class RichThread
 
         return [
             'lat' => round($lat, 7), 'lng' => round($lng, 7),
-            'name' => TextNormalizer::untrustedName($loc['name'] ?? null, 120),
+            // OpenWA بلا name: اسم المكان في description
+            'name' => TextNormalizer::untrustedName($loc['name'] ?? $loc['description'] ?? null, 120),
             'address' => TextNormalizer::untrustedName($loc['address'] ?? null, 200),
             'maps_url' => WaPlace::mapsUrlFor($lat, $lng),
         ];
@@ -182,6 +183,9 @@ final class RichThread
     /** البطاقات بالاسم، والأرقام لمن يملك whatsapp.reply وحده */
     private function contactCards(array $payload): array
     {
+        if (!isset($payload['contacts']) && !empty($payload['_openwa'])) {
+            return $this->vcardCards($payload);
+        }
         $out = [];
         foreach (array_slice((array) ($payload['contacts'] ?? []), 0, 10) as $c) {
             $card = ['name' => TextNormalizer::untrustedName(data_get($c, 'name.formatted_name'), 120) ?? '—'];
@@ -189,6 +193,27 @@ final class RichThread
                 $card['phones'] = array_values(array_filter(array_map(
                     fn ($p) => is_string($v = data_get($p, 'phone') ?? data_get($p, 'wa_id')) ? mb_substr($v, 0, 30) : null,
                     array_slice((array) data_get($c, 'phones', []), 0, 5))));
+            }
+            $out[] = $card;
+        }
+
+        return $out;
+    }
+
+    /** بطاقات OpenWA: نص vCard في body (vcard)، أو قائمة vCards (multi_vcard). الاسم من FN والأرقام من TEL */
+    private function vcardCards(array $payload): array
+    {
+        $cards = is_array($payload['vCards'] ?? null) ? $payload['vCards'] : [(string) ($payload['body'] ?? '')];
+        $out = [];
+        foreach (array_slice($cards, 0, 10) as $vcard) {
+            if (!is_string($vcard) || !str_contains($vcard, 'BEGIN:VCARD')) {
+                continue;
+            }
+            $name = preg_match('/^FN(?:;[^:\r\n]*)?:([^\r\n]+)$/mi', $vcard, $m) ? trim($m[1]) : null;
+            $card = ['name' => TextNormalizer::untrustedName($name, 120) ?? '—'];
+            if ($this->canReply) {
+                preg_match_all('/^TEL(?:;[^:\r\n]*)?:([^\r\n]+)$/mi', $vcard, $tels);
+                $card['phones'] = array_values(array_map(fn ($t) => mb_substr(trim($t), 0, 30), array_slice($tels[1], 0, 5)));
             }
             $out[] = $card;
         }

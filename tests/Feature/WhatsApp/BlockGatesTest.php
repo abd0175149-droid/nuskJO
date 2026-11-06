@@ -10,11 +10,11 @@ use App\Models\WaMessage;
 use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\InboxSummary;
 use App\Services\WhatsApp\WhatsAppChannel;
-use App\Services\WhatsApp\WhatsAppInbox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
@@ -25,6 +25,7 @@ class BlockGatesTest extends TestCase
 {
     use CapturesLogs;
     use ConfiguresWhatsApp;
+    use SignsMetaWebhooks;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -80,7 +81,7 @@ class BlockGatesTest extends TestCase
         $conv = $this->blocked(['unread_count' => 0]);
         $payload = json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/text.json')), true);
 
-        $result = WhatsAppInbox::handleWebhook($payload);
+        $result = $this->routeMetaPayload($payload);
 
         $this->assertSame([], $result->touched, 'لا يُجدول رد');
         $message = WaMessage::sole();
@@ -91,17 +92,6 @@ class BlockGatesTest extends TestCase
         $this->assertSame('mismatch', WaBlock::sole()->meta_state);
         $this->assertLogged('warning', 'wa.block.inbound_while_blocked', ['conv_id' => $conv->id]);
         Http::assertNothingSent();
-    }
-
-    public function test_window_reminders_skip_a_blocked_conversation(): void
-    {
-        User::factory()->admin()->create();
-        $conv = $this->blocked();
-        $conv->forceFill(['needs_attention' => true, 'last_inbound_at' => now()->subHours(22)])->save();
-
-        $this->artisan('whatsapp:window-reminders')->assertSuccessful();
-
-        $this->assertSame(0, Notification::count());
     }
 
     public function test_a_blocked_conversation_is_kept_out_of_attention_lists_and_cards(): void

@@ -93,6 +93,11 @@ final class SecretRedactor
                 $values[] = self::attempt(fn () => $settings->{$attribute});
             }
         }
+        // مفتاح كل رقم على البوابة وسر webhook (OpenWA، 2026-11-06)
+        foreach ((array) self::attempt(fn () => \App\Models\WaChannel::query()->get()->all()) as $channel) {
+            $values[] = self::attempt(fn () => $channel->api_key);
+            $values[] = self::attempt(fn () => $channel->webhook_secret);
+        }
 
         $values = array_filter($values, fn ($v) => is_string($v) && strlen($v) >= 8);
         // الأطول أولاً، فسرّ يحوي آخر لا يُستبدل نصفه

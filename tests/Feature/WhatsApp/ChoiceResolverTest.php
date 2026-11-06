@@ -12,12 +12,13 @@ use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\ChoiceBuilder;
 use App\Services\WhatsApp\ReplyRun;
-use App\Services\WhatsApp\WhatsAppInbox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
@@ -30,6 +31,7 @@ class ChoiceResolverTest extends TestCase
     use CapturesLogs;
     use ConfiguresWhatsApp;
     use RefreshDatabase;
+    use SignsMetaWebhooks;
 
     private WaConversation $conv;
 
@@ -41,7 +43,8 @@ class ChoiceResolverTest extends TestCase
     {
         parent::setUp();
         $this->configureChannel();
-        $this->conv = WaConversation::factory()->windowOpen()->create(['phone' => '16505551234', 'wa_phone' => '16505551234']);
+        $this->conv = WaConversation::factory()->windowOpen()->create(['phone' => '16505551234', 'wa_phone' => '16505551234',
+            'channel_id' => $this->testChannel()->id]);
         $this->offer = Offer::factory()->create(['title' => 'عمرة الربيع']);
     }
 
@@ -71,7 +74,8 @@ class ChoiceResolverTest extends TestCase
         } else {
             $msg['context']['id'] = $context;
         }
-        WhatsAppInbox::handleWebhook($payload);
+        // حمولة ميتا القديمة عبر المحوّل: الزر data.button.id والاقتباس quotedMessage، كما تصل من البوابة
+        $this->postRawWebhook((string) json_encode($payload, JSON_UNESCAPED_UNICODE))->assertOk();
 
         return WaMessage::where('wamid', $msg['id'])->sole();
     }
@@ -138,6 +142,8 @@ class ChoiceResolverTest extends TestCase
 
     public function test_the_model_sees_a_confirmed_description_not_the_raw_id(): void
     {
+        // وظيفة الرد يجدولها الوارد: تُشغَّل هنا يدوياً بنموذج مزيّف
+        Queue::fake();
         $set = $this->sent(ChoiceBuilder::offersMenu($this->conv));
         $stale = $this->sent(ChoiceBuilder::offerOptions($this->conv, $this->offer));
         $this->sent(ChoiceBuilder::offerOptions($this->conv, $this->offer));

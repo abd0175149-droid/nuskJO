@@ -88,7 +88,7 @@ class ThreadPaginationTest extends TestCase
         $response = $this->thread(['after' => end($this->ids), 'since' => $since])->assertOk()->assertJsonPath('gap', false);
 
         $this->assertSame([$new], array_column($response->json('messages'), 'id'));
-        $this->assertSame([['id' => $oldOut, 'status' => 'failed', 'error' => 'rejected']], $response->json('updates'));
+        $this->assertSame([['id' => $oldOut, 'status' => 'failed', 'error' => 'rejected', 'attempts' => 0, 'can_resend' => false]], $response->json('updates'));
     }
 
     public function test_after_reports_a_gap_when_more_arrived_than_one_poll_returns(): void

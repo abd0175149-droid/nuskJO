@@ -102,15 +102,16 @@ class BotOutageHandoffTest extends TestCase
         $this->assertCount(1, $this->outbound($conv));
     }
 
-    public function test_a_closed_window_sends_nothing_but_still_needs_attention(): void
+    public function test_a_paused_number_sends_nothing_but_still_needs_attention(): void
     {
         $this->fakeGraph();
         Breaker::forceOpen('google', 30, $this->admin->id);
-        $conv = $this->conv(['last_inbound_at' => now()->subDays(2)]);
+        $conv = $this->conv();
+        $this->testChannel()->update(['paused_until' => now()->addHour(), 'pause_reason' => 'manual']);
 
         BotEngine::reply($conv);
 
-        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'graph.facebook.com'));
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/messages/send-'));
         $this->assertTrue($conv->fresh()->needs_attention);
     }
 
@@ -220,7 +221,7 @@ class BotOutageHandoffTest extends TestCase
     {
         Queue::fake();
         Breaker::forceOpen('google', 30, $this->admin->id);
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => ['code' => 131056, 'message' => 'pair rate limit']], 400)]);
+        $this->fakeGraph(['nuskjo-openwa:2785/*/messages/send-text' => Http::response(['statusCode' => 429, 'message' => 'Too Many Requests'], 429)]);
 
         BotEngine::reply($this->conv());
 
@@ -231,7 +232,7 @@ class BotOutageHandoffTest extends TestCase
     {
         Queue::fake();
         Breaker::forceOpen('google', 30, $this->admin->id);
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => ['code' => 368, 'message' => 'blocked']], 400)]);
+        $this->fakeGraph(['nuskjo-openwa:2785/*/messages/send-text' => Http::response(['statusCode' => 400, 'message' => 'blocked'], 400)]);
 
         BotEngine::reply($this->conv());
 

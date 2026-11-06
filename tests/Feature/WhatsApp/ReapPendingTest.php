@@ -79,15 +79,16 @@ class ReapPendingTest extends TestCase
         $this->assertFalse((bool) $conv->refresh()->needs_attention);
     }
 
-    public function test_nothing_happens_without_the_flag(): void
+    public function test_the_old_flag_no_longer_stops_the_sweep(): void
     {
+        // الدفتر دائم منذ 2026-11-06 (كل إرسال يكتب صف queued أولاً)، فالمنظّف دائم معه
         config(['features.env.send_ledger' => false]);
         $conv = WaConversation::factory()->windowOpen()->create();
         $row = $this->row($conv, 'queued', 20, 'reply:1:1:text');
 
         Artisan::call('whatsapp:reap-pending');
 
-        $this->assertSame('queued', $row->refresh()->status);
+        $this->assertSame('unknown', $row->refresh()->status);
     }
 
     public function test_a_burst_alerts_the_admins(): void

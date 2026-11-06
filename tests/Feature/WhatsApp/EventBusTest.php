@@ -3,13 +3,11 @@
 namespace Tests\Feature\WhatsApp;
 
 use App\Events\NewNotification;
-use App\Events\WhatsApp\ChannelHealthChanged;
 use App\Events\WhatsApp\WaMessageFailed;
 use App\Events\WhatsApp\WaMessageSent;
 use App\Events\WhatsApp\WaMessageStatusChanged;
 use App\Events\WhatsApp\WaMessageStored;
 use App\Jobs\ProcessWhatsAppReply;
-use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\EventBus;
@@ -48,7 +46,7 @@ class EventBusTest extends TestCase
     private function fakeEvents(): void
     {
         Event::fake([NewNotification::class, WaMessageStored::class, WaMessageSent::class, WaMessageFailed::class,
-            WaMessageStatusChanged::class, ChannelHealthChanged::class]);
+            WaMessageStatusChanged::class]);
     }
 
     private function send(WaConversation $conv, string $key = 'wamid.IN.1'): array
@@ -92,28 +90,33 @@ class EventBusTest extends TestCase
         Event::assertNotDispatched(WaMessageFailed::class);
     }
 
-    public function test_a_rejection_from_meta_fires_failed_from_the_send(): void
+    public function test_a_rejection_from_the_gateway_fires_failed_from_the_send(): void
     {
         $this->fakeEvents();
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(json_decode((string) file_get_contents($this->fixturePath('error_131026.json')), true), 400)]);
+        $this->fakeGraph(['nuskjo-openwa:2785/*/messages/send-text' => Http::response(['statusCode' => 400, 'message' => 'Number is not registered on WhatsApp'], 400)]);
         $conv = WaConversation::factory()->windowOpen()->create();
 
         $this->assertFalse($this->send($conv)['ok']);
 
         $row = WaMessage::sole();
         Event::assertDispatched(WaMessageFailed::class, fn ($e) => $e->messageId === $row->id && $e->origin === 'send'
-            && $e->scope === 'recipient' && $e->metaCode === 131026 && $e->category === 'caller' && $e->source === 'system');
+            && $e->scope === 'recipient' && $e->metaCode === null && $e->category === 'quality' && $e->source === 'system');
         Event::assertNotDispatched(WaMessageSent::class);
     }
 
-    public function test_a_lock_before_meta_and_an_unconfirmed_timeout_fire_nothing(): void
+    public function test_a_lock_before_the_gateway_and_an_unconfirmed_timeout_fire_nothing(): void
     {
         $this->fakeEvents();
-        $closed = WaConversation::factory()->windowClosed()->create();
-        $this->assertFalse($this->send($closed)['ok']);
+        $this->fakeGraph(['nuskjo-openwa:2785/*/messages/send-text' => Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received')]);
+        $this->testChannel()->forceFill(['paused_until' => now()->addHour(), 'pause_reason' => 'manual'])->save();
+        \App\Models\WaChannel::forgetCache();
+        $paused = WaConversation::factory()->windowOpen()->create();
+        $this->assertFalse($this->send($paused)['ok']);
+        $this->assertSame([], $this->gatewaySends(), 'القفل قبل البوابة');
 
+        $this->testChannel()->forceFill(['paused_until' => null, 'pause_reason' => null])->save();
+        \App\Models\WaChannel::forgetCache();
         config(['features.env.send_ledger' => true]);
-        Http::fake(['graph.facebook.com/*' => Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received')]);
         $open = WaConversation::factory()->windowOpen()->create();
         $this->assertTrue((bool) ($this->send($open, 'wamid.IN.9')['unknown'] ?? false));
 
@@ -159,44 +162,6 @@ class EventBusTest extends TestCase
         $this->assertLogged('error', 'wa.listener_failed', ['event' => 'WaMessageStored', 'type' => 'RuntimeException',
             'conv_id' => (int) $row->conversation_id, 'message_id' => $row->id]);
         $this->assertStringNotContainsString('customer text', json_encode($this->logged));
-    }
-
-    public function test_meta_and_a_manager_changing_the_channel_fire_channel_health_changed(): void
-    {
-        $this->fakeEvents();
-        User::factory()->admin()->create();
-
-        $this->postMetaWebhook('account_update_ban.json')->assertOk();
-        Event::assertDispatched(ChannelHealthChanged::class, fn ($e) => [$e->from, $e->to, $e->source, $e->reasonCode]
-            === [ChannelHealthChanged::AVAILABLE, ChannelHealthChanged::SUSPENDED_AUTO, 'meta_event', 'DISABLED_UPDATE']);
-
-        $owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
-        $this->killSwitch($owner, 'off', ['acknowledge' => true])->assertOk();
-        $this->killSwitch($owner, 'on')->assertOk();
-
-        Event::assertDispatched(ChannelHealthChanged::class, fn ($e) => [$e->from, $e->to, $e->source, $e->reasonCode]
-            === [ChannelHealthChanged::SUSPENDED_AUTO, ChannelHealthChanged::AVAILABLE, 'manual', 'meta_event']);
-        Event::assertDispatched(ChannelHealthChanged::class, fn ($e) => [$e->from, $e->to, $e->source]
-            === [ChannelHealthChanged::AVAILABLE, ChannelHealthChanged::SUSPENDED_MANUAL, 'manual']);
-        Event::assertDispatchedTimes(ChannelHealthChanged::class, 3);
-
-        // حدث الحظر مكرراً والقناة موقوفة: لا تغيّر فعلي ولا حدث
-        $this->postMetaWebhook('account_update_ban.json')->assertOk();
-        Event::assertDispatchedTimes(ChannelHealthChanged::class, 3);
-    }
-
-    public function test_an_automatic_suspension_from_a_meta_code_fires_once(): void
-    {
-        $this->fakeEvents();
-        config(['features.env.meta_error_v2' => true]);
-        $this->fakeGraph(['graph.facebook.com/*' => Http::response(['error' => ['code' => 368, 'message' => 'Temporarily blocked for policies violations',
-            'type' => 'OAuthException', 'fbtrace_id' => 'AxE21Blocked000000AA']], 400)]);
-        $conv = WaConversation::factory()->windowOpen()->create();
-
-        $this->send($conv);
-
-        Event::assertDispatched(ChannelHealthChanged::class, fn ($e) => [$e->to, $e->source, $e->reasonCode] === [ChannelHealthChanged::SUSPENDED_AUTO, 'meta_event', '368']);
-        Event::assertDispatchedTimes(ChannelHealthChanged::class, 1);
     }
 
     public function test_the_legacy_status_path_fires_the_same_events_on_real_change_only(): void

@@ -13,6 +13,7 @@ use App\Services\WhatsApp\BotTools;
 use App\Services\WhatsApp\CustomerNotes;
 use App\Services\WhatsApp\Outbound\OutboundMessage;
 use App\Services\WhatsApp\ReplyState;
+use App\Services\WhatsApp\SendKey;
 use App\Services\WhatsApp\System\Catalog;
 use App\Services\WhatsApp\WaLog;
 use App\Services\WhatsApp\WhatsAppChannel;
@@ -78,7 +79,7 @@ final class ExtraTools
             return ['error' => 'تعذّر تجهيز الفاتورة الآن', 'note' => 'اعتذر للعميل واعرض تحويله لموظف.'];
         }
         $res = WhatsAppChannel::send($conv, OutboundMessage::document('local:'.$pdf['path'], InvoicePdfService::filename($inv), InvoicePdfService::defaultCaption($inv)), 'bot', null, [
-            'send_key' => 'bot-invoice:'.$conv->id.':'.$inv->id.':'.now()->format('YmdH'),
+            'send_key' => SendKey::invoicePdf($conv, $inv->id),
             'media' => ['mime' => 'application/pdf', 'sha256' => $pdf['sha256'], 'size' => $pdf['size'], 'filename' => InvoicePdfService::filename($inv), 'path' => $pdf['path']],
             'meta' => ['invoice_id' => $inv->id],
         ]);

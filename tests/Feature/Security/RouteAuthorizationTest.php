@@ -158,13 +158,14 @@ class RouteAuthorizationTest extends TestCase
     }
 
     /**
-     * ميتا لا تسجّل دخولاً ولا ترسل رمز CSRF، والحماية بتوقيع HMAC؛ والحد يُسقط إعادة إرسالها.
-     * المسار خارج مجموعة web (routes/webhooks.php)، فلا CSRF ولا جلسة أصلاً (WebhookSessionlessTest).
+     * بوابة OpenWA (2026-11-06) لا تسجّل دخولاً ولا ترسل رمز CSRF، والحماية بتوقيع HMAC بسر الرقم؛ والحد يُسقط إعادة إرسالها.
+     * المسار خارج مجموعة web (routes/webhooks.php)، فلا CSRF ولا جلسة أصلاً. ومسار ميتا القديم أُزيل.
      */
     public function test_whatsapp_webhook_is_public_without_csrf_or_throttle(): void
     {
-        foreach (['GET', 'POST'] as $method) {
-            $route = collect(Router::getRoutes()->getRoutes())->first(fn (Route $r) => $r->uri() === 'api/whatsapp/webhook' && in_array($method, $r->methods(), true));
+        $this->assertNull(collect(Router::getRoutes()->getRoutes())->first(fn (Route $r) => $r->uri() === 'api/whatsapp/webhook'));
+        foreach (['POST'] as $method) {
+            $route = collect(Router::getRoutes()->getRoutes())->first(fn (Route $r) => $r->uri() === 'api/openwa/webhook/{channel}' && in_array($method, $r->methods(), true));
             $this->assertNotNull($route);
             $middleware = $route->gatherMiddleware();
             $this->assertNotContains('web', $middleware);

@@ -50,6 +50,11 @@ class OpenWaWebhookController extends Controller
         $envelope = json_decode($raw, true);
         if (!is_array($envelope) || !is_string($envelope['event'] ?? null)) {
             WaLog::warning('webhook.malformed', ['bytes' => strlen($raw), 'channel_id' => $ch->id]);
+            // موقّع لكنه معطوب: يبقى مشفّراً حتى purge_after للتشخيص، ولا يُعاد أبداً
+            if (WebhookIntake::storesAll()) {
+                rescue(fn () => WebhookIntake::store($raw, \App\Models\WaWebhookEvent::MALFORMED)[0]
+                    ->forceFill(['attempts' => 1, 'last_attempt_at' => now(), 'error' => 'json_invalid'])->save(), report: false);
+            }
 
             return response()->json(['ok' => true]);
         }
@@ -71,6 +76,8 @@ class OpenWaWebhookController extends Controller
             return response()->json(['ok' => true, 'duplicate' => true]);
         }
 
+        // 503 لأعطال القاعدة العابرة خلف العلم webhook_5xx وحده، وإلا معالجة بلا سجل كما كان
+        $retry5xx = (bool) rescue(fn () => \App\Models\WaBotSetting::current()->flag('webhook_5xx'), false, false);
         $event = null;
         if (WebhookIntake::storesAll()) {
             try {
@@ -80,8 +87,9 @@ class OpenWaWebhookController extends Controller
                 }
             } catch (QueryException|\PDOException $e) {
                 WaLog::error('webhook.store_failed', ['exception' => $e]);
-
-                return response()->json(['ok' => false], 503)->header('Retry-After', '30');
+                if ($retry5xx) {
+                    return response()->json(['ok' => false], 503)->header('Retry-After', '30');
+                }
             }
         }
 
@@ -91,7 +99,7 @@ class OpenWaWebhookController extends Controller
             WaLog::error('webhook.error', ['exception' => $e, 'channel_id' => $ch->id]);
             if ($event !== null) {
                 rescue(fn () => WebhookIntake::failWhole($event, $e), report: false);
-            } elseif ($e instanceof QueryException || $e instanceof \PDOException) {
+            } elseif ($retry5xx && ($e instanceof QueryException || $e instanceof \PDOException)) {
                 return response()->json(['ok' => false], 503);
             }
             $result = null;
@@ -107,7 +115,7 @@ class OpenWaWebhookController extends Controller
                     WaLog::error('webhook.store_failed', ['exception' => $e]);
                 }
             }
-            if (!$stored && $result->transient) {
+            if (!$stored && $result->transient && $retry5xx) {
                 return response()->json(['ok' => false], 503);
             }
         }

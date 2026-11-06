@@ -24,7 +24,7 @@ use Tests\TestCase;
 /**
  * whatsapp:replay-webhooks (E20.7): الفاشل يُعاد بعد إصلاح سببه ويُمحى جسمه، و3 محاولات ثم dead بإشعار مجمّع،
  * والمنقطع (pending) يُلتقط، والمعطوب والمرفوض لا يُلتقطان، و--dry-run لا يكتب ولا يطبع جسماً.
- * والوارد القديم المعاد لا يرد عليه البوت (بوابة الحداثة).
+ * والوارد القديم المعاد لا يرد عليه البوت (بوابة الحداثة). الأجسام أحداث OpenWA كما ترسلها البوابة (2026-11-06).
  */
 class ReplayWebhooksTest extends TestCase
 {
@@ -46,9 +46,14 @@ class ReplayWebhooksTest extends TestCase
         });
     }
 
-    private function raw(string $fixture = 'text.json'): string
+    /** حدث message.received بجسم ثابت البايتات. $delivery يغيّر البايتات وحدها (توصيلة أخرى للحدث نفسه) */
+    private function raw(array $message = [], string $delivery = 'd-1'): string
     {
-        return (string) file_get_contents($this->fixturePath($fixture));
+        return (string) json_encode([
+            'event' => 'message.received', 'timestamp' => '2026-11-06T10:00:00.000Z', 'sessionId' => $this->testChannel()->openwa_session_id,
+            'idempotencyKey' => 'idem-'.$delivery, 'deliveryId' => $delivery,
+            'data' => $this->incoming('16505551234', 'Does it come in another color?', ['id' => 'false_16505551234@c.us_R1'] + $message),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     private function stored(string $raw, array $attrs): WaWebhookEvent
@@ -62,7 +67,7 @@ class ReplayWebhooksTest extends TestCase
     public function test_a_failed_payload_is_processed_after_the_fix_and_its_body_wiped(): void
     {
         $this->broken = true;
-        $this->postRawWebhook($this->raw())->assertOk();
+        $this->postOpenWaRaw($this->raw(), $this->testChannel())->assertOk();
         $event = WaWebhookEvent::sole();
         $this->assertSame([WaWebhookEvent::FAILED, 1], [$event->status, $event->attempts]);
 
@@ -85,7 +90,7 @@ class ReplayWebhooksTest extends TestCase
     {
         $admin = User::factory()->admin()->create();
         $this->broken = true;
-        $this->postRawWebhook($this->raw())->assertOk();
+        $this->postOpenWaRaw($this->raw(), $this->testChannel())->assertOk();
 
         $this->travel(3)->minutes();
         Artisan::call('whatsapp:replay-webhooks');
@@ -100,7 +105,7 @@ class ReplayWebhooksTest extends TestCase
         $this->assertNotNull($event->getRawOriginal('raw_body'), 'يبقى للمراجعة اليدوية حتى purge_after');
 
         // صف dead ثانٍ في الساعة نفسها: لا إشعار ثانٍ
-        $other = json_encode(json_decode($this->raw(), true));
+        $other = $this->raw(delivery: 'd-2');
         $this->stored($other, ['status' => WaWebhookEvent::FAILED, 'attempts' => 2, 'next_attempt_at' => now()->subMinute()]);
         Artisan::call('whatsapp:replay-webhooks');
         $this->assertSame(2, WaWebhookEvent::where('status', WaWebhookEvent::DEAD)->count());
@@ -140,14 +145,14 @@ class ReplayWebhooksTest extends TestCase
 
     public function test_dry_run_writes_nothing_and_prints_no_body(): void
     {
-        $event = $this->stored($this->raw(), ['status' => WaWebhookEvent::FAILED, 'attempts' => 1, 'next_attempt_at' => now()->subMinute(), 'field_summary' => 'messages:1']);
+        $event = $this->stored($this->raw(), ['status' => WaWebhookEvent::FAILED, 'attempts' => 1, 'next_attempt_at' => now()->subMinute(), 'field_summary' => 'message.received:1']);
 
         Artisan::call('whatsapp:replay-webhooks', ['--dry-run' => true]);
         $out = Artisan::output();
 
-        $this->assertStringContainsString("#{$event->id} failed attempts=1 messages:1", $out);
+        $this->assertStringContainsString("#{$event->id} failed attempts=1 message.received:1", $out);
         $this->assertStringNotContainsString('16505551234', $out);
-        $this->assertStringNotContainsString('messaging_product', $out);
+        $this->assertStringNotContainsString('another color', $out);
         $this->assertSame([WaWebhookEvent::FAILED, 1], [$event->fresh()->status, $event->fresh()->attempts]);
         $this->assertSame(0, WaMessage::count());
     }
@@ -180,9 +185,7 @@ class ReplayWebhooksTest extends TestCase
 
     public function test_a_late_replayed_message_goes_to_staff_not_the_bot(): void
     {
-        $payload = json_decode($this->raw(), true);
-        $payload['entry'][0]['changes'][0]['value']['messages'][0]['timestamp'] = (string) now()->subMinutes(30)->timestamp;
-        $this->stored(json_encode($payload), ['status' => WaWebhookEvent::FAILED, 'attempts' => 1, 'next_attempt_at' => now()->subMinute()]);
+        $this->stored($this->raw(['timestamp' => now()->subMinutes(30)->timestamp]), ['status' => WaWebhookEvent::FAILED, 'attempts' => 1, 'next_attempt_at' => now()->subMinute()]);
 
         Artisan::call('whatsapp:replay-webhooks');
 

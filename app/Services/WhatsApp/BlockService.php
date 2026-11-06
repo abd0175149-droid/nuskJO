@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * الحظر الرسمي (E31): حظر جهة الاتصال وفكّه عند ميتا (Block Users API) بسبب إلزامي وتدقيق صارم بخطورة warn.
+ * الحظر (E31؛ على بوابة OpenWA منذ 2026-11-06): حظر جهة الاتصال وفكّه على رقم المحادثة (/contacts/{jid}/block) بسبب إلزامي
+ * وتدقيق صارم بخطورة warn. لا شرط نافذة.
  *
- * - الحظر ممكن خلال 24 ساعة من آخر رسالة للعميل وحدها (شرط ميتا، 131047): الزر معطّل خارجها، ولا نداء.
  * - لا يُكتب حظر محلي إن رفضت ميتا. ونص السبب في wa_blocks وحده: التدقيق يحمل رمز السبب وطوله، لا نصاً حراً.
  * - الحظر لا يضيف opt-out: الإيقاف قرار العميل، والحظر قرار الشركة، ويبقيان منفصلين. ولا يحذف رسالة ولا محادثة.
  * - فك الحظر لا يعيد البوت: الموظف يقرر من الصندوق، فقد يعود العميل بخلاف.
@@ -273,8 +273,15 @@ final class BlockService
         if (mb_strlen($reason) < self::UNBLOCK_REASON_MIN || mb_strlen($reason) > self::REASON_MAX) {
             return self::refuse('UNBLOCK_REASON', 'اكتب سبب فك الحظر من '.self::UNBLOCK_REASON_MIN.' إلى '.self::REASON_MAX.' حرف.');
         }
-        $target = isset($entry['phone']) ? ['user' => '+'.PhoneNormalizer::digits($entry['phone'])] : ['user_id' => (string) ($entry['user_id'] ?? '')];
-        $r = WhatsAppChannel::unblockUsers($target);
+        // على البوابة الفك بمحادثة الرقم (jid على رقمها): بلا محادثة لا مسار، فيُفك من هاتف الرقم
+        $phone = isset($entry['phone']) ? (PhoneNormalizer::canonical((string) $entry['phone']) ?: (string) $entry['phone']) : null;
+        $conv = WaConversation::query()
+            ->when(isset($entry['channel_id']), fn ($q) => $q->where('channel_id', (int) $entry['channel_id']))
+            ->where(fn ($q) => $q->when(isset($entry['jid']), fn ($w) => $w->orWhere('jid', (string) $entry['jid']))
+                ->when($phone !== null, fn ($w) => $w->orWhere('phone', $phone)->orWhere('wa_phone', $phone)))
+            ->when(!isset($entry['jid']) && $phone === null, fn ($q) => $q->whereRaw('1 = 0'))
+            ->orderByDesc('id')->first();
+        $r = WhatsAppChannel::unblockUsers(['conversation_id' => $conv?->id]);
         if (!$r['ok']) {
             AuditLog::safe(AuditAction::WaBlockFailed, 'wa_block', null, null, ['op' => 'unblock_untracked', 'code' => $r['code'], 'meta_code' => $r['meta_code'] ?? null]);
 

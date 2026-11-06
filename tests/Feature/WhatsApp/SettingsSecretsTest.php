@@ -9,32 +9,32 @@ use App\Models\WaBotSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\Concerns\PatchesWhatsAppSettings;
-use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * أسرار القناة (E10): تُعيَّن بسبب وتُمسح، وتُحفظ مشفّرة، ولا تعود للمتصفح بأي طريق، والبيئة تتقدّم،
- * وسر لا يُفك لا يُسقط الويبهوك بـ 500. ومصدر كل مفتاح ظاهر بلا قيمته.
+ * أسرار الإعدادات (E10؛ منذ OpenWA في 2026-11-06 مفتاحا مزوّد الذكاء وحدهما، ومفاتيح البوابة في البيئة وwa_channels):
+ * تُعيَّن بسبب وتُمسح، وتُحفظ مشفّرة، ولا تعود للمتصفح بأي طريق، والبيئة تتقدّم، وسر لا يُفك لا يُسقط الصفحة.
+ * ومصدر كل مفتاح ظاهر بلا قيمته.
  */
 class SettingsSecretsTest extends TestCase
 {
     use ConfiguresWhatsApp;
     use PatchesWhatsAppSettings;
     use RefreshDatabase;
-    use SignsMetaWebhooks;
 
-    private const SEEDED = ['EAAGseededtoken000000001', 'seededappsecret00000001', 'AIzaSeededKey000000000000000001'];
+    private const SEEDED = ['AIzaSeededKey000000000000000001', 'sk-ant-seeded-fallback-0000000001', 'seeded-channel-api-key-000001'];
 
     private User $owner;
 
     protected function setUp(): void
     {
         parent::setUp();
+        config(['services.llm.google_key' => null, 'services.llm.anthropic_key' => null]);
         $this->owner = User::factory()->withPermissions(['whatsapp.settings'], 'owner')->create();
-        $this->configureChannel(['wa_token' => self::SEEDED[0], 'wa_app_secret' => self::SEEDED[1], 'api_key' => self::SEEDED[2]]);
+        $this->configureChannel(['api_key' => self::SEEDED[0], 'fallback_api_key' => self::SEEDED[1]]);
+        $this->testChannel()->forceFill(['api_key' => self::SEEDED[2]])->save();
     }
 
     private function secret(string $secret, string $value, string $reason = 'routine')
@@ -44,30 +44,32 @@ class SettingsSecretsTest extends TestCase
 
     public function test_setting_a_secret_stores_it_encrypted_and_answers_without_it(): void
     {
-        $response = $this->secret('wa_token', 'EAAGnewtokenvalue0000000002')->assertOk();
+        $response = $this->secret('api_key', 'AIzaNewKeyValue000000000000002')->assertOk();
 
-        $raw = DB::table('wa_bot_settings')->value('wa_token');
-        $this->assertNotSame('EAAGnewtokenvalue0000000002', $raw);
-        $this->assertSame('EAAGnewtokenvalue0000000002', WaBotSetting::current()->fresh()->token());
-        $this->assertNotNull(WaBotSetting::current()->fresh()->wa_token_rotated_at);
-        $this->assertStringNotContainsString('EAAGnewtokenvalue', $response->getContent());
-        $this->assertSame(substr(hash('sha256', 'EAAGnewtokenvalue0000000002'), 0, 8), $response->json('fingerprint'));
+        $raw = DB::table('wa_bot_settings')->value('api_key');
+        $this->assertNotSame('AIzaNewKeyValue000000000000002', $raw);
+        $this->assertSame('AIzaNewKeyValue000000000000002', WaBotSetting::current()->fresh()->llmKey());
+        $this->assertNotNull(WaBotSetting::current()->fresh()->api_key_rotated_at);
+        $this->assertStringNotContainsString('AIzaNewKeyValue', $response->getContent());
+        $this->assertSame(substr(hash('sha256', 'AIzaNewKeyValue000000000000002'), 0, 8), $response->json('fingerprint'));
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
 
         $audit = AuditLog::where('action', AuditAction::WaSecretSet->value)->sole();
-        $this->assertStringNotContainsString('EAAGnewtokenvalue', json_encode($audit->toArray()));
+        $this->assertStringNotContainsString('AIzaNewKeyValue', json_encode($audit->toArray()));
         $this->assertSame($response->json('fingerprint'), $audit->changes['credentials'][0]['fp']);
     }
 
     public function test_clearing_a_secret_and_the_environment_taking_precedence(): void
     {
-        $this->actingAs($this->owner)->deleteJson('/api/whatsapp/settings/secrets/api_key', ['reason' => 'leak'])->assertOk();
-        $this->assertNull(DB::table('wa_bot_settings')->value('api_key'));
+        $this->actingAs($this->owner)->deleteJson('/api/whatsapp/settings/secrets/fallback_api_key', ['reason' => 'leak'])->assertOk();
+        $this->assertNull(DB::table('wa_bot_settings')->value('fallback_api_key'));
         $this->assertSame(1, AuditLog::where('action', AuditAction::WaSecretClear->value)->count());
 
-        config(['services.whatsapp.app_secret' => 'env-app-secret-0000000001']);
-        $this->secret('wa_app_secret', 'another-app-secret-00000001')->assertStatus(409);
-        $this->actingAs($this->owner)->postJson('/api/whatsapp/settings/secrets/not_a_secret', ['value' => str_repeat('x', 30), 'reason' => 'routine'])->assertNotFound();
+        config(['services.llm.google_key' => 'AIzaFromTheEnvironment0000000001']);
+        $this->secret('api_key', 'AIzaAnotherKeyValue00000000001')->assertStatus(409);
+        foreach (['wa_token', 'wa_app_secret', 'not_a_secret'] as $gone) {
+            $this->actingAs($this->owner)->postJson("/api/whatsapp/settings/secrets/{$gone}", ['value' => str_repeat('x', 30), 'reason' => 'routine'])->assertNotFound();
+        }
     }
 
     public function test_no_response_ever_carries_a_seeded_secret(): void
@@ -77,8 +79,9 @@ class SettingsSecretsTest extends TestCase
             $this->actingAs($this->owner)->getJson('/api/whatsapp/settings')->assertOk()->getContent(),
             json_encode(WaBotSetting::current()->fresh()->sources()),
             json_encode(WaBotSetting::current()->fresh()->toArray()),
+            json_encode($this->testChannel()->fresh()->toArray()),
         ];
-        Artisan::call('whatsapp:doctor');
+        Artisan::call('whatsapp:doctor', ['--offline' => true]);
         $responses[] = Artisan::output();
 
         foreach ($responses as $content) {
@@ -91,37 +94,32 @@ class SettingsSecretsTest extends TestCase
     public function test_a_failed_save_does_not_keep_a_secret_in_the_session(): void
     {
         $this->actingAs($this->owner)->from('/whatsapp/settings')
-            ->put('/whatsapp/settings', ['wa_token' => 'EAAGflashedtoken0000000003', 'value' => 'EAAGflashedtoken0000000003']);
-        $this->actingAs($this->owner)->from('/whatsapp/settings')
-            ->post('/api/whatsapp/settings/secrets/wa_token', ['value' => 'EAAGflashedtoken0000000003', 'reason' => 'nope'])->assertSessionHasErrors('reason');
+            ->post('/api/whatsapp/settings/secrets/api_key', ['value' => 'AIzaFlashedKeyValue0000000003', 'reason' => 'nope'])->assertSessionHasErrors('reason');
 
-        $this->assertStringNotContainsString('EAAGflashedtoken', json_encode(session()->all()));
+        $this->assertStringNotContainsString('AIzaFlashedKey', json_encode(session()->all()));
     }
 
-    public function test_an_unreadable_app_secret_rejects_the_webhook_with_403_not_500(): void
+    public function test_an_unreadable_key_shows_as_not_decryptable_without_a_500(): void
     {
-        Queue::fake();
-        DB::table('wa_bot_settings')->update(['wa_app_secret' => 'not-a-valid-ciphertext']);
-
-        $this->postMetaWebhook('text.json')->assertForbidden();
+        DB::table('wa_bot_settings')->update(['api_key' => 'not-a-valid-ciphertext']);
 
         $this->actingAs($this->owner)->getJson('/api/whatsapp/settings')->assertOk()
-            ->assertJsonPath('secrets.wa_app_secret.decrypt_ok', false)
-            ->assertJsonPath('secrets.wa_app_secret.has', false);
+            ->assertJsonPath('secrets.api_key.decrypt_ok', false)
+            ->assertJsonPath('secrets.api_key.has', false);
+        $this->assertNull(WaBotSetting::current()->fresh()->llmKey());
     }
 
     public function test_sources_say_where_each_value_comes_from(): void
     {
         $sources = WaBotSetting::current()->fresh()->sources();
-        $this->assertSame('db', $sources['wa_token']['source']);
-        $this->assertFalse($sources['wa_token']['db_shadowed']);
-        $this->assertTrue($sources['wa_token']['decrypt_ok']);
-        $this->assertSame('unset', $sources['wa_app_id']['source']);
+        $this->assertSame('db', $sources['api_key']['source']);
+        $this->assertFalse($sources['api_key']['db_shadowed']);
+        $this->assertTrue($sources['api_key']['decrypt_ok']);
+        $this->assertArrayNotHasKey('wa_token', $sources);
 
-        config(['services.whatsapp.token' => 'env-token-value-000000001', 'services.whatsapp.phone_number_id' => '']);
+        config(['services.llm.google_key' => 'AIzaFromTheEnvironment0000000001']);
         $sources = WaBotSetting::current()->fresh()->sources();
-        $this->assertSame(['env', 'WA_TOKEN', true], [$sources['wa_token']['source'], $sources['wa_token']['env_var'], $sources['wa_token']['db_shadowed']]);
-        $this->assertSame('db', $sources['wa_phone_number_id']['source'], 'متغير فارغ = غير مضبوط');
+        $this->assertSame(['env', true], [$sources['api_key']['source'], $sources['api_key']['db_shadowed']]);
 
         // الإيقاف منطق OR
         $this->assertFalse(WaBotSetting::current()->fresh()->sendingSuspended());

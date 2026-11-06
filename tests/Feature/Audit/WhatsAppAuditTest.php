@@ -46,7 +46,7 @@ class WhatsAppAuditTest extends TestCase
             'rate_limit_per_hour' => 33,
             'system_prompt' => 'أنت مساعد الشركة. SECRET123 لا يظهر في السجل.',
         ])->assertOk();
-        $this->actingAs($owner)->postJson('/api/whatsapp/settings/secrets/wa_token', ['value' => 'EAAG-SECRET123-token-value', 'reason' => 'routine'])->assertOk();
+        $this->actingAs($owner)->postJson('/api/whatsapp/settings/secrets/api_key', ['value' => 'AIza-SECRET123-key-value-0001', 'reason' => 'routine'])->assertOk();
 
         $row = $this->rows(AuditAction::WaSettingsUpdate)->sole();
         $this->assertSame(['system_prompt', 'rate_limit_per_hour'], array_keys($row->changes['changed']));
@@ -54,7 +54,7 @@ class WhatsAppAuditTest extends TestCase
         $this->assertSame(AuditRedactor::fingerprint(null), $row->changes['changed']['system_prompt']['from']);
 
         $secret = $this->rows(AuditAction::WaSecretSet)->sole();
-        $this->assertSame([['field' => 'wa_token', 'set' => true, 'fp' => substr(hash('sha256', 'EAAG-SECRET123-token-value'), 0, 8)]], $secret->changes['credentials']);
+        $this->assertSame([['field' => 'api_key', 'set' => true, 'fp' => substr(hash('sha256', 'AIza-SECRET123-key-value-0001'), 0, 8)]], $secret->changes['credentials']);
         $this->assertSame('routine', $secret->changes['reason']);
         $this->assertStringNotContainsString('SECRET123', json_encode(AuditLog::all()->toArray()));
         $this->assertCount(0, $this->rows(AuditAction::WaSuspendManual));

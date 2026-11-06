@@ -14,8 +14,8 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * دفتر الإرسال (E19، العلم send_ledger): الصف queued يُكتب قبل النداء ثم يُحسم الصف نفسه، وbiz_opaque_callback_data
- * برقم الصف وحده، والرفض الصريح يحرّر المفتاح، والمهلة و5xx بلا JSON والـ200 بلا معرّف تحجزه «غير مؤكد».
+ * دفتر الإرسال (E19، دائماً منذ 2026-11-06): الصف queued يُكتب قبل النداء ثم يُحسم الصف نفسه، وIdempotency-Key برقم
+ * الصف وحده، والرفض الصريح قبل المحرك يحرّر المفتاح، والمهلة وخطأ المحرك والرد بلا معرّف تحجزه «غير مؤكد».
  */
 class SendLedgerTest extends TestCase
 {
@@ -36,19 +36,26 @@ class SendLedgerTest extends TestCase
         return WaConversation::factory()->windowOpen()->create();
     }
 
-    public function test_the_row_is_queued_with_its_key_before_meta_answers_then_becomes_sent(): void
+    /** بوابة وهمية بلا fakeGateway: الرد كما يُعطى (رد أو تسلسل أو دالة) */
+    private function gateway(mixed $response): void
+    {
+        config(['whatsapp.openwa.url' => 'http://nuskjo-openwa:2785', 'whatsapp.transport' => 'openwa']);
+        Http::fake(['nuskjo-openwa:2785/*' => $response]);
+    }
+
+    public function test_the_row_is_queued_with_its_key_before_the_gateway_answers_then_becomes_sent(): void
     {
         $seen = null;
-        Http::fake(['graph.facebook.com/*' => function (Request $r) use (&$seen) {
-            $seen = WaMessage::sole()->only(['status', 'send_key']) + ['opaque' => $r['biz_opaque_callback_data'] ?? null];
+        $this->gateway(function (Request $r) use (&$seen) {
+            $seen = WaMessage::sole()->only(['status', 'send_key']) + ['idem' => $r->header('Idempotency-Key')[0] ?? null];
 
-            return Http::response(['messages' => [['id' => 'wamid.LEDGER.1']]]);
-        }]);
+            return Http::response(['messageId' => 'wamid.LEDGER.1'], 201);
+        });
 
         $result = WhatsAppChannel::sendText($this->conv(), 'أهلاً', 'bot', sendKey: self::KEY);
 
         $row = WaMessage::sole();
-        $this->assertSame(['status' => 'queued', 'send_key' => self::KEY, 'opaque' => 'nj:m:'.$row->id], $seen);
+        $this->assertSame(['status' => 'queued', 'send_key' => self::KEY, 'idem' => 'nj-m-'.$row->id], $seen);
         $this->assertSame(['sent', 'wamid.LEDGER.1', 1, self::KEY], [$row->status, $row->wamid, $row->attempts, $row->send_key]);
         $this->assertNotNull($row->sent_at);
         $this->assertSame([true, 'sent', $row->id, false, 'wamid.LEDGER.1'],
@@ -56,31 +63,29 @@ class SendLedgerTest extends TestCase
         $this->assertArrayNotHasKey('_req_hash', $result);
     }
 
-    public function test_the_opaque_value_carries_the_row_number_only(): void
+    public function test_the_idempotency_key_carries_the_row_number_only(): void
     {
         $this->fakeGraph();
         $conv = WaConversation::factory()->windowOpen()->create(['wa_phone' => '16505551234']);
 
         WhatsAppChannel::sendText($conv, 'رقمي 0791234567', 'bot', sendKey: self::KEY);
 
-        Http::assertSent(function (Request $r) {
-            $opaque = (string) ($r['biz_opaque_callback_data'] ?? '');
-
-            return preg_match('/^nj:m:\d+$/', $opaque) === 1 && strlen($opaque) < 512 && !str_contains($opaque, '16505551234');
-        });
+        $key = (string) ($this->gatewaySends()[0]['headers']['Idempotency-Key'][0] ?? '');
+        $this->assertMatchesRegularExpression('/^nj-m-\d+$/', $key);
+        $this->assertStringNotContainsString('16505551234', $key);
     }
 
-    public function test_an_explicit_meta_rejection_fails_and_releases_the_key_for_a_legitimate_retry(): void
+    public function test_an_explicit_gateway_rejection_fails_and_releases_the_key_for_a_legitimate_retry(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
-            ->push(['error' => ['code' => 131047, 'message' => 'Re-engagement message']], 400)
-            ->push(['messages' => [['id' => 'wamid.LEDGER.2']]])]);
+        $this->gateway(Http::sequence()
+            ->push(['statusCode' => 400, 'message' => ['text must be a string']], 400)
+            ->push(['messageId' => 'wamid.LEDGER.2'], 201));
         $conv = $this->conv();
 
         $first = WhatsAppChannel::sendText($conv, 'أهلاً', 'bot', sendKey: self::KEY);
 
         $failed = WaMessage::sole();
-        $this->assertSame(['failed', null, 131047, 'WINDOW_EXPIRED'], [$failed->status, $failed->send_key, $failed->meta_code, $failed->error_code]);
+        $this->assertSame(['failed', null, 'GW_REJECTED'], [$failed->status, $failed->send_key, $failed->error_code]);
         $this->assertSame(self::KEY, data_get($failed->payload, '_released_key'));
         $this->assertSame(['failed', false], [$first['status'], $first['ok']]);
         Http::assertSentCount(1);
@@ -94,13 +99,13 @@ class SendLedgerTest extends TestCase
 
     public function test_a_timeout_is_unknown_keeps_the_key_and_is_never_resent(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received')]);
+        $this->gateway(Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received'));
         $conv = $this->conv();
 
         $first = WhatsAppChannel::sendText($conv, 'أهلاً', 'bot', sendKey: self::KEY);
 
         $row = WaMessage::sole();
-        $this->assertSame(['unknown', self::KEY, 'HTTP_TIMEOUT', 1], [$row->status, $row->send_key, $row->error_code, $row->attempts]);
+        $this->assertSame(['unknown', self::KEY, 'GW_TIMEOUT', 1], [$row->status, $row->send_key, $row->error_code, $row->attempts]);
         $this->assertSame(['unknown', true, false], [$first['status'], $first['unknown'], $first['ok']]);
         Http::assertSentCount(1);
 
@@ -111,22 +116,22 @@ class SendLedgerTest extends TestCase
         $this->assertSame(1, WaMessage::count());
     }
 
-    public function test_an_html_502_and_a_200_without_id_are_unknown(): void
+    public function test_an_engine_502_and_a_201_without_id_are_unknown(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
+        $this->gateway(Http::sequence()
             ->push('<html>Bad Gateway</html>', 502)
-            ->push(['messaging_product' => 'whatsapp'])]);
+            ->push(['success' => true], 201));
         $conv = $this->conv();
 
         WhatsAppChannel::sendText($conv, 'أولى', 'bot', sendKey: 'reply:1:1:text');
         WhatsAppChannel::sendText($conv, 'ثانية', 'bot', sendKey: 'reply:1:2:text');
 
-        $this->assertSame([['unknown', 'HTTP_5XX_NO_BODY'], ['unknown', 'OUTCOME_UNKNOWN']],
+        $this->assertSame([['unknown', 'GW_ERROR'], ['unknown', 'OUTCOME_UNKNOWN']],
             WaMessage::orderBy('id')->get()->map(fn ($m) => [$m->status, $m->error_code])->all());
         Http::assertSentCount(2);
     }
 
-    public function test_a_sent_key_replays_without_calling_meta(): void
+    public function test_a_sent_key_replays_without_calling_the_gateway(): void
     {
         $this->fakeGraph();
         $conv = $this->conv();
@@ -182,8 +187,11 @@ class SendLedgerTest extends TestCase
     public function test_locks_refuse_before_any_row_or_key(): void
     {
         $this->fakeGraph();
-        $closed = WaConversation::factory()->create(['last_inbound_at' => now()->subDays(2)]);
-        $this->assertSame('WINDOW_EXPIRED', WhatsAppChannel::sendText($closed, 'أهلاً', 'bot', sendKey: self::KEY)['code']);
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
+        $this->assertSame('CHANNEL_PAUSED', WhatsAppChannel::sendText($this->conv(), 'أهلاً', 'bot', sendKey: self::KEY)['code']);
+        $this->testChannel()->update(['paused_until' => null, 'status' => 'disconnected']);
+        $this->assertSame('CHANNEL_NOT_READY', WhatsAppChannel::sendText($this->conv(), 'أهلاً', 'bot', sendKey: self::KEY)['code']);
+        $this->testChannel()->update(['status' => 'ready']);
 
         WaBotSetting::current()->forceFill(['wa_suspended' => true])->save();
         $this->assertSame('SENDING_SUSPENDED', WhatsAppChannel::sendText($this->conv(), 'أهلاً', 'bot', sendKey: self::KEY)['code']);
@@ -194,7 +202,7 @@ class SendLedgerTest extends TestCase
 
     public function test_a_staff_timeout_pauses_the_bot_as_if_sent(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received')]);
+        $this->gateway(Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received'));
         $staff = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create();
         $conv = $this->conv();
 
@@ -202,21 +210,5 @@ class SendLedgerTest extends TestCase
 
         $this->assertNotNull($conv->fresh()->bot_paused_until);
         $this->assertSame('unknown', WaMessage::sole()->status);
-    }
-
-    public function test_without_the_flag_the_old_path_stores_after_the_answer(): void
-    {
-        config(['features.env.send_ledger' => false]);
-        $seen = 'not-called';
-        Http::fake(['graph.facebook.com/*' => function (Request $r) use (&$seen) {
-            $seen = WaMessage::count().'|'.($r['biz_opaque_callback_data'] ?? 'none');
-
-            return Http::response(['messages' => [['id' => 'wamid.OLD.1']]]);
-        }]);
-
-        WhatsAppChannel::sendText($this->conv(), 'أهلاً', 'bot', sendKey: self::KEY);
-
-        $this->assertSame('0|none', $seen);
-        $this->assertSame(['sent', null], [WaMessage::sole()->status, WaMessage::sole()->send_key]);
     }
 }

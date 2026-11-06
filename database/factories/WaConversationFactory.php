@@ -16,6 +16,8 @@ class WaConversationFactory extends Factory
         $phone = fake()->unique()->numerify('96279#######');
 
         return [
+            // الرقم الأول إن وُجد (الوارد يبحث على رقمه وحده، 2026-11-06)، وإلا محادثة بلا رقم كمحادثات ميتا القديمة
+            'channel_id' => fn () => \App\Models\WaChannel::query()->orderBy('id')->value('id'),
             'phone' => $phone,
             'wa_phone' => $phone,
             'display_name' => fake()->name(),

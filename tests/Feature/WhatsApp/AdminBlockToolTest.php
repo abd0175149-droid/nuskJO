@@ -41,9 +41,8 @@ class AdminBlockToolTest extends TestCase
         $this->admin = WaAdminNumber::factory()->create(['phone' => $this->adminChat->phone, 'user_id' => User::factory()->admin()->create()->id]);
         $this->customer = WaConversation::factory()->windowOpen()->create(['phone' => '962791234567', 'wa_phone' => '962791234567', 'display_name' => 'رقم مزعج']);
         $this->say('احظر الرقم المزعج');
-        Http::fake(['graph.facebook.com/*' => fn (Request $r) => str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/block_users')
-            ? Http::response(['messaging_product' => 'whatsapp', 'block_users' => ['added_users' => [['input' => '+962791234567', 'wa_id' => '962791234567']]]])
-            : Http::response(['messaging_product' => 'whatsapp', 'messages' => [['id' => 'wamid.OUT.'.uniqid()]]])]);
+        // البوابة (2026-11-06): الحظر /contacts/{jid}/block، والإرسال بمعرّف wamid.OUT.n
+        $this->fakeGateway(['nuskjo-openwa:2785/api/sessions/*/contacts/*/block' => Http::response(['success' => true])]);
     }
 
     private function say(string $body): void
@@ -58,7 +57,7 @@ class AdminBlockToolTest extends TestCase
 
     private function blockCalls(): int
     {
-        return count(Http::recorded(fn (Request $r) => str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/block_users')));
+        return count(Http::recorded(fn (Request $r) => str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/block')));
     }
 
     public function test_without_the_flag_the_tool_is_neither_declared_nor_run(): void
@@ -125,9 +124,10 @@ class AdminBlockToolTest extends TestCase
     public function test_targets_that_cannot_be_blocked_are_refused_before_any_preview(): void
     {
         config(['features.env.wa_block_admin_tool' => true]);
-        $this->customer->forceFill(['last_inbound_at' => now()->subDays(2)])->save();
+        // لا نافذة على البوابة (2026-11-06): الرفض المسبق لرقم موظف أو إدارة أو محظور أصلاً
+        $this->customer->forceFill(['user_id' => User::factory()->create()->id])->save();
 
-        $this->assertStringContainsString('خلال 24 ساعة', $this->tool(self::IN)['error']);
+        $this->assertSame('هذا الرقم لموظف في الشركة، فلا يُحظر.', $this->tool(self::IN)['error']);
         $this->assertSame(0, WaMessage::where('conversation_id', $this->adminChat->id)->where('direction', 'out')->count());
     }
 }

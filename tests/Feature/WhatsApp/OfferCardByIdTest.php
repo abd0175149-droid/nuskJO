@@ -7,7 +7,6 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\BotTools;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
@@ -16,8 +15,9 @@ use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * بطاقة العرض بالمعرّف (E32.11، العلم offer_card_by_media_id): البطاقة الكبيرة لا تُدّعى مرسلة، والمعرّف يُرفع مرة ويُعاد
- * استعماله، ونسخة إثبات السعر على wa_media، والفشل بلا رجوع إلى الرابط العام. والعلم مطفأ يعيد مسار الرابط كما هو.
+ * بطاقة العرض بالمعرّف (E32.11، العلم offer_card_by_media_id؛ منذ 2026-11-06 المعرّف نسخة على wa_media تُرسل base64):
+ * البطاقة الكبيرة لا تُدّعى مرسلة، والنسخة تُجهَّز مرة ويُعاد استعمالها، ونسخة إثبات السعر على wa_media، والفشل بلا رجوع
+ * إلى الرابط العام. والعلم مطفأ: الرابط على APP_URL/storage يُقرأ من القرص العام ولا تجلبه البوابة.
  */
 class OfferCardByIdTest extends TestCase
 {
@@ -39,13 +39,9 @@ class OfferCardByIdTest extends TestCase
         $this->offer = Offer::factory()->ready()->create(['custom_card_path' => 'offer-cards/card-7.png']);
     }
 
-    private function fakeMeta(bool $uploadOk = true): void
+    private function fakeMeta(): void
     {
-        Http::fake([
-            'graph.facebook.com/v25.0/106540352242922/media' => $uploadOk ? Http::response(['id' => '7700881122']) : Http::response(['error' => ['code' => 131053, 'message' => 'x']], 400),
-            // دالة لا sequence: Http::fake يستدعي كل نمط مطابق، فالتسلسل يتقدم مع طلب /media أيضاً
-            'graph.facebook.com/*' => fn () => Http::response(['messages' => [['id' => 'wamid.CARD.'.uniqid()]]]),
-        ]);
+        $this->fakeGateway();
     }
 
     private function sendCard(WaConversation $conv): array
@@ -53,7 +49,7 @@ class OfferCardByIdTest extends TestCase
         return BotTools::execute('send_offer_card', ['offer_id' => $this->offer->id], $conv);
     }
 
-    public function test_the_card_is_uploaded_once_and_sent_by_id_with_a_proof_copy(): void
+    public function test_the_card_is_staged_once_and_sent_by_id_with_a_proof_copy(): void
     {
         config(['features.env.offer_card_by_media_id' => true]);
         $this->fakeMeta();
@@ -64,13 +60,18 @@ class OfferCardByIdTest extends TestCase
         $out = $this->sendCard($second);
         $this->assertTrue($out['sent'], json_encode($out, JSON_UNESCAPED_UNICODE));
 
-        $uploads = Http::recorded()->filter(fn ($pair) => str_ends_with($pair[0]->url(), '/media'));
-        $this->assertCount(1, $uploads, 'المعرّف يُعاد استعماله');
-        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages') && $r['image']['id'] === '7700881122'
-            && !isset($r['image']['link']) && $r['image']['caption'] === $this->offer->title);
+        $this->assertCount(1, Storage::disk('wa_media')->allFiles('openwa-staging'), 'النسخة تُجهَّز مرة ويُعاد استعمالها');
+        $sends = $this->gatewaySends();
+        $this->assertSame(['send-image', 'send-image'], array_column($sends, 'path'));
+        foreach ($sends as $send) {
+            $this->assertSame([base64_encode($this->pngBytes()), $this->offer->title], [$send['body']['base64'], $send['body']['caption']]);
+            $this->assertArrayNotHasKey('url', $send['body']);
+        }
 
         $row = WaMessage::where('conversation_id', $first->id)->sole();
-        $this->assertSame(['7700881122', 'stored', 'image/png', $this->offer->title], [$row->media_id, $row->media_status, $row->media_mime, $row->body]);
+        $this->assertStringStartsWith('local:openwa-staging/', $row->media_id);
+        $this->assertSame($row->media_id, WaMessage::where('conversation_id', $second->id)->sole()->media_id);
+        $this->assertSame(['stored', 'image/png', $this->offer->title], [$row->media_status, $row->media_mime, $row->body]);
         $this->assertSame($this->pngBytes(), Storage::disk('wa_media')->get($row->media_path));
     }
 
@@ -87,27 +88,32 @@ class OfferCardByIdTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_an_upload_failure_never_falls_back_to_the_public_link(): void
+    public function test_a_failure_never_falls_back_to_the_public_link(): void
     {
         config(['features.env.offer_card_by_media_id' => true]);
-        $this->fakeMeta(uploadOk: false);
+        $this->fakeMeta();
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
 
         $out = $this->sendCard(WaConversation::factory()->windowOpen()->create());
 
         $this->assertFalse($out['sent']);
-        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/messages'));
+        Http::assertNothingSent();
         $this->assertSame(0, WaMessage::count());
         $this->assertSame([], Storage::disk('wa_media')->allFiles());
     }
 
-    public function test_with_the_flag_off_the_link_path_is_unchanged(): void
+    public function test_with_the_flag_off_our_public_link_is_read_from_disk(): void
     {
+        config(['app.url' => 'https://nusk.test']);
         $this->fakeMeta();
 
         $this->assertTrue($this->sendCard(WaConversation::factory()->windowOpen()->create())['sent']);
 
-        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/messages') && str_starts_with((string) ($r['image']['link'] ?? ''), 'https://nusk.test/storage/offer-cards/'));
-        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/media'));
+        $send = $this->gatewaySends()[0];
+        $this->assertSame(base64_encode($this->pngBytes()), $send['body']['base64'], 'من القرص العام، فلا تجلبه البوابة عبر النفق');
+        $this->assertArrayNotHasKey('url', $send['body']);
+        $this->assertStringStartsWith('https://nusk.test/storage/offer-cards/', (string) WaMessage::sole()->payload['image']['link']);
         $this->assertNull(WaMessage::sole()->media_id);
+        $this->assertSame([], Storage::disk('wa_media')->allFiles('openwa-staging'));
     }
 }

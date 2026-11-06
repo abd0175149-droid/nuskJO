@@ -5,30 +5,28 @@ namespace Tests\Feature\WhatsApp;
 use App\Models\Client;
 use App\Models\Offer;
 use App\Models\QuoteRequest;
-use App\Models\Setting;
 use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\BotEngine;
 use App\Services\WhatsApp\BotTools;
-use App\Services\WhatsApp\IdentityMode;
 use App\Services\WhatsApp\ReplyState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
  * حواجز البوت مع الهوية (E11.7): لا رد على محادثة مدموجة ولا على تحديث هوية، والاقتباس من المحادثة نفسها،
- * وأرقام بطاقات الاتصال لا تصل للنموذج، والمحادثة بلا رقم لا ترى بيانات مالية ويصلها زر مشاركة الرقم مع الطلب.
+ * وأرقام بطاقات الاتصال لا تصل للنموذج، والمحادثة بلا رقم (عميل خلف معرّف خصوصية @lid) لا ترى بيانات مالية،
+ * ويصلها طلب نصي لرقمها مع طلب التسعير (لا زر «مشاركة الرقم» في واتساب ويب، ولا «وضع هوية» بعد ميتا).
  */
 class BotIdentityGuardsTest extends TestCase
 {
     use ConfiguresWhatsApp;
     use RefreshDatabase;
 
-    private const BSUID = 'US.13491208655302741918';
+    private const LID = '204991827364512@lid';
 
     protected function setUp(): void
     {
@@ -88,47 +86,47 @@ class BotIdentityGuardsTest extends TestCase
 
     public function test_the_card_of_a_phoneless_customer_has_no_identifiers_and_no_money(): void
     {
-        Setting::set('wa_identity_mode', IdentityMode::FULL);
         $this->fakeGraph();
         $this->fakeGemini('أهلاً');
-        $conv = WaConversation::factory()->windowOpen()->create(['phone' => null, 'wa_phone' => null, 'wa_user_id' => self::BSUID, 'wa_username' => 'secret.handle',
+        $conv = WaConversation::factory()->windowOpen()->create(['phone' => null, 'wa_phone' => null, 'lid' => self::LID, 'jid' => self::LID, 'wa_username' => 'secret.handle',
             'client_id' => Client::factory()->create()->id]);
         WaMessage::factory()->inbound()->create(['conversation_id' => $conv->id, 'body' => 'كم رصيدي؟']);
 
         BotEngine::reply($conv);
 
         $prompt = $this->llmPrompts();
-        $this->assertStringNotContainsString(self::BSUID, $prompt);
+        $this->assertStringNotContainsString('204991827364512', $prompt);
         $this->assertStringNotContainsString('secret.handle', $prompt);
         $this->assertStringNotContainsString('رصيد ذمّته', $prompt);
         $this->assertStringContainsString('لا تكشف أي بيانات مالية', $prompt);
     }
 
-    public function test_a_quote_from_a_phoneless_customer_sends_the_share_number_button_in_full_mode(): void
+    public function test_a_quote_from_a_phoneless_customer_asks_for_the_number_in_text(): void
     {
-        Setting::set('wa_identity_mode', IdentityMode::FULL);
         User::factory()->admin()->create();
         $this->fakeGraph();
-        $conv = WaConversation::factory()->windowOpen()->create(['phone' => null, 'wa_phone' => null, 'wa_user_id' => self::BSUID, 'display_name' => null, 'wa_profile_name' => 'لقب']);
+        $conv = WaConversation::factory()->windowOpen()->create(['phone' => null, 'wa_phone' => null, 'lid' => self::LID, 'jid' => self::LID,
+            'display_name' => null, 'wa_profile_name' => 'لقب']);
 
         $out = BotTools::execute('request_quote', ['type' => 'flight', 'route_from' => 'عمّان', 'route_to' => 'جدة', 'adults' => 1], $conv);
 
-        Http::assertSent(fn (Request $r) => data_get($r->data(), 'interactive.type') === 'request_contact_info' && $r['recipient'] === self::BSUID);
-        $this->assertStringContainsString('زرٌّ لمشاركة رقم هاتفه', $out['note']);
+        $this->assertCount(1, $this->gatewaySends());
+        $this->assertSame(self::LID, $this->gatewaySends()[0]['body']['chatId']);
+        $this->assertStringContainsString('اكتب رقم هاتفك', $this->sentTexts()[0]);
+        $this->assertStringContainsString('طُلب من العميل الآن كتابة رقم هاتفه', $out['note']);
         $this->assertSame(['', 'لقب'], [QuoteRequest::sole()->phone, QuoteRequest::sole()->customer_name]);
     }
 
-    public function test_in_staff_mode_the_quote_is_kept_without_the_button(): void
+    public function test_a_customer_with_a_phone_gets_no_number_request(): void
     {
-        Setting::set('wa_identity_mode', IdentityMode::STAFF);
         User::factory()->admin()->create();
         $this->fakeGraph();
-        $conv = WaConversation::factory()->windowOpen()->create(['phone' => null, 'wa_phone' => null, 'wa_user_id' => self::BSUID]);
+        $conv = WaConversation::factory()->windowOpen()->create();
 
         $out = BotTools::execute('request_quote', ['type' => 'flight', 'adults' => 1], $conv);
 
-        Http::assertNothingSent();
-        $this->assertStringNotContainsString('زرٌّ', $out['note']);
+        $this->assertSame([], $this->gatewaySends());
+        $this->assertStringNotContainsString('رقم هاتفه', $out['note']);
         $this->assertSame(1, QuoteRequest::count());
     }
 

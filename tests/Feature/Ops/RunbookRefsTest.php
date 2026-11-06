@@ -38,19 +38,18 @@ class RunbookRefsTest extends TestCase
 
     public function test_the_longest_matching_prefix_wins_on_segment_boundaries(): void
     {
-        $this->assertSame('RB-02', RunbookMap::for('meta:send:190'));
-        $this->assertSame('RB-03', RunbookMap::for('meta:send:368'));
-        $this->assertSame('RB-13', RunbookMap::for('meta:send:1900'), 'بادئة 190 لا تلتقط 1900');
+        // بادئات ميتا (meta:* وhealth:TOKEN_INVALID…) أُزيلت مع ناقلها (2026-11-06)
         $this->assertSame('RB-11', RunbookMap::for('jobfailed:ProcessWhatsAppReply'));
         $this->assertSame('RB-11', RunbookMap::for('health:queue_stale'));
-        $this->assertSame('RB-02', RunbookMap::for('health:TOKEN_INVALID:TOKEN_EXPIRED'));
-        $this->assertSame('RB-12', RunbookMap::for('health:BLOCKED:RESTRICTED'));
-        $this->assertSame('RB-04', RunbookMap::for('wa:webhook-drift:ab12'));
+        $this->assertSame('RB-11', RunbookMap::for('health:schedule_stale:x'));
         $this->assertSame('RB-04', RunbookMap::for('wa:webhook:dead'));
-        $this->assertSame('RB-02', RunbookMap::for('meta:credentials:critical:token_invalid'));
-        $this->assertSame('RB-12', RunbookMap::for('meta:channel:critical:blocked'));
+        $this->assertSame('RB-04', RunbookMap::for('wa:sig_fail'));
+        $this->assertSame('RB-12', RunbookMap::for('ops:channels_down'));
+        $this->assertSame('RB-02', RunbookMap::for('ops:send_auth'));
+        $this->assertSame('RB-11', RunbookMap::for('ops:other_rule'), 'ops وحدها للقاعدة غير المسماة');
+        $this->assertNull(RunbookMap::for('meta:send:190'));
         $this->assertNull(RunbookMap::for('newthing:x'));
-        $this->assertNull(RunbookMap::for('metadata'), 'meta لا تلتقط metadata');
+        $this->assertNull(RunbookMap::for('opsx'), 'ops لا تلتقط opsx');
     }
 
     public function test_an_ops_alert_ends_with_its_runbook_only_with_the_flag(): void

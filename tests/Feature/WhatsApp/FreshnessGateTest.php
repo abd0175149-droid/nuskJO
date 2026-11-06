@@ -2,28 +2,27 @@
 
 namespace Tests\Feature\WhatsApp;
 
-use App\Models\Notification;
 use App\Models\User;
 use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\BotEngine;
-use App\Services\WhatsApp\WhatsAppInbox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\ConfiguresWhatsApp;
+use Tests\Concerns\SignsMetaWebhooks;
 use Tests\Concerns\PatchesWhatsAppSettings;
 use Tests\TestCase;
 
 /**
- * الحداثة على وقت ميتا: رسالة متأخرة لا يرد عليها البوت بل موظف؛ والنافذة والمعاينة لا تتراجعان؛
- * وحالات التسليم تتقدم ولا تتراجع؛ ورسالة بلا رقم مرسل لا تضيع بصمت.
+ * الحداثة على وقت واتساب للرسالة: رسالة متأخرة لا يرد عليها البوت بل موظف؛ والمعاينة لا تتراجع؛
+ * وحالات التسليم تتقدم ولا تتراجع. (رسالة «بلا مرسل» لا تصل من البوابة: كل حدث بمعرّف محادثة.)
  */
 class FreshnessGateTest extends TestCase
 {
     use ConfiguresWhatsApp;
+    use SignsMetaWebhooks;
     use PatchesWhatsAppSettings;
     use RefreshDatabase;
 
@@ -47,8 +46,8 @@ class FreshnessGateTest extends TestCase
     public function test_meta_time_is_stored_and_the_window_does_not_move_back(): void
     {
         $recent = now()->subMinutes(2)->timestamp;
-        WhatsAppInbox::handleWebhook($this->inbound('wamid.NEW', $recent, 'الأحدث'));
-        WhatsAppInbox::handleWebhook($this->inbound('wamid.OLD', now()->subHours(3)->timestamp, 'أقدم أعادتها ميتا'));
+        $this->routeMetaPayload($this->inbound('wamid.NEW', $recent, 'الأحدث'));
+        $this->routeMetaPayload($this->inbound('wamid.OLD', now()->subHours(3)->timestamp, 'أقدم أعادتها ميتا'));
 
         $conv = WaConversation::sole();
         $this->assertSame($recent, $conv->last_inbound_at->timestamp);
@@ -60,7 +59,7 @@ class FreshnessGateTest extends TestCase
     public function test_a_late_message_goes_to_staff_instead_of_the_bot(): void
     {
         Http::fake();
-        WhatsAppInbox::handleWebhook($this->inbound('wamid.LATE', now()->subMinutes(30)->timestamp));
+        $this->routeMetaPayload($this->inbound('wamid.LATE', now()->subMinutes(30)->timestamp));
         $conv = WaConversation::sole();
         $conv->update(['last_inbound_at' => now()]);   // نافذة مفتوحة، والرسالة نفسها متأخرة
 
@@ -84,7 +83,7 @@ class FreshnessGateTest extends TestCase
     {
         $conv = WaConversation::factory()->windowOpen()->create();
         $out = WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'wamid' => 'wamid.S1', 'status' => 'sent']);
-        $status = fn (string $s) => WhatsAppInbox::handleWebhook(['object' => 'whatsapp_business_account', 'entry' => [['id' => '102290129340398', 'changes' => [['field' => 'messages', 'value' => [
+        $status = fn (string $s) => $this->routeMetaPayload(['object' => 'whatsapp_business_account', 'entry' => [['id' => '102290129340398', 'changes' => [['field' => 'messages', 'value' => [
             'messaging_product' => 'whatsapp',
             'metadata' => ['display_phone_number' => '15550783881', 'phone_number_id' => self::TEST_PHONE_NUMBER_ID],
             'statuses' => [['id' => 'wamid.S1', 'status' => $s, 'timestamp' => (string) now()->timestamp, 'recipient_id' => '16505551234']],
@@ -93,7 +92,7 @@ class FreshnessGateTest extends TestCase
         $status('read');
         $status('delivered');   // وصلت متأخرة
         $this->assertSame('read', $out->fresh()->status);
-        $this->assertSame(['read', 'delivered'], array_column($out->fresh()->payload['statusHistory'], 'status'));
+        $this->assertSame(['read', 'delivered'], array_column($out->fresh()->payload['statusHistory'], 's'));
     }
 
     public function test_a_failed_bot_reply_flags_the_conversation(): void
@@ -102,7 +101,7 @@ class FreshnessGateTest extends TestCase
         WaMessage::factory()->inbound()->create(['conversation_id' => $conv->id]);
         WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'wamid' => 'wamid.F1']);
 
-        WhatsAppInbox::handleWebhook(['object' => 'whatsapp_business_account', 'entry' => [['id' => '102290129340398', 'changes' => [['field' => 'messages', 'value' => [
+        $this->routeMetaPayload(['object' => 'whatsapp_business_account', 'entry' => [['id' => '102290129340398', 'changes' => [['field' => 'messages', 'value' => [
             'messaging_product' => 'whatsapp',
             'metadata' => ['display_phone_number' => '15550783881', 'phone_number_id' => self::TEST_PHONE_NUMBER_ID],
             'statuses' => [['id' => 'wamid.F1', 'status' => 'failed', 'timestamp' => (string) now()->timestamp, 'recipient_id' => '16505551234',
@@ -110,20 +109,5 @@ class FreshnessGateTest extends TestCase
         ]]]]]]);
 
         $this->assertSame('send_failed', $conv->fresh()->attention_reason);
-    }
-
-    /** بلا رقم ولا معرّف لا يُعرف لمن تُحفظ؛ أما المعرّف وحده (اسم مستخدم) فيُحفظ (IdentityWebhookTest) */
-    public function test_a_message_without_any_sender_alerts_admins_once_an_hour(): void
-    {
-        $admin = User::factory()->admin()->create();
-        $payload = $this->inbound('wamid.NOFROM', now()->timestamp, 'سري');
-        unset($payload['entry'][0]['changes'][0]['value']['messages'][0]['from']);
-
-        WhatsAppInbox::handleWebhook($payload);
-        WhatsAppInbox::handleWebhook($payload);
-
-        $this->assertSame(0, WaMessage::count());
-        $this->assertSame(1, Notification::where('user_id', $admin->id)->count());
-        $this->assertSame(2, Cache::get('wa:noidentity:count:'.now()->format('Ymd')));
     }
 }

@@ -38,7 +38,7 @@ class ConversationScopeTest extends TestCase
         'assign' => ['POST', ['user_id' => null]],
         'read' => ['POST', []],
         // طلب الرقم لمحادثة بلا رقم وحدها، بالمعرّف في وضع staff
-        'request-contact' => ['POST', [], ['phone' => null, 'wa_phone' => null, 'wa_user_id' => 'US.13491208655302741918']],
+        'request-contact' => ['POST', [], ['phone' => null, 'wa_phone' => null, 'lid' => '204991827364512@lid', 'jid' => '204991827364512@lid']],
         // الربط (POST) بحمولة عميل حقيقي يغطيه LinkClientTest؛ هنا فك الربط على المسار نفسه
         'link-client' => ['DELETE', []],
         // متابعة الصندوق (E17): DELETE على snooze وpin بالربط نفسه (ConversationStateTest)
@@ -73,6 +73,9 @@ class ConversationScopeTest extends TestCase
         'messages/{message}/react' => ['POST', ['emoji' => '✅']],
         'send-location' => ['POST', ['place_id' => 999], [], [], 422],
         'send-contact' => ['POST', ['card_ids' => [999]], [], [], 422],
+        // رسائل النظام من المحادثة (OpenWA، 2026-11-06): داخل النطاق بلا حمولة 422 (الربط قبل التحقق)، وخارجه 404
+        'follow-up' => ['POST', [], [], [], 422],
+        'system-mute' => ['POST', [], [], [], 422],
     ];
 
     protected function setUp(): void
@@ -80,7 +83,6 @@ class ConversationScopeTest extends TestCase
         parent::setUp();
         $this->configureChannel();
         $this->fakeGraph();
-        \App\Models\Setting::set('wa_identity_mode', \App\Services\WhatsApp\IdentityMode::STAFF);
         config(['features.env.reprocess_button' => true, 'features.env.quick_replies' => true,
             'features.env.wa_labels' => true, 'features.env.thread_pins' => true, 'features.env.staff_translation' => true,
             'features.env.conversation_export' => true, 'features.env.staff_file_send' => true, 'features.env.wa_block' => true,

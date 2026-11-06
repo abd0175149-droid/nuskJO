@@ -44,7 +44,7 @@ return [
         'failed_jobs' => ['threshold' => 3, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/failures#jobs',
             'title' => '⚠️ مهام خلفية تفشل', 'action' => 'افتح «مهام خلفية فاشلة» في صفحة الإخفاقات.'],
         'send_auth' => ['threshold' => 1, 'severity' => 'critical', 'period' => 'hour', 'url' => '/whatsapp/settings#ops',
-            'title' => '⛔ البوابة ترفض الإرسال: خطأ اعتماد', 'action' => '«إصلاح» الرقم من صفحة الأرقام يصدر مفتاحه من جديد.'],
+            'title' => '⛔ البوابة ترفض الإرسال: خطأ اعتماد', 'action' => '«🛠 مفتاح وwebhook جديدان» على الرقم في صفحة الأرقام يصدر مفتاحه من جديد.'],
         'send_integrity' => ['threshold' => 1, 'severity' => 'critical', 'period' => 'hour', 'url' => '/whatsapp/settings#ops',
             'title' => '⛔ واتساب يقيّد رقماً', 'action' => 'راجع الرقم في صفحة الأرقام وأوقف الإرسال الآلي منه حتى يُرفع القيد.'],
         'send_recipient' => ['threshold' => 10, 'severity' => 'warn', 'period' => 'hour', 'url' => '/whatsapp/failures#messages',
@@ -100,6 +100,7 @@ return [
     'load_budget' => [
         'max_workers' => 4,
         'min_sleep' => 3,
-        'max_per_minute' => 6,
+        // 7 منذ OpenWA (2026-11-06): wa:outbox-tick، والقرار في docs/ops/load-budget.md
+        'max_per_minute' => 7,
     ],
 ];

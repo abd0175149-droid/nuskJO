@@ -67,8 +67,6 @@ class MessagesApiChoicesTest extends TestCase
         $this->assertSame(['type' => 'list', 'items' => [['title' => 'عمرة الربيع', 'description' => 'يبدأ من 220 د.أ للفرد']], 'expired' => false], $fresh['choices']);
         $this->assertTrue($old['choices']['expired']);
         $this->assertSame('اختر العرض المناسب', $fresh['body'], 'سطر العناوين يُعرض حبوباً لا نصاً');
-        config(['features.env.inbox_v2' => false]);
-        $this->assertSame("اختر العرض المناسب\n[قائمة: عمرة الربيع]", $this->thread()['messages'][0]['body'], 'الصندوق القديم يبقى على النص');
         $json = json_encode($thread, JSON_UNESCAPED_UNICODE);
         $this->assertStringNotContainsString('ch:', $json);
         $this->assertStringNotContainsString('choice_set_id', $json);

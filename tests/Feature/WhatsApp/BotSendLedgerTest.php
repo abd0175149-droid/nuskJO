@@ -52,13 +52,13 @@ class BotSendLedgerTest extends TestCase
 
         $this->assertTrue($second['sent']);
         $this->assertSame(1, WaMessage::where('direction', 'out')->count());
-        $this->assertSame(1, collect(Http::recorded())->filter(fn ($p) => str_contains($p[0]->url(), 'graph.facebook.com'))->count());
+        $this->assertCount(1, $this->gatewaySends());
         $this->assertNotNull($this->conv->fresh()->bot_answered_in_id);
     }
 
     public function test_an_unknown_reply_goes_to_staff_without_a_resend(): void
     {
-        $this->fakeModel(['العمرة تبدأ من 350'], ['graph.facebook.com/*' => Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received')]);
+        $this->fakeModel(['العمرة تبدأ من 350'], ['nuskjo-openwa:2785/*' => Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received')]);
 
         $result = BotEngine::reply($this->conv);
 

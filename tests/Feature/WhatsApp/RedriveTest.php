@@ -14,7 +14,6 @@ use App\Services\WhatsApp\SendKey;
 use App\Services\WhatsApp\WebhookIntake;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -22,20 +21,18 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsWhatsAppStaff;
 use Tests\Concerns\ConfiguresWhatsApp;
-use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * الإعادة المحروسة من صفحة الإخفاقات (E24): الفشل العابر داخل النافذة وحده يُعاد على الصف نفسه بالمفتاح المحرَّر
- * نفسه وbiz_opaque نفسه، مع تدقيق. لا إعادة لغير المؤكد ولا لرموز النافذة أو الحساب، ولا خارج النطاق، والنقرة
- * المزدوجة 409. queue:retry لأصناف آمنة وحدها، وإعادة الويبهوك المتوقف بتأكيد ثانٍ ومنسوبة إلى المدير.
+ * الإعادة المحروسة من صفحة الإخفاقات (E24): الفشل العابر وحده (لم يغادر البوابة) يُعاد على الصف نفسه بالمفتاح المحرَّر
+ * نفسه وIdempotency-Key جديد للبوابة، مع تدقيق. لا إعادة لغير المؤكد ولا لرفض الرسالة أو مفتاح الرقم، ولا خارج النطاق،
+ * والنقرة المزدوجة 409. queue:retry لأصناف آمنة وحدها، وإعادة الويبهوك المتوقف بتأكيد ثانٍ ومنسوبة إلى المدير.
  */
 class RedriveTest extends TestCase
 {
     use BuildsWhatsAppStaff;
     use ConfiguresWhatsApp;
     use RefreshDatabase;
-    use SignsMetaWebhooks;
 
     private User $admin;
 
@@ -44,25 +41,27 @@ class RedriveTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['features.env.failures_center' => true, 'features.env.failures_redrive' => true, 'features.env.send_ledger' => true]);
+        config(['features.env.failures_center' => true, 'features.env.failures_redrive' => true, 'features.env.send_retry' => false]);
         $this->configureChannel();
         $this->admin = User::factory()->admin()->create();
         $this->conv = WaConversation::factory()->windowOpen()->create();
     }
 
-    private function graphError(int $code, int $http = 400): array
+    /** رد البوابة غير الناجح بحالته: 503 الرقم لم يجهز (CHANNEL_NOT_READY)، 400 رفض الرسالة، 401 مفتاح الرقم */
+    private function gatewayError(int $http): array
     {
-        return ['error' => ['message' => 'err', 'type' => 'OAuthException', 'code' => $code, 'error_data' => ['details' => 'x'], 'fbtrace_id' => 'AxE24Test']];
+        return ['statusCode' => $http, 'message' => 'err', 'error' => 'x'];
     }
 
-    /** رد بوت يفشل عند ميتا بالرمز المعطى (الدفتر يحرّر مفتاحه)، ثم ميتا تقبل ما بعده */
-    private function failedBotReply(int $code = 131000, int $failuresAfter = 0): WaMessage
+    /** رد بوت ترفضه البوابة بالحالة المعطاة (الدفتر يحرّر مفتاحه)، ثم تقبل ما بعده */
+    private function failedBotReply(int $http = 503, int $failuresAfter = 0): WaMessage
     {
-        $sequence = Http::sequence()->push($this->graphError($code), 400);
+        $sequence = Http::sequence()->push($this->gatewayError($http), $http);
         for ($i = 0; $i < $failuresAfter; $i++) {
-            $sequence->push($this->graphError($code), 400);
+            $sequence->push($this->gatewayError($http), $http);
         }
-        Http::fake(['graph.facebook.com/*' => $sequence->push(['messaging_product' => 'whatsapp', 'messages' => [['id' => 'wamid.REDRIVE.OK']]])]);
+        config(['whatsapp.openwa.url' => 'http://nuskjo-openwa:2785', 'whatsapp.transport' => 'openwa']);
+        Http::fake(['nuskjo-openwa:2785/*' => $sequence->push(['messageId' => 'wamid.REDRIVE.OK'], 201)]);
         $r = WhatsAppChannel::sendText($this->conv, 'السعر يرسله الموظف قريباً', 'bot', sendKey: SendKey::reply($this->conv, 7, 'text'));
         $this->assertFalse($r['ok']);
 
@@ -81,7 +80,7 @@ class RedriveTest extends TestCase
 
     public function test_a_transient_failure_is_resent_on_the_same_row_with_the_same_key(): void
     {
-        $row = $this->failedBotReply(131000);
+        $row = $this->failedBotReply(503);
 
         $res = $this->redrive($row)->assertOk()->assertJsonPath('ok', true);
 
@@ -94,16 +93,15 @@ class RedriveTest extends TestCase
         $this->assertSame(1, WaMessage::where('direction', 'out')->count(), 'لا صف جديد');
         $this->assertSame('sent', $res->json('message.status'));
 
-        $calls = Http::recorded(fn (HttpRequest $r) => str_contains($r->url(), '/messages'));
+        $calls = $this->gatewaySends();
         $this->assertCount(2, $calls);
-        [$second] = $calls[1];
-        $this->assertSame('nj:m:'.$row->id, $second['biz_opaque_callback_data']);
-        $this->assertSame('السعر يرسله الموظف قريباً', $second['text']['body']);
-        $this->assertSame($this->conv->wa_phone, $second['to']);
+        $this->assertSame(['nj-m-'.$row->id, 'nj-m-'.$row->id.'-r1'], array_map(fn ($c) => $c['headers']['Idempotency-Key'][0], $calls),
+            'مفتاح بوابة جديد للإعادة، فلا تعيد البوابة رد المحاولة الأولى المخزّن');
+        $this->assertSame(['chatId' => $this->conv->wa_phone.'@c.us', 'text' => 'السعر يرسله الموظف قريباً', 'linkPreview' => false], $calls[1]['body']);
 
         $audit = AuditLog::where('action', AuditAction::WaRedrive->value)->sole();
         $this->assertSame($row->id, (int) $audit->entity_id);
-        $this->assertSame(['conversation_id' => $this->conv->id, 'old_code' => 131000, 'result' => 'ok'], $audit->changes);
+        $this->assertSame(['conversation_id' => $this->conv->id, 'old_code' => 'CHANNEL_NOT_READY', 'result' => 'ok'], $audit->changes);
         $this->assertSame($this->admin->id, (int) $audit->user_id);
     }
 
@@ -118,20 +116,20 @@ class RedriveTest extends TestCase
         $this->assertSame(0, AuditLog::where('action', AuditAction::WaRedrive->value)->count());
     }
 
-    public function test_a_window_code_is_refused(): void
+    public function test_a_rejected_message_is_refused(): void
     {
-        $window = $this->failedBotReply(131047);
+        $rejected = $this->failedBotReply(400);
 
-        $this->redrive($window)->assertStatus(422)->assertJsonPath('code', 'NOT_TRANSIENT');
-        $this->assertSame('failed', $window->fresh()->status);
+        $this->redrive($rejected)->assertStatus(422)->assertJsonPath('code', 'NOT_TRANSIENT');
+        $this->assertSame('failed', $rejected->fresh()->status);
     }
 
-    public function test_an_account_code_is_refused(): void
+    public function test_a_channel_key_error_is_refused(): void
     {
-        $restricted = $this->failedBotReply(368);
-        $this->redrive($restricted)->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_ERROR')
-            ->assertJsonPath('error', 'خطأ حساب — يُعالج من WhatsApp Manager لا بالإعادة.');
-        $this->assertSame('failed', $restricted->fresh()->status);
+        $auth = $this->failedBotReply(401);
+        $this->redrive($auth)->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_ERROR')
+            ->assertJsonPath('error', 'خطأ في إعداد الرقم على البوابة — يُعالج من صفحة «الأرقام» لا بالإعادة.');
+        $this->assertSame('failed', $auth->fresh()->status);
     }
 
     public function test_a_test_send_is_never_redriven(): void
@@ -143,13 +141,13 @@ class RedriveTest extends TestCase
         $this->assertSame('failed', $row->fresh()->status);
     }
 
-    public function test_a_closed_window_is_refused_without_any_http(): void
+    public function test_a_paused_channel_is_refused_without_any_http(): void
     {
         $row = $this->failedBotReply();
-        $this->conv->update(['last_inbound_at' => now()->subDays(2)]);
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
         $before = count(Http::recorded());
 
-        $this->redrive($row)->assertStatus(422)->assertJsonPath('code', 'WINDOW_CLOSED');
+        $this->redrive($row)->assertStatus(422)->assertJsonPath('code', 'CHANNEL_PAUSED');
 
         $this->assertCount($before, Http::recorded());
         $this->assertSame('failed', $row->fresh()->status);
@@ -187,7 +185,7 @@ class RedriveTest extends TestCase
 
     public function test_a_second_failure_releases_the_key_again_for_a_later_redrive(): void
     {
-        $row = $this->failedBotReply(131000, failuresAfter: 1);
+        $row = $this->failedBotReply(503, failuresAfter: 1);
         $key = $row->payload['_released_key'];
 
         $this->redrive($row)->assertStatus(422)->assertJsonPath('ok', false);
@@ -195,7 +193,7 @@ class RedriveTest extends TestCase
         $this->assertSame('failed', $row->status);
         $this->assertNull($row->send_key);
         $this->assertSame($key, $row->payload['_released_key']);
-        $this->assertSame('META_TRANSIENT', $row->error_code);
+        $this->assertSame('CHANNEL_NOT_READY', $row->error_code);
         $this->assertNotSame('ok', AuditLog::where('action', AuditAction::WaRedrive->value)->sole()->changes['result'], 'التدقيق يحمل النتيجة الفاشلة');
 
         $this->redrive($row)->assertOk();
@@ -241,7 +239,8 @@ class RedriveTest extends TestCase
     {
         config(['features.env.inbound_event_log' => true]);
         Queue::fake();
-        $raw = (string) file_get_contents($this->fixturePath('status_delivered.json'));
+        $raw = (string) json_encode(['event' => 'message.received', 'timestamp' => now()->toIso8601String(), 'sessionId' => $this->testChannel()->openwa_session_id,
+            'idempotencyKey' => 'idem-dead-1', 'deliveryId' => 'd1', 'data' => $this->incoming('962795550001', 'مرحبا')], JSON_UNESCAPED_UNICODE);
         [$event] = WebhookIntake::store($raw);
         $event->forceFill(['status' => WaWebhookEvent::DEAD, 'attempts' => 3])->save();
 

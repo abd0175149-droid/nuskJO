@@ -67,7 +67,7 @@ class SendIdempotencyTest extends TestCase
 
     public function test_an_unknown_key_answers_409_with_unknown(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::failedConnection('cURL error 28: Operation timed out after 25001 milliseconds with 0 bytes received')]);
+        $this->fakeGateway(['nuskjo-openwa:2785/api/sessions/*/messages/*' => Http::failedConnection('cURL error 28: Operation timed out after 90001 milliseconds with 0 bytes received')]);
         $conv = WaConversation::factory()->windowOpen()->create();
 
         $this->postSend($conv, 'موعدك غداً')->assertStatus(202)->assertJsonPath('unknown', true)->assertJsonPath('status', 'unknown');
@@ -130,11 +130,12 @@ class SendIdempotencyTest extends TestCase
 
         $this->assertSame([true, 2], [$rows[$released->id]['can_resend'], $rows[$released->id]['attempts']]);
         $this->assertTrue($rows[$reaped->id]['can_resend']);
-        $this->assertFalse($rows[$fresh->id]['can_resend'], 'غير مؤكد حديث: ينتظر ويبهوك ميتا أو المنظّف');
+        $this->assertFalse($rows[$fresh->id]['can_resend'], 'غير مؤكد حديث: ينتظر صدى البوابة أو المنظّف');
         $this->assertArrayNotHasKey('payload', $rows[$released->id]);
 
+        // الدفتر دائم منذ OpenWA (2026-11-06): العلم القديم لا يخفي الإعادة
         config(['features.env.send_ledger' => false]);
         $plain = collect($this->actingAs($this->staff)->getJson("/api/whatsapp/conversations/{$conv->id}/messages")->json('messages'))->keyBy('id');
-        $this->assertArrayNotHasKey('can_resend', $plain[$released->id]);
+        $this->assertTrue($plain[$released->id]['can_resend']);
     }
 }

@@ -125,7 +125,7 @@ class ConversationListCursorTest extends TestCase
             ->assertOk()
             ->assertJsonPath('has_more', false)
             ->assertJsonPath('next_cursor', null)
-            ->assertJsonStructure(['conversations' => [['id', 'phone', 'name', 'preview', 'last_at', 'unread', 'window_open', 'topics', 'sort_ts', 'last_type']], 'unread_total', 'llm']);
+            ->assertJsonStructure(['conversations' => [['id', 'phone', 'name', 'preview', 'last_at', 'unread', 'channel_id', 'topics', 'sort_ts', 'last_type']], 'unread_total', 'llm']);
 
         $rows = collect($response->json('conversations'))->keyBy('id');
         // نوع آخر رسالة (لأيقونة المعاينة)، ولا شيء لمحادثة بلا رسائل

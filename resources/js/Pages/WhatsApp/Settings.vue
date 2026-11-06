@@ -98,7 +98,7 @@
                         </div>
                         <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
                             <dt class="text-xs text-gray-500 dark:text-gray-400">الأرقام المربوطة</dt>
-                            <dd class="font-bold dark:text-gray-100" data-test="gateway-linked"><bdi dir="ltr">{{ gateway.linked ?? 0 }} / {{ gateway.channels ?? 0 }}</bdi></dd>
+                            <dd class="font-bold dark:text-gray-100" data-test="gateway-linked"><bdi dir="ltr">{{ gateway.linked || '0' }} / {{ gateway.channels || '0' }}</bdi></dd>
                         </div>
                         <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
                             <dt class="text-xs text-gray-500 dark:text-gray-400">إصدار البوابة</dt>

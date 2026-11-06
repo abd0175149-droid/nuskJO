@@ -115,7 +115,7 @@ class QuickReplyTest extends TestCase
         $this->render($c, $r)->assertOk()
             ->assertJsonPath('missing', [])
             ->assertJsonPath('text', 'أهلاً أحمد سالم (C-77)، معك '.$this->agent->name.' — +962 6 000 0000')
-            ->assertJsonPath('window_open', true);
+            ->assertJsonPath('reachable', true);
     }
 
     public function test_an_unlinked_conversation_leaves_name_missing(): void
@@ -153,9 +153,9 @@ class QuickReplyTest extends TestCase
         $this->actingAs($this->agent)->getJson('/api/whatsapp/quick-replies')->assertNotFound();
     }
 
-    public function test_send_refuses_an_unfilled_variable_before_any_call_to_meta(): void
+    public function test_send_refuses_an_unfilled_variable_before_any_call_to_the_gateway(): void
     {
-        Http::fake();
+        $this->fakeGraph();
         $c = WaConversation::factory()->windowOpen()->create();
 
         $this->actingAs($this->agent)->postJson("/api/whatsapp/conversations/{$c->id}/send", ['body' => 'أهلاً {{ name }}'])
@@ -164,16 +164,16 @@ class QuickReplyTest extends TestCase
         $this->assertSame(0, WaMessage::count());
 
         // «{name}» بقوس واحد ليس متغيراً
-        $this->fakeGraph();
         $this->actingAs($this->agent)->postJson("/api/whatsapp/conversations/{$c->id}/send", ['body' => 'أهلاً {name}'])->assertOk();
         $this->assertSame('staff', WaMessage::latest('id')->first()->source);
     }
 
-    public function test_a_closed_window_still_refuses_like_any_staff_reply(): void
+    public function test_a_paused_channel_still_refuses_like_any_staff_reply(): void
     {
         $this->fakeGraph();
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
         $c = WaConversation::factory()->windowClosed()->create();
         $this->actingAs($this->agent)->postJson("/api/whatsapp/conversations/{$c->id}/send", ['body' => 'أهلاً'])
-            ->assertStatus(422)->assertJsonPath('code', 'WINDOW_EXPIRED');
+            ->assertStatus(422)->assertJsonPath('code', 'CHANNEL_PAUSED');
     }
 }

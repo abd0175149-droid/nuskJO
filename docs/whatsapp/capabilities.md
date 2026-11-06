@@ -18,38 +18,38 @@
 | `interactive.button` أزرار رد (إشعار حفظ الملفات اليوم) | منفّذ ✅ | `sendButtons` | E14 | `media_consent_prompt` | وأزرار الحجز بعد البطاقة وزرّا تأكيد المساعد الإداري (E36، العلمان interactive_choices وadmin_confirm_buttons) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-reply-buttons-messages) |
 | `interactive.list` قائمة اختيار | منفّذ ✅ | `sendList` | E36 | `interactive_choices` | قائمة العروض والخيارات من ChoiceBuilder، والإرسال التجريبي (E23) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-list-messages) |
 | `interactive.request_contact_info` زر «مشاركة رقم الهاتف» لعميل بلا رقم | منفّذ ✅ | `sendContactRequest` | E11 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages) |
-| `interactive.flow` نموذج Flow | منفّذ ✅ | `sendFlow` | E36 | `quote_flow` | نموذج طلب التسعير ثابت بلا نقطة نهاية، يُنشأ يدوياً في WhatsApp Manager | [ميتا](https://developers.facebook.com/docs/whatsapp/flows) |
 | `mark_as_read` إشعار القراءة | منفّذ ✅ | `markRead` | E35 | `read_receipts` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/mark-message-as-read) |
 | `typing_indicator` مؤشر «يكتب…» | منفّذ ✅ | `markRead` | E35 | `read_receipts` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/typing-indicators) |
-| `media.download` تنزيل الوسائط الواردة (الصوت للتفريغ، والأرشيف) | منفّذ ✅ | `downloadMedia`، `fetchMedia`، `mediaMeta` | E14 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media) |
+| `media.download` تنزيل الوسائط الواردة (الصوت للتفريغ، والأرشيف) | منفّذ ✅ | `downloadMedia`، `fetchMedia` | E14 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media) |
 | `media.upload` رفع الوسائط عبر /media (مؤجل دائماً على الطابور) | منفّذ ✅ | `uploadMedia`، `uploadTimeout` | E32 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media) |
-| `media.delete` حذف الملف المرسل من خوادم ميتا | منفّذ ✅ | `deleteMedia` | E32 | `outbound_media_remote_delete` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media) |
+| `media.delete` حذف الملف المرسل من خوادم ميتا | منفّذ ✅ | `deleteMedia` | E32 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media) |
 | `webhook.messages` الرسائل الواردة بكل أنواعها | منفّذ ✅ | — | E11 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components) |
 | `webhook.statuses` حالات التسليم بلا تراجع | منفّذ ✅ | — | E21 | `delivery_status_v2` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components) |
-| `webhook.account` أحداث الحساب والجودة والتنبيهات والأمن والقدرات | منفّذ ✅ | — | E22 | `channel_health` | — | [ميتا](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update/) |
-| `webhook.user_preferences` إيقاف العميل للتسويق من إعدادات واتساب | منفّذ ✅ | — | E21 | `user_preferences_optout` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components) |
-| `webhook.calls` أحداث المكالمات | منفّذ ✅ | — | E39 | `calls_webhook` | جاهزية مشروطة بقرار مكتوب من المالك | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/calling) |
+| `webhook.calls` أحداث المكالمات | منفّذ ✅ | — | E39 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/calling) |
 | `bsuid_usernames` عميل باسم مستخدم بلا رقم (BSUID) | منفّذ ✅ | — | E11 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages) |
-| `coexistence` التعايش مع تطبيق الأعمال (الصدى والسجل السابق) | منفّذ ✅ | — | E39 | `coexistence_guard` | جاهزية مشروطة بقرار مكتوب من المالك | [ميتا](https://developers.facebook.com/docs/whatsapp/embedded-signup/custom-flows/onboarding-business-app-users) |
-| `health_status` صحة الرقم وقدرته على الإرسال | منفّذ ✅ | `healthStatus` | E22 | — | — | [ميتا](https://developers.facebook.com/documentation/business-messaging/whatsapp/support/health-status/) |
-| `debug_token` فحص الرمز وصلاحياته | منفّذ ✅ | `debugToken` | E08 | — | — | [ميتا](https://developers.facebook.com/docs/graph-api/reference/debug_token) |
-| `phone_number` بيانات الرقم والتحقق من معرّفه | منفّذ ✅ | `phoneNumberInfo`، `probePhoneNumberId`، `getPhoneIdentity` | E23 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/phone-numbers) |
+| `coexistence` التعايش مع تطبيق الأعمال (الصدى والسجل السابق) | منفّذ ✅ | — | E39 | — | — | [ميتا](https://developers.facebook.com/docs/whatsapp/embedded-signup/custom-flows/onboarding-business-app-users) |
 | `block_users` حظر جهة اتصال وفكّه عند ميتا | منفّذ ✅ | `blockUsers`، `unblockUsers`، `listBlocked`، `blockTarget` | E31 | `wa_block` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/block-users) |
-| `business_profile` ملف واتساب للأعمال وصورته | منفّذ ✅ | `getBusinessProfile`، `updateBusinessProfile`، `uploadProfilePicture` | E31 | `business_profile_sync` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/business-profiles) |
-| `qr_codes` رموز QR وروابط قصيرة برسالة جاهزة | منفّذ ✅ | `createQrdl`، `updateQrdl`، `deleteQrdl`، `listQrdls` | E38 | `wa_qr_links` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/business-management-api/qr-codes) |
-| `conversational_components` الأوامر وأسئلة البداية | منفّذ ✅ | `setConversationalAutomation`، `getConversationalAutomation` | E37 | `conversational_components` | — | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/phone-numbers/conversational-components) |
-| `calling_settings` إعدادات الاتصال ورفض الرنين | منفّذ ✅ | `getCallingSettings`، `applyCallingSettings`، `rejectCall` | E39 | — | الكتابة بالأمر whatsapp:calling-settings وحده | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/calling) |
-| `analytics` تحليلات ميتا للحساب للمطابقة | منفّذ ✅ | — | E24 | — | نداء قراءة يومي واحد بعلم المطابقة | [ميتا](https://developers.facebook.com/docs/whatsapp/business-management-api/analytics) |
 | `interactive.cta_url` زر رابط | مخطّط ⏳ | — | E36 | — | لم تحتجه E36: القوائم والأزرار والنموذج تكفي | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-cta-url-messages) |
 | `sticker` ملصق | مؤجل | — | — | — | لا حاجة تشغيلية | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/sticker-messages) |
 | `interactive.location_request` طلب موقع العميل | مؤجل | — | — | — | لا حاجة تشغيلية اليوم | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/location-request-messages) |
 | `interactive.call_permission_request` طلب إذن الاتصال بالعميل | مؤجل | — | E39 | — | لا مكالمات صادرة؛ نقرأ رد العميل على الإذن وحده | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/calling) |
 | `two_step_verification` PIN التحقق بخطوتين للرقم | مؤجل | — | E27 | — | يدوي من WhatsApp Manager، ولا يُحفظ PIN في القاعدة | [ميتا](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/two-step-verification/) |
+| `interactive.flow` نموذج Flow | مرفوض ⛔ | — | E36 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/flows) |
 | `interactive.product` منتج أو قائمة منتجات أو رسالة كتالوج | مرفوض ⛔ | — | — | — | لا كتالوج ميتا لعروضنا، والعروض في نظامنا (خطة E25) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/sell-products-and-services) |
 | `template` قوالب الرسائل | مرفوض ⛔ | — | — | — | لا قوالب: الرد داخل نافذة 24 ساعة فقط. إن تغيّر القرار فكل قالب رسالة مسعّرة (قرار المالك 2026-10-11) | [ميتا](https://developers.facebook.com/docs/whatsapp/business-management-api/message-templates) |
 | `marketing_bulk` إرسال تسويقي أو جماعي | مرفوض ⛔ | — | — | — | لا إرسال بارد ولا جماعي: هذا ما يعرّض الرقم الوحيد للحظر (قرار المالك) | [ميتا](https://whatsappbusiness.com/policy/) |
 | `groups` المجموعات | مرفوض ⛔ | — | — | — | خارج نموذج عملنا (خطة E25) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/groups) |
 | `status_stories` الحالات (stories) | مرفوض ⛔ | — | — | — | لا نشر آلي؛ بطاقة الحالة تُنزَّل للنشر اليدوي (E38) (قرار المالك) | [ميتا](https://whatsappbusiness.com/policy/) |
+| `webhook.account` أحداث الحساب والجودة والتنبيهات والأمن والقدرات | مرفوض ⛔ | — | E22 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update/) |
+| `webhook.user_preferences` إيقاف العميل للتسويق من إعدادات واتساب | مرفوض ⛔ | — | E21 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components) |
+| `health_status` صحة الرقم وقدرته على الإرسال | مرفوض ⛔ | — | E22 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/documentation/business-messaging/whatsapp/support/health-status/) |
+| `debug_token` فحص الرمز وصلاحياته | مرفوض ⛔ | — | E08 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/graph-api/reference/debug_token) |
+| `phone_number` بيانات الرقم والتحقق من معرّفه | مرفوض ⛔ | — | E23 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/phone-numbers) |
+| `business_profile` ملف واتساب للأعمال وصورته | مرفوض ⛔ | — | E31 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/business-profiles) |
+| `qr_codes` رموز QR وروابط قصيرة برسالة جاهزة | مرفوض ⛔ | — | E38 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/business-management-api/qr-codes) |
+| `conversational_components` الأوامر وأسئلة البداية | مرفوض ⛔ | — | E37 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/phone-numbers/conversational-components) |
+| `calling_settings` إعدادات الاتصال ورفض الرنين | مرفوض ⛔ | — | E39 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/cloud-api/calling) |
+| `analytics` تحليلات ميتا للحساب للمطابقة | مرفوض ⛔ | — | E24 | — | أُزيل مع ميتا (2026-11-06): بوابة OpenWA (واتساب ويب) لا تقدّمه (2026-11-06) | [ميتا](https://developers.facebook.com/docs/whatsapp/business-management-api/analytics) |
 
 ## أدوات بوت العملاء (`BotTools::TOOLS`)
 
@@ -70,7 +70,11 @@
 | `handoff_to_human` | منفّذ ✅ | نعم | — |
 | `show_offers_menu` | منفّذ ✅ | — | `interactive_choices` |
 | `present_choices` | منفّذ ✅ | — | `interactive_choices` |
-| `send_quote_form` | منفّذ ✅ | — | `quote_flow` |
+| `get_my_quote_status` | منفّذ ✅ | — | — |
+| `resend_invoice_pdf` | منفّذ ✅ | — | — |
+| `get_trip_details` | منفّذ ✅ | — | — |
+| `report_issue` | منفّذ ✅ | نعم | — |
+| `manage_my_notifications` | منفّذ ✅ | — | — |
 
 ## أدوات المساعد الإداري (`AdminTools::TOOLS`)
 

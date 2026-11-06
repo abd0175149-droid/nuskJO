@@ -72,12 +72,13 @@ class WhatsAppFailuresController extends Controller
             $category = $message->error_category ?: ($metaCode !== null ? MetaErrorCatalog::classify($metaCode)['category'] : null);
 
             return in_array($category, ['auth', 'integrity'], true)
-                ? $this->refuse('ACCOUNT_ERROR', 'خطأ حساب — يُعالج من WhatsApp Manager لا بالإعادة.')
+                ? $this->refuse('ACCOUNT_ERROR', 'خطأ في إعداد الرقم على البوابة — يُعالج من صفحة «الأرقام» لا بالإعادة.')
                 : $this->refuse('NOT_TRANSIENT', 'سبب الفشل عند العميل أو في الرسالة نفسها — الإعادة لا تصلحه.');
         }
         // المستلم لا يتغيّر: صف أُرسل إلى رقم غير رقم المحادثة الآن (دمج أو تغيّر رقم) لا يُعاد من هنا
+        // الوجهة المحفوظة jid البوابة (منذ OpenWA)، والقديمة رقماً مجرداً
         $to = $payload['to'] ?? null;
-        if ($to !== null && (string) $to !== (string) $conversation->wa_phone) {
+        if ($to !== null && !in_array((string) $to, [(string) $conversation->wa_phone, (string) WhatsAppChannel::chatId($conversation)], true)) {
             return $this->refuse('RECIPIENT_CHANGED', 'تغيّر رقم العميل منذ الإرسال — أرسل من المحادثة.', 409);
         }
 

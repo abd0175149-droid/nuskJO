@@ -33,9 +33,8 @@ class BlockRoutesTest extends TestCase
 
     private function fakeBlockOk(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::sequence()
-            ->push(json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/block_users_ok.json')), true))
-            ->push(json_decode(file_get_contents(base_path('tests/Fixtures/whatsapp/block_users_removed.json')), true))]);
+        // البوابة (2026-11-06): POST ثم DELETE على /contacts/{jid}/block
+        $this->fakeGateway(['nuskjo-openwa:2785/api/sessions/*/contacts/*/block' => Http::response(['success' => true])]);
     }
 
     private function customer(): WaConversation

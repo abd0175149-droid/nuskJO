@@ -2,22 +2,21 @@
 
 namespace Tests\Feature\WhatsApp;
 
-use App\Models\Setting;
 use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
-use App\Services\WhatsApp\IdentityMode;
 use App\Services\WhatsApp\Outbound\OutboundMessage;
 use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\ConfiguresWhatsApp;
 use Tests\TestCase;
 
 /**
- * المغلف الموحّد (E32.2): كل نوع يبني حمولة Cloud API الرسمية بالضبط عبر dispatch بأقفاله، والاقتباس من المحادثة نفسها
- * وحدها، والنوع غير المسجّل يُرفض بلا HTTP، والتعليق يُقص بالمحارف، والوجهة to أو recipient لا الاثنان، وأعمدة
- * media_* تُكتب للصادر.
+ * المغلف الموحّد (E32.2، منذ 2026-11-06 إلى البوابة): كل نوع يصل البوابة بمساره وجسمه عبر dispatch بأقفاله، والملف من
+ * القرص الخاص base64، والاقتباس من المحادثة نفسها وحدها، والنوع الذي لا تحمله البوابة يُرفض بلا HTTP، والتعليق يُقص
+ * بالمحارف، والوجهة jid المحادثة، وأعمدة media_* تُكتب للصادر.
  */
 class OutboundEnvelopeTest extends TestCase
 {
@@ -29,6 +28,10 @@ class OutboundEnvelopeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('wa_media');
+        Storage::disk('wa_media')->put('t/1001.jpg', 'IMG');
+        Storage::disk('wa_media')->put('t/1002.pdf', 'PDF');
+        Storage::disk('wa_media')->put('t/1003.mp4', 'MP4');
         $this->configureChannel();
         $this->fakeGraph();
         $this->conv = WaConversation::factory()->windowOpen()->create();
@@ -36,30 +39,36 @@ class OutboundEnvelopeTest extends TestCase
 
     private function sent(): array
     {
-        Http::assertSentCount(1);
+        $sends = $this->gatewaySends();
+        $this->assertCount(1, $sends);
 
-        return Http::recorded()->first()[0]->data();
+        return $sends[0]['body'];
     }
 
-    public function test_each_type_builds_the_official_payload(): void
+    public function test_each_type_reaches_the_gateway_with_its_path_and_body(): void
     {
+        $chat = $this->conv->wa_phone.'@c.us';
         $expect = [
-            [OutboundMessage::text('أهلاً'), ['text' => ['preview_url' => false, 'body' => 'أهلاً']]],
-            [OutboundMessage::image('1001', 'صورة الحجز'), ['image' => ['id' => '1001', 'caption' => 'صورة الحجز']]],
-            [OutboundMessage::document('1002', 'فاتورة-7.pdf', 'فاتورتك'), ['document' => ['id' => '1002', 'filename' => 'فاتورة-7.pdf', 'caption' => 'فاتورتك']]],
-            [OutboundMessage::video('1003'), ['video' => ['id' => '1003']]],
+            [OutboundMessage::text('أهلاً'), 'send-text', ['chatId' => $chat, 'text' => 'أهلاً', 'linkPreview' => false]],
+            [OutboundMessage::image('local:t/1001.jpg', 'صورة الحجز'), 'send-image',
+                ['chatId' => $chat, 'base64' => base64_encode('IMG'), 'mimetype' => 'image/jpeg', 'caption' => 'صورة الحجز']],
+            [OutboundMessage::document('local:t/1002.pdf', 'فاتورة-7.pdf', 'فاتورتك'), 'send-document',
+                ['chatId' => $chat, 'base64' => base64_encode('PDF'), 'mimetype' => 'application/pdf', 'filename' => 'فاتورة-7.pdf', 'caption' => 'فاتورتك']],
+            [OutboundMessage::video('local:t/1003.mp4'), 'send-video', ['chatId' => $chat, 'base64' => base64_encode('MP4'), 'mimetype' => 'video/mp4']],
         ];
-        foreach ($expect as $i => [$message, $object]) {
+        foreach ($expect as [$message]) {
             $this->assertTrue(WhatsAppChannel::send($this->conv, $message, 'bot')['ok']);
-            $request = Http::recorded()[$i][0]->data();
-            $type = array_key_first($object);
-            $this->assertSame(['messaging_product' => 'whatsapp', 'to' => $this->conv->wa_phone, 'recipient_type' => 'individual', 'type' => $type] + $object, $request, $type);
+        }
+        $sends = $this->gatewaySends();
+        foreach ($expect as $i => [, $path, $body]) {
+            $this->assertSame($path, $sends[$i]['path']);
+            $this->assertSame($body, $sends[$i]['body'], $path);
         }
 
         $rows = WaMessage::orderBy('id')->get();
         $this->assertSame(['text', 'image', 'document', 'video'], $rows->pluck('msg_type')->all());
         $this->assertSame(['أهلاً', '📷 صورة: صورة الحجز', '📄 ملف: فاتورة-7.pdf: فاتورتك', '🎬 مقطع فيديو'], $rows->pluck('body')->all());
-        $this->assertSame([null, '1001', '1002', '1003'], $rows->pluck('media_id')->all());
+        $this->assertSame([null, 'local:t/1001.jpg', 'local:t/1002.pdf', 'local:t/1003.mp4'], $rows->pluck('media_id')->all());
     }
 
     public function test_a_quote_is_kept_only_for_a_message_of_the_same_conversation(): void
@@ -70,9 +79,9 @@ class OutboundEnvelopeTest extends TestCase
         WhatsAppChannel::send($this->conv, OutboundMessage::text('تفضّل')->withReplyTo('wamid.OTHER'), 'bot');
         WhatsAppChannel::send($this->conv, OutboundMessage::text('تفضّل')->withReplyTo('wamid.MINE'), 'bot');
 
-        [$other, $mine] = [Http::recorded()[0][0]->data(), Http::recorded()[1][0]->data()];
-        $this->assertArrayNotHasKey('context', $other);
-        $this->assertSame(['message_id' => 'wamid.MINE'], $mine['context']);
+        [$other, $mine] = array_column($this->gatewaySends(), 'body');
+        $this->assertArrayNotHasKey('quotedMessageId', $other);
+        $this->assertSame('wamid.MINE', $mine['quotedMessageId']);
         $this->assertSame([null, 'wamid.MINE'], WaMessage::where('direction', 'out')->orderBy('id')->pluck('reply_to_wamid')->all());
     }
 
@@ -86,9 +95,8 @@ class OutboundEnvelopeTest extends TestCase
         $this->assertSame(0, WaMessage::count());
     }
 
-    public function test_a_later_epic_registers_its_type_on_the_same_envelope(): void
+    public function test_a_registered_type_the_gateway_cannot_carry_fails_without_a_request(): void
     {
-        // نوع بلا قاعدة محتوى خاصة (الموقع والبطاقات يطابقهما E33 مع الجدولين المعتمدين؛ ShareLocationTest)
         OutboundMessage::registerType('sticker',
             fn (OutboundMessage $m) => ['id' => $m->data['id']],
             fn (OutboundMessage $m) => '🏷️ '.$m->data['label']);
@@ -98,45 +106,46 @@ class OutboundEnvelopeTest extends TestCase
             OutboundMessage::forgetType('sticker');
         }
 
-        $this->assertTrue($result['ok']);
-        $this->assertSame(['id' => '1001'], $this->sent()['sticker']);
-        $this->assertSame('🏷️ ملصق', WaMessage::sole()->body);
+        $this->assertSame([false, 'UNSUPPORTED', 'failed'], [$result['ok'], $result['code'], $result['status']]);
+        Http::assertNothingSent();
+        $this->assertSame(['failed', '🏷️ ملصق'], [WaMessage::sole()->status, WaMessage::sole()->body]);
     }
 
     public function test_a_long_caption_is_cut_by_characters_without_breaking_utf8(): void
     {
-        WhatsAppChannel::send($this->conv, OutboundMessage::image('1001', str_repeat('نُسك ', 300)), 'bot');
+        WhatsAppChannel::send($this->conv, OutboundMessage::image('local:t/1001.jpg', str_repeat('نُسك ', 300)), 'bot');
 
-        $caption = $this->sent()['image']['caption'];
+        $caption = $this->sent()['caption'];
         $this->assertSame(1024, mb_strlen($caption));
         $this->assertTrue(mb_check_encoding($caption, 'UTF-8'));
     }
 
-    public function test_the_target_is_to_or_recipient_never_both(): void
+    public function test_the_target_is_the_stored_jid_else_the_phone(): void
     {
-        Setting::set('wa_identity_mode', IdentityMode::STAFF);
         $staff = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create();
-        $phoneless = WaConversation::factory()->windowOpen()->create(['phone' => null, 'wa_phone' => null, 'wa_user_id' => 'US.13491208655302741918']);
+        $hidden = WaConversation::factory()->windowOpen()->create(['phone' => null, 'wa_phone' => null, 'jid' => '13491208655302741918@lid',
+            'channel_id' => $this->testChannel()->id]);
 
-        WhatsAppChannel::send($phoneless, OutboundMessage::document('1002', 'تذكرة.pdf'), 'staff', $staff->id);
+        WhatsAppChannel::send($hidden, OutboundMessage::document('local:t/1002.pdf', 'تذكرة.pdf'), 'staff', $staff->id);
+        WhatsAppChannel::send($this->conv, OutboundMessage::text('أهلاً'), 'bot');
 
-        $request = $this->sent();
-        $this->assertSame('US.13491208655302741918', $request['recipient']);
-        $this->assertArrayNotHasKey('to', $request);
+        $this->assertSame(['13491208655302741918@lid', $this->conv->wa_phone.'@c.us'], array_column(array_column($this->gatewaySends(), 'body'), 'chatId'));
     }
 
     public function test_media_columns_are_written_for_the_outbound_row(): void
     {
+        Storage::disk('wa_media')->put('outbound/2026/10/x.pdf', 'VISA');
         $staff = User::factory()->withPermissions(['whatsapp.view', 'whatsapp.reply', 'whatsapp.view_all'])->create();
         $this->conv->update(['needs_attention' => true, 'unread_count' => 3]);
 
-        $result = WhatsAppChannel::send($this->conv, OutboundMessage::document('1002', 'visa.pdf'), 'staff', $staff->id, [
+        $result = WhatsAppChannel::send($this->conv, OutboundMessage::document('local:outbound/2026/10/x.pdf', 'visa.pdf'), 'staff', $staff->id, [
             'media' => ['mime' => 'application/pdf', 'sha256' => str_repeat('a', 64), 'size' => 2048, 'filename' => 'visa.pdf', 'path' => 'outbound/2026/10/x.pdf'],
         ]);
 
         $this->assertTrue($result['ok']);
+        $this->assertSame(base64_encode('VISA'), $this->sent()['base64']);
         $row = WaMessage::sole();
-        $this->assertSame(['1002', 'application/pdf', 2048, 'visa.pdf', 'outbound/2026/10/x.pdf', 'stored'],
+        $this->assertSame(['local:outbound/2026/10/x.pdf', 'application/pdf', 2048, 'visa.pdf', 'outbound/2026/10/x.pdf', 'stored'],
             [$row->media_id, $row->media_mime, $row->media_size, $row->media_filename, $row->media_path, $row->media_status]);
         $this->assertNotNull($row->media_archived_at);
         // رد الموظف بملف كالرد النصي: يصفّر غير المقروء والتدخّل ويوقف البوت
@@ -145,14 +154,24 @@ class OutboundEnvelopeTest extends TestCase
         $this->assertTrue($this->conv->bot_paused_until->isFuture());
     }
 
+    public function test_a_missing_file_fails_before_any_request(): void
+    {
+        $result = WhatsAppChannel::send($this->conv, OutboundMessage::image('local:t/gone.jpg'), 'bot');
+
+        $this->assertSame([false, 'MEDIA_FILE_MISSING'], [$result['ok'], $result['code']]);
+        Http::assertNothingSent();
+        $this->assertSame('failed', WaMessage::sole()->status);
+    }
+
     public function test_locks_run_before_any_request(): void
     {
-        $this->conv->update(['last_inbound_at' => now()->subDays(2)]);
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
 
-        $result = WhatsAppChannel::send($this->conv, OutboundMessage::image('1001'), 'bot');
+        $result = WhatsAppChannel::send($this->conv, OutboundMessage::image('local:t/1001.jpg'), 'bot');
 
-        $this->assertSame(WhatsAppChannel::ERR_WINDOW, $result['code']);
+        $this->assertSame(WhatsAppChannel::ERR_PAUSED, $result['code']);
         Http::assertNothingSent();
+        $this->assertSame(0, WaMessage::count());
     }
 
     public function test_a_document_needs_an_uploaded_id(): void

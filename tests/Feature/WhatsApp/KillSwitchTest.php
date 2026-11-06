@@ -67,15 +67,6 @@ class KillSwitchTest extends TestCase
         $this->assertSame(2, AuditLog::where('action', AuditAction::WaSuspendManual->value)->count());
     }
 
-    public function test_a_stop_from_meta_needs_an_acknowledgement_to_resume(): void
-    {
-        WaBotSetting::current()->update(['wa_suspended' => true, 'wa_suspended_source' => 'meta_event', 'wa_suspended_reason' => 'ACCOUNT_RESTRICTION']);
-
-        $this->killSwitch($this->owner, 'off')->assertJsonValidationErrors('acknowledge');
-        $this->killSwitch($this->owner, 'off', ['acknowledge' => true])->assertOk();
-        $this->assertSame('meta_event', AuditLog::where('action', AuditAction::WaSuspendManual->value)->sole()->changes['previous_source']);
-    }
-
     public function test_an_environment_stop_cannot_be_lifted_here_and_shows_its_source(): void
     {
         config(['services.whatsapp.suspended' => true]);

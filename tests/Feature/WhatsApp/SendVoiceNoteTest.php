@@ -10,7 +10,6 @@ use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\MediaConverter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -23,8 +22,9 @@ use Tests\Concerns\FakesVoiceConverter;
 use Tests\TestCase;
 
 /**
- * رسالة الموظف الصوتية عبر send-file بحقل voice=1 (E34.5): الأقفال قبل ffmpeg، والتحويل ثم شرط ميتا، والحجز بالمفتاح
- * والنسخة الخاصة، والرفع المؤجل ثم {type: audio, audio: {id, voice: true}}، والتدقيق والتفريغ بعده. المحوّل مزيّف.
+ * رسالة الموظف الصوتية عبر send-file بحقل voice=1 (E34.5): الأقفال قبل ffmpeg، والتحويل ثم الشرط (ogg/opus أحادي)،
+ * والحجز بالمفتاح والنسخة الخاصة، ثم الإرسال المؤجل إلى البوابة send-audio بـ ptt=true والملف base64، والتدقيق والتفريغ
+ * بعده. المحوّل مزيّف.
  */
 class SendVoiceNoteTest extends TestCase
 {
@@ -35,10 +35,6 @@ class SendVoiceNoteTest extends TestCase
     use RefreshDatabase;
 
     private const KEY = '5b0e7c3a-91d2-4f6e-8a4b-3c2d1e0f9a87';
-
-    private const MEDIA_URL = 'https://graph.facebook.com/v25.0/106540352242922/media';
-
-    private const MESSAGES_URL = 'https://graph.facebook.com/v25.0/106540352242922/messages';
 
     private User $staff;
 
@@ -80,10 +76,7 @@ class SendVoiceNoteTest extends TestCase
     private function fakeMeta(): void
     {
         Http::preventStrayRequests();
-        Http::fake([
-            'graph.facebook.com/v25.0/106540352242922/media' => Http::response(['id' => '7731450912836654']),
-            'graph.facebook.com/v25.0/106540352242922/messages' => Http::response(['messages' => [['id' => 'wamid.VOICE.1']]]),
-        ]);
+        $this->fakeGateway(['nuskjo-openwa:2785/api/sessions/*/messages/send-audio' => Http::response(['messageId' => 'wamid.VOICE.1'], 201)]);
     }
 
     public function test_a_voice_note_is_converted_queued_then_uploaded_and_sent_as_a_native_voice_message(): void
@@ -110,18 +103,15 @@ class SendVoiceNoteTest extends TestCase
 
         (new SendWhatsAppMediaJob($row->id))->handle();
 
-        $this->assertSame([self::MEDIA_URL, self::MESSAGES_URL], Http::recorded()->map(fn ($pair) => $pair[0]->url())->all());
-        Http::assertSent(function (Request $r) {
-            $parts = collect($r->data())->keyBy('name');
-
-            return $r->url() === self::MEDIA_URL && $r->isMultipart() && $parts['type']['contents'] === 'audio/ogg'
-                && $parts['messaging_product']['contents'] === 'whatsapp' && $r->hasFile('file', null, 'voice-note.ogg');
-        });
-        Http::assertSent(fn (Request $r) => $r->url() === self::MESSAGES_URL && $r['type'] === 'audio'
-            && $r['audio'] === ['id' => '7731450912836654', 'voice' => true] && !isset($r['audio']['link']));
+        $sends = $this->gatewaySends();
+        $this->assertCount(1, Http::recorded());
+        $this->assertSame('send-audio', $sends[0]['path']);
+        $this->assertSame(['chatId' => $this->conv->wa_phone.'@c.us', 'base64' => base64_encode($stored), 'mimetype' => 'audio/ogg; codecs=opus', 'ptt' => true],
+            $sends[0]['body']);
 
         $row->refresh();
-        $this->assertSame(['sent', 'wamid.VOICE.1', '7731450912836654', '🎤 رسالة صوتية من الموظف (0:42)'], [$row->status, $row->wamid, $row->media_id, $row->body]);
+        $this->assertSame(['sent', 'wamid.VOICE.1', 'local:'.$row->media_path, '🎤 رسالة صوتية من الموظف (0:42)'], [$row->status, $row->wamid, $row->media_id, $row->body]);
+        $this->assertTrue((bool) data_get($row->payload, 'audio.voice'));
         $this->assertSame(42.4, $row->payload['_voice']['seconds']);
         Queue::assertPushedOn('wa-media', TranscribeStaffVoice::class, fn ($job) => $job->messageId === $row->id);
 
@@ -143,14 +133,13 @@ class SendVoiceNoteTest extends TestCase
         Queue::assertNotPushed(TranscribeStaffVoice::class);
     }
 
-    public function test_a_closed_window_answers_422_without_ffmpeg_or_any_upload(): void
+    public function test_a_disconnected_channel_answers_422_without_ffmpeg_or_any_request(): void
     {
         Queue::fake();
         Http::fake();
-        $closed = $this->conversationTagged(['visa']);
-        $closed->update(['last_inbound_at' => now()->subHours(30)]);
+        $this->testChannel()->update(['status' => 'disconnected']);
 
-        $this->postVoice(conv: $closed)->assertStatus(422)->assertJsonPath('code', 'WINDOW_EXPIRED');
+        $this->postVoice()->assertStatus(422)->assertJsonPath('code', 'CHANNEL_NOT_READY');
 
         $this->assertSame([], $this->converterCalls);
         Http::assertNothingSent();
@@ -279,11 +268,7 @@ class SendVoiceNoteTest extends TestCase
     {
         Queue::fake();
         Http::preventStrayRequests();
-        Http::fake([
-            'graph.facebook.com/v25.0/106540352242922/media' => Http::response(['id' => '7731450912836654']),
-            'graph.facebook.com/v25.0/106540352242922/messages' => Http::response(['error' => ['code' => 131026, 'message' => 'Message undeliverable']], 400),
-            'graph.facebook.com/*' => Http::response(['success' => true]),
-        ]);
+        $this->fakeGateway(['nuskjo-openwa:2785/api/sessions/*/messages/send-audio' => Http::response(['statusCode' => 400, 'message' => 'invalid audio'], 400)]);
         $this->postVoice()->assertStatus(202);
         $row = WaMessage::sole();
 

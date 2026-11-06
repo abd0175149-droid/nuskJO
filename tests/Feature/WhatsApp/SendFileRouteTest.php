@@ -19,7 +19,8 @@ use Tests\TestCase;
 
 /**
  * مسار الملف من الصندوق (E32.7): الصلاحية والسياج، وتأكيد المستلم في الخادم، وIdempotency-Key يمنع التكرار، والحد،
- * والرفع إلى ميتا مؤجل دائماً في الطابور، والنسخة الخاصة بلا الاسم الأصلي، ونوع الوثيقة وتأكيد التأشيرة، والتدقيق بلا اسم.
+ * والإرسال بملف مؤجل دائماً في الطابور (إلى البوابة base64 من النسخة الخاصة)، والنسخة الخاصة بلا الاسم الأصلي، ونوع
+ * الوثيقة وتأكيد التأشيرة، والتدقيق بلا اسم.
  */
 class SendFileRouteTest extends TestCase
 {
@@ -65,7 +66,7 @@ class SendFileRouteTest extends TestCase
             ['Accept' => 'application/json'] + ($key !== null ? ['Idempotency-Key' => $key] : []));
     }
 
-    public function test_a_file_is_queued_with_a_private_copy_and_nothing_goes_to_meta_in_the_request(): void
+    public function test_a_file_is_queued_with_a_private_copy_and_nothing_goes_to_the_gateway_in_the_request(): void
     {
         Queue::fake();
         Http::fake();
@@ -135,27 +136,21 @@ class SendFileRouteTest extends TestCase
         $this->assertCount(1, Storage::disk('wa_media')->allFiles());
     }
 
-    public function test_the_same_key_after_sending_replays_without_a_second_upload(): void
+    public function test_the_same_key_after_sending_replays_without_a_second_send(): void
     {
-        Http::fake([
-            'graph.facebook.com/v25.0/106540352242922/media' => Http::response(['id' => '4490709327384033']),
-            'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.OUT.1']]]),
-        ]);
+        $this->fakeGateway();
 
         $this->postFile()->assertStatus(202);
         $this->assertSame('sent', WaMessage::sole()->status);
         $this->postFile()->assertOk()->assertJson(['ok' => true, 'replayed' => true]);
 
-        Http::assertSentCount(2);
+        $this->assertSame(['send-document'], array_column($this->gatewaySends(), 'path'));
         $this->assertSame(1, WaMessage::count());
     }
 
     public function test_the_whole_path_sends_and_audits_without_the_file_name(): void
     {
-        Http::fake([
-            'graph.facebook.com/v25.0/106540352242922/media' => Http::response(['id' => '4490709327384033']),
-            'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.OUT.1']]]),
-        ]);
+        $this->fakeGateway();
 
         $this->postFile($this->pdf('تأشيرة سعيد.pdf'), ['doc_kind' => 'visa', 'confirm_identity' => true])->assertStatus(202);
 
@@ -192,12 +187,12 @@ class SendFileRouteTest extends TestCase
         $this->assertSame([], Storage::disk('wa_media')->allFiles());
     }
 
-    public function test_a_closed_window_refuses_before_storing(): void
+    public function test_a_paused_channel_refuses_before_storing(): void
     {
         Queue::fake();
-        $this->conv->update(['last_inbound_at' => now()->subHours(25)]);
+        $this->testChannel()->update(['paused_until' => now()->addHour()]);
 
-        $this->postFile()->assertStatus(422)->assertJsonPath('code', 'WINDOW_EXPIRED');
+        $this->postFile()->assertStatus(422)->assertJsonPath('code', 'CHANNEL_PAUSED');
 
         $this->assertSame([], Storage::disk('wa_media')->allFiles());
     }

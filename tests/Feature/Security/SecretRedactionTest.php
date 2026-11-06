@@ -36,19 +36,23 @@ class SecretRedactionTest extends TestCase
 
     public function test_known_secrets_from_config_and_database_are_masked_wherever_they_appear(): void
     {
-        config(['services.llm.google_key' => 'env-google-key-123', 'services.whatsapp.token' => null]);
-        WaBotSetting::current()->update(['wa_token' => 'db-wa-token-456', 'api_key' => 'db-llm-key-789', 'wa_app_secret' => 'short']);
+        config(['services.llm.google_key' => 'env-google-key-123', 'whatsapp.openwa.admin_key' => 'gateway-master-key-1']);
+        WaBotSetting::current()->update(['api_key' => 'db-llm-key-789', 'fallback_api_key' => 'short']);
+        \App\Models\WaChannel::create(['name' => 'رقم', 'openwa_session_id' => 's1', 'api_key' => 'channel-key-0001', 'webhook_secret' => 'hook-secret-0001',
+            'roles' => ['sales'], 'bot_mode' => 'full', 'is_active' => true, 'status' => 'ready']);
+        SecretRedactor::forget();
 
-        $this->assertSame('a *** b *** c *** d short', SecretRedactor::clean('a env-google-key-123 b db-wa-token-456 c db-llm-key-789 d short'));
+        $this->assertSame('a *** b *** c *** d short e *** f ***',
+            SecretRedactor::clean('a env-google-key-123 b gateway-master-key-1 c db-llm-key-789 d short e channel-key-0001 f hook-secret-0001'));
     }
 
     public function test_a_secret_saved_later_is_masked_from_the_next_record(): void
     {
-        $this->assertSame('x new-token-0001', SecretRedactor::clean('x new-token-0001'));
+        $this->assertSame('x new-fallback-key-0001', SecretRedactor::clean('x new-fallback-key-0001'));
 
-        WaBotSetting::current()->update(['wa_token' => 'new-token-0001']);
+        WaBotSetting::current()->update(['fallback_api_key' => 'new-fallback-key-0001']);
 
-        $this->assertSame('x ***', SecretRedactor::clean('x new-token-0001'));
+        $this->assertSame('x ***', SecretRedactor::clean('x new-fallback-key-0001'));
     }
 
     public function test_never_throws_when_settings_cannot_be_read(): void

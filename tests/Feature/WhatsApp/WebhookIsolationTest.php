@@ -3,13 +3,9 @@
 namespace Tests\Feature\WhatsApp;
 
 use App\Jobs\ProcessWhatsAppReply;
-use App\Models\Notification;
-use App\Models\User;
-use App\Models\WaBotSetting;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Models\WaWebhookEvent;
-use App\Services\WhatsApp\Settings\SettingsWriter;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -18,8 +14,8 @@ use Tests\Concerns\SignsMetaWebhooks;
 use Tests\TestCase;
 
 /**
- * العزل (E20.6): عنصر فاشل في دفعة لا يُسقط ما بعده، ويُسجَّل بمعرّفه واسم صنفه فقط. وتعارض wamid تكرار ناجح،
- * وإعادة حدث الحساب لا تكرر الإشعار ولا الإيقاف، والحالة المكررة لا تُلحق مرتين.
+ * العزل (E20.6): البوابة ترسل حدثاً لكل طلب، فالحدث الفاشل يبقى صفه failed للإعادة بمعرّفه واسم صنفه فقط، ولا يمس
+ * ما بعده. وتعارض المعرّف الفريد تكرار ناجح، والحالة المكررة لا تُلحق مرتين.
  */
 class WebhookIsolationTest extends TestCase
 {
@@ -50,71 +46,63 @@ class WebhookIsolationTest extends TestCase
         return WaMessage::factory()->outbound()->create(['conversation_id' => $conv->id, 'wamid' => $wamid, 'status' => 'sent']);
     }
 
+    /** ما كانت ميتا ترسله في حمولة واحدة: إيصالان ثم رسالتان، كل منها حدث مستقل */
+    private function postBatch(): void
+    {
+        $this->postOpenWa('message.ack', ['messageId' => 'out.1', 'status' => 'delivered', 'timestamp' => 1760425741])->assertOk();
+        $this->postOpenWa('message.ack', ['messageId' => 'out.2', 'status' => 'read', 'timestamp' => 1760425742])->assertOk();
+        $this->postOpenWa('message.received', $this->incoming('16505551234', 'First message in the batch.', ['id' => 'batch.1']))
+            ->assertOk()->assertExactJson(['ok' => true]);
+        $this->postOpenWa('message.received', $this->incoming('16505551234', 'Second message in the batch.', ['id' => 'batch.2']))
+            ->assertOk()->assertExactJson(['ok' => true]);
+    }
+
     public function test_a_failing_message_does_not_drop_the_rest_of_the_batch(): void
     {
-        $out1 = $this->outbound('wamid.FIXTURE.out.1');
-        $out2 = $this->outbound('wamid.FIXTURE.out.2');
-        $this->failOn['wamid.FIXTURE.batch.2'] = new \RuntimeException('سري: نص لا يُسجَّل');
+        $out1 = $this->outbound('out.1');
+        $out2 = $this->outbound('out.2');
+        $this->failOn['batch.1'] = new \RuntimeException('سري: نص لا يُسجَّل');
 
-        $this->postMetaWebhook('batch_mixed.json')->assertOk()->assertExactJson(['ok' => true]);
+        $this->postBatch();
 
-        $this->assertTrue(WaMessage::where('wamid', 'wamid.FIXTURE.batch.1')->exists());
-        $this->assertFalse(WaMessage::where('wamid', 'wamid.FIXTURE.batch.2')->exists());
+        $this->assertFalse(WaMessage::where('wamid', 'batch.1')->exists());
+        $this->assertTrue(WaMessage::where('wamid', 'batch.2')->exists());
         $this->assertSame('delivered', $out1->fresh()->status);
         $this->assertSame('read', $out2->fresh()->status);
-        Queue::assertPushed(ProcessWhatsAppReply::class, 1);
+        Queue::assertPushed(ProcessWhatsAppReply::class);
 
-        $event = WaWebhookEvent::sole();
-        $this->assertSame(WaWebhookEvent::FAILED, $event->status);
-        $this->assertSame([['kind' => 'message', 'ref' => 'wamid.FIXTURE.batch.2', 'error' => 'RuntimeException']], $event->item_errors);
+        $this->assertSame(3, WaWebhookEvent::where('status', WaWebhookEvent::PROCESSED)->count());
+        $event = WaWebhookEvent::where('status', WaWebhookEvent::FAILED)->sole();
+        $this->assertSame([['kind' => 'event', 'ref' => 'batch.1', 'error' => 'RuntimeException']], $event->item_errors);
         $this->assertStringNotContainsString('سري', json_encode($event->getAttributes(), JSON_UNESCAPED_UNICODE));
-        $this->assertSame('statuses:2,messages:2', $event->field_summary);
+        $this->assertSame('message.received:1', $event->field_summary);
         $this->assertNotNull($event->getRawOriginal('raw_body'));
         $this->assertEqualsWithDelta(now()->addMinutes(2)->timestamp, $event->next_attempt_at->timestamp, 2);
     }
 
     public function test_a_unique_conflict_on_the_wamid_is_a_successful_duplicate(): void
     {
-        // نسخة متزامنة من ميتا خزّنت الرسالة بين فحص الوجود والإدراج: الفهرس الفريد يرفض الثانية
-        $this->failOn['wamid.FIXTURE.batch.1'] = new UniqueConstraintViolationException('sqlite', 'insert', [], new \PDOException('UNIQUE constraint failed: wa_messages.wamid'));
+        // نسخة متزامنة خزّنت الرسالة بين فحص الوجود والإدراج: الفهرس الفريد يرفض الثانية
+        $this->failOn['batch.1'] = new UniqueConstraintViolationException('sqlite', 'insert', [],
+            new \PDOException('UNIQUE constraint failed: wa_messages.channel_id, wa_messages.wamid'));
 
-        $this->postMetaWebhook('batch_mixed.json')->assertOk();
+        $this->postBatch();
 
-        $event = WaWebhookEvent::sole();
-        $this->assertSame(WaWebhookEvent::PROCESSED, $event->status, 'التعارض تكرار ناجح لا خطأ عنصر');
-        $this->assertNull($event->item_errors);
-        $this->assertNull($event->getRawOriginal('raw_body'));
-        $this->assertTrue(WaMessage::where('wamid', 'wamid.FIXTURE.batch.2')->exists());
-    }
-
-    public function test_a_replayed_account_ban_notifies_and_suspends_once(): void
-    {
-        $admin = User::factory()->admin()->create();
-
-        $this->postMetaWebhook('account_update_ban.json')->assertOk();
-        $this->assertTrue((bool) WaBotSetting::current()->wa_suspended);
-        $notified = Notification::where('user_id', $admin->id)->count();
-        $this->assertSame(1, $notified);
-
-        // المدير راجع واستأنف، ثم أعادت ميتا الحمولة نفسها (بجسم مختلف البايتات فلا يمنعها الهاش)
-        SettingsWriter::apply(['wa_suspended' => false], null, null, audit: 'none');
-        $raw = json_encode(json_decode((string) file_get_contents($this->fixturePath('account_update_ban.json')), true));
-        $this->postRawWebhook($raw)->assertOk();
-
-        $this->assertFalse((bool) WaBotSetting::current()->wa_suspended, 'لا إيقاف ثانٍ من إعادة الحدث نفسه');
-        $this->assertSame(1, Notification::where('user_id', $admin->id)->count());
+        $this->assertSame(0, WaWebhookEvent::where('status', '!=', WaWebhookEvent::PROCESSED)->count(), 'التعارض تكرار ناجح لا خطأ عنصر');
+        $this->assertSame(0, WaWebhookEvent::whereNotNull('item_errors')->count());
+        $this->assertSame(0, WaWebhookEvent::whereNotNull('raw_body')->count());
+        $this->assertTrue(WaMessage::where('wamid', 'batch.2')->exists());
     }
 
     public function test_a_repeated_status_is_recorded_once_in_the_history(): void
     {
-        $out = $this->outbound('wamid.FIXTURE.out.1');
-        $payload = json_decode((string) file_get_contents($this->fixturePath('batch_mixed.json')), true);
-        $payload['entry'][0]['changes'][0]['value']['messages'] = [];
-        $payload['entry'][0]['changes'][0]['value']['statuses'] = [$payload['entry'][0]['changes'][0]['value']['statuses'][0]];
+        $out = $this->outbound('out.1');
+        $ack = ['messageId' => 'out.1', 'status' => 'delivered', 'timestamp' => 1760425741];
 
-        $this->postRawWebhook(json_encode($payload))->assertOk();
-        $this->postRawWebhook(json_encode($payload, JSON_PRETTY_PRINT))->assertOk();
+        // البوابة تعيد الحدث بتوصيلة ومفتاح جديدين: البصمة لا تمنعه، والتاريخ يمنع تكراره
+        $this->postOpenWa('message.ack', $ack)->assertOk();
+        $this->postOpenWa('message.ack', $ack)->assertOk();
 
-        $this->assertSame(['delivered'], array_column($out->fresh()->payload['statusHistory'], 'status'));
+        $this->assertSame(['delivered'], array_column($out->fresh()->payload['statusHistory'], 's'));
     }
 }

@@ -17,14 +17,15 @@ use Illuminate\Support\Facades\Schema;
  * تطبيق حالة تسليم على الصف الصادر (E21). المصدر منذ 2026-11-06 حدث message.ack وmessage.failed من بوابة OpenWA
  * (applyOpenWa يحوّله إلى الشكل الداخلي {id, status, timestamp}):
  *
- * 1) الصف بـ wamid، وإلا فالإيصال يتيم ينتظر في الكاش (OrphanStatus) حتى يُكتب معرّفه بعد ردّ البوابة.
+ * 1) الصف بـ wamid (على رقم الحدث، أو بلا رقم من قبل الأرقام المتعددة)، وإلا فالإيصال يتيم ينتظر في الكاش
+ *    (OrphanStatus) حتى يُكتب معرّفه بعد ردّ البوابة.
  * 2) تحديث ذري واحد مشروط WHERE status IS NULL OR status IN (DeliveryStatus::allowedFrom): لا قراءة ثم كتابة،
- *    فالرتبة الأعلى تفوز أياً كان ترتيب الوصول (SQLite يسلسل الكتابات). status_at وقت ميتا لا وقت الوصول.
+ *    فالرتبة الأعلى تفوز أياً كان ترتيب الوصول (SQLite يسلسل الكتابات). status_at وقت الحدث لا وقت الوصول.
  * 3) التاريخ payload.statusHistory يُلحق في جملة SQL ثانية مستقلة بلا تكرار ({s, t, c}، 12 عنصراً حداً أقصى)،
  *    حتى لو لم تتقدّم الحالة. فشلها لا يمنع تحديث الحالة. يحتاج SQLite 3.31 أو أحدث ('$[#]').
  * 4) عند التقدّم الفعلي وحده: الحدثان WaMessageStatusChanged وWaMessageFailed، وmarkUnserved للبوت والنظام (E07)،
  *    ورفع شارة send_unknown (E19). المفاعل (E18) لكل failed مطابَقة، ومفتاحه wamid يمنع التكرار.
- * لا شيء هنا يرسل إلى ميتا أو يمس أقفال القناة.
+ * لا شيء هنا يرسل إلى البوابة أو يمس أقفال القناة.
  */
 final class StatusApplier
 {
@@ -61,8 +62,7 @@ final class StatusApplier
         if ($ts !== null && $ts > 1_000_000_000_000) {
             $ts = intdiv($ts, 1000);
         }
-        self::apply(array_filter(['id' => mb_substr($id, 0, 128), 'status' => $status, 'timestamp' => $ts]),
-            override: $status === DeliveryStatus::FAILED ? MetaError::local('DELIVERY_FAILED') : null);
+        self::apply(array_filter(['id' => mb_substr($id, 0, 128), 'status' => $status, 'timestamp' => $ts, 'channel_id' => $channel->id]));
     }
 
     public static function apply(array $st, bool $fromOrphan = false, ?MetaError $override = null): void
@@ -87,10 +87,10 @@ final class StatusApplier
             $metaAt = now();
         }
 
-        // ميتا توصي بالبناء على code لا على title: MetaError من الجدول الوحيد (E18)، وdetails لا تُكتب في عمود
+        // MetaError من الجدول الوحيد (E18). failed من البوابة بلا رمز: DELIVERY_FAILED (ولو انتظرت يتيمة)
         $failed = $status === DeliveryStatus::FAILED;
         $code = is_numeric(data_get($st, 'errors.0.code')) ? (int) data_get($st, 'errors.0.code') : null;
-        $err = $override;
+        $err = $override ?? ($failed && !is_array(data_get($st, 'errors.0')) ? MetaError::local('DELIVERY_FAILED') : null);
         if ($err === null && ($failed || $code !== null)) {
             try {
                 $err = MetaError::fromStatusError((array) data_get($st, 'errors.0', []));
@@ -99,11 +99,13 @@ final class StatusApplier
             }
         }
 
-        $row = WaMessage::where('wamid', $wamid)->where('direction', 'out')->first(['id', 'conversation_id', 'source', 'staff_id', 'status', 'wamid']);
-        $byOpaque = false;
+        $channelId = is_numeric(data_get($st, 'channel_id')) ? (int) data_get($st, 'channel_id') : null;
+        $row = WaMessage::where('wamid', $wamid)->where('direction', 'out')
+            ->when($channelId !== null, fn ($q) => $q->where(fn ($w) => $w->where('channel_id', $channelId)->orWhereNull('channel_id')))
+            ->first(['id', 'conversation_id', 'source', 'staff_id', 'status', 'wamid']);
         if (!$row) {
-            // يتيم: إيصال سبق حفظ المعرّف (failed لا تحمل biz_opaque في أمثلة المرجع)
-            if (!$fromOrphan) {
+            // يتيم: إيصال سبق حفظ المعرّف بعد ردّ البوابة. بلا العلم لا يُطبَّق أبداً، فلا يُحفظ
+            if (!$fromOrphan && self::enabled()) {
                 OrphanStatus::remember($wamid, $st);
                 // كُتب المعرّف بين البحث والحفظ (وفرّغ الإرسالُ الكاشَ قبلنا): يُطبَّق الآن. التطبيق المكرر بلا أثر
                 if (WaMessage::where('wamid', $wamid)->where('direction', 'out')->exists()) {
@@ -114,7 +116,7 @@ final class StatusApplier
             return;
         }
 
-        $affected = self::advance($row, $wamid, $status, $metaAt, $err, $code, $byOpaque, $st);
+        $affected = self::advance($row, $status, $metaAt, $err, $code);
 
         try {
             self::appendHistory($row->id, $status, $ts, $err?->metaCode ?? $code);
@@ -134,17 +136,14 @@ final class StatusApplier
     }
 
     /** التحديث الذري المشروط. @return int الصفوف المتأثرة (0: الحالة لم تتقدّم) */
-    private static function advance(WaMessage $row, string $wamid, string $status, Carbon $metaAt, ?MetaError $err, ?int $code, bool $byOpaque, array $st): int
+    private static function advance(WaMessage $row, string $status, Carbon $metaAt, ?MetaError $err, ?int $code): int
     {
-        // queued وunknown لا تأتيان من ميتا: لا تُكتبان ولو فوق فراغ
+        // queued وunknown لا تأتيان من البوابة: لا تُكتبان ولو فوق فراغ
         $from = DeliveryStatus::allowedFrom($status);
         if ($from === []) {
             return 0;
         }
         $cols = ['status' => $status, 'status_at' => $metaAt];
-        if ($byOpaque) {
-            $cols['wamid'] = $wamid;
-        }
 
         $pending = "'".implode("','", self::PENDING)."'";
         if ($status !== DeliveryStatus::FAILED) {
@@ -174,38 +173,6 @@ final class StatusApplier
         return WaMessage::whereKey($row->id)
             ->where(fn ($w) => $w->whereNull('status')->orWhereIn('status', $from))
             ->update($cols);
-    }
-
-    private static ?bool $hasPricing = null;
-
-    /**
-     * كائن pricing من ويبهوك الحالة (E24): جملة مستقلة بعد تحديث الحالة، وأول ظهور هو المعتمد (whereNull)، فلا تكتب
-     * الإعادات ولا حالة لاحقة بفئة أخرى فوقه. يصل مع sent ومع delivered أو read، وبالشكل نفسه قبل v24.0 وبعده (كائن
-     * conversation يُحذف ولا نحتاجه). لا تُحفظ الحمولة الخام هنا (هي في wa_webhook_events، E20). فشلها لا يمس الحالة.
-     * يستدعيه المسار القديم في WhatsAppInbox أيضاً.
-     */
-    public static function capturePricing(array $st, int $messageId): void
-    {
-        $pricing = data_get($st, 'pricing');
-        if (!is_array($pricing) || $pricing === [] || !(self::$hasPricing ??= Schema::hasColumn('wa_messages', 'pricing_category'))) {
-            return;
-        }
-        $text = fn (string $key, int $max) => is_scalar($v = data_get($pricing, $key)) && (string) $v !== ''
-            ? mb_substr(preg_replace('/[^A-Za-z0-9_\-]/', '', (string) $v) ?? '', 0, $max) : null;
-        $cols = [
-            'pricing_billable' => array_key_exists('billable', $pricing) ? filter_var($pricing['billable'], FILTER_VALIDATE_BOOL) : null,
-            'pricing_model' => $text('pricing_model', 16),
-            'pricing_category' => $text('category', 32),
-            'pricing_type' => $text('type', 32),
-        ];
-        if ($cols['pricing_category'] === null && $cols['pricing_billable'] === null) {
-            return;
-        }
-        try {
-            WaMessage::whereKey($messageId)->where('direction', 'out')->whereNull('pricing_category')->whereNull('pricing_billable')->update($cols);
-        } catch (\Throwable $e) {
-            WaLog::error('wa.status.pricing_failed', ['message_id' => $messageId, 'type' => class_basename($e)]);
-        }
     }
 
     /** عنصر {s, t, c} يُلحق بلا تكرار (الحالة نفسها بوقت ميتا نفسه)، بسقف whatsapp.status.history_max */
@@ -260,26 +227,6 @@ final class StatusApplier
         $name = optional(WaConversation::find($conversationId))->noticeLabel() ?? 'العميل';
         NotificationService::send($staffId, '⚠️ لم تصل رسالتك', "لم تصل رسالتك إلى {$name}: {$err->staffMessage}",
             ['type' => 'whatsapp', 'icon' => '⚠️', 'action_url' => "/whatsapp/inbox?conv={$conversationId}"]);
-    }
-
-    /**
-     * صف صادر بلا معرّف بعد (queued أو unknown) تطابقه حالة ميتا برقمه في biz_opaque_callback_data ببادئة هذه النسخة وحدها (E19).
-     * يُقبل إن كان معرّفه فارغاً أو مساوياً. والبادئة الغريبة تُسجَّل وتُترك.
-     */
-    public static function byOpaque(array $st, string $wamid): ?WaMessage
-    {
-        $opaque = (string) data_get($st, 'biz_opaque_callback_data', '');
-        if ($opaque === '' || !preg_match('/^([a-z0-9]+):m:(\d+)$/', $opaque, $m)) {
-            return null;
-        }
-        if ($m[1] !== config('whatsapp.send.opaque_prefix', 'nj')) {
-            WaLog::info('wa.status.foreign_opaque', ['wamid' => $wamid]);
-
-            return null;
-        }
-
-        return WaMessage::where('id', (int) $m[2])->where('direction', 'out')
-            ->where(fn ($q) => $q->whereNull('wamid')->orWhere('wamid', $wamid))->first();
     }
 
     /** لم يبق في المحادثة صف مشكوك فيه: تُرفع شارة send_unknown وحدها، ولا يُمس أي سبب آخر (E19) */
