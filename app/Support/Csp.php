@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Vite;
  * - لا 'unsafe-eval': Vue مبني للتشغيل وحده، وpdf.js يعمل بـ isEvalSupported:false.
  * - لا مضيف خارجي في script-src: pdf.js والخطوط من /build (E26.2، E16.8).
  * - style-src يقبل المضمَّن: مئات خصائص style في القوالب ونمط شريط تقدّم Inertia؛ النمط لا ينفّذ سكربتاً.
- * - connect-src: Reverb على مضيف APP_URL نفسه (wss)، وتسجيل إشعارات Firebase على googleapis.
+ * - connect-src: Reverb على مضيف APP_URL ومضيف الطلب (wss)، وتسجيل إشعارات Firebase على googleapis.
  * الترويسات الثابتة (HSTS وX-Frame-Options وnosniff وReferrer-Policy وPermissions-Policy وCOOP) من nginx لا من هنا.
  */
 final class Csp
@@ -47,9 +47,12 @@ final class Csp
     public static function directives(string $nonce): array
     {
         $connect = ["'self'"];
-        $host = parse_url((string) config('app.url'), PHP_URL_HOST);
-        if (is_string($host) && $host !== '') {
-            $connect[] = 'wss://'.$host;
+        // مضيف APP_URL ومضيف الطلب نفسه: النظام يُخدم من أكثر من نطاق (احتياطي عند تعطل النطاق الأساسي)
+        $hosts = [parse_url((string) config('app.url'), PHP_URL_HOST), app()->runningInConsole() ? null : request()->getHost()];
+        foreach ($hosts as $host) {
+            if (is_string($host) && preg_match('/^[A-Za-z0-9.\-]+$/', $host)) {
+                $connect[] = 'wss://'.$host;
+            }
         }
         $connect[] = 'https://*.googleapis.com';
         foreach ((array) config('csp.connect_extra', []) as $source) {

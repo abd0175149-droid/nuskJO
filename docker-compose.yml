@@ -1,6 +1,6 @@
 # ============================================================
 # NUSKJO — Docker Compose (Production)
-# Port: 4020 → Cloudflare Tunnel → nuskjo.grade.sbs
+# Port: 4020 → Cloudflare Tunnel → nuskjo.masaros.net (الأساسي) وnuskjo.grade.sbs (الاحتياطي)
 # ============================================================
 
 services:
@@ -40,7 +40,7 @@ services:
       - APP_NAME=NUSKJO
       - APP_ENV=production
       - APP_DEBUG=false
-      - APP_URL=https://nuskjo.grade.sbs
+      - APP_URL=${NUSKJO_APP_URL:-https://nuskjo.masaros.net}
       - APP_LOCALE=ar
       - LOG_CHANNEL=stack
       # warning لا error: تحذيرات الواتساب (حدث حساب، توقيع خاطئ) كانت تسقط. يومي بـ 14 يوماً
@@ -78,7 +78,7 @@ services:
       - REVERB_PUBLISH_HOST=${REVERB_PUBLISH_HOST:-127.0.0.1}
       - REVERB_PUBLISH_PORT=${REVERB_PUBLISH_PORT:-8080}
       - REVERB_PUBLISH_SCHEME=${REVERB_PUBLISH_SCHEME:-http}
-      - REVERB_ALLOWED_ORIGINS=${REVERB_ALLOWED_ORIGINS:-nuskjo.grade.sbs}
+      - REVERB_ALLOWED_ORIGINS=${REVERB_ALLOWED_ORIGINS:-nuskjo.masaros.net,nuskjo.grade.sbs}
       # بوابة واتساب (nuskjo-openwa) داخل شبكة compose. المفتاح الرئيس للإدارة فقط (إنشاء الجلسات ومفاتيحها
       # والـ webhooks)؛ كل إرسال وقراءة بمفتاح الرقم المحصور بجلسته (wa_channels.api_key)
       - OPENWA_URL=http://nuskjo-openwa:2785

@@ -9,7 +9,8 @@ if (key) {
     window.Echo = new Echo({
         broadcaster: 'reverb',
         key: key,
-        wsHost: import.meta.env.VITE_REVERB_HOST,
+        // مضيف الصفحة نفسها ما لم يُضبط VITE_REVERB_HOST: النظام يعمل على أكثر من نطاق
+        wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
         wsPort: import.meta.env.VITE_REVERB_PORT ?? 443,
         wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
         forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
