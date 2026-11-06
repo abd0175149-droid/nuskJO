@@ -28,20 +28,20 @@ class InvoiceWhatsAppController extends Controller
 {
     use QueuesWhatsAppFiles;
 
-    private const NO_TARGETS = 'لا توجد محادثة واتساب مفتوحة النافذة لهذا العميل — اطلب منه مراسلتنا أولاً (لا نستخدم القوالب).';
+    private const NO_TARGETS = 'لا توجد محادثة واتساب لهذا العميل بعد. الفاتورة المعتمدة تصله آلياً من رسائل النظام إن كان رقمه مسجلاً.';
 
-    /** محادثات عميل الفاتورة المرئية للموظف: الاسم وآخر 4 أرقام والنافذة. بلا رقم كامل */
+    /** محادثات عميل الفاتورة المرئية للموظف: الاسم وآخر 4 أرقام ورقمنا وهل هو متصل. بلا رقم كامل */
     public function targets(Request $request, Invoice $invoice)
     {
         $this->authorizeSend($request->user());
-        $rows = self::conversations($invoice, $request->user())->orderByDesc('last_inbound_at')->limit(10)->get();
+        $rows = self::conversations($invoice, $request->user())->orderByDesc('last_message_at')->limit(10)->get();
         $targets = $rows->map(fn (WaConversation $c) => [
             'conversation_id' => $c->id,
             'name' => $c->label(),
             'last4' => $c->hasPhone() ? substr(PhoneNormalizer::digits($c->phone), -4) : null,
             'client_code' => $c->client?->code,
-            'window_open' => $c->isWindowOpen(),
-            'window_left' => $c->windowMinutesLeft(),
+            'reachable' => (bool) WhatsAppChannel::channelFor($c)?->isReady(),
+            'channel' => WhatsAppChannel::channelFor($c)?->name,
         ])->values();
 
         return response()->json([
@@ -49,7 +49,7 @@ class InvoiceWhatsAppController extends Controller
             'sendable' => self::sendable($invoice),
             'filename' => InvoicePdfService::filename($invoice),
             'caption' => InvoicePdfService::defaultCaption($invoice),
-            'message' => $targets->contains('window_open', true) ? null : self::NO_TARGETS,
+            'message' => $targets->contains('reachable', true) ? null : self::NO_TARGETS,
         ]);
     }
 

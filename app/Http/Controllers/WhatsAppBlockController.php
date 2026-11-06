@@ -175,7 +175,6 @@ class WhatsAppBlockController extends Controller
             'meta_state' => $b->meta_state,
             'meta_checked_at' => $b->meta_checked_at?->toIso8601String(),
             'meta_error_code' => $b->meta_error_code,
-            'window_open' => $conv?->isWindowOpen() ?? false,
             'unblocked_at' => $b->unblocked_at?->toIso8601String(),
             'unblocked_by' => $b->unblocker?->name,
             'unblock_reason' => $b->unblock_reason,

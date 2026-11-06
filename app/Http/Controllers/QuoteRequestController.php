@@ -87,7 +87,7 @@ class QuoteRequestController extends Controller
             'quoted_at' => $r->quoted_at?->format('Y-m-d H:i'),
             'created_at' => $r->created_at?->format('Y-m-d H:i'),
             'conversation_id' => $r->conversation_id,
-            'window_open' => $r->conversation?->isWindowOpen() ?? false,
+            'reachable' => $r->conversation !== null && (bool) \App\Services\WhatsApp\WhatsAppChannel::channelFor($r->conversation)?->isReady(),
             // طلب حجز عرض: اختيار العميل منظّماً من حمولة البوت، والتحويل لفاتورة عرض
             'offer_id' => $r->offer_id,
             'selection' => self::selectionText($r),

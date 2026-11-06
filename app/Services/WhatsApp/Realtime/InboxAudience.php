@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  * من يرى المحادثة الآن (E28): المستلمون لحدث البث، بقواعد سياج E04 نفسها (TopicRouter::scopeVisible وأسواره الثلاثة):
  * - موظف نشط يملك whatsapp.view (المسارات تفرضها)؛
  * - محادثة الإدارة لمن يملك whatsapp.admin_chats وحده، بالقيد نفسه في SQL (TopicRouter::isAdminChat)؛
- * - الأرقام المسموحة (allowedNumberIds)؛
+ * - أرقام واتساب المسموحة له (allowedNumberIds، wa_channel_users)؛
  * - ثم view_all، أو التوكيل، أو وسم من اختصاصه.
  * صيغة مجمّعة (نحو ثلاثة استعلامات للمحادثة، والمرشحون مرة للدفعة) بدل canSee لكل مستخدم، وبلا كاش: السحب فوري.
  * أي تغيير في السياج يتبعه تغيير هنا، ويفرضه InboxAudienceParityTest مقابل canSee.
@@ -59,7 +59,7 @@ final class InboxAudience
             if ($adminChat && !$u['admin']) {
                 continue;
             }
-            if ($u['numbers'] !== null && !in_array($conversation->phone_number_id, $u['numbers'], false)) {
+            if ($u['numbers'] !== null && !in_array((int) $conversation->channel_id, $u['numbers'], true)) {
                 continue;
             }
             if ($u['all'] || $assignee === $u['id'] || isset($specialists[$u['id']])) {

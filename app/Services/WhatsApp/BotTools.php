@@ -214,12 +214,42 @@ class BotTools
             'rules' => ['kind' => 'required|string|in:category,offer_option,room_type,booking_actions', 'offer_id' => 'nullable|integer|min:1',
                 'option_ref' => 'nullable|string|max:64'],
         ],
-        'send_quote_form' => [
-            'label' => 'نموذج طلب التسعير داخل واتساب', 'handler' => 'sendQuoteForm', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
-            'escalates' => false, 'disableable' => true, 'default_enabled' => false, 'flag' => 'quote_flow',
-            'description' => 'أرسل للعميل نموذجاً قصيراً لطلب التسعير يعبّئه داخل واتساب (المسار والتواريخ وعدد المسافرين). '
-                .'استعملها حين يريد العميل سعراً لرحلة طيران أو خدمة بدل طرح الأسئلة واحداً واحداً. الكتابة تبقى ممكنة، وrequest_quote بديلها الحواري.',
+        // OpenWA (2026-11-06): أدوات خمس جديدة، وكلها مقيّدة بملف المرسل (Bot\ToolPolicy) وبـ financialClientId للمحادثة
+        'get_my_quote_status' => [
+            'label' => 'حالة طلبات التسعير', 'handler' => 'quoteStatus', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'حالة طلبات التسعير الأخيرة لهذا العميل (قيد التسعير أو سُعّر). استدعِها إذا سأل «وين وصل طلبي» أو عن السعر الذي أرسلناه.',
             'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'resend_invoice_pdf' => [
+            'label' => 'إرسال نسخة الفاتورة PDF', 'handler' => 'resendInvoice', 'tier' => 'write', 'destructive' => false, 'idempotent' => false,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'أرسل للعميل نسخة PDF من فاتورته المعتمدة (آخر فاتورة، أو برقمها إن ذكره). لعميل مربوط بالهاتف وحده، وثلاث مرات في اليوم على الأكثر.',
+            'properties' => ['invoice_number' => ['type' => 'string', 'description' => 'رقم الفاتورة إن ذكره العميل', 'maxLength' => 40]],
+            'required' => [], 'rules' => ['invoice_number' => 'nullable|string|max:40'],
+        ],
+        'get_trip_details' => [
+            'label' => 'تفاصيل رحلة العميل', 'handler' => 'tripDetails', 'tier' => 'read', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'تفاصيل رحلة العميل القادمة أو الجارية: التاريخان والوجهة والعرض وفنادقه. استدعِها إذا سأل عن موعد سفره أو فندقه أو برنامج رحلته.',
+            'properties' => [], 'required' => [], 'rules' => [],
+        ],
+        'report_issue' => [
+            'label' => 'بلاغ مشكلة أثناء الرحلة ← تحويل عاجل', 'handler' => 'reportIssue', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => false,
+            'escalates' => true, 'disableable' => true,
+            'description' => 'العميل في رحلته ويواجه مشكلة (السكن، المواصلات، فقدان، صحة، تأخير). استدعِها فوراً بملخص قصير: تُبلَّغ الإدارة حالاً ويُحوَّل لموظف.',
+            'properties' => ['summary' => ['type' => 'string', 'description' => 'ملخص المشكلة بكلمات العميل', 'maxLength' => 300]],
+            'required' => ['summary'], 'rules' => ['summary' => 'required|string|max:300'],
+        ],
+        'manage_my_notifications' => [
+            'label' => 'إيقاف رسائل النظام أو تشغيلها', 'handler' => 'notifications', 'tier' => 'write', 'destructive' => false, 'idempotent' => true,
+            'escalates' => false, 'disableable' => true,
+            'description' => 'إذا طلب العميل إيقاف الرسائل الآلية (التذكيرات والفواتير) أو إعادتها، أو سأل عمّا هو موقوف. group اختياري: invoice أو trip أو quote أو lead.',
+            'properties' => [
+                'action' => ['type' => 'string', 'enum' => ['mute', 'unmute', 'status']],
+                'group' => ['type' => 'string', 'enum' => ['invoice', 'trip', 'quote', 'lead']],
+            ],
+            'required' => ['action'], 'rules' => ['action' => 'required|string|in:mute,unmute,status', 'group' => 'nullable|string|in:invoice,trip,quote,lead'],
         ],
         'handoff_to_human' => [
             'label' => 'تحويل لموظف', 'handler' => 'handoff', 'tier' => 'escalating', 'destructive' => false, 'idempotent' => true,
@@ -302,8 +332,11 @@ class BotTools
     public static function declarations(WaBotSetting $s, WaConversation $conv): array
     {
         $out = [];
+        // ملف المرسل × وضع البوت على رقم المحادثة (2026-11-06): ما لا يحق له لا يُعلن، وToolInvoker يرفض غير المعلن
+        $profile = Bot\SenderProfile::for($conv);
+        $mode = (string) (WhatsAppChannel::channelFor($conv)?->bot_mode ?? 'full');
         foreach (self::TOOLS as $name => $t) {
-            if (!self::isEnabled($s, $name)) {
+            if (!self::isEnabled($s, $name) || !Bot\ToolPolicy::allowed($name, $profile === 'admin' ? 'client' : $profile, $mode)) {
                 continue;
             }
             $props = $t['properties'];
@@ -346,6 +379,31 @@ class BotTools
         }
 
         return self::{$handler}($in, $conv);
+    }
+
+    private static function quoteStatus(array $in, WaConversation $conv): array
+    {
+        return Bot\ExtraTools::quoteStatus($in, $conv);
+    }
+
+    private static function resendInvoice(array $in, WaConversation $conv): array
+    {
+        return Bot\ExtraTools::resendInvoice($in, $conv);
+    }
+
+    private static function tripDetails(array $in, WaConversation $conv): array
+    {
+        return Bot\ExtraTools::tripDetails($in, $conv);
+    }
+
+    private static function reportIssue(array $in, WaConversation $conv): array
+    {
+        return Bot\ExtraTools::reportIssue($in, $conv);
+    }
+
+    private static function notifications(array $in, WaConversation $conv): array
+    {
+        return Bot\ExtraTools::notifications($in, $conv);
     }
 
     private static function getOffers(array $in, WaConversation $conv): array
@@ -635,11 +693,6 @@ class BotTools
     private static function presentChoices(array $in, WaConversation $conv): array
     {
         return InteractiveReply::presentChoices($in, $conv);
-    }
-
-    private static function sendQuoteForm(array $in, WaConversation $conv): array
-    {
-        return InteractiveReply::sendQuoteForm($in, $conv);
     }
 
     private static function getBalance(array $in, WaConversation $conv): array

@@ -44,15 +44,10 @@ final class InboxFollowup
         return self::available() ? ['closed_at' => null, 'closed_by' => null, 'snoozed_until' => null, 'snoozed_by' => null] : [];
     }
 
-    /** آخر موعد تأجيل ممكن، أو null إن كانت النافذة مغلقة أو أقصر من الحد الأدنى */
+    /** آخر موعد تأجيل ممكن: 30 يوماً (لا نافذة 24 ساعة منذ OpenWA، فالرد ممكن متى عاد الموظف) */
     public static function snoozeLimit(WaConversation $c): ?Carbon
     {
-        if (!$c->isWindowOpen()) {
-            return null;
-        }
-        $limit = $c->last_inbound_at->copy()->addDay()->subMinutes(self::SNOOZE_MARGIN_MINUTES);
-
-        return $limit->gte(now()->addMinutes(self::SNOOZE_MIN_MINUTES)) ? $limit : null;
+        return now()->addDays(30);
     }
 
     /** @return list<int> */

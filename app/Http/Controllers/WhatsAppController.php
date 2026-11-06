@@ -23,10 +23,8 @@ class WhatsAppController extends Controller
         $s = WaBotSetting::current();
         $page = $this->conversationPage($request);
 
-        // الصندوق الجديد (E16) خلف العلم inbox_v2، ويجرّبه المدير قبل التفعيل بـ ?v2=1. القديم للتراجع أسبوعين
-        $v2 = \App\Support\FeatureFlags::on('inbox_v2') || ($request->boolean('v2') && auth()->user()->isAdmin());
-
-        return Inertia::render($v2 ? 'WhatsApp/Inbox' : 'WhatsApp/InboxLegacy', [
+        // الصندوق الجديد (E16) وحده منذ OpenWA (2026-11-06): القديم كان يقوم على نافذة الـ24 ساعة فأُزيل
+        return Inertia::render('WhatsApp/Inbox', [
             'title' => 'محادثات الواتساب',
             'conversations' => $page['items'],
             'listMeta' => ['has_more' => $page['has_more'], 'next_cursor' => $page['next_cursor']],
@@ -281,8 +279,7 @@ class WhatsAppController extends Controller
             // للترتيب والدمج في الواجهة (E16): الاستطلاع يعيد الصفحة الأولى فقط
             'sort_ts' => (int) $c->last_message_at?->timestamp,
             'last_type' => $c->last_type,
-            'window_open' => $c->isWindowOpen(),
-            'window_left' => $c->windowMinutesLeft(),
+            'channel_id' => $c->channel_id,
             'is_admin' => (bool) $c->is_admin_chat || ($c->phone !== null && isset($adminPhones[$c->phone])),
             'blocked' => $c->isBlocked(),
             'assignee' => $c->assignee?->name,
@@ -362,7 +359,7 @@ class WhatsAppController extends Controller
         if ($ledger) {
             array_push($columns, 'attempts', 'payload');
         }
-        $canResend = $ledger && $user->can('whatsapp.reply') && $conversation->isWindowOpen();
+        $canResend = $ledger && $user->can('whatsapp.reply');
         // الترجمة عند الطلب (E29): المخزّنة وقابلية الترجمة ووسم الصادر المترجم، من الحمولة في الخادم وحده
         $translate = \App\Services\WhatsApp\MessageTranslator::enabled();
         if ($translate && !in_array('payload', $columns, true)) {
@@ -537,8 +534,9 @@ class WhatsAppController extends Controller
                 'needs_attention' => (bool) $conversation->needs_attention,
                 'attention_reason' => $conversation->attention_reason,
                 'unread' => (int) $conversation->unread_count,
-                'window_open' => $conversation->isWindowOpen(),
-                'window_left' => $conversation->windowMinutesLeft(),
+                // رقم المحادثة على البوابة: الرد يخرج منه، ويتعطل الكاتب إن لم يكن متصلاً (لا نافذة 24 ساعة منذ OpenWA)
+                'reachable' => (bool) WhatsAppChannel::channelFor($conversation)?->isReady(),
+                'channel' => ($ch = WhatsAppChannel::channelFor($conversation)) ? ['id' => $ch->id, 'name' => $ch->name, 'color' => $ch->color, 'ready' => $ch->isReady()] : null,
                 'is_admin' => (bool) $conversation->is_admin_chat || ($conversation->hasPhone() && (bool) \App\Models\WaAdminNumber::forPhone($conversation->phone)),
                 'topics' => TopicRouter::topicsOf($conversation),
                 'assignee' => $conversation->assignee?->name,
@@ -1018,10 +1016,6 @@ class WhatsAppController extends Controller
         $conv = \App\Services\WhatsApp\TestSend::conversationFor($number);
         if (!$conv) {
             return response()->json(['ok' => false, 'code' => 'NO_CONVERSATION', 'error' => 'لا محادثة لهذا الرقم بعد — اطلب من صاحبه مراسلة رقم الشركة أولاً.'], 422);
-        }
-        if (!$conv->isWindowOpen()) {
-            return response()->json(['ok' => false, 'code' => WhatsAppChannel::ERR_WINDOW,
-                'error' => 'اطلب من صاحب الرقم مراسلة رقم الشركة أولاً — لا نرسل خارج نافذة 24 ساعة ولا قوالب.'], 422);
         }
 
         $limit = (int) config('whatsapp.monitor.test_send_per_hour', 10);

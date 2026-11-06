@@ -143,7 +143,7 @@ class WhatsAppQuickReplyController extends Controller
         $reply = WaQuickReply::usable()->findOrFail($id);
 
         return response()->json(QuickReplyRenderer::render($reply, $conversation, auth()->user()) + [
-            'window_open' => $conversation->isWindowOpen(),
+            'reachable' => (bool) \App\Services\WhatsApp\WhatsAppChannel::channelFor($conversation)?->isReady(),
         ]);
     }
 }

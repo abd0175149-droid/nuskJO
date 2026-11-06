@@ -98,7 +98,7 @@ export function useInbox(props, thread) {
     const draft = computed({ get: () => drafts.get(s.activeId), set: (t) => drafts.set(s.activeId, t) });
     const mode = computed(() => s.thread?.identity_mode || props.identityMode);
     const cannotReachPhoneless = computed(() => !!s.thread?.phoneless && mode.value === 'store');
-    const canRequestPhone = computed(() => props.canReply && !!s.thread?.phoneless && !!s.thread?.window_open && mode.value !== 'store');
+    const canRequestPhone = computed(() => props.canReply && !!s.thread?.phoneless && !!s.thread?.reachable && mode.value !== 'store');
 
     // ملفات الموظف (E32): فقاعات متفائلة بمفتاح لكل محاولة، والرفع إلى ميتا في طابور الخادم
     const outbox = createOutbox({
@@ -467,7 +467,6 @@ export function useInbox(props, thread) {
                 if (s.activeId === id) poll();
             }
             // ميتا أغلقت النافذة (131047): المنشئ يُعطَّل بشرح النافذة نفسه، والمسودة باقية
-            if (e?.response?.data?.category === 'window' && s.activeId === id && s.thread) s.thread.window_open = false;
             // مهلة ميتا (503): قد تكون وصلت، فالخيط يُحدَّث ليظهر صفها «غير مؤكد»
             if (e?.response?.status === 503 && s.activeId === id) poll();
         } finally {

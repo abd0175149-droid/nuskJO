@@ -161,11 +161,11 @@
           </div>
 
           <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer"
-                 :class="target.window_open ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-60'">
-            <input type="checkbox" v-model="pForm.send_to_client" :disabled="!target.window_open" class="mt-0.5 rounded text-gold-500"/>
+                 :class="target.reachable ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-60'">
+            <input type="checkbox" v-model="pForm.send_to_client" :disabled="!target.reachable" class="mt-0.5 rounded text-gold-500"/>
             <span class="text-sm">
               <b>إرسال السعر للعميل على واتساب الآن</b>
-              <span v-if="target.window_open" class="block text-xs text-gray-500 mt-0.5">سيُرسل باسمك كرسالة موظف، ويوقف البوت مؤقتاً في هذه المحادثة.</span>
+              <span v-if="target.reachable" class="block text-xs text-gray-500 mt-0.5">سيُرسل باسمك كرسالة موظف، ويوقف البوت مؤقتاً في هذه المحادثة.</span>
               <span v-else class="block text-xs text-red-600 mt-0.5">⚠️ انتهت نافذة 24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد. سيُحفظ السعر فقط.</span>
             </span>
           </label>
@@ -253,7 +253,7 @@ const openPrice = (r) => {
   pForm.clearErrors();
   pForm.quoted_price_jod = r.quoted_price_jod;
   pForm.quoted_note = r.quoted_note || '';
-  pForm.send_to_client = !!r.window_open;
+  pForm.send_to_client = !!r.reachable;
   pForm.confirm_resend = false;
 };
 

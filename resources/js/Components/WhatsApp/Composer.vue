@@ -3,13 +3,10 @@
     <div v-if="$props.blocked" class="mb-2 text-xs font-bold text-red-700 dark:text-red-300" data-test="blocked-note">
       ⛔ هذا العميل محظور على واتساب: لا يمكن مراسلته. يفك الحظر من يملك صلاحية الحظر.
     </div>
-    <div v-else-if="!windowOpen" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
-      ⚠️ انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد.
+    <div v-else-if="!windowOpen" class="mb-2 text-xs text-amber-700 dark:text-amber-400" data-test="channel-down-note">
+      📵 رقم واتساب لهذه المحادثة غير متصل الآن{{ channelName ? ` («${channelName}»)` : '' }}. افتح صفحة الأرقام، أو انتظر عودته.
     </div>
-    <div v-else-if="urgency(windowLeft) === 'warn' || urgency(windowLeft) === 'danger'" class="mb-2 text-xs font-bold"
-         :class="urgency(windowLeft) === 'danger' ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'">
-      ⏳ تبقّى {{ windowLabel(windowLeft) }} للرد على هذا العميل، وبعدها لا يمكن مراسلته حتى يكتب لنا من جديد.
-    </div>
+    <p v-else-if="channelName" class="mb-1 text-[11px] text-gray-400" data-test="send-from">يُرسل من: {{ channelName }}</p>
     <div v-if="cannotReachPhoneless" class="mb-2 text-xs text-amber-700 dark:text-amber-400">
       📵 رقم العميل غير ظاهر، والرد بالمعرّف غير مفعّل (وضع «حفظ فقط»). يفعّله المدير من إعدادات الواتساب.
     </div>
@@ -76,13 +73,13 @@ import EmojiPicker from './EmojiPicker.vue';
 import SendFileConfirm from './SendFileConfirm.vue';
 import VoiceRecorder from './VoiceRecorder.vue';
 import { clock, voiceSupported } from '@/composables/whatsapp/useVoiceRecorder.js';
-import { urgency, windowLabel } from '@/composables/whatsapp/useWindowCountdown.js';
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   canReply: Boolean,
+  // رقم المحادثة متصل (thread.reachable): لا نافذة 24 ساعة منذ OpenWA، والكاتب يتعطل إن انقطع الرقم وحده
   windowOpen: Boolean,
-  windowLeft: { type: Number, default: null },
+  channelName: { type: String, default: null },
   sending: Boolean,
   error: { type: String, default: '' },
   // E28: «قد تكون أُرسلت»، والإرسال معطّل 10 ثوانٍ بعدها حتى يُراجع الخيط

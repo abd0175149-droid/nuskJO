@@ -17,17 +17,17 @@ class AppServiceProvider extends ServiceProvider
         // البث اللحظي للصندوق (E28): طلب واحد أو وظيفة واحدة، فتُجمَّع لمسات المحادثة نفسها في حدث واحد
         $this->app->scoped(\App\Services\WhatsApp\Realtime\InboxBroadcaster::class);
 
-        // الناقل إلى ميتا (E23): cloud دائماً في الإنتاج. log (بلا شبكة) للاختبار والتطوير المحلي، ويُرفض في production
-        // ولا يُطبَّق، بلا كسر الإقلاع: يُربط Cloud ويُكتب سطر حرج، وwhatsapp:doctor يعلّمه خطأً
-        $this->app->singleton(\App\Services\WhatsApp\Transport\WhatsAppTransport::class, function ($app) {
-            if (config('whatsapp.transport', 'cloud') === 'log') {
+        // الناقل إلى بوابة OpenWA (2026-11-06): openwa دائماً في الإنتاج. log (بلا شبكة) للاختبار والتطوير المحلي، ويُرفض
+        // في production ولا يُطبَّق، بلا كسر الإقلاع: يُربط OpenWA ويُكتب سطر حرج، وwhatsapp:doctor يعلّمه خطأً
+        $this->app->singleton(\App\Services\WhatsApp\Transport\ChannelTransport::class, function ($app) {
+            if (config('whatsapp.transport', 'openwa') === 'log') {
                 if (!$app->environment('production')) {
                     return new \App\Services\WhatsApp\Transport\LogTransport;
                 }
                 \Illuminate\Support\Facades\Log::critical('wa.transport_log_refused_in_production');
             }
 
-            return new \App\Services\WhatsApp\Transport\CloudApiTransport;
+            return new \App\Services\WhatsApp\OpenWa\OpenWaTransport;
         });
     }
 
@@ -69,6 +69,11 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\ExpenseCategory::observe(\App\Observers\ExpenseCategoryObserver::class);
 
         \App\Models\Account::observe(\App\Observers\AccountObserver::class);
+
+        // رسائل النظام على واتساب (2026-11-06): أحداث الفواتير والسندات والعملاء والطلبات إلى طابور wa_outbox بعد الاعتماد
+        foreach ([\App\Models\Invoice::class, \App\Models\Receipt::class, \App\Models\Client::class, \App\Models\QuoteRequest::class] as $model) {
+            $model::observe(\App\Observers\WhatsAppSystemObserver::class);
+        }
 
         // HR Observers
         \App\Models\Employee::observe(\App\Observers\EmployeeObserver::class);

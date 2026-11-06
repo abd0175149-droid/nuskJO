@@ -28,6 +28,8 @@ class WaConversation extends Model
         'closed_at', 'closed_by', 'snoozed_until', 'snoozed_by', 'marked_unread_at', 'marked_unread_by',
         // E35: أعلى وارد أُبلغت ميتا بقراءته (يتقدّم ولا يتراجع، ReadReceipts::advance)
         'read_receipt_upto_id',
+        // OpenWA (2026-11-06): رقمنا الذي تجري عليه المحادثة، ومعرّف المحادثة على البوابة، ومعرّف الخصوصية
+        'channel_id', 'jid', 'lid',
     ];
 
     // is_admin_chat في casts لا في fillable: يضبطه WaAdminNumber وحده (علَم لاصق)
@@ -90,6 +92,7 @@ class WaConversation extends Model
     }
 
     public function messages(): HasMany { return $this->hasMany(WaMessage::class, 'conversation_id'); }
+    public function channel(): BelongsTo { return $this->belongsTo(WaChannel::class, 'channel_id'); }
     public function notes(): HasMany { return $this->hasMany(WaCustomerNote::class, 'conversation_id'); }
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
     public function assignee(): BelongsTo { return $this->belongsTo(User::class, 'assigned_to'); }
@@ -138,22 +141,6 @@ class WaConversation extends Model
             ?: $this->wa_profile_name
             ?: ($this->wa_username ? '@'.$this->wa_username : null)
             ?: 'محادثة #'.$this->id;
-    }
-
-    /** نافذة ميتا: 24 ساعة من آخر رسالة واردة */
-    public function isWindowOpen(): bool
-    {
-        return $this->last_inbound_at && $this->last_inbound_at->gt(now()->subDay());
-    }
-
-    /** الدقائق الباقية قبل إغلاق النافذة — null إن كانت مغلقة */
-    public function windowMinutesLeft(): ?int
-    {
-        if (!$this->isWindowOpen()) {
-            return null;
-        }
-
-        return (int) max(0, now()->diffInMinutes($this->last_inbound_at->copy()->addDay(), false));
     }
 
     /** محظورة رسمياً عند ميتا (E31). قبل الهجرة 2026_10_14_000031 لا عمود، فالقيمة null دائماً */

@@ -169,6 +169,36 @@ Route::middleware(['auth', 'auth.session', 'active', 'mfa', 'authz.fence'])->gro
     Route::get('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'routing'])->name('whatsapp.routing')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/routing', [\App\Http\Controllers\WhatsAppController::class, 'saveRouting'])->name('whatsapp.routing.save')->middleware('perm:whatsapp.settings');
     // إعدادات البوت (E10): حفظ جزئي برمز نسخة، وإيقاف طارئ بسبب، وأسرار لا تعود للمتصفح
+    // أرقام واتساب على بوابة OpenWA (2026-11-06): الإضافة والربط والحالة والأوامر (whatsapp.channels)
+    Route::get('whatsapp/channels', [\App\Http\Controllers\WhatsAppChannelController::class, 'index'])->name('whatsapp.channels')->middleware('perm:whatsapp.channels');
+    Route::get('api/whatsapp/channels', [\App\Http\Controllers\WhatsAppChannelController::class, 'list'])->middleware('perm:whatsapp.channels');
+    Route::post('api/whatsapp/channels', [\App\Http\Controllers\WhatsAppChannelController::class, 'store'])->middleware(['perm:whatsapp.channels', 'throttle:10,1']);
+    Route::patch('api/whatsapp/channels/{channel}', [\App\Http\Controllers\WhatsAppChannelController::class, 'update'])->middleware('perm:whatsapp.channels');
+    Route::get('api/whatsapp/channels/{channel}/qr', [\App\Http\Controllers\WhatsAppChannelController::class, 'qr'])->middleware(['perm:whatsapp.channels', 'throttle:60,1']);
+    Route::post('api/whatsapp/channels/{channel}/pairing', [\App\Http\Controllers\WhatsAppChannelController::class, 'pairing'])->middleware(['perm:whatsapp.channels', 'throttle:6,1']);
+    Route::get('api/whatsapp/channels/{channel}/events', [\App\Http\Controllers\WhatsAppChannelController::class, 'events'])->middleware('perm:whatsapp.channels');
+    Route::post('api/whatsapp/channels/{channel}/{command}', [\App\Http\Controllers\WhatsAppChannelController::class, 'command'])
+        ->whereIn('command', ['start', 'restart', 'stop', 'logout', 'repair', 'pause', 'resume', 'reset_breaker'])->middleware(['perm:whatsapp.channels', 'throttle:20,1']);
+    Route::delete('api/whatsapp/channels/{channel}', [\App\Http\Controllers\WhatsAppChannelController::class, 'destroy'])->middleware(['perm:whatsapp.channels', 'throttle:6,1']);
+    // رسائل النظام وحدود الإرسال وطابوره وصلاحيات أدوات البوت (2026-11-06)
+    Route::get('whatsapp/system-messages', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'index'])->name('whatsapp.system-messages')->middleware('perm:whatsapp.settings');
+    Route::patch('api/whatsapp/system-messages-settings', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'settings'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::patch('api/whatsapp/system-messages/{key}', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'update'])->where('key', '[a-z]+\.[a-z_]+')->middleware('perm:whatsapp.settings');
+    Route::post('api/whatsapp/system-messages/{key}/preview', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'preview'])->where('key', '[a-z]+\.[a-z_]+')->middleware(['perm:whatsapp.settings', 'throttle:30,1']);
+    Route::post('api/whatsapp/system-messages/{key}/test', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'test'])->where('key', '[a-z]+\.[a-z_]+')->middleware(['perm:whatsapp.settings', 'throttle:10,1']);
+    Route::post('api/whatsapp/system-messages/{key}/stage', [\App\Http\Controllers\WhatsAppSystemMessageController::class, 'stage'])->where('key', '[a-z]+\.[a-z_]+')->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::get('whatsapp/limits', [\App\Http\Controllers\WhatsAppLimitsController::class, 'index'])->name('whatsapp.limits')->middleware('perm:whatsapp.settings');
+    Route::put('api/whatsapp/limits', [\App\Http\Controllers\WhatsAppLimitsController::class, 'upsert'])->middleware(['perm:whatsapp.settings', 'throttle:60,1']);
+    Route::put('api/whatsapp/limits/ladder', [\App\Http\Controllers\WhatsAppLimitsController::class, 'ladder'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::put('api/whatsapp/limits/warmup/{channel}', [\App\Http\Controllers\WhatsAppLimitsController::class, 'warmup'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::get('whatsapp/outbox', [\App\Http\Controllers\WhatsAppOutboxController::class, 'index'])->name('whatsapp.outbox')->middleware('perm:whatsapp.outbox');
+    Route::get('api/whatsapp/outbox', [\App\Http\Controllers\WhatsAppOutboxController::class, 'data'])->middleware(['perm:whatsapp.outbox', 'throttle:60,1']);
+    Route::post('api/whatsapp/outbox/{outbox}/{action}', [\App\Http\Controllers\WhatsAppOutboxController::class, 'action'])
+        ->whereIn('action', ['send_now', 'cancel', 'retry', 'approve'])->middleware(['perm:whatsapp.outbox', 'throttle:60,1']);
+    Route::get('whatsapp/bot-permissions', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'index'])->name('whatsapp.bot-permissions')->middleware('perm:whatsapp.settings');
+    Route::put('api/whatsapp/bot-policy', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'update'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+    Route::put('api/whatsapp/bot-policy/channels/{channel}', [\App\Http\Controllers\WhatsAppBotPolicyController::class, 'channel'])->middleware(['perm:whatsapp.settings', 'throttle:20,1']);
+
     Route::get('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'show'])->name('whatsapp.settings')->middleware('perm:whatsapp.settings');
     Route::patch('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'update'])->name('whatsapp.settings.patch')->middleware('perm:whatsapp.settings');
     Route::put('whatsapp/settings', [\App\Http\Controllers\WhatsAppSettingsController::class, 'legacyUpdate'])->name('whatsapp.settings.update')->middleware('perm:whatsapp.settings');

@@ -234,6 +234,12 @@ return [
         'max_caption' => 1024,
     ],
 
+    // قاطع إخفاقات الرقم (Sending\FailureBreaker): إخفاقات متتالية على مستوى الرقم توقفه هذه الدقائق
+    'breaker' => [
+        'threshold' => (int) env('WA_BREAKER_THRESHOLD', 5),
+        'cooldown_minutes' => (int) env('WA_BREAKER_COOLDOWN_MINUTES', 15),
+    ],
+
     // المراقب الدوري وأدوات التشخيص (E23، docs/whatsapp/diagnostics.md). العلم channel_monitor يقرر القراءات الإضافية
     'monitor' => [
         // حقول ويبهوك ميتا التي يجب أن يكون تطبيقنا مشتركاً فيها (قائمة E22 مع user_preferences من E21)

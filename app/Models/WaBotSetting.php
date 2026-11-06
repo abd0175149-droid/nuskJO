@@ -253,7 +253,8 @@ class WaBotSetting extends Model
             : config('services.llm.google_key');
     }
 
-    public function channelReady(): bool { return !empty($this->token()) && !empty($this->phoneNumberId()); }
+    /** في النظام رقم واتساب واحد على الأقل فعّال ومربوط على البوابة (2026-11-06). جاهزية رقم بعينه: WaChannel::isReady */
+    public function channelReady(): bool { return WaChannel::anyLinked(); }
     public function botReady(): bool { return $this->enabled && $this->channelReady() && !empty($this->llmKey()); }
 
     public function flag(string $key): bool

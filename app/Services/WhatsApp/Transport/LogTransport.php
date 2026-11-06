@@ -2,6 +2,8 @@
 
 namespace App\Services\WhatsApp\Transport;
 
+use App\Models\WaChannel;
+use App\Services\WhatsApp\OpenWa\OpenWaResponse;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
@@ -9,27 +11,28 @@ use Illuminate\Support\Str;
 
 /**
  * ناقل بلا شبكة للاختبار والتطوير المحلي فقط (WA_TRANSPORT=log). لا يُربط في production أبداً (AppServiceProvider
- * يربط CloudApiTransport ويكتب Log::critical، وwhatsapp:doctor يعلّمه خطأ).
+ * يربط OpenWaTransport ويكتب Log::critical، وwhatsapp:doctor يعلّمه خطأ).
  *
- * - الإرسال (POST …/messages) يعيد 200 بمعرّف wamid.LOG.{ulid}، فتمر الرسالة بالأقفال والسياسة والدفتر كما هي.
- * - القراءة (GET) تعيد ردوداً ثابتة من tests/Fixtures/graph/*.json إن وُجدت، وإلا {} بـ 200.
- * - يحفظ آخر 50 طلباً في الذاكرة (requests) لفحصها، ويسجّل الطريقة والمسار وحدهما بلا جسم ولا رمز.
+ * - الإرسال (POST …/messages/send-* و react) يعيد 201 بمعرّف true_{chatId}_LOG{ulid}، فتمر الرسالة بالأقفال والسياسة والدفتر كما هي.
+ * - contacts/check يعيد exists=true، وغيره {} بـ 200.
+ * - يحفظ آخر 50 طلباً في الذاكرة (requests) لفحصها، ويسجّل الطريقة والمسار وحدهما بلا جسم.
  */
-final class LogTransport implements WhatsAppTransport
+final class LogTransport implements ChannelTransport
 {
     private const KEEP = 50;
 
-    /** @var list<array{method: string, segments: list<string>, data: array}> */
+    /** @var list<array{channel_id: int, method: string, path: string, body: ?array, headers: array}> */
     private array $requests = [];
 
-    public function request(string $method, array $segments, array $data = [], #[\SensitiveParameter] ?string $token = null, int $timeout = 25, int $connectTimeout = 10): Response
+    public function call(WaChannel $channel, string $method, string $path, ?array $body = null, string $timeout = 'default', array $headers = [], array $query = []): OpenWaResponse
     {
         $method = strtoupper($method);
-        $this->requests[] = ['method' => $method, 'segments' => array_values(array_map('strval', $segments)), 'data' => $data];
+        $this->requests[] = ['channel_id' => (int) $channel->id, 'method' => $method, 'path' => $path, 'body' => $body, 'headers' => $headers];
         $this->requests = array_slice($this->requests, -self::KEEP);
-        Log::debug('wa.transport.log', ['method' => $method, 'path' => implode('/', $segments)]);
+        Log::debug('wa.transport.log', ['method' => $method, 'path' => preg_replace('/\d{6,}/', '…', $path)]);
 
-        return new Response(new PsrResponse(200, ['Content-Type' => 'application/json'], (string) json_encode($this->body($method, $segments, $data))));
+        return OpenWaResponse::ok(new Response(new PsrResponse($method === 'POST' ? 201 : 200, ['Content-Type' => 'application/json'],
+            (string) json_encode($this->body($method, $path, (array) $body)))));
     }
 
     public function name(): string
@@ -37,34 +40,23 @@ final class LogTransport implements WhatsAppTransport
         return 'log';
     }
 
-    /** @return list<array{method: string, segments: list<string>, data: array}> */
+    /** @return list<array{channel_id: int, method: string, path: string, body: ?array, headers: array}> */
     public function requests(): array
     {
         return $this->requests;
     }
 
-    private function body(string $method, array $segments, array $data): array
+    private function body(string $method, string $path, array $body): array
     {
-        $last = (string) end($segments);
-        if ($method === 'POST' && $last === 'messages') {
-            return isset($data['status'])
-                ? ['success' => true]
-                : ['messaging_product' => 'whatsapp', 'messages' => [['id' => 'wamid.LOG.'.Str::ulid()]]];
+        if ($method === 'POST' && (str_contains($path, '/messages/send-') || str_ends_with($path, '/messages/react') || str_ends_with($path, '/messages/reply'))) {
+            return ['messageId' => 'true_'.($body['chatId'] ?? 'x@c.us').'_LOG'.Str::ulid(), 'timestamp' => now()->getTimestamp()];
         }
-        if ($method !== 'GET') {
-            return ['success' => true];
+        if (str_contains($path, '/contacts/check/')) {
+            $digits = (string) preg_replace('/\D/', '', (string) substr($path, strrpos($path, '/') + 1));
+
+            return ['exists' => true, 'whatsappId' => $digits.'@c.us', 'number' => $digits];
         }
 
-        $fixture = match (true) {
-            $last === 'subscribed_apps' => 'subscribed_apps',
-            $last === 'subscriptions' => 'app_subscriptions_ok',
-            $last === 'phone_numbers' => 'phone_numbers',
-            $last === 'debug_token' => 'debug_token_ok',
-            count($segments) === 1 && str_contains((string) ($data['fields'] ?? ''), 'health_status') => 'phone_node_ok',
-            default => null,
-        };
-        $path = $fixture !== null ? base_path("tests/Fixtures/graph/{$fixture}.json") : null;
-
-        return $path !== null && is_readable($path) ? (array) json_decode((string) file_get_contents($path), true) : [];
+        return $method === 'GET' ? [] : ['success' => true];
     }
 }

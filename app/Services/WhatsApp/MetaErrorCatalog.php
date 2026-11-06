@@ -175,6 +175,23 @@ final class MetaErrorCatalog
         'DAILY_CAP' => ['caller', 'channel', 'بلغ الإرسال المبادر حدّه اليومي.', 'يرفع المدير السقف من «حدود الصادر» في الإعدادات، أو ينتظر الغد.', 'none'],
         // الرسائل التفاعلية (E36)
         'BAD_INTERACTIVE' => ['caller', 'message', 'رسالة تفاعلية بلا خيارات صالحة.', 'يُرسل النص وحده.', 'none'],
+        // بوابة OpenWA (2026-11-06): OpenWa\OpenWaError يصنّف كل رد غير ناجح إلى أحد هذه الرموز
+        'NO_CHANNEL' => ['auth', 'channel', 'لا رقم واتساب مربوطاً لهذه المحادثة.', 'يربط المدير رقماً من صفحة «الأرقام».', 'none'],
+        'CHANNEL_NOT_READY' => ['transient', 'channel', 'رقم الواتساب غير متصل الآن، ولم تُرسل الرسالة.', 'افتح صفحة «الأرقام» وتأكد أن الهاتف متصل بالإنترنت، أو أعد ربطه.', 'once'],
+        'CHANNEL_PAUSED' => ['integrity', 'channel', 'رقم الواتساب موقوف مؤقتاً.', 'يرفع المدير الإيقاف من صفحة «الأرقام» بعد مراجعة السبب.', 'none'],
+        'CHANNEL_RESTRICTED' => ['integrity', 'channel', 'واتساب قيّد هذا الرقم (علامة حظر محتمل)، فأُوقف الإرسال منه.', 'راجع الهاتف وتطبيق واتساب عليه قبل رفع الإيقاف.', 'none'],
+        'GW_UNREACHABLE' => ['transient', 'channel', 'تعذّر الاتصال ببوابة واتساب، ولم تُرسل الرسالة.', 'أعد المحاولة بعد قليل؛ وإن تكرر فراجع حاوية nuskjo-openwa.', 'once'],
+        'GW_TIMEOUT' => ['transient', 'channel', 'انتهت مهلة بوابة واتساب — قد تكون الرسالة وصلت.', 'افتح محادثة العميل وتأكد قبل إعادة الإرسال.', 'none'],
+        'GW_AUTH' => ['auth', 'channel', 'البوابة رفضت مفتاح هذا الرقم.', 'يعيد المدير إعداد الرقم من صفحة «الأرقام» («إعادة الإعداد»).', 'none'],
+        'GW_SESSION_MISSING' => ['auth', 'channel', 'جلسة هذا الرقم غير موجودة على البوابة.', 'يعيد المدير إعداد الرقم وربطه من صفحة «الأرقام».', 'none'],
+        'GW_RATE' => ['throttle', 'channel', 'البوابة تحدّ الطلبات الآن. ستُعاد المحاولة بعد مهلة.', 'انتظر قليلاً.', 'backoff_4x'],
+        'GW_REJECTED' => ['caller', 'message', 'رفضت البوابة الرسالة (الصيغة أو الحجم).', 'راجع الرسالة أو الملف وأرسل من جديد.', 'none'],
+        'GW_ERROR' => ['unknown', 'message', 'خطأ في بوابة واتساب أثناء الإرسال — قد تكون الرسالة وصلت.', 'افتح محادثة العميل وتأكد قبل إعادة الإرسال؛ وإن تكرر فراجع سجل nuskjo-openwa.', 'none'],
+        'RECIPIENT_NOT_ON_WA' => ['quality', 'recipient', 'هذا الرقم ليس على واتساب.', 'تأكد من رقم العميل.', 'none'],
+        'QUOTE_NOT_FOUND' => ['caller', 'message', 'الرسالة المقتبسة لم تعد موجودة على الهاتف.', 'أُرسل الرد بلا اقتباس.', 'none'],
+        'DELIVERY_FAILED' => ['quality', 'recipient', 'لم تصل الرسالة إلى العميل (رفضها واتساب بعد الإرسال).', 'تأكد من رقم العميل، أو راسله من رقم آخر.', 'none'],
+        'MEDIA_EXPIRED' => ['caller', 'message', 'الوسيط لم يعد متاحاً على الهاتف.', 'اطلب من العميل إعادة إرساله.', 'none'],
+        'IDEMPOTENCY_IN_PROGRESS' => ['transient', 'message', 'الرسالة نفسها قيد الإرسال الآن.', 'انتظر ثواني حتى تظهر في الخيط.', 'none'],
     ];
 
     // ==================== التصنيف ====================
@@ -272,7 +289,8 @@ final class MetaErrorCatalog
     public static function redrivable(?int $metaCode, ?string $errorCode, ?string $category = null): bool
     {
         if ($metaCode === null) {
-            return $errorCode === 'HTTP_CONNECT_FAILED';
+            // لم يغادر الطلب أو رفضته البوابة قبل المحرك: الإعادة آمنة
+            return in_array($errorCode, ['HTTP_CONNECT_FAILED', 'GW_UNREACHABLE', 'CHANNEL_NOT_READY', 'GW_RATE'], true);
         }
         $entry = self::classify($metaCode);
         $category = $category ?: $entry['category'];

@@ -88,7 +88,7 @@ class ProcessWhatsAppReply implements ShouldQueue
         }
         $fresh = $conv->fresh();
         $newer = $conv->messages()->where('direction', 'in')->where('msg_type', '!=', 'reaction')->where('id', '>', $run->uptoId)->exists();
-        if (!$newer || !$fresh?->botActive() || !$fresh->isWindowOpen()) {
+        if (!$newer || !$fresh?->botActive()) {
             return;
         }
 

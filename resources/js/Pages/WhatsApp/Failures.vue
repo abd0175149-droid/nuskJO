@@ -57,7 +57,6 @@
               <template v-if="m.meta_code"> · رمز ميتا <bdi dir="ltr" class="font-mono">{{ m.meta_code }}</bdi></template>
               <template v-else-if="m.error_code"> · <bdi dir="ltr" class="font-mono">{{ m.error_code }}</bdi></template>
               · محاولات {{ m.attempts }}<template v-if="m.redrives"> · أُعيدت {{ m.redrives }}</template>
-              <template v-if="!m.window_open"> · النافذة مغلقة</template>
             </p>
             <div class="flex flex-wrap gap-1.5 pt-1">
               <Link :href="`/whatsapp/inbox?conv=${m.conversation_id}`"

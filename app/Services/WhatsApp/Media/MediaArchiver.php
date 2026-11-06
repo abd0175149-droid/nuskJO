@@ -15,13 +15,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Psr\Http\Message\ResponseInterface;
 
 /**
- * أرشفة وسيط وارد من ميتا (E14.4) بالطريق الرسمي: GET /{media-id} جديد في كل محاولة، ثم تنزيل بالرمز إلى ملف
- * مؤقت (sink لا ذاكرة) بسقف قبل التنزيل وأثناءه وبعده، ومطابقة sha256 (hex أو base64)، والنوع بـ finfo من قائمة
- * بيضاء، ثم نقل ذري إلى wa_media بمسار {Y}/{m}/{uuid7}.{ext} بلا اسم ولا رقم. الرابط متغير محلي فقط، ولا يخرج
- * أي استثناء يحمله: الفشل نتيجة (retry) لا رمي، فلا يصل الرابط إلى failed_jobs.
+ * أرشفة وسيط وارد (E14.4). منذ 2026-11-06 من بوابة OpenWA: GET /messages/{chatId}/{id}/media بمفتاح رقم الرسالة
+ * (WhatsAppChannel::fetchMedia) بسقف الحجم، ثم ملف مؤقت، والنوع بـ finfo من قائمة بيضاء، ثم نقل ذري إلى wa_media بمسار
+ * {Y}/{m}/{uuid7}.{ext} بلا اسم ولا رقم. لا بصمة من المصدر (البوابة لا ترسلها): sha256 تُحسب هنا وتُحفظ.
+ * الفشل نتيجة (retry) لا رمي.
  */
 final class MediaArchiver
 {
@@ -35,54 +34,32 @@ final class MediaArchiver
      */
     public function archive(WaMessage $m, int $cap): array
     {
-        $meta = WhatsAppChannel::mediaMeta((string) $m->media_id);
-        if (!$meta['ok']) {
-            if (!empty($meta['not_found'])) {
-                return ['status' => 'expired', 'error' => 'META_NOT_FOUND'];
-            }
-
-            return ['retry' => true, 'error' => $meta['meta_code'] ? 'META_'.$meta['meta_code'] : ($meta['code'] ?? 'META_ERROR')];
-        }
-        if ($meta['file_size'] > $cap) {
-            return ['status' => 'too_large', 'size' => $meta['file_size']];
-        }
-        if (!WhatsAppChannel::isMetaMediaUrl($meta['url'])) {
-            $host = (string) parse_url($meta['url'], PHP_URL_HOST);
-            WaLog::error('media.archive.host_blocked', ['message_id' => $m->id, 'host' => $host]);
-            self::alertOnce('host', '⚠️ مضيف وسائط غير متوقع', "رابط مرفق من ميتا على المضيف {$host} خارج WA_MEDIA_HOSTS، فلم يُنزَّل. أضفه إن كان لميتا.");
-
-            return ['status' => 'failed', 'error' => WhatsAppChannel::ERR_MEDIA_HOST];
+        $fetched = WhatsAppChannel::fetchMedia((string) $m->media_id, 'any', $cap, $m->id);
+        if (!$fetched['ok']) {
+            return match ($fetched['code']) {
+                'MEDIA_EXPIRED' => ['status' => 'expired', 'error' => 'MEDIA_EXPIRED'],
+                WhatsAppChannel::ERR_TOO_LARGE => ['status' => 'too_large', 'size' => $cap + 1],
+                WhatsAppChannel::ERR_NO_CHANNEL, WhatsAppChannel::ERR_NO_RECIPIENT => ['status' => 'failed', 'error' => $fetched['code']],
+                default => ['retry' => true, 'error' => (string) $fetched['code']],
+            };
         }
 
         $tmp = self::tmpDir().'/'.Str::uuid7().'.part';
         try {
-            $download = $this->download($meta['url'], $tmp, $cap);
-            if ($download !== 'ok') {
-                return $download === 'too_large' ? ['status' => 'too_large', 'size' => max((int) $meta['file_size'], (int) @filesize($tmp))] : ['retry' => true, 'error' => 'DOWNLOAD'];
+            if (@file_put_contents($tmp, $fetched['bytes']) === false) {
+                return ['retry' => true, 'error' => 'TMP_WRITE'];
             }
-
-            // البصمة: من الويبهوك، وإلا من رد ميتا. بصيغتيها hex وbase64
-            $expected = trim((string) ($m->media_sha256 ?: $meta['sha256']));
-            $raw = hash_file('sha256', $tmp, true);
-            $shaOk = $expected === '' ? null : (hash_equals(strtolower($expected), bin2hex($raw)) || hash_equals($expected, base64_encode($raw)));
-            if ($shaOk === false) {
-                WaLog::warning('media.archive.sha_mismatch', ['message_id' => $m->id]);
-                if (config('whatsapp.media.sha_mode') === 'enforce') {
-                    return ['status' => 'failed', 'error' => WhatsAppChannel::ERR_MEDIA_INTEGRITY];
-                }
-            }
-
-            // النوع بالفحص لا بالتصريح، والامتداد منه لا من اسم الملف
+            unset($fetched['bytes']);
             $detected = (string) (new \finfo(FILEINFO_MIME_TYPE))->file($tmp);
             $type = self::allowedTypes()[$detected] ?? null;
             if ($type === null) {
                 return ['status' => 'rejected', 'error' => 'MIME_'.substr(md5($detected), 0, 6)];
             }
-
             $size = (int) filesize($tmp);
+            $sha = (string) hash_file('sha256', $tmp);
             $path = $this->place($tmp, $m->created_at ?? now(), $type[0]);
 
-            return ['status' => 'stored', 'path' => $path, 'mime' => $detected, 'size' => $size, 'error' => $shaOk === false ? 'sha_mismatch' : null];
+            return ['status' => 'stored', 'path' => $path, 'mime' => $detected, 'size' => $size, 'sha256' => $sha, 'error' => null];
         } finally {
             @unlink($tmp);
         }
@@ -100,7 +77,8 @@ final class MediaArchiver
             $update['media_size'] = min((int) $result['size'], 4_294_967_295);
         }
         if ($status === 'stored') {
-            $update += ['media_path' => $result['path'], 'media_mime' => $result['mime'], 'media_archived_at' => now()];
+            $update += ['media_path' => $result['path'], 'media_mime' => $result['mime'], 'media_archived_at' => now()]
+                + (isset($result['sha256']) ? ['media_sha256' => $result['sha256']] : []);
         }
 
         $affected = DB::transaction(fn () => WaMessage::whereKey($m->id)->whereIn('media_status', ['pending', 'failed'])->whereNull('media_path')->update($update));
@@ -214,48 +192,6 @@ final class MediaArchiver
             // مضيف غير متوقع إعداد يُراجَع (RB-17)، والباقي سقف الأرشيف أو القرص أو ملفات مفقودة (RB-08)
             WhatsAppInbox::notifyAdmins($title, $body, '/whatsapp/settings#media', $kind === 'host' ? 'RB-17' : 'RB-08');
         }
-    }
-
-    /** ok | too_large | retry. لا يرمي، ولا يسجّل الرابط ولا نص الاستثناء (يحمل الرابط) */
-    private function download(string $url, string $tmp, int $cap): string
-    {
-        $token = (string) WaBotSetting::current()->token();
-        $options = [
-            'sink' => $tmp,
-            'on_headers' => function (ResponseInterface $r) use ($cap) {
-                if ((int) $r->getHeaderLine('Content-Length') > $cap) {
-                    throw new MediaTooLarge;
-                }
-            },
-        ];
-        if (defined('CURLOPT_MAXFILESIZE_LARGE')) {
-            $options['curl'] = [CURLOPT_MAXFILESIZE_LARGE => $cap];
-        }
-
-        try {
-            // رابط ميتا المؤقت (lookaside) ليس نداء Graph: Authorization وحده عبر GraphClient، بلا إثبات
-            $res = \App\Services\WhatsApp\Graph\GraphClient::media(90, $token)->withoutRedirecting()->withOptions($options)->get($url);
-        } catch (\Throwable $e) {
-            for ($x = $e; $x; $x = $x->getPrevious()) {
-                if ($x instanceof MediaTooLarge || str_contains($x->getMessage(), 'cURL error 63')) {
-                    return 'too_large';
-                }
-            }
-            WaLog::warning('media.archive.download_failed', ['type' => class_basename($e)]);
-
-            return 'retry';
-        }
-        if (!$res->successful()) {
-            WaLog::warning('media.archive.download_failed', ['http' => $res->status()]);
-
-            return 'retry';
-        }
-        clearstatcache(true, $tmp);
-        if ((int) $res->header('Content-Length') > $cap || (int) @filesize($tmp) > $cap) {
-            return 'too_large';
-        }
-
-        return is_file($tmp) ? 'ok' : 'retry';
     }
 
     /** نقل ذري إلى القرص المحلي (rename ثم 0600)، أو writeStream لغيره */

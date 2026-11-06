@@ -20,12 +20,12 @@
                     <option v-for="(label, k) in KINDS" :key="k" :value="k">{{ label }}</option>
                 </select>
             </div>
-            <button type="button" data-test="test-send-run" :disabled="sending || !selected?.window_open" @click="send"
+            <button type="button" data-test="test-send-run" :disabled="sending || !selected?.has_conversation" @click="send"
                     class="px-4 py-2 rounded-xl font-bold text-sm text-black bg-gradient-to-r from-gold-500 to-gold-400 disabled:opacity-40 disabled:cursor-not-allowed">
                 {{ sending ? '⏳ جارٍ الإرسال…' : '📤 أرسل' }}
             </button>
         </div>
-        <p v-if="selected && !selected.window_open" class="text-xs text-amber-700 dark:text-amber-400 mt-2">اطلب من صاحب الرقم مراسلة رقم الشركة أولاً — لا نرسل خارج نافذة 24 ساعة ولا قوالب.</p>
+        <p v-if="selected && !selected.has_conversation" class="text-xs text-amber-700 dark:text-amber-400 mt-2">اطلب من صاحب الرقم مراسلة رقم الشركة أولاً لتُنشأ محادثته.</p>
 
         <div v-if="result" data-test="test-send-result" role="status" class="mt-3 rounded-lg border px-3 py-2"
              :class="result.ok ? 'border-green-200 dark:border-green-900/60 bg-white dark:bg-gray-900' : 'border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-900/20'">
@@ -69,7 +69,7 @@ const polling = ref(false);
 const selected = computed(() => props.recipients.find((r) => r.id === to.value));
 let timer = null;
 
-const windowText = (r) => (r.window_open ? `النافذة مفتوحة (${Math.floor((r.minutes_left || 0) / 60)}س)` : (r.has_conversation ? 'النافذة مغلقة' : 'بلا محادثة'));
+const windowText = (r) => (r.has_conversation ? 'له محادثة' : 'بلا محادثة');
 
 function stopPolling() {
     clearInterval(timer);

@@ -228,9 +228,6 @@ final class MessageTranslator
     {
         abort_unless(self::enabled(), 404);
         $text = trim($text);
-        if (!$c->isWindowOpen()) {
-            throw new TranslationRefused(422, 'WINDOW_CLOSED', 'انتهت نافذة الـ24 ساعة — لا يمكن الإرسال حتى يراسلك العميل من جديد');
-        }
         [, $provider, $model, $key] = self::gate();
 
         $system = strtr(self::REPLY_PROMPT, [':lang' => self::REPLY_TARGETS[$target], ':code' => $target]);

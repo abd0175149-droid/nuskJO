@@ -42,9 +42,6 @@ class WhatsAppRichMessageController extends Controller
         if (blank($message->wamid) || in_array($message->status, ['failed', 'queued', 'unknown', 'blocked'], true)) {
             return $this->refuse('NOT_CORRECTABLE', 'فشل إرسال الرسالة الأصلية فلا يمكن اقتباسها.');
         }
-        if (!$conversation->isWindowOpen()) {
-            return $this->refuse(WhatsAppChannel::ERR_WINDOW, 'النافذة مغلقة — تواصل مع العميل هاتفياً.');
-        }
         if ($unfilled = QuickReplyText::unfilled($data['body'])) {
             return $this->refuse('UNFILLED_VARIABLE', 'في الرسالة متغير لم يُملأ: {{'.$unfilled[0].'}} — أكمله قبل الإرسال');
         }

@@ -531,10 +531,9 @@ class AdminTools
                 'assignee' => $c->assignee?->name ?? 'غير مُسند',
                 'reason' => ReplyState::REASONS[$c->attention_reason] ?? 'يحتاج تدخّلاً',
                 'waiting_minutes' => $c->last_inbound_at ? (int) $c->last_inbound_at->diffInMinutes(now()) : null,
-                'window_minutes_left' => $c->windowMinutesLeft(),
                 'url' => url('/whatsapp/inbox').'?conv='.$c->id,
             ])->all(),
-            'note' => 'اعرض القائمة بإيجاز، ولا تتواصل مع العملاء — الرد من الصندوق. window_minutes_left=null: النافذة مغلقة.',
+            'note' => 'اعرض القائمة بإيجاز، ولا تتواصل مع العملاء — الرد من الصندوق.',
         ];
     }
 
@@ -803,7 +802,6 @@ class AdminTools
             (bool) $target->is_admin_chat || WaAdminNumber::forPhone($target->phone) !== null => 'هذا رقم إدارة، فلا يُحظر.',
             (bool) $target->user_id => 'هذا الرقم لموظف في الشركة، فلا يُحظر.',
             $target->isBlocked() => 'هذا الرقم محظور أصلاً.',
-            !$target->isWindowOpen() => 'لم يراسلنا هذا الرقم خلال 24 ساعة، وميتا لا تسمح بحظره الآن.',
             default => null,
         };
         if ($refusal !== null) {

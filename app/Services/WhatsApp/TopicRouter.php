@@ -164,10 +164,25 @@ class TopicRouter
         return WaConversation::whereKey($conversation->id)->visibleTo($user)->exists();
     }
 
-    /** الأرقام الرسمية المسموحة للمستخدم؛ null = كلها (رقم واحد اليوم). نقطة التمديد لرقم ثانٍ. */
+    /**
+     * أرقام واتساب (wa_channels) التي يرى المستخدم محادثاتها؛ null = كلها. من يملك whatsapp.view_all يرى الكل.
+     * رقم بلا موظفين مسندين (wa_channel_users) مفتوح للجميع بقيد المواضيع، ورقم له موظفون لهم وحدهم.
+     *
+     * @return list<int>|null
+     */
     public static function allowedNumberIds(User $user): ?array
     {
-        return null;
+        if ($user->can('whatsapp.view_all') || !Schema::hasTable('wa_channel_users')) {
+            return null;
+        }
+        $assigned = DB::table('wa_channel_users')->distinct()->pluck('channel_id')->map(fn ($id) => (int) $id)->all();
+        if ($assigned === []) {
+            return null;
+        }
+        $mine = DB::table('wa_channel_users')->where('user_id', $user->id)->pluck('channel_id')->map(fn ($id) => (int) $id)->all();
+        $open = DB::table('wa_channels')->whereNotIn('id', $assigned)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return array_values(array_unique([...$mine, ...$open]));
     }
 
     private static ?bool $hasAdminFlag = null;
@@ -216,7 +231,7 @@ class TopicRouter
     {
         $ids = self::allowedNumberIds($user);
         if ($ids !== null) {
-            $query->whereIn('wa_conversations.phone_number_id', $ids);
+            $query->whereIn('wa_conversations.channel_id', $ids);
         }
     }
 

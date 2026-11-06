@@ -67,9 +67,6 @@ class WhatsAppFailuresController extends Controller
             return $this->refuse('NOT_REDRIVABLE', 'لا يمكن إعادة هذه الرسالة من هنا — أعد إرسالها من المحادثة.');
         }
         $conversation = $message->conversation;
-        if (!$conversation->isWindowOpen()) {
-            return $this->refuse('WINDOW_CLOSED', 'النافذة مغلقة — لا يمكن الإرسال حتى يكتب العميل.');
-        }
         $metaCode = $message->meta_code !== null ? (int) $message->meta_code : null;
         if (!MetaErrorCatalog::redrivable($metaCode, $message->error_code, $message->error_category)) {
             $category = $message->error_category ?: ($metaCode !== null ? MetaErrorCatalog::classify($metaCode)['category'] : null);

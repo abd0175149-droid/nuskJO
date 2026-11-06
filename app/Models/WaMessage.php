@@ -26,6 +26,8 @@ class WaMessage extends Model
         'media_status', 'media_error', 'media_archived_at',
         // E24: كائن pricing من ويبهوك الحالة (أول ظهور هو المعتمد)
         'pricing_billable', 'pricing_model', 'pricing_category', 'pricing_type',
+        // OpenWA: الرقم الذي استقبلها أو أرسلها (wamid فريد معه)
+        'channel_id',
     ];
 
     // مسار الملف وبصمته لا يخرجان إن سُلسلت الرسالة (الصندوق يبني حقل media بنفسه)
@@ -71,6 +73,7 @@ class WaMessage extends Model
     }
 
     public function conversation(): BelongsTo { return $this->belongsTo(WaConversation::class, 'conversation_id'); }
+    public function channel(): BelongsTo { return $this->belongsTo(WaChannel::class, 'channel_id'); }
 
     /** الموظف الذي أرسل الرسالة — للرسائل من نوع staff */
     public function staff(): BelongsTo { return $this->belongsTo(User::class, 'staff_id'); }

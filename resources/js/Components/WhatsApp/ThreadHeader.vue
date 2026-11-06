@@ -34,9 +34,9 @@
         <CallFromAgencyPhone v-if="calls && canReply && thread.phone" :phone="thread.phone"/>
         <span v-if="thread.needs_attention && thread.attention_reason" class="px-2 py-0.5 rounded-lg text-[11px] bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ attentionReasons[thread.attention_reason] || thread.attention_reason }}</span>
         <!-- الحظر الرسمي (E31): بجانب «تجاوز الحد» لحظة المشكلة، ومعطّل خارج نافذة الـ24 ساعة (شرط ميتا) -->
-        <button v-if="blockable && (!panel || urgentBlock)" type="button" data-test="block-btn" @click="$emit('block')" :disabled="!thread.window_open"
-                :title="thread.window_open ? 'حظر هذا الرقم عند واتساب' : 'ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
-                :aria-label="thread.window_open ? 'حظر هذا الرقم' : 'الحظر غير متاح: ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
+        <button v-if="blockable && (!panel || urgentBlock)" type="button" data-test="block-btn" @click="$emit('block')" :disabled="!thread.reachable"
+                :title="thread.reachable ? 'حظر هذا الرقم على واتساب' : 'الرقم غير متصل الآن'"
+                :aria-label="thread.reachable ? 'حظر هذا الرقم' : 'الحظر غير متاح: الرقم غير متصل'"
                 class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed"
                 :class="thread.attention_reason === 'rate_limit' && thread.needs_attention
                   ? 'border-red-400 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'

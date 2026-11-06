@@ -8,41 +8,6 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// تذكير قبل إغلاق نافذة الـ24 ساعة لمحادثة تنتظر ردّاً بشرياً.
-// لا قوالب ميتا عندنا (قرار المالك)، فبعد النافذة لا يستطيع أحد مراسلة العميل.
-Artisan::command('whatsapp:window-reminders', function () {
-    $sent = 0;
-
-    \App\Models\WaConversation::where('needs_attention', true)
-        ->where('last_inbound_at', '>', now()->subDay())
-        ->where('last_inbound_at', '<=', now()->subHours(21))   // يبقى 3 ساعات أو أقل
-        // لا تذكير برد على محظور (E31)
-        ->when(\App\Services\WhatsApp\BlockService::available(), fn ($q) => $q->whereNull('blocked_at'))
-        ->get()
-        ->each(function ($c) use (&$sent) {
-            // تذكير واحد لكل رسالة واردة — رسالة جديدة من العميل تفتح نافذة جديدة
-            $key = "wa:winrem:{$c->id}:" . $c->last_inbound_at->timestamp;
-            if (!\Illuminate\Support\Facades\Cache::add($key, 1, now()->addDay())) {
-                return;
-            }
-
-            $left = (int) $c->windowMinutesLeft();
-            $title = '⏳ عميل ينتظر ردّاً';
-            $body = $c->noticeLabel() . ' — تبقّى ' . intdiv($left, 60) . 'س ' . ($left % 60)
-                . 'د قبل إغلاق نافذة الرد، وبعدها لا يمكن مراسلته حتى يكتب من جديد.';
-            $url = '/whatsapp/inbox?conv=' . $c->id;
-
-            if ($c->assigned_to) {
-                \App\Services\NotificationService::send((int) $c->assigned_to, $title, $body, ['type' => 'whatsapp', 'icon' => '⏳', 'action_url' => $url]);
-            } else {
-                \App\Services\WhatsApp\WhatsAppInbox::notifyAdmins($title, $body, $url, runbook: 'RB-01');
-            }
-            $sent++;
-        });
-
-    $this->info("أُرسل {$sent} تذكيراً");
-})->purpose('تذكير الموظفين قبل إغلاق نافذة الـ24 ساعة في واتساب');
-
 // تقرير السياج (E04) للقراءة فقط: ما يراه كل موظف بعد السياج، قبل تفعيل WA_FENCE_QUOTES وبعد تغيير التوجيه.
 // أعداد ومعرّفات فقط: لا أسماء ولا هواتف في الطرفية.
 Artisan::command('whatsapp:fence-report {--json : مخرجات JSON}', function () {
@@ -101,44 +66,6 @@ Artisan::command('whatsapp:fence-report {--json : مخرجات JSON}', function 
     return 0;
 })->purpose('للقراءة فقط: ما يراه كل موظف من محادثات واتساب وطلبات التسعير بعد السياج (أعداد فقط)');
 
-// نهاية دعم إصدار Graph (E05): تنبيه يومي للمدير قبل 60 يوماً، أو لإصدار منتهٍ أو مجهول، أو ويبهوك بلا إصدار مضبوط
-Artisan::command('whatsapp:graph-version-check', function () {
-    $sent = 0;
-    $kinds = ['requests' => ['إصدار الطلبات', 'graph_version'], 'webhook' => ['إصدار الويبهوك', 'webhook_version']];
-    foreach ($kinds as $kind => [$label, $key]) {
-        $version = config("services.whatsapp.{$key}") ?: null;
-        $status = \App\Services\WhatsApp\GraphVersions::status($version);
-
-        if ($kind === 'webhook' && $version === null) {
-            [$title, $reason] = ['⚠️ إصدار Graph يحتاج مراجعة', 'WA_WEBHOOK_VERSION غير مضبوط — اضبطه على إصدار الويبهوك في لوحة ميتا'];
-        } elseif ($status['level'] === 'ok') {
-            continue;
-        } elseif ($status['level'] === 'unknown') {
-            [$title, $reason] = ['⚠️ إصدار Graph يحتاج مراجعة', "الإصدار {$version} غير موجود في جدول الإصدارات"];
-        } elseif ($status['level'] === 'expired') {
-            [$title, $reason] = ['⛔ إصدار Graph انتهى دعمه', "الإصدار {$version} انتهى في {$status['sunset']}"];
-        } else {
-            [$title, $reason] = ['⚠️ إصدار Graph يقترب من نهاية دعمه', "الإصدار {$version} ينتهي في {$status['sunset']} (بعد {$status['days_left']} يوماً)"];
-        }
-
-        $this->warn("{$label}: {$reason}");
-        if (\Illuminate\Support\Facades\Cache::add("wa:graphver:{$kind}:".($version ?? 'none').':'.now()->toDateString(), 1, now()->addDay())) {
-            \Illuminate\Support\Facades\Log::error("WA graph version check [{$kind}]: {$reason}");
-            \App\Services\WhatsApp\WhatsAppInbox::notifyAdmins($title, "{$label}: {$reason} — راجع خطة الترقية", '/whatsapp/settings', runbook: 'RB-07');
-            $sent++;
-        }
-    }
-
-    $this->info($sent ? "أُرسل {$sent} تنبيهاً" : 'لا تنبيه جديد');
-
-    return 0;
-})->purpose('تنبيه المدير قبل 60 يوماً من نهاية دعم إصدار Graph للطلبات أو للويبهوك');
-
-Schedule::command('whatsapp:graph-version-check')
-    ->timezone('Asia/Amman')
-    ->dailyAt('08:00')
-    ->withoutOverlapping();
-
 // أعلام موثوقية الرد (E07) وقت التشغيل، بلا نشر: whatsapp:reliability [flag] [on|off]
 Artisan::command('whatsapp:reliability {flag?} {state?}', function () {
     $settings = \App\Models\WaBotSetting::current();
@@ -179,12 +106,6 @@ foreach (\App\Services\Ops\OpsHealth::queues() as $queue) {
         ->everyMinute()
         ->name("ops:queue-beat:{$queue}");
 }
-// فحوص ميتا للقراءة (WA_META_CHECKS): الرمز يومياً، والنتيجة في بطاقة صحة النظام. صحة القناة صارت whatsapp:health (E23، أدناه)
-Schedule::command('whatsapp:credentials-check')
-    ->dailyAt(config('ops.credentials_check_at'))
-    ->timezone('Asia/Amman')
-    ->withoutOverlapping(10);
-
 // الوظائف الفاشلة تحمل بيانات عملاء في payload والاستثناء: أسبوع ثم تُحذف
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
@@ -252,10 +173,6 @@ Schedule::command('whatsapp:fts-check --repair')
 Schedule::command('whatsapp:inbound-silence')
     ->everyFifteenMinutes()
     ->withoutOverlapping(5);
-// الملفات المرسلة (E32.12): حذفها من خوادم ميتا بعد التسليم بقرار المالك. لا يعمل إلا بالعلم outbound_media_remote_delete
-Schedule::command('whatsapp:outbound-media-cleanup')
-    ->hourlyAt(25)
-    ->withoutOverlapping(10);
 // حسابات الموظفين (E27): آخر نشاط من جدول الجلسات كل 15 دقيقة باستعلام واحد (لا كتابة لكل طلب)، وتقرير الخمول
 // الأسبوعي للمدراء صباح الأحد (يرسل بالعلم idle_report، ولا يعطّل أحداً)
 Schedule::command('users:sync-last-seen')
@@ -265,30 +182,31 @@ Schedule::command('users:idle-report')
     ->timezone('Asia/Amman')
     ->weeklyOn(0, '08:47')
     ->withoutOverlapping();
-// الحظر الرسمي (E31): مقارنة قرائية يومية مع قائمة الحظر عند ميتا، بالعلم wa_block وحده. لا تغيّر أي حظر عند ميتا،
-// وتُشعر المدراء إن ظهر حظر لم تجده ميتا أو حظر عندها بلا سجل عندنا
+// الحظر (E31): مقارنة قرائية يومية مع قائمة المحظورين على كل رقم، بالعلم wa_block وحده. لا تغيّر أي حظر،
+// وتُشعر المدراء إن ظهر حظر لا يجده الرقم أو حظر عليه بلا سجل عندنا
 Schedule::command('whatsapp:blocks-check')
     ->timezone('Asia/Amman')
     ->dailyAt('04:10')
     ->withoutOverlapping(10);
 
-// رموز QR الرسمية (E38): مطابقة أسبوعية للقراءة فقط مع message_qrdls عند ميتا، بالعلم wa_qr_links وحده. لا حذف آلياً
-Schedule::command('whatsapp:qr-sync')
-    ->timezone('Asia/Amman')
-    ->weeklyOn(0, '04:25')
+// بوابة OpenWA (2026-11-06): صحة كل رقم بفحص حقيقي كل دقيقتين (وإعادة تشغيل العالق)، ومعرفة هواتف مرسلي @lid كل 30 دقيقة
+Schedule::command('whatsapp:channel-watch')
+    ->everyTwoMinutes()
+    ->withoutOverlapping(5)
+    ->runInBackground();
+Schedule::command('whatsapp:resolve-lids')
+    ->everyThirtyMinutes()
     ->withoutOverlapping(10);
-// صحة القناة (E22): مرور انتهاء قيد ميتا يطلق فحصاً (LIMITED تعود آلياً، وBLOCKED اقتراح رفع فقط). يعمل بالعلم channel_health
-Schedule::command('whatsapp:health-expiry')
+// طابور رسائل النظام: الحجز والتوزيع كل دقيقة بحدود كل رقم ونوع (SendGovernor)، وشبكة أمان للجدولة الحدثية كل 15 دقيقة
+Schedule::command('wa:outbox-tick')
+    ->everyMinute()
+    ->withoutOverlapping(3);
+Schedule::command('wa:schedule-system')
     ->everyFifteenMinutes()
-    ->withoutOverlapping(5);
-// المراقب الدوري (E23): whatsapp:health في الدقيقة 7 و37 (بعيداً عن :00 و:15 و:30 و:45 المزدحمة). العلم channel_monitor
-// مطفأ = فحص health_status القديم مرة في الساعة (الدقيقة 37 تُتخطى). نحو 4 نداءات في الساعة من حد 200
-Schedule::command('whatsapp:health')
-    ->cron('7,37 * * * *')
-    ->when(fn () => now()->minute < 30 || \App\Services\WhatsApp\MetaHealth::monitorOn())
     ->withoutOverlapping(10);
+
 // فحص الإعدادات اليومي (E23): الحصيلة في 'wa:doctor:last' يومين لبطاقة الإعدادات وصفحة الحالة، وتنبيه واحد عند تحوّل
-// فحص إلى خطأ (العلم channel_monitor). بعد فحوص 04:00–04:25 وقبل فحص الرمز (08:00)
+// فحص إلى خطأ (العلم channel_monitor)
 Schedule::command('whatsapp:doctor --budget=20 --store --no-ansi')
     ->timezone('Asia/Amman')
     ->dailyAt('07:50')
@@ -308,11 +226,6 @@ Schedule::command('integrations:prune')
     ->timezone('Asia/Amman')
     ->dailyAt('04:20')
     ->withoutOverlapping();
-// سجل التعايش السابق المحفوظ مشفّراً (E39، C012): يُمحى ما مضت مدته كل ساعة. لا شيء يُحفظ والعلم coexistence_history_hold مطفأ
-Schedule::command('whatsapp:coexistence-history --prune')
-    ->hourlyAt(35)
-    ->withoutOverlapping(10);
-
 // المراقبة التشغيلية (E24): لقطة المقاييس كل 5 دقائق في مخزن ops (file) وقواعد التنبيه (العلم ops_alerts؛ مطفأ = سجل perf
 // فقط). قراءات مجمّعة وحدها، ولا رسالة واتساب. القائمة الموحدة للمهام وميزانية الحمل في docs/ops/load-budget.md
 Schedule::command('whatsapp:ops-check')
@@ -324,34 +237,6 @@ Schedule::command('ops:tick')
     ->everyMinute()
     ->withoutOverlapping(5)
     ->when(fn () => \App\Support\FeatureFlags::on('ops_tick'));
-// المطابقة الاختيارية مع تحليلات ميتا (E24): نداء GET واحد يومياً بالعلم meta_analytics_reconcile وحده
-Schedule::command('whatsapp:meta-analytics')
-    ->timezone('Asia/Amman')
-    ->dailyAt('08:20')
-    ->withoutOverlapping(10)
-    ->when(fn () => \App\Support\FeatureFlags::on('meta_analytics_reconcile'));
-
-// عميل بلا رقم (اسم مستخدم واتساب، BSUID وحده): store ثم staff ثم full (E11a، docs/RELEASE.md)
-Artisan::command('whatsapp:identity-mode {mode?}', function () {
-    $mode = $this->argument('mode');
-    if ($mode !== null) {
-        if (!in_array($mode, \App\Services\WhatsApp\IdentityMode::MODES, true)) {
-            $this->error('الوضع: '.implode(' أو ', \App\Services\WhatsApp\IdentityMode::MODES));
-
-            return 1;
-        }
-        $before = \App\Services\WhatsApp\IdentityMode::current();
-        \App\Support\AuditActor::as('system', 'artisan:whatsapp:identity-mode', fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($mode, $before) {
-            \App\Models\Setting::set('wa_identity_mode', $mode);
-            \App\Models\AuditLog::log(\App\Enums\AuditAction::WaIdentityMode, 'setting', null, 'wa_identity_mode', ['from' => $before, 'to' => $mode]);
-        }));
-        \App\Services\WhatsApp\WaLog::warning('identity.mode', ['status' => $mode]);
-    }
-    $this->line('وضع العميل بلا رقم: '.\App\Services\WhatsApp\IdentityMode::current());
-
-    return 0;
-})->purpose('عرض أو تبديل التعامل مع عميل بلا رقم: whatsapp:identity-mode [store|staff|full]');
-
 // قاطع مزوّد الذكاء (E12): محاولة half-open بنداء صناعي بلا بيانات عملاء، فيُغلق القاطع ويصل إشعار العودة
 // حتى لو لم يراسل أحد. يعمل فقط والقاطع مفتوح وانتهت مدته ولا محاولة جارية
 Artisan::command('whatsapp:llm-probe', function () {
@@ -387,10 +272,6 @@ Schedule::command('whatsapp:llm-probe')
 Schedule::command('whatsapp:erasure-sla')
     ->timezone('Asia/Amman')
     ->dailyAt('09:10')
-    ->withoutOverlapping();
-
-Schedule::command('whatsapp:window-reminders')
-    ->everyFifteenMinutes()
     ->withoutOverlapping();
 
 // المُصالِح (يعمل فقط والعلم reconcile مفعّل؛ إنذار تأخر الطابور دائماً). المانع 5 دقائق لا 24 ساعة،

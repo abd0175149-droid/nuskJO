@@ -14,16 +14,16 @@ use App\Support\FeatureFlags;
 use Illuminate\Support\Str;
 
 /**
- * أدوات البوت التفاعلية (E36): show_offers_menu وpresent_choices وsend_quote_form. الأداة لا ترسل: تبني الخيارات من
- * ChoiceBuilder وتحفظها في ReplyRun::pendingInteractive، ونص رد النموذج النهائي يصير body الرسالة التفاعلية، فهي رسالة
- * خدمة واحدة لا اثنتان (كل رسالة مدفوعة بعد الشريحة المجانية منذ 2026-10-01). النص أطول من حد ميتا وحده يُقسم:
- * النص ثم الخيارات بنص ثابت قصير.
+ * أدوات البوت التفاعلية (E36): show_offers_menu وpresent_choices. الأداة لا ترسل: تبني الخيارات من ChoiceBuilder وتحفظها
+ * في ReplyRun::pendingInteractive، ونص رد النموذج النهائي يصير body الرسالة، فهي رسالة واحدة. منذ OpenWA (2026-11-06) لا
+ * أزرار في واتساب ويب: الخيارات تصل نصاً مرقماً (OpenWa\PayloadMapper) ويحل ChoiceResolver الرد بالرقم. نموذج Flow
+ * لطلب التسعير أُزيل (لا مقابل له)، وrequest_quote بديله الحواري.
  *
- * الإعلان مشروط: العلم، والمحادثات التجريبية إن ضُبطت، و10 دقائق على الأقل من النافذة (30 للنموذج)، وليست محادثة إدارة.
+ * الإعلان مشروط: العلم، والمحادثات التجريبية إن ضُبطت، وليست محادثة إدارة.
  */
 final class InteractiveReply
 {
-    public const TOOLS = ['show_offers_menu', 'present_choices', 'send_quote_form'];
+    public const TOOLS = ['show_offers_menu', 'present_choices'];
 
     /** النص حين يُقسم الرد، أو يخلو */
     public const SPLIT_BODY = 'اختر من الخيارات:';
@@ -47,23 +47,7 @@ final class InteractiveReply
         if ($conv->is_admin_chat || ($conv->hasPhone() && WaAdminNumber::forPhone($conv->phone))) {
             return false;
         }
-        $min = $tool === 'send_quote_form' ? (int) config('whatsapp.interactive.flow_min_window_minutes', 30) : (int) config('whatsapp.interactive.min_window_minutes', 10);
-        if (($conv->windowMinutesLeft() ?? -1) < $min) {
-            return false;
-        }
-        if ($tool === 'send_quote_form') {
-            return self::flowId($s) !== null && !self::recentQuote($conv);
-        }
-
-        return true;
-    }
-
-    /** معرّف الـ Flow المنشور، أو null */
-    public static function flowId(WaBotSetting $s): ?string
-    {
-        $id = (string) ($s->wa_quote_flow_id ?? '');
-
-        return preg_match('/^\d{1,32}$/', $id) ? $id : null;
+        return in_array($tool, self::TOOLS, true);
     }
 
     /** طلب تسعير أو حجز للمحادثة خلال 30 دقيقة (E17): لا نموذج ثانٍ فوقه */
@@ -106,28 +90,6 @@ final class InteractiveReply
         });
     }
 
-    /** نموذج طلب التسعير: flow_token غير قابل للتخمين (32 حرفاً) مربوط بالمحادثة، وينتهي بانتهاء النافذة */
-    public static function sendQuoteForm(array $in, WaConversation $conv): array
-    {
-        $s = WaBotSetting::current();
-        $flowId = self::flowId($s);
-        $run = ReplyRun::current();
-        if ($flowId === null || $run === null || self::recentQuote($conv)) {
-            return ['staged' => false, 'note' => 'النموذج غير متاح الآن؛ اجمع التفاصيل بالحوار ثم استدعِ request_quote.'];
-        }
-        $run->pendingInteractive = [
-            'type' => 'flow', 'kind' => 'quote_flow', 'flow_id' => $flowId, 'cta' => self::FLOW_CTA,
-            'mode' => in_array($s->wa_quote_flow_mode, InteractiveTypes::FLOW_MODES, true) ? (string) $s->wa_quote_flow_mode : 'published',
-            'set' => ChoiceBuilder::newSet($conv, 'quote_flow', [], Str::random(32)),
-        ];
-
-        return [
-            'staged' => true,
-            'note' => 'سيصل العميلَ مع ردك التالي زر «'.self::FLOW_CTA.'» يفتح نموذجاً قصيراً. اكتب جملة قصيرة تدعوه لتعبئته، '
-                .'وأخبره أنه يستطيع الكتابة بدلاً منه إن شاء. لا تطرح أسئلة التسعير الآن ولا تذكر أي سعر.',
-        ];
-    }
-
     /** يحفظ آخر تجهيز في التشغيل (لا إرسال هنا) */
     private static function stage(?array $built): array
     {
@@ -145,7 +107,7 @@ final class InteractiveReply
     /**
      * رد البوت النهائي مع الرسالة التفاعلية المجهّزة: النص (بعد OutboundPolicy في dispatch كأي نص بوت) يصير body، فرسالة
      * واحدة بمفتاح الرد نفسه. تُحفظ المجموعة قبل الإرسال (رقمها في payload._meta.choice_set_id) وتُربط بالرسالة بعد قبول
-     * ميتا، وتُحذف إن رُفضت. رفض التنسيق (131009) يُرسل النص وحده. تحويل نفّذه التشغيل يُسقط الخيارات.
+     * البوابة، وتُحذف إن رُفضت. تحويل نفّذه التشغيل يُسقط الخيارات.
      */
     public static function deliver(WaConversation $conv, ReplyRun $run, string $text): array
     {
@@ -156,7 +118,6 @@ final class InteractiveReply
         }
         $limit = match ($p['type']) {
             'list' => InteractiveTypes::LIST_BODY,
-            'flow' => InteractiveTypes::FLOW_BODY,
             default => InteractiveTypes::BUTTON_BODY,
         };
         $text = trim($text) !== '' ? $text : self::SPLIT_BODY;
@@ -166,8 +127,8 @@ final class InteractiveReply
             if ($res['ok'] || !empty($res['unknown'])) {
                 return $res;
             }
-            // رفض ميتا للتنسيق: النص وحده بالمفتاح نفسه (الصف الفاشل حرّر مفتاحه)
-            if (($res['meta_code'] ?? null) === 131009 || ($res['code'] ?? null) === 'BAD_INTERACTIVE') {
+            // خيارات بلا صالح: النص وحده بالمفتاح نفسه (الصف الفاشل حرّر مفتاحه)
+            if (($res['code'] ?? null) === 'BAD_INTERACTIVE') {
                 WaLog::warning('wa.interactive.fallback', ['conv_id' => $conv->id, 'meta_code' => $res['meta_code'] ?? null, 'kind' => $p['kind'], 'code' => $res['code'] ?? null]);
 
                 return WhatsAppChannel::sendText($conv, $text, 'bot', sendKey: SendKey::reply($conv, $run->uptoId, 'text'));
@@ -194,8 +155,6 @@ final class InteractiveReply
         $res = match ($p['type']) {
             'list' => WhatsAppChannel::sendList($conv, $body, (string) ($p['button'] ?? 'الخيارات'), (array) $p['sections'], 'bot', null,
                 $opts + ['send_key' => SendKey::reply($conv, $run->uptoId, $keyKind)]),
-            'flow' => WhatsAppChannel::sendFlow($conv, $body, (string) $p['flow_id'], (string) $set->nonce, (string) $p['cta'], 'bot',
-                ['meta' => $opts['meta'], 'mode' => $p['mode'] ?? 'published', 'send_key' => SendKey::reply($conv, $run->uptoId, $keyKind)]),
             default => WhatsAppChannel::sendButtons($conv, $body, (array) $p['buttons'], 'bot', null,
                 $opts + ['send_key' => SendKey::reply($conv, $run->uptoId, $keyKind)]),
         };
@@ -220,7 +179,7 @@ final class InteractiveReply
     private static function stillAllowed(array $p): bool
     {
         if (($p['type'] ?? null) === 'flow') {
-            return FeatureFlags::on('quote_flow') && self::flowId(WaBotSetting::current()) !== null;
+            return false;
         }
 
         return FeatureFlags::on('interactive_choices');

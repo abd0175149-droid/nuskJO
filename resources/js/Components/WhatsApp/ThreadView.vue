@@ -99,10 +99,10 @@
       <TranslateReplyBar v-if="translateBar" class="shrink-0" v-model="translateMode" v-model:target="translateTarget" :targets="translateTargets"/>
       <!-- «ترد على…» ومعاينة الرابط والموقع والبطاقة (E33) -->
       <ComposerExtras v-if="canReply" class="shrink-0" :conversation-id="thread.id" :features="features" :reply-to="currentReply" :draft="draft"
-                      v-model:preview="preview" :notice="previewNotice" :share-items="shareItems" :recipient="recipient" :window-open="!!thread.window_open"
+                      v-model:preview="preview" :notice="previewNotice" :share-items="shareItems" :recipient="recipient" :window-open="!!thread.reachable"
                       :can-reply="canReply" @cancel-reply="replyTargets.clear(thread.id)" @shared="onRichSent"/>
       <Composer class="shrink-0" :model-value="draft" @update:model-value="(v) => $emit('update:draft', v)" @submit="onSubmit"
-                @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.window_open" :window-left="thread.window_left"
+                @request-phone="$emit('requestPhone')" :can-reply="canReply" :window-open="!!thread.reachable" :channel-name="thread.channel?.name || null"
                 :sending="sending" :error="error" :notice="sendNotice" :cooldown="sendCooldown"
                 :cannot-reach-phoneless="cannotReachPhoneless" :can-request-phone="canRequestPhone" :requesting="requesting"
                 :quick-replies="quickReplies" :conversation-id="thread.id" :blocked="!!thread.blocked"
@@ -307,7 +307,7 @@ function jumpTo(id) {
 
 const translateMode = ref(false);
 const translateOpen = ref(false);
-const translateBar = computed(() => !!props.flags.staff_translation && props.canReply && !!props.thread?.window_open && Object.keys(props.translateTargets).length > 0);
+const translateBar = computed(() => !!props.flags.staff_translation && props.canReply && !!props.thread?.reachable && Object.keys(props.translateTargets).length > 0);
 // اللغة الافتراضية: آخر لغة ترجمها الموظف من رسائل العميل
 const lastSource = computed(() => {
   for (let i = props.messages.length - 1; i >= 0; i--) {

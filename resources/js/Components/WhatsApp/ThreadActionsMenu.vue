@@ -47,8 +47,8 @@ const open = ref(false);
 const root = ref(null);
 const custom = ref('');
 const customId = `snooze-custom-${useId()}`;
-const options = computed(() => snoozeOptions(props.thread.window_left));
-const bounds = computed(() => customBounds(props.thread.window_left));
+const options = computed(() => snoozeOptions());
+const bounds = computed(() => customBounds());
 
 watch(() => props.thread.id, () => { open.value = false; custom.value = ''; });
 

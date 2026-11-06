@@ -53,7 +53,7 @@ final class ReplyReconciler
         }
 
         foreach (self::candidates($s) as $conv) {
-            if (!$conv->botActive() || !$conv->isWindowOpen() || Cache::has(ProcessWhatsAppReply::runningKey($conv->id))) {
+            if (!$conv->botActive() || Cache::has(ProcessWhatsAppReply::runningKey($conv->id))) {
                 continue;
             }
             $newest = ReplyState::newestPending($conv);

@@ -81,18 +81,16 @@ class VoiceTranscriber
 
         try {
             $provider = LlmFactory::make($route['provider']);
-            $mediaId = (string) data_get($payload, 'audio.id', '');
+            // معرّف الوسيط معرّف الرسالة على البوابة (media_id)، والقديم من حمولة ميتا
+            $mediaId = (string) ($m->media_id ?: data_get($payload, 'audio.id', ''));
 
             // Claude لا يقبل الصوت — نُبقي العنصر النائب ويطلب البوت الكتابة
             if (!$provider instanceof GeminiProvider && $mediaId !== '') {
                 $payload['_media_error'] = WhatsAppChannel::ERR_UNSUPPORTED;
             }
             if ($provider instanceof GeminiProvider && $mediaId !== '') {
-                $fetched = WhatsAppChannel::fetchMedia($mediaId);
-                // مضيف شبكة ميتا (لا بيانات شخصية): يُراجع خلال أسبوع وضع التسجيل قبل الرفض
-                if ($fetched['ok']) {
-                    $payload['_media_host'] = $fetched['host'];
-                } else {
+                $fetched = WhatsAppChannel::fetchMedia($mediaId, 'audio', 15_000_000, $m->id);
+                if (!$fetched['ok']) {
                     $payload['_media_error'] = $fetched['code'];
                 }
                 $media = $fetched['ok'] ? $fetched : null;

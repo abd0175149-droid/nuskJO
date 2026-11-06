@@ -55,6 +55,11 @@ class HandleInertiaRequests extends Middleware
                 // E24: رابط «الإخفاقات» لمن يملك whatsapp.settings والعلم failures_center مفعّل
                 'failures_center' => $user?->can('whatsapp.settings') ? rescue(fn () => \App\Support\FeatureFlags::on('failures_center'), false, false) : false,
             ],
+            // أرقام واتساب (2026-11-06): الاسم واللون لشارة المحادثة في الصندوق، لمن يرى الصندوق وحده. كسول: لا استعلام لغيره
+            'waChannels' => fn () => $user?->can('whatsapp.view')
+                ? rescue(fn () => \App\Models\WaChannel::query()->orderBy('sort')->orderBy('id')->get(['id', 'name', 'color', 'status', 'phone'])
+                    ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name, 'color' => $c->color, 'linked' => $c->isLinked()])->values()->all(), [], false)
+                : [],
             'unreadNotifications' => $user ? (int) \App\Models\Notification::where('user_id', $user->id)->where('is_read', false)->count() : 0,
         ]);
     }

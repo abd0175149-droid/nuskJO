@@ -160,7 +160,6 @@ class WhatsAppConversationStateController extends Controller
 
         $s = WaBotSetting::current();
         $fail = match (true) {
-            !$conversation->isWindowOpen() => 'نافذة الرد مغلقة — لا يمكن الرد على العميل حتى يكتب من جديد',
             !$s->botReady() || !$conversation->botActive() => 'البوت موقوف لهذه المحادثة — فعّله أو رد يدوياً',
             !ReplyState::hasPending($conversation) => 'لا رسالة معلّقة',
             // بوابة الحداثة (E07): وظيفة كهذه تنتهي «متأخرة» بلا رد

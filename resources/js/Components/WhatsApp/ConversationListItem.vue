@@ -46,11 +46,7 @@
         </span>
         <span v-if="c.is_admin" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" title="رقم إدارة — يخدمه المساعد الإداري">👔 إدارة</span>
         <span v-if="c.client" class="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">عميل مسجّل</span>
-        <span v-if="!c.window_open" class="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">نافذة مغلقة</span>
-        <span v-else-if="c.needs_attention && urgency(c.window_left) && urgency(c.window_left) !== 'ok'"
-              class="px-1.5 py-0.5 rounded text-[10px] font-bold"
-              :class="urgency(c.window_left) === 'danger' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'"
-              :title="'تُغلق نافذة الرد خلال ' + windowLabel(c.window_left)">⏳ {{ windowLabel(c.window_left) }}</span>
+        <span v-if="channel" class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white" :style="{ background: channel.color }" :title="'رقم ' + channel.name" data-test="channel-badge">{{ channel.name }}</span>
         <span class="text-[10px] text-gray-400 ms-auto" :title="c.last_at">{{ relativeTime(c.sort_ts, c.last_at) }}</span>
       </span>
     </span>
@@ -58,11 +54,11 @@
 </template>
 
 <script setup>
+import { usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { colorFor, initials } from '@/composables/whatsapp/useInitials.js';
 import { formatPhone } from '@/composables/whatsapp/usePhoneFormat.js';
 import { toPlain } from '@/composables/whatsapp/useWaFormat.js';
-import { urgency, windowLabel } from '@/composables/whatsapp/useWindowCountdown.js';
 import { lastTypeIcon } from '@/composables/whatsapp/useConversationList.js';
 import { relativeTime } from '@/composables/whatsapp/useRelativeTime.js';
 import ConversationChips from './ConversationChips.vue';
@@ -71,6 +67,12 @@ const props = defineProps({
   c: { type: Object, required: true },
   active: Boolean,
   attentionReasons: { type: Object, default: () => ({}) },
+});
+// شارة رقم المحادثة حين يكون في نُسك أكثر من رقم (HandleInertiaRequests: waChannels)
+const page = usePage();
+const channel = computed(() => {
+  const list = page.props.waChannels || [];
+  return list.length > 1 ? list.find((ch) => ch.id === props.c.channel_id) || null : null;
 });
 defineEmits(['open']);
 

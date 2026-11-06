@@ -73,7 +73,6 @@ final class FailuresCenter
         $entry = $m->meta_code !== null ? MetaErrorCatalog::classify((int) $m->meta_code) : MetaErrorCatalog::byCode($m->error_code);
         $category = $m->error_category ?: ($entry['category'] ?? 'unknown');
         $maybeDelivered = in_array($m->status, [WaMessage::STATUS_UNKNOWN, 'unconfirmed'], true) || !empty($payload['_reaped']);
-        $windowOpen = (bool) $m->conversation?->isWindowOpen();
         $redrivable = $m->status === WaMessage::STATUS_FAILED && !$maybeDelivered && !empty($payload['_released_key'])
             && in_array($m->source, self::REDRIVE_SOURCES, true)
             && is_string($payload['type'] ?? null) && isset($payload[$payload['type']])
@@ -96,7 +95,6 @@ final class FailuresCenter
             'action' => $entry['action'] ?? null,
             'attempts' => (int) $m->attempts,
             'redrives' => (int) data_get($payload, '_redrive.n', 0),
-            'window_open' => $windowOpen,
             'maybe_delivered' => $maybeDelivered,
             'can_redrive' => $redrivable && $windowOpen && FeatureFlags::on('failures_redrive'),
         ];

@@ -38,8 +38,6 @@ final class TestSend
                     'name' => $n->name,
                     'last4' => substr((string) $n->phone, -4),
                     'has_conversation' => $conv !== null,
-                    'window_open' => (bool) $conv?->isWindowOpen(),
-                    'minutes_left' => $conv?->windowMinutesLeft(),
                 ];
             })->values()->all();
     }

@@ -6,11 +6,14 @@ use App\Models\WaBotSetting;
 use Illuminate\Support\Facades\Http;
 
 /**
- * تهيئة قناة واتساب ونموذج وهميين للاختبار، وتزييف ميتا والنماذج.
- * القيم هنا ثابتة تعرفها الاختبارات (رقم ميتا النموذجي 106540352242922).
+ * تهيئة قناة واتساب ونموذج وهميين للاختبار، وتزييف البوابة والنماذج.
+ * منذ 2026-11-06 القناة رقم جاهز على بوابة OpenWA وهمية (FakesOpenWa)، وfakeGraph يزيّف البوابة بالمعرّفات نفسها
+ * (wamid.OUT.n) فتبقى اختبارات السجل كما هي. ثوابت ميتا باقية لاختبارات الإعدادات القديمة وحدها.
  */
 trait ConfiguresWhatsApp
 {
+    use FakesOpenWa;
+
     protected const TEST_PHONE_NUMBER_ID = '106540352242922';
 
     protected const TEST_APP_SECRET = 'test-app-secret';
@@ -31,6 +34,10 @@ trait ConfiguresWhatsApp
             'enabled' => true,
             'wa_suspended' => false,
         ], $overrides))->save();
+        if (\App\Models\WaChannel::count() === 0) {
+            $this->makeChannel();
+        }
+        \App\Models\WaChannel::forgetCache();
 
         return $s->fresh();
     }
@@ -41,6 +48,7 @@ trait ConfiguresWhatsApp
      */
     protected function fakeGraph(array $overrides = []): void
     {
+        $this->fakeGateway(array_filter($overrides, fn ($k) => str_contains((string) $k, 'nuskjo-openwa'), ARRAY_FILTER_USE_KEY));
         $n = 0;
         Http::fake(array_merge([
             'graph.facebook.com/*' => function () use (&$n) {

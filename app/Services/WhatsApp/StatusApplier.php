@@ -14,11 +14,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * تطبيق حالة تسليم من ويبهوك ميتا على الصف الصادر (E21، العلم delivery_status_v2؛ بدونه يبقى مسار
- * WhatsAppInbox::handleStatus القديم):
+ * تطبيق حالة تسليم على الصف الصادر (E21). المصدر منذ 2026-11-06 حدث message.ack وmessage.failed من بوابة OpenWA
+ * (applyOpenWa يحوّله إلى الشكل الداخلي {id, status, timestamp}):
  *
- * 1) الصف بـ wamid، وإلا بـ biz_opaque_callback_data ببادئة هذه النسخة (E19)، وإلا فالإيصال يتيم ينتظر في الكاش
- *    (OrphanStatus) حتى يُكتب معرّفه بعد ردّ ميتا.
+ * 1) الصف بـ wamid، وإلا فالإيصال يتيم ينتظر في الكاش (OrphanStatus) حتى يُكتب معرّفه بعد ردّ البوابة.
  * 2) تحديث ذري واحد مشروط WHERE status IS NULL OR status IN (DeliveryStatus::allowedFrom): لا قراءة ثم كتابة،
  *    فالرتبة الأعلى تفوز أياً كان ترتيب الوصول (SQLite يسلسل الكتابات). status_at وقت ميتا لا وقت الوصول.
  * 3) التاريخ payload.statusHistory يُلحق في جملة SQL ثانية مستقلة بلا تكرار ({s, t, c}، 12 عنصراً حداً أقصى)،
@@ -44,7 +43,29 @@ final class StatusApplier
         return self::$ready ??= Schema::hasColumns('wa_messages', ['status_at', 'sent_at', 'error_category']);
     }
 
-    public static function apply(array $st, bool $fromOrphan = false): void
+    /**
+     * ack من البوابة: pending لا شيء (الصف queued عندنا)، وsent وdelivered وread تتقدّم، وfailed نهائية برمز DELIVERY_FAILED.
+     * الصدى fromMe بالمعرّف نفسه يحسمه EchoHandler، وهنا الحالة وحدها.
+     */
+    public static function applyOpenWa(\App\Models\WaChannel $channel, array $data, bool $failedEvent = false): void
+    {
+        $id = $data['messageId'] ?? $data['id'] ?? null;
+        $status = strtolower((string) ($data['status'] ?? ''));
+        if ($failedEvent) {
+            $status = DeliveryStatus::FAILED;
+        }
+        if (!is_string($id) || $id === '' || !in_array($status, ['sent', 'delivered', 'read', 'played', 'failed'], true)) {
+            return;
+        }
+        $ts = is_numeric($data['timestamp'] ?? null) ? (int) $data['timestamp'] : null;
+        if ($ts !== null && $ts > 1_000_000_000_000) {
+            $ts = intdiv($ts, 1000);
+        }
+        self::apply(array_filter(['id' => mb_substr($id, 0, 128), 'status' => $status, 'timestamp' => $ts]),
+            override: $status === DeliveryStatus::FAILED ? MetaError::local('DELIVERY_FAILED') : null);
+    }
+
+    public static function apply(array $st, bool $fromOrphan = false, ?MetaError $override = null): void
     {
         $wamid = data_get($st, 'id');
         $status = data_get($st, 'status');
@@ -69,8 +90,8 @@ final class StatusApplier
         // ميتا توصي بالبناء على code لا على title: MetaError من الجدول الوحيد (E18)، وdetails لا تُكتب في عمود
         $failed = $status === DeliveryStatus::FAILED;
         $code = is_numeric(data_get($st, 'errors.0.code')) ? (int) data_get($st, 'errors.0.code') : null;
-        $err = null;
-        if ($failed || $code !== null) {
+        $err = $override;
+        if ($err === null && ($failed || $code !== null)) {
             try {
                 $err = MetaError::fromStatusError((array) data_get($st, 'errors.0', []));
             } catch (\Throwable $e) {
@@ -80,10 +101,6 @@ final class StatusApplier
 
         $row = WaMessage::where('wamid', $wamid)->where('direction', 'out')->first(['id', 'conversation_id', 'source', 'staff_id', 'status', 'wamid']);
         $byOpaque = false;
-        if (!$row) {
-            $row = self::byOpaque($st, $wamid);
-            $byOpaque = $row !== null;
-        }
         if (!$row) {
             // يتيم: إيصال سبق حفظ المعرّف (failed لا تحمل biz_opaque في أمثلة المرجع)
             if (!$fromOrphan) {
@@ -98,17 +115,12 @@ final class StatusApplier
         }
 
         $affected = self::advance($row, $wamid, $status, $metaAt, $err, $code, $byOpaque, $st);
-        if ($byOpaque && $affected === 0) {
-            // حالة أدنى متأخرة بـ biz_opaque: الحالة لا تتراجع، والمعرّف يُكمَل
-            WaMessage::whereKey($row->id)->whereNull('wamid')->update(['wamid' => $wamid]);
-        }
 
         try {
             self::appendHistory($row->id, $status, $ts, $err?->metaCode ?? $code);
         } catch (\Throwable $e) {
             WaLog::error('wa.status.history_failed', ['message_id' => $row->id, 'type' => class_basename($e)]);
         }
-        self::capturePricing($st, $row->id);
 
         if ($affected > 0) {
             EventBus::emit(new WaMessageStatusChanged($row->id, (int) $row->conversation_id, $status, $metaAt->getTimestamp(), $err?->metaCode ?? $code));
@@ -150,10 +162,7 @@ final class StatusApplier
             }
             $cols['error_code'] = mb_substr($err->code, 0, 32);
             $cols['error_category'] = $err->category;
-            if ($code !== null) {
-                $cols['error_message'] = MetaErrorCatalog::v2() ? $err->staffMessage
-                    : MetaErrorCatalog::message($code, (string) data_get($st, 'errors.0.title', ''));
-            }
+            $cols['error_message'] = $err->staffMessage;
             if ($err->details !== null) {
                 $json = DB::getPdo()->quote((string) json_encode($err->forPayload(), JSON_UNESCAPED_UNICODE));
                 $cols['payload'] = DB::raw("json_set(coalesce(payload, '{}'), '$._meta_error', json({$json}))");
@@ -215,23 +224,15 @@ final class StatusApplier
         );
     }
 
-    /** ما بعد التحديث: الفشل (سجل ومفاعل وإبلاغ)، ورد آلي لم يصل، و«غير مؤكد» ثبت، وهوية المستلم */
+    /** ما بعد التحديث: الفشل (سجل وإبلاغ)، ورد آلي لم يصل، و«غير مؤكد» ثبت */
     private static function afterStatus(WaMessage $row, array $st, string $wamid, string $status, bool $advanced, ?MetaError $err, ?int $code): void
     {
-        $v2 = MetaErrorCatalog::v2();
         if ($status === DeliveryStatus::FAILED && $err) {
             WaLog::warning('wa.delivery_failed', ['conv_id' => $row->conversation_id, 'message_id' => $row->id, 'wamid' => $wamid,
-                'meta_code' => $err->metaCode, 'error_code' => $err->code, 'category' => $err->category]);
-            if (!$v2 && $code !== null) {
-                MetaErrorCatalog::react($code);
-            }
-            // الويبهوك المكرر لا يعيد التنبيه ولا العدّ (المفتاح يحمل wamid)، وfailed المتأخرة تُعدّ ولو لم تتقدّم
-            MetaErrorReactor::react($err, ['conv_id' => $row->conversation_id, 'message_id' => $row->id, 'wamid' => $wamid, 'source' => 'webhook']);
+                'error_code' => $err->code, 'category' => $err->category]);
             if ($advanced) {
                 self::notifySenderDirect($row->id, (int) $row->conversation_id, $row->source, $row->staff_id, $err);
             }
-        } elseif ($code !== null && !$v2) {
-            MetaErrorCatalog::react($code);
         }
 
         // رد آلي لم يصل: المحادثة تحتاج موظفاً (E07). استدعاء صريح لا مستمع: جزء من بوابة الرد
@@ -242,11 +243,6 @@ final class StatusApplier
         if ($advanced && $status !== DeliveryStatus::FAILED && in_array($row->status, self::PENDING, true)) {
             self::clearSendUnknown((int) $row->conversation_id);
         }
-
-        // حالة فيها الرقم والمعرّف معاً تملأ معرّف محادثة رقمها معروف (E11)
-        if (filled(data_get($st, 'recipient_user_id')) && ($c = WaConversation::find($row->conversation_id))) {
-            ContactIdentity::fillFromStatus($st, $c);
-        }
     }
 
     /**
@@ -255,7 +251,7 @@ final class StatusApplier
      */
     public static function notifySenderDirect(int $messageId, int $conversationId, ?string $source, ?int $staffId, MetaError $err): void
     {
-        if (!MetaErrorCatalog::v2() || FeatureFlags::on('wa_event_bus') || $source !== 'staff' || !$staffId || $err->scope !== 'recipient') {
+        if (FeatureFlags::on('wa_event_bus') || $source !== 'staff' || !$staffId || $err->scope !== 'recipient') {
             return;
         }
         if (!Cache::add("wa:delivery-failed:notify:{$messageId}", 1, now()->addDays(2))) {

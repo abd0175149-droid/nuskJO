@@ -85,6 +85,14 @@ final class MetaError
         return new self(null, $httpStatus, null, null, $kind, $e['category'], $e['scope'], $e['message'], $e['action'], $e['retry'], false);
     }
 
+    /** رفض من بوابة OpenWA بعد تصنيفه (OpenWa\OpenWaError): الرمز من LOCAL، وتفاصيل البوابة مقصوصة ومقنّعة */
+    public static function gateway(string $code, ?int $httpStatus = null, ?string $details = null): self
+    {
+        $e = MetaErrorCatalog::byCode($code) ?? MetaErrorCatalog::byCode('GW_ERROR');
+
+        return new self(null, $httpStatus, null, MetaErrorCatalog::maskDetails($details), $code, $e['category'], $e['scope'], $e['message'], $e['action'], $e['retry'], false, 'openwa');
+    }
+
     /** نوع فشل الاتصال من نص الاستثناء (cURL): مهلة بعد الاتصال أم تعذّر الاتصال نفسه */
     public static function networkKind(\Throwable $e): string
     {

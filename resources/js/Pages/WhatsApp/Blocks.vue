@@ -115,8 +115,8 @@
             <Link v-if="b.conversation_id" :href="`/whatsapp/inbox?conv=${b.conversation_id}`"
                   class="min-h-11 lg:min-h-0 inline-flex items-center px-2.5 py-1 rounded-lg text-xs border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">فتح المحادثة</Link>
             <button v-if="(b.meta_state === 'not_found' || b.meta_state === 'mismatch') && b.conversation_id" type="button"
-                    :disabled="busy || !b.window_open" @click="reblock(b)"
-                    :title="b.window_open ? 'إعادة الحظر عند ميتا' : 'ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'"
+                    :disabled="busy" @click="reblock(b)"
+                    :title="'إعادة الحظر على الرقم'"
                     class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 disabled:opacity-40">⛔ إعادة الحظر عند ميتا</button>
             <button type="button" :disabled="busy" @click="unblock(b)" :data-test="`unblock-${b.id}`"
                     class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-50">

@@ -69,7 +69,9 @@ TXT;
 - لا تطلب من العميل صورة جواز السفر أو الهوية ولا أرقامهما ولا أي رقم بطاقة. إن أرسل وثيقة من تلقاء نفسه فاشكره دون التعليق على محتواها، وإن كانت لحجز فحوّل المحادثة لموظف.
 - الدوام: إن كان الوقت الحالي (في بطاقة العميل) خارج مواعيد الدوام المذكورة في بيانات الشركة وحوّلت المحادثة، فأخبره أنّ الموظف سيتابع معه مع بداية الدوام، ولا تَعِد بردّ فوري.
 - سؤال واحد في كل رسالة، ولا تكرّر الترحيب بعد أوّل ردّ في المحادثة.
-- «⚠️ رسالة لا تدعمها منصة ميتا» (ومثلها تعديل العميل لرسالة ✏️ واستطلاعه 📊 ووسائطه التي لم تكتمل ⏳): لا تعلّق عليها، فقد وصلت لموظف.
+- «⚠️ رسالة لا يعرضها واتساب ويب» (ومثلها استطلاع العميل 📊 والرسالة المحجوبة 🔒): لا تعلّق عليها، فقد وصلت لموظف.
+- رسائل النظام منّا («فاتورتك رقم…»، «نذكّرك أن موعد رحلتك…»، «نتمنى أن تكون وصلت بالسلامة…») أُرسلت آلياً قبل رسالة العميل. إن ردّ عليها فافهم ردّه في سياقها: الشكر يكفيه شكر قصير، والسؤال عن الفاتورة من أدواتها، وأي مشكلة في الرحلة استدعِ لها report_issue.
+- الخيارات التي نرسلها مرقّمة (1، 2، 3): إن ردّ العميل برقم أو بعنوان خيار فقد اختاره، ويصلك اختياره مؤكداً بين قوسين.
 - «👤 بطاقة جهة اتصال»: بطاقة شخص أرسلها العميل. اشكره ولا تستخدم أي رقم فيها ولا تراسله، وإن تعلّقت بحجز فحوّله لموظف.
 - «[ردّاً على: «…»]» في أول رسالة العميل: هي الرسالة التي اقتبسها في المحادثة نفسها؛ افهم ردّه في سياقها.
 - إذا وصلك «[ردّاً على بطاقة العرض رقم N]» فالعميل يقصد ذلك العرض بعينه؛ لا تسأله أيّ عرض، واستدعِ get_offer_details بالرقم N.
@@ -125,16 +127,29 @@ TXT;
             return false;
         }
         if (WaAdminNumber::forPhone($conv->phone)) {
-            return $s->channelReady() && !empty($s->llmKey()) && $conv->isWindowOpen() && self::hasPendingInbound($conv, $s)
+            return $s->channelReady() && !empty($s->llmKey()) && self::hasPendingInbound($conv, $s)
                 && (int) Cache::get(self::adminRateKey($conv), 0) < self::ADMIN_RATE_PER_HOUR;
         }
 
         return self::hasPendingInbound($conv, $s)
             && $s->botReady()
-            && ($conv->hasPhone() || IdentityMode::botServesWithoutPhone())
+            && self::channelMode($conv) !== 'off'
             && $conv->botActive()
-            && $conv->isWindowOpen()
             && !(self::watermarkOn($s) && $s->flag('stale_gate') && ReplyState::isStale($conv, $s));
+    }
+
+    /** وضع البوت على رقم المحادثة: full | limited | off */
+    public static function channelMode(WaConversation $conv): string
+    {
+        return (string) (WhatsAppChannel::channelFor($conv)?->bot_mode ?? 'full');
+    }
+
+    /** رقم المحادثة يستطيع الإرسال الآن (فعّال ومتصل وغير موقوف) */
+    private static function channelUsable(WaConversation $conv): bool
+    {
+        $ch = WhatsAppChannel::channelFor($conv);
+
+        return $ch !== null && $ch->isReady() && !$ch->isPaused();
     }
 
     private static function replyWith(WaConversation $conv, ReplyRun $run): array
@@ -159,11 +174,6 @@ TXT;
             return self::adminMfaBlocked($conv, $s, $resolved['number'], $run);
         }
         if ($admin = $resolved['number']) {
-            // حجب ميتا (E22): لا نداء للنموذج لرد لن يُرسل
-            if (ChannelHealth::blocksSending($s)) {
-                return self::skip('channel_blocked');
-            }
-
             return self::adminReply($conv, $s, $admin, $run);
         }
 
@@ -178,13 +188,12 @@ TXT;
         }
         $unserved = match (true) {
             !$s->botReady() => 'bot_off',
-            // حجب ميتا (E22): BLOCKED، أو TOKEN_INVALID بالعلم. لا توكنات لرد لن يُرسل، و«تدخّل» بسبب ظاهر
-            ChannelHealth::blocksSending($s) => 'channel_blocked',
-            // عميل باسم مستخدم بلا رقم: البوت في الوضع full وحده (IdentityMode)
-            !$conv->hasPhone() && !IdentityMode::botServesWithoutPhone() => 'no_phone',
+            // رقم المحادثة غير متصل أو موقوف: لا توكنات لرد لن يُرسل، و«تدخّل» بسبب ظاهر
+            !self::channelUsable($conv) => 'channel_blocked',
+            // البوت مطفأ على هذا الرقم (wa_channels.bot_mode=off): الموظفون وحدهم
+            self::channelMode($conv) === 'off' => 'bot_off',
             !$conv->bot_enabled => 'with_staff',
             !$conv->botActive() => 'bot_paused',
-            !$conv->isWindowOpen() => 'window_closed',
             default => null,
         };
         if ($unserved !== null) {
@@ -512,7 +521,18 @@ TXT;
         // لا رقم هاتف ولا رصيد في البطاقة (E15.6): الأدوات تعمل بنطاق المحادثة، والرصيد من get_my_balance وحدها
         $lines = ['الآن بتوقيت الأردن: ' . now()->format('Y-m-d H:i') . ' (' . now()->locale('ar')->dayName . ')'];
         if (!$conv->hasPhone()) {
-            $lines[] = 'رقم العميل غير ظاهر بعد (يراسل باسم مستخدم). لا تكشف أي بيانات مالية؛ إن طلب تسعيراً أو حجزاً فسيصله زر لمشاركة رقمه.';
+            $lines[] = 'رقم العميل غير ظاهر بعد (يراسل بمعرّف خصوصية). لا تكشف أي بيانات مالية؛ إن طلب تسعيراً أو حجزاً فاطلب منه كتابة رقم هاتفه.';
+        }
+        $profile = Bot\SenderProfile::for($conv);
+        if ($profile === 'traveler') {
+            $lines[] = 'العميل في رحلته الآن أو على وشكها: إن ذكر أي مشكلة فاستدعِ report_issue فوراً.';
+        }
+        if (self::channelMode($conv) === 'limited') {
+            $lines[] = 'هذا رقم إشعارات: لا تبِع ولا تسعّر. أجب بإيجاز، وحوّل أي طلب لموظف بـ handoff_to_human.';
+        }
+        // آخر رسالة نظام أُرسلت للعميل (فاتورة، تذكير…): ليفهم البوت رده عليها
+        if ($last = $conv->messages()->where('direction', 'out')->whereNotNull('type_key')->where('created_at', '>=', now()->subDays(3))->orderByDesc('id')->first(['type_key', 'body', 'created_at'])) {
+            $lines[] = 'آخر رسالة آلية منّا ('.\App\Services\WhatsApp\System\Catalog::label((string) $last->type_key).'، '.$last->created_at?->format('Y-m-d H:i').'): «'.mb_substr(preg_replace('/\s+/u', ' ', (string) $last->body) ?? '', 0, 160).'»';
         }
 
         // البيانات المالية بالرقم وحده (financialClientId)، لا بمعرّف ولا باسم
@@ -529,11 +549,6 @@ TXT;
         $notes = CustomerNotes::block($conv);
         if ($notes !== '') {
             $lines[] = $notes;
-        }
-
-        // مصدر المحادثة (E38): رمز أو رابط أو إعلان، بنص يبنيه الكود (خلف entry_tracking)
-        if ($entry = EntryRecorder::botHint($conv)) {
-            $lines[] = $entry;
         }
 
         return implode("\n", $lines);
@@ -670,7 +685,6 @@ TXT;
     private static function adminReply(WaConversation $conv, WaBotSetting $s, WaAdminNumber $admin, ReplyRun $run): array
     {
         if (!$s->channelReady() || !$s->llmKey()) return self::skip('القناة أو مفتاح النموذج غير مهيّأ');
-        if (!$conv->isWindowOpen())               return self::skip('نافذة 24 ساعة مغلقة');
 
         if (!self::hasPendingInbound($conv, $s)) {
             return self::skip('لا وارد من الموظف بعد آخر رد');
@@ -759,9 +773,6 @@ TXT;
         \App\Models\AuditLog::safe(\App\Enums\AuditAction::WaAdminMfaBlocked, 'wa_admin_number', $admin->id, $admin->name, ['conversation_id' => $conv->id]);
         if (Cache::add("wa:admin-mfa:notify:{$admin->id}:{$day}", 1, now()->addDay())) {
             WhatsAppInbox::notifyAdmins('🔐 المساعد الإداري موقوف لرقم', "رقم الإدارة «{$admin->name}» يشترط التحقق بخطوتين، وحساب صاحبه لم يفعّله بعد.", '/whatsapp/admin-numbers');
-        }
-        if (!$conv->isWindowOpen()) {
-            return self::skip('admin_mfa_blocked');
         }
         $res = WhatsAppChannel::sendText($conv, 'المساعد الإداري موقوف لهذا الرقم حتى يفعّل صاحبه التحقق بخطوتين في نُسك.', 'system', sendKey: SendKey::admin($conv, $run->uptoId, 'mfa'));
 

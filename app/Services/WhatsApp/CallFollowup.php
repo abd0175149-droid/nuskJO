@@ -90,7 +90,6 @@ final class CallFollowup
             $conv->isBlocked() => 'blocked',
             (bool) $conv->is_admin_chat || ($conv->hasPhone() && WaAdminNumber::forPhone($conv->phone) !== null) => 'admin',
             $conv->bot_paused_until !== null && $conv->bot_paused_until->isFuture() => 'staff_active',
-            !$conv->isWindowOpen() => 'window',
             default => null,
         };
     }

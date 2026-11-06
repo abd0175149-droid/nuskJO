@@ -10,10 +10,11 @@ use App\Models\WaMessage;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * التحقق من نقرة على خيار أرسله البوت (E36)، قبل حفظ الوارد: المعرّف بصيغة الخادم ch:{nonce}:{key}، والمجموعة من
- * المحادثة نفسها، وcontext.id هو wamid الرسالة التي نُقر زرها، وهي أحدث مجموعة من نوعها، ولم تنتهِ، والعرض والخيار
- * والغرفة ما زالت متاحة الآن في القاعدة. النتيجة في payload._choice، والنموذج يرى وصفاً مؤكداً لا معرّفاً خاماً.
- * يعمل بلا علم: نقرة على قائمة أُرسلت قبل إطفاء العلم تُرفض بأمان. أي معرّف آخر (optout، موافقة الملفات) لا يمسه.
+ * التحقق من اختيار العميل لخيار أرسله البوت (E36)، قبل حفظ الوارد. واتساب ويب بلا أزرار (2026-11-06)، فالخيارات تصل
+ * العميل نصاً مرقماً (OpenWa\PayloadMapper)، ويرد برقم الخيار (1، 2، ٣) أو بعنوانه حرفياً: يُحوَّل الرد إلى معرّف الخادم
+ * ch:{nonce}:{key} من آخر رسالة خيارات صادرة في المحادثة، فيمر بالفحوص نفسها: المجموعة من المحادثة نفسها، وهي أحدث
+ * مجموعة من نوعها، ولم تنتهِ، والعرض والخيار والغرفة ما زالت متاحة الآن. النتيجة في payload._choice، والنموذج يرى
+ * وصفاً مؤكداً لا معرّفاً خاماً. رد اقتبس رسالة الخيارات يطابقها بالاقتباس، وغيره يطابق آخر رسالة خيارات وحدها.
  */
 final class ChoiceResolver
 {
@@ -37,10 +38,15 @@ final class ChoiceResolver
     /** @return array{set_id: ?int, kind: ?string, key: string, valid: bool, reason: ?string, ref: array, label: ?string}|null */
     public static function resolve(WaConversation $conv, InboundMessage $in): ?array
     {
-        if ($in->type !== 'interactive' || $in->buttonId === null || !preg_match(self::PATTERN, $in->buttonId, $m)) {
+        if (!(self::$available ??= Schema::hasTable('wa_choice_sets'))) {
             return null;
         }
-        if (!(self::$available ??= Schema::hasTable('wa_choice_sets'))) {
+        $buttonId = $in->type === 'interactive' ? $in->buttonId : null;
+        $replyTo = $in->replyToWamid;
+        if ($buttonId === null && $in->type === 'text' && ($picked = self::numbered($conv, $in))) {
+            [$buttonId, $replyTo] = $picked;
+        }
+        if ($buttonId === null || !preg_match(self::PATTERN, $buttonId, $m)) {
             return null;
         }
         [, $nonce, $key] = $m;
@@ -56,7 +62,7 @@ final class ChoiceResolver
         $option = $set->kind !== 'quote_flow' ? $set->option($key) : null;
         $reason = match (true) {
             $option === null => 'bad_key',
-            !self::contextMatches($conv, $set, $in->replyToWamid) => 'no_context',
+            !self::contextMatches($conv, $set, $replyTo) => 'no_context',
             WaChoiceSet::where('conversation_id', $conv->id)->where('kind', $set->kind)->where('id', '>', $set->id)->exists() => 'superseded',
             $set->isExpired() => 'expired',
             default => self::stillAvailable((array) ($option['ref'] ?? [])),
@@ -67,6 +73,57 @@ final class ChoiceResolver
         WaLog::info('wa.choice.resolved', ['conv_id' => $conv->id, 'set_id' => $set->id, 'kind' => $set->kind, 'reason' => $reason ?? 'valid']);
 
         return self::result($set, $key, $reason === null, $reason, $option);
+    }
+
+    /**
+     * رد نصي برقم خيار أو بعنوانه على رسالة خيارات صادرة: [معرّف الخيار، wamid رسالة الخيارات]، أو null.
+     * الرسالة المقتبسة إن اقتبس العميل رسالة خيارات، وإلا آخر رسالة خيارات صادرة خلال 24 ساعة، بشرط ألا يكون بعدها
+     * رد صادر آخر من البوت أو الموظف (فالرقم عندها جواب سؤال آخر).
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    public static function numbered(WaConversation $conv, InboundMessage $in): ?array
+    {
+        $text = trim(strtr($in->body, ['٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9']));
+        $text = rtrim($text, '.)-– ');
+        if ($text === '' || mb_strlen($text) > 80) {
+            return null;
+        }
+        $q = WaMessage::where('conversation_id', $conv->id)->where('direction', 'out')->where('msg_type', 'interactive')->whereNotNull('wamid');
+        $menu = $in->replyToWamid ? (clone $q)->where('wamid', $in->replyToWamid)->first(['id', 'wamid', 'payload']) : null;
+        if ($menu === null) {
+            $menu = $q->where('created_at', '>=', now()->subDay())->orderByDesc('id')->first(['id', 'wamid', 'payload']);
+            if ($menu === null || WaMessage::where('conversation_id', $conv->id)->where('direction', 'out')->where('id', '>', $menu->id)
+                ->whereIn('source', ['bot', 'staff', 'staff_phone'])->exists()) {
+                return null;
+            }
+        }
+        $options = OpenWa\PayloadMapper::options((array) data_get($menu->payload, 'interactive', []));
+        if ($options === []) {
+            return null;
+        }
+        $pick = null;
+        if (preg_match('/^\d{1,2}$/', $text)) {
+            $pick = $options[(int) $text - 1] ?? null;
+        } else {
+            $norm = TextNormalizer::forSearch($text);
+            foreach ($options as $o) {
+                if (TextNormalizer::forSearch($o['title']) === $norm) {
+                    $pick = $o;
+                    break;
+                }
+            }
+        }
+
+        return $pick !== null && $pick['id'] !== '' ? [$pick['id'], (string) $menu->wamid] : null;
+    }
+
+    /** صوت في استطلاع (poll.vote): لا يُرسل نُسك استطلاعات اليوم (الخيارات نص مرقم)، فلا شيء يُحسم هنا */
+    public static function fromPollVote(\App\Models\WaChannel $channel, array $data): ?int
+    {
+        WaLog::info('wa.choice.poll_vote_ignored', ['channel_id' => $channel->id]);
+
+        return null;
     }
 
     /** الوصف الذي يراه النموذج بدل «[اختيار:id]» */
@@ -130,7 +187,8 @@ final class ChoiceResolver
      */
     public static function confirmedBooking(WaConversation $conv): ?array
     {
-        $rows = $conv->messages()->where('direction', 'in')->where('msg_type', 'interactive')
+        // الاختيار يصل نصاً مرقماً منذ OpenWA (والأزرار القديمة interactive)
+        $rows = $conv->messages()->where('direction', 'in')->whereIn('msg_type', ['interactive', 'text'])
             ->where('created_at', '>=', now()->subMinutes(QuoteRequestGuard::WINDOW_MINUTES))
             ->orderByDesc('id')->limit(10)->get(['id', 'payload']);
         foreach ($rows as $m) {

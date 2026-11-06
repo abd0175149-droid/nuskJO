@@ -183,9 +183,10 @@ services:
       WEBHOOK_TIMEOUT: "10000"
       WEBHOOK_RETRY_DELAY: "5000"
       WEBHOOK_SHUTDOWN_DRAIN_MS: "15000"
-      # الوسائط حتى 1MB تصل مضمّنة في الحمولة، وما فوقها omitted ويجلبه نُسك من /media
-      WEBHOOK_MEDIA_INLINE_MAX_BYTES: "1048576"
-      WEBHOOK_MAX_PAYLOAD_BYTES: "2097152"
+      # لا وسائط مضمّنة في الحمولة: كل وسيط omitted ويجلبه نُسك عند الحاجة من /messages/{chat}/{id}/media
+      # (التفريغ والأرشفة)، فتبقى الـ webhooks صغيرة ولا تمر ملفات العملاء في طابور Redis
+      WEBHOOK_MEDIA_INLINE_MAX_BYTES: "0"
+      WEBHOOK_MAX_PAYLOAD_BYTES: "1048576"
       # حارس SSRF يمنع العناوين الخاصة؛ يُسمح لحاوية التطبيق وحدها بالاسم
       SSRF_ALLOWED_HOSTS: nuskjo-app
       MCP_ENABLED: "false"

@@ -17,15 +17,15 @@
           <label v-for="t in targets" :key="t.conversation_id"
                  class="flex items-center gap-2 min-h-11 px-3 rounded-xl border cursor-pointer"
                  :class="[selected === t.conversation_id ? 'border-gold-400 bg-gold-50 dark:bg-gold-900/30' : 'border-gray-200 dark:border-gray-700',
-                          t.window_open ? '' : 'opacity-60 cursor-not-allowed']">
-            <input v-model="selected" type="radio" name="wa-target" :value="t.conversation_id" :disabled="!t.window_open" class="w-4 h-4 shrink-0"/>
+                          t.reachable ? '' : 'opacity-60 cursor-not-allowed']">
+            <input v-model="selected" type="radio" name="wa-target" :value="t.conversation_id" :disabled="!t.reachable" class="w-4 h-4 shrink-0"/>
             <span class="min-w-0 flex-1">
               <bdi dir="auto" class="font-bold">{{ t.name }}</bdi>
               <template v-if="t.last4"> • <bdi dir="ltr">…{{ t.last4 }}</bdi></template>
               <template v-if="t.client_code"> • <bdi dir="ltr">{{ t.client_code }}</bdi></template>
             </span>
-            <span class="shrink-0 text-[11px]" :class="t.window_open ? 'text-green-700 dark:text-green-400' : 'text-gray-500'">
-              {{ t.window_open ? `النافذة: ${windowLabel(t.window_left)}` : 'النافذة مغلقة' }}
+            <span class="shrink-0 text-[11px]" :class="t.reachable ? 'text-green-700 dark:text-green-400' : 'text-gray-500'">
+              {{ t.reachable ? `يُرسل من: ${t.channel || '—'}` : 'الرقم غير متصل' }}
             </span>
           </label>
         </fieldset>
@@ -66,7 +66,6 @@ import axios from 'axios';
 import AppModal from '@/Components/AppModal.vue';
 import { useConfirm } from '@/composables/useConfirm';
 import { uuid } from '@/composables/whatsapp/useSendKey.js';
-import { windowLabel } from '@/composables/whatsapp/useWindowCountdown.js';
 import { errorText } from '@/composables/whatsapp/useInbox.js';
 
 const props = defineProps({
@@ -93,7 +92,7 @@ const key = ref(uuid());
 const retrying = ref(false);
 
 const chosen = computed(() => targets.value.find((t) => t.conversation_id === selected.value) || null);
-const canSend = computed(() => !!chosen.value?.window_open && sendable.value && !sending.value && caption.value.length <= 1024);
+const canSend = computed(() => !!chosen.value?.reachable && sendable.value && !sending.value && caption.value.length <= 1024);
 
 async function load() {
   if (!props.invoice?.id) return;
@@ -106,7 +105,7 @@ async function load() {
     filename.value = data.filename || '';
     caption.value = data.caption || '';
     message.value = data.message || '';
-    const open = targets.value.filter((t) => t.window_open);
+    const open = targets.value.filter((t) => t.reachable);
     selected.value = open.length === 1 ? open[0].conversation_id : null;
   } catch (e) {
     error.value = errorText(e, 'تعذّر تحميل محادثات العميل');

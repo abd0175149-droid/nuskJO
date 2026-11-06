@@ -48,8 +48,8 @@
         <!-- شرائح الحالة -->
         <div class="flex flex-wrap gap-1">
           <span class="wp-chip" :class="thread.bot_enabled ? 'wp-chip-green' : 'wp-chip-gray'">{{ thread.bot_enabled ? '🤖 البوت يرد' : '⏸️ البوت موقوف' }}</span>
-          <span class="wp-chip" :class="thread.window_open ? 'wp-chip-sky' : 'wp-chip-gray'" :title="thread.window_open ? 'نافذة الرد المجاني من ميتا' : 'لا رد بعد 24 ساعة من آخر رسالة للعميل (لا قوالب لدينا)'">
-            {{ thread.window_open ? `🟢 النافذة: ${windowText}` : '🔒 النافذة مغلقة' }}
+          <span v-if="thread.channel" class="wp-chip" :class="thread.reachable ? 'wp-chip-sky' : 'wp-chip-gray'" :title="thread.reachable ? 'الرد يخرج من هذا الرقم' : 'الرقم غير متصل الآن'">
+            {{ thread.reachable ? '📱' : '📵' }} {{ thread.channel.name }}
           </span>
           <span v-if="thread.assignee" class="wp-chip wp-chip-gray">👤 <bdi dir="auto">{{ thread.assignee }}</bdi></span>
           <span v-if="thread.closed" class="wp-chip wp-chip-gray">🗂️ مغلقة</span>
@@ -90,8 +90,8 @@
             <button v-if="thread.client_id" type="button" class="wp-act" @click="$emit('unlink')">✂️ فك الربط</button>
           </template>
           <button v-if="canExport" type="button" class="wp-act" @click="$emit('export')" data-test="panel-export">⬇️ تصدير المحادثة</button>
-          <button v-if="blockable" type="button" class="wp-act wp-act-red" @click="$emit('block')" :disabled="!thread.window_open" data-test="panel-block"
-                  :title="thread.window_open ? 'حظر هذا الرقم عند واتساب' : 'ميتا لا تسمح بالحظر إلا خلال 24 ساعة من آخر رسالة للعميل'">⛔ حظر الرقم</button>
+          <button v-if="blockable" type="button" class="wp-act wp-act-red" @click="$emit('block')" :disabled="!thread.reachable" data-test="panel-block"
+                  :title="thread.reachable ? 'حظر هذا الرقم على واتساب' : 'الرقم غير متصل الآن'">⛔ حظر الرقم</button>
           <button v-if="canReprocess && thread.stuck" type="button" class="wp-act wp-act-purple" @click="act('reprocess')">🔁 إعادة معالجة الرد العالق</button>
         </div>
 
@@ -361,13 +361,6 @@ watch(() => props.thread.client_id, (now, before) => { if (now !== before) load(
 
 // ===== الهوية والحالة =====
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('ar-JO-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
-const windowText = computed(() => {
-  const left = Number(props.thread.window_left);
-  if (!Number.isFinite(left) || left <= 0) return 'مفتوحة';
-  const h = Math.floor(left / 60);
-  const m = Math.round(left % 60);
-  return h ? `${h}س ${m}د باقية` : `${m}د باقية`;
-});
 async function copyPhone() {
   try {
     await navigator.clipboard.writeText(`+${props.thread.phone}`);
@@ -384,8 +377,8 @@ const entryText = computed(() => {
 });
 
 // ===== الإجراءات =====
-const snooze = computed(() => snoozeOptions(props.thread.window_left));
-const bounds = computed(() => customBounds(props.thread.window_left));
+const snooze = computed(() => snoozeOptions());
+const bounds = computed(() => customBounds());
 function act(name, payload) {
   custom.value = '';
   emit('action', name, payload);

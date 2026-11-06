@@ -93,7 +93,7 @@ final class InvoicePdfService
     }
 
     /** الورقة الرسمية كاملة خلفية (بقرار المالك) بهوامش البطاقة نفسها، وإلا الشعار وترويسة نصية */
-    private static function brand(): array
+    public static function brand(): array
     {
         $letterhead = config('whatsapp.outbound.invoice_letterhead') ? OfferCardService::dataUri(Setting::get('card_letterhead_path')) : null;
 

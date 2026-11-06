@@ -36,7 +36,14 @@ final class WaLog
         'call', 'mode', 'chunk',
         // E36: نوع مجموعة الاختيارات ورقمها (لا عناوين ولا معرّفات الخيارات ولا flow_token)
         'kind', 'set_id',
+        // بوابة OpenWA (2026-11-06): الرقم والمسار بلا معرّفات ورمز البوابة والمرحلة
+        'channel_id', 'path', 'gw_code', 'lane', 'type_key', 'outbox_id', 'stage', 'defer',
     ];
+
+    public static function debug(string $event, array $context = []): void
+    {
+        self::write('debug', $event, $context);
+    }
 
     public static function info(string $event, array $context = []): void
     {

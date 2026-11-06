@@ -48,6 +48,12 @@ final class InboundMessage
         public readonly ?array $flowReply = null,
         /** E36 (C043): رسالة تسأل عن منتج من كتالوج ميتا (context.referred_product). لا كتالوج عندنا: تصل موظفاً */
         public readonly bool $referredProduct = false,
+        /** OpenWA (2026-11-06): رقمنا الذي وصلت عليه، ومعرّف المحادثة على البوابة، ومعرّف الخصوصية إن كان المرسل خلفه */
+        public readonly ?int $channelId = null,
+        public readonly ?string $jid = null,
+        public readonly ?string $lid = null,
+        /** رسالة صوتية مسجّلة (ptt) لا ملف صوتي مرفق */
+        public readonly bool $voice = false,
     ) {}
 
     /** E33: تعديل وحذف أرقام Coexistence، إن وصلا صريحين، يُعاملان كغير مدعوم ولا يمسّان الرسالة الأصلية */

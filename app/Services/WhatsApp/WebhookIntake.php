@@ -10,7 +10,7 @@ use App\Support\FeatureFlags;
 use Illuminate\Support\Facades\Crypt;
 
 /**
- * «احفظ الجسم مشفّراً، ثم عالج، ثم امحُ» (E20). المتحكم وأمر الإعادة يمرّان من هنا وحده.
+ * «احفظ الجسم مشفّراً، ثم عالج، ثم امحُ» (E20). متحكم OpenWA وأمر الإعادة يمرّان من هنا وحده.
  * لا يُطبع الجسم ولا جزء منه في أي سجل، ولا يُعرض في أي مسار.
  */
 final class WebhookIntake
@@ -87,7 +87,7 @@ final class WebhookIntake
     }
 
     /**
-     * فك JSON ثم السياج ثم المعالجة المعزولة ثم الجدولة، وحسم الصف إن وُجد.
+     * فك JSON ثم المعالجة المعزولة ثم الجدولة، وحسم الصف إن وُجد (أمر الإعادة).
      *
      * @return ?WebhookResult null للحمولة المعطوبة (لا تُعاد: 200 لميتا)
      */
@@ -106,12 +106,35 @@ final class WebhookIntake
             return null;
         }
 
-        $fenced = WebhookFence::filter($payload);
-        $result = WhatsAppInbox::handleWebhook($fenced['payload']);
-        self::schedule($result);
+        // حمولة OpenWA (event وsessionId): رقمها من الجلسة. جلسة لا يعرفها نُسك تُرفض كبيانات جهة أخرى
+        if (is_string($payload['event'] ?? null) && array_key_exists('sessionId', $payload)) {
+            $channel = \App\Models\WaChannel::where('openwa_session_id', (string) $payload['sessionId'])->first();
+            if ($channel === null) {
+                $event?->forceFill(['status' => WaWebhookEvent::REJECTED, 'raw_body' => null, 'processed_at' => now(),
+                    'reject_reason' => 'unknown_session', 'attempts' => $event->attempts + 1, 'last_attempt_at' => now()])->save();
 
+                return new WebhookResult;
+            }
+
+            return self::processOpenWa($event, $channel, $payload);
+        }
+
+        // حمولة ميتا القديمة (رقم الاختبار، قرار المالك الأول): لا تُعالج بعد إزالة الناقل
+        WaLog::warning('webhook.legacy_meta_ignored', ['bytes' => strlen($raw)]);
+        $event?->forceFill(['status' => WaWebhookEvent::REJECTED, 'raw_body' => null, 'processed_at' => now(),
+            'reject_reason' => 'legacy_meta', 'attempts' => $event->attempts + 1, 'last_attempt_at' => now()])->save();
+
+        return new WebhookResult;
+    }
+
+    /** حدث OpenWA واحد لرقم (المتحكم وأمر الإعادة): التوزيع ثم الجدولة، وحسم الصف إن وُجد */
+    public static function processOpenWa(?WaWebhookEvent $event, \App\Models\WaChannel $channel, array $envelope): WebhookResult
+    {
+        $result = new WebhookResult;
+        OpenWa\EventRouter::route($channel, $envelope, $result);
+        self::schedule($result);
         if ($event !== null) {
-            self::finish($event, $result, $fenced);
+            self::finish($event, $result, ['emptied' => false, 'rejected' => []]);
         }
 
         return $result;
@@ -227,7 +250,7 @@ final class WebhookIntake
 
         if ($n >= (int) config('whatsapp.webhook.bad_signature_alert', 20)) {
             app(OpsAlerts::class)->notifyAdmins('wa:sig_fail', '⚠️ توقيعات ويبهوك مرفوضة كثيرة',
-                'قد يكون App Secret في الإعدادات لا يطابق تطبيق ميتا بعد تدوير، أو محاولة تزوير. الرسائل الحقيقية ستعيدها ميتا حين يُصحَّح السر.');
+                'قد يكون سر webhook أحد الأرقام لا يطابق ما سُجّل في البوابة («إعادة الإعداد» في صفحة الأرقام)، أو محاولة تزوير.');
         }
 
         return $n;
