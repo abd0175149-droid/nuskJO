@@ -30,7 +30,9 @@ use Illuminate\Support\Str;
  *   متابعات ولا إيقاف تسويق ولا تنزيل وسائط (media_status=remote، تُجلب يدوياً). علامة البوت تتقدّم إلى آخر وارد مستورد،
  *   فلا يرد البوت إلا على ما يصل بعد الاستيراد.
  * - الخيط مرتب بالمعرّف: محادثة فيها رسائل قبل وصول دورها تأخذ ما بعد أحدث رسالة فيها وحده (chats_partial)، فلا تظهر
- *   رسائل قديمة بعد الحديثة.
+ *   رسائل قديمة بعد الحديثة. إلا محادثة كل ما فيها مستورد ولم يمسّه أحد: يُعاد بناؤها كاملة بالترتيب (rebuildable).
+ * - واتساب ويب يزامن سجل الجهاز المرتبط حديثاً على دقائق، فالبدء الآلي ينتظر settle_seconds، وإعادة الاستيراد بعد ذلك
+ *   تكمل ما فات. جهات @lid يُجلب رقمها من البوابة (lidPhone)، فتُربط بالعميل وبتجربة البوت قبل أن تراسل.
  */
 final class HistoryImport
 {
@@ -80,6 +82,7 @@ final class HistoryImport
             'started_at' => $s['started_at'] ?? null,
             'finished_at' => $s['finished_at'] ?? null,
             'heartbeat_at' => $s['heartbeat_at'] ?? null,
+            'starts_at' => $s['starts_at'] ?? null,
             'last_error' => $s['last_error'] ?? null,
             'imported_at' => $c->history_imported_at?->toIso8601String(),
             'days' => (int) ($s['days'] ?? $cfg['days']),
@@ -113,8 +116,10 @@ final class HistoryImport
             $c->forceFill(['history_queue' => []]);
         }
         // الاستئناف الآلي لسلسلة ماتت (recover) يُبقي عدّاد الأعطال، والبدء اليدوي يصفّره
+        // البدء المؤجل (starts_at) ليس سلسلة ميتة: stale() لا يحسبه قبل موعده
         $s = ['status' => self::RUNNING, 'run' => (string) Str::uuid(), 'by' => $by, 'fails' => 0, 'last_error' => null,
-            'crashes' => $by === 'recover' ? (int) ($s['crashes'] ?? 0) : 0, 'heartbeat_at' => now()->toIso8601String()] + $s;
+            'crashes' => $by === 'recover' ? (int) ($s['crashes'] ?? 0) : 0, 'heartbeat_at' => now()->toIso8601String(),
+            'starts_at' => $delaySeconds > 0 ? now()->addSeconds($delaySeconds)->toIso8601String() : null] + $s;
         $c->forceFill(['history_import_state' => $s])->save();
         $c->logEvent('history_import', ['action' => $resume ? 'resume' : 'start', 'by' => $by]);
         WaLog::info('openwa.import.start', ['channel_id' => $c->id, 'stage' => $resume ? 'resume' : 'start']);
@@ -252,6 +257,7 @@ final class HistoryImport
             return false;
         }
         [$jid, $name] = array_pad((array) $queue[$cursor], 2, null);
+        $phone = str_ends_with((string) $jid, '@lid') ? self::lidPhone($c, (string) $jid) : null;
         $res = app(ChannelTransport::class)->call($c, 'GET', '/messages/'.rawurlencode((string) $jid).'/history', null, 'import', [],
             ['limit' => (int) ($s['per_chat'] ?? $cfg['messages_per_chat']), 'deep' => 'true']);
         if (!$res->ok) {
@@ -263,7 +269,7 @@ final class HistoryImport
             $s['last_error'] = (string) ($res->error?->code ?? 'GW_ERROR');
             $stored = ['stored' => 0, 'partial' => false];
         } else {
-            $stored = self::storeChat($c, (string) $jid, $name, self::items($res->json()), (int) ($s['since'] ?? 0));
+            $stored = self::storeChat($c, (string) $jid, $name, self::items($res->json()), (int) ($s['since'] ?? 0), $phone);
         }
         $s['cursor'] = $cursor + 1;
         $s['chats_done'] = (int) ($s['chats_done'] ?? 0) + 1;
@@ -279,9 +285,10 @@ final class HistoryImport
      * سجل محادثة واحدة في معاملة واحدة (لا نداء للبوابة داخلها). عام للاختبار وللاستيراد اليدوي.
      *
      * @param  list<array>  $messages  IncomingMessage كما تعيده البوابة
-     * @return array{stored: int, partial: bool, conversation_id: ?int}
+     * @param  string|null  $phone  رقم جهة @lid من البوابة، إن لم تحمله الرسائل
+     * @return array{stored: int, partial: bool, rebuilt: bool, conversation_id: ?int}
      */
-    public static function storeChat(WaChannel $c, string $jid, ?string $chatName, array $messages, int $since = 0): array
+    public static function storeChat(WaChannel $c, string $jid, ?string $chatName, array $messages, int $since = 0, ?string $phone = null): array
     {
         $parsed = [];
         foreach ($messages as $i => $m) {
@@ -296,7 +303,7 @@ final class HistoryImport
             $parsed[] = [$in, $m, $i];
         }
         if ($parsed === []) {
-            return ['stored' => 0, 'partial' => false, 'conversation_id' => null];
+            return ['stored' => 0, 'partial' => false, 'rebuilt' => false, 'conversation_id' => null];
         }
         // الأقدم أولاً (البوابة تعيده كذلك)، والترتيب الأصلي يحسم التساوي
         usort($parsed, fn ($a, $b) => [$a[0]->timestamp, $a[2]] <=> [$b[0]->timestamp, $b[2]]);
@@ -305,14 +312,22 @@ final class HistoryImport
         /** @var InboundMessage $who */
         $who = $identity[0];
 
-        [$conv, $stored, $partial] = DB::transaction(function () use ($c, $parsed, $who, $chatName) {
-            $conv = ContactIdentity::resolveIdentity($who->fromPhone ?? (InboundParser::digits((string) $who->jid) ?: null), null,
+        [$conv, $stored, $partial, $rebuilt] = DB::transaction(function () use ($c, $parsed, $who, $chatName, $phone) {
+            $conv = ContactIdentity::resolveIdentity($who->fromPhone ?? $phone ?? (InboundParser::digits((string) $who->jid) ?: null), null,
                 $who->profileName ?? $chatName, null, null, channelId: (int) $c->id, jid: $who->jid, lid: $who->lid);
 
             $existing = WaMessage::where('conversation_id', $conv->id);
             $hadMessages = (clone $existing)->exists();
+            $created = !$hadMessages;
             $newest = $hadMessages ? (clone $existing)->max('created_at') : null;
             $newestTs = $newest ? Carbon::parse($newest)->getTimestamp() : 0;
+            // إعادة استيراد وصلت أقدم مما حُفظ (المزامنة الأولى لم تكتمل): محادثة مستوردة كلها تُبنى من جديد بالترتيب
+            $removed = 0;
+            if ($hadMessages && self::at($parsed[0][0])->getTimestamp() < $newestTs && self::rebuildable((int) $conv->id)) {
+                $removed = (int) WaMessage::where('conversation_id', $conv->id)->delete();
+                $hadMessages = false;
+                $newestTs = 0;
+            }
             $ids = array_map(fn ($p) => (string) $p[0]->wamid, $parsed);
             $dupes = [];
             foreach (array_chunk($ids, 500) as $chunk) {
@@ -361,7 +376,7 @@ final class HistoryImport
                     $update['last_outbound_at'] = $lastOut;
                 }
                 // محادثة أنشأها الاستيراد: مغلقة وبلا غير مقروء، وأول وارد حي يعيد فتحها (WhatsAppInbox::storeInbound)
-                if (!$hadMessages && self::cfg()['close_new']) {
+                if ($created && self::cfg()['close_new']) {
                     $update += ['status' => 'closed', 'closed_at' => $last[0], 'unread_count' => 0];
                 }
                 if ($update !== []) {
@@ -373,14 +388,46 @@ final class HistoryImport
                 }
             }
 
-            return [$conv, $stored, $partial];
+            // العدّاد للجديد وحده: المعاد بناؤه حُسب في الجولة الأولى
+            return [$conv, max(0, $stored - $removed), $partial, $removed > 0];
         });
 
-        if ($stored > 0) {
+        if ($stored > 0 || $rebuilt) {
             rescue(fn () => app(InboxBroadcaster::class)->touch((int) $conv->id, 'message'), null, false);
         }
 
-        return ['stored' => $stored, 'partial' => $partial, 'conversation_id' => (int) $conv->id];
+        return ['stored' => $stored, 'partial' => $partial, 'rebuilt' => $rebuilt, 'conversation_id' => (int) $conv->id];
+    }
+
+    /**
+     * محادثة كل رسائلها من الاستيراد ولم يمسّها أحد: لا وارد ولا صادر حي، ولا وسيط جُلب إلى الخادم، ولا تثبيت ولا طلب
+     * سعر من رسائلها. حذف صفوفها وإعادة إدراجها لا يكسر مرجعاً (فهرس البحث يتبع بالـ triggers).
+     */
+    private static function rebuildable(int $convId): bool
+    {
+        $msgs = WaMessage::where('conversation_id', $convId);
+        $touched = (clone $msgs)->where(fn ($q) => $q->whereNull('payload')
+            ->orWhereRaw('coalesce(json_extract(payload, \'$._import\'), 0) != 1')
+            ->orWhereNotNull('media_path'))->exists();
+        if ($touched) {
+            return false;
+        }
+        $ids = (clone $msgs)->select('id');
+        if (Schema::hasTable('wa_thread_pins') && DB::table('wa_thread_pins')->whereIn('message_id', $ids)->exists()) {
+            return false;
+        }
+
+        return !(Schema::hasColumn('quote_requests', 'source_msg_id') && DB::table('quote_requests')->whereIn('source_msg_id', $ids)->exists());
+    }
+
+    /** رقم جهة @lid من البوابة (GET /contacts/{id}/phone)، وإلا null فتبقى بمعرّف الخصوصية حتى أول وارد حي */
+    private static function lidPhone(WaChannel $c, string $jid): ?string
+    {
+        $res = app(ChannelTransport::class)->call($c, 'GET', '/contacts/'.rawurlencode($jid).'/phone', null, 'import');
+        $json = $res->ok ? (array) $res->json() : [];
+        $phone = preg_replace('/\D/', '', is_scalar($json['phone'] ?? null) ? (string) $json['phone'] : '');
+
+        return strlen($phone) >= 7 && strlen($phone) <= 15 ? $phone : null;
     }
 
     private static function row(WaConversation $conv, WaChannel $c, InboundMessage $in, array $m, Carbon $at): WaMessage
@@ -461,9 +508,13 @@ final class HistoryImport
 
     private static function stale(array $s): bool
     {
-        $beat = $s['heartbeat_at'] ?? null;
+        // آخر نبض أو موعد البدء المؤجل، أيهما أحدث
+        $times = array_filter([$s['heartbeat_at'] ?? null, $s['starts_at'] ?? null]);
+        if ($times === []) {
+            return true;
+        }
 
-        return $beat === null || Carbon::parse($beat)->lt(now()->subMinutes(self::STALE_MINUTES));
+        return max(array_map(fn ($t) => Carbon::parse($t)->getTimestamp(), $times)) < now()->subMinutes(self::STALE_MINUTES)->getTimestamp();
     }
 
     /** مصفوفة الرد: قائمة مباشرة، أو داخل items/chats/messages/data */
@@ -485,7 +536,7 @@ final class HistoryImport
     {
         return (array) config('whatsapp.openwa.import', []) + [
             'auto' => true, 'days' => 180, 'messages_per_chat' => 500, 'chats_page' => 500, 'sleep_ms' => 300,
-            'job_budget_seconds' => 25, 'close_new' => true,
+            'job_budget_seconds' => 25, 'close_new' => true, 'settle_seconds' => 600,
         ];
     }
 

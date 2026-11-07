@@ -82,7 +82,7 @@
               {{ c.history?.chats_done || 0 }} / {{ c.history?.chats_total ?? '…' }} محادثة · {{ c.history?.messages || 0 }} رسالة ·
               العمق: آخر {{ c.history?.days }} يوماً، حتى {{ c.history?.messages_per_chat }} رسالة للمحادثة
             </p>
-            <p v-if="c.history?.chats_partial" class="text-gray-500 dark:text-gray-400">{{ c.history.chats_partial }} محادثة وصلتها رسائل قبل دورها: أُخذ ما بعد أحدثها وحده، فلا يختلط ترتيب الخيط.</p>
+            <p v-if="c.history?.chats_partial" class="text-gray-500 dark:text-gray-400">{{ c.history.chats_partial }} محادثة وصلتها رسائل قبل دورها: أُخذ ما بعد أحدثها وحده، فلا يختلط ترتيب الخيط. والمحادثة المستوردة كلها تُعاد بناؤها كاملة عند «استيراد من جديد».</p>
             <p v-if="c.history?.chats_skipped" class="text-amber-700 dark:text-amber-300">{{ c.history.chats_skipped }} محادثة تعذّرت قراءتها من الهاتف فتُخطّيت.</p>
             <p v-if="c.history?.last_error && c.history.status !== 'done'" class="text-red-600 dark:text-red-300">آخر خطأ: {{ c.history.last_error }}</p>
           </div>
@@ -189,6 +189,7 @@ const EVENT_LABELS = {
 const HISTORY_LABELS = { running: 'جارٍ الاستيراد', stopped: 'موقوف', done: 'اكتمل', failed: 'توقف بخطأ' };
 function historyLabel(h) {
   if (!h?.status) return 'لم يُستورد بعد';
+  if (h.status === 'running' && h.starts_at && new Date(h.starts_at) > new Date()) return `ينتظر اكتمال مزامنة واتساب للهاتف، يبدأ ${fmt(h.starts_at)}`;
   if (h.status === 'running' && h.phase === 'list') return 'يقرأ قائمة المحادثات…';
   return HISTORY_LABELS[h.status] || h.status;
 }

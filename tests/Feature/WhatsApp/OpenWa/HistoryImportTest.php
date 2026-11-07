@@ -37,8 +37,16 @@ class HistoryImportTest extends TestCase
 
     private const GROUP = '120363000000000001@g.us';
 
+    private const LID = '150573718479015@lid';
+
     /** @var array<string, list<array>> */
     private array $history = [];
+
+    /** قائمة المحادثات كما تعيدها البوابة */
+    private array $chats = [];
+
+    /** رقم جهة @lid كما تعيده /contacts/{id}/phone */
+    private array $lidPhones = [];
 
     protected function setUp(): void
     {
@@ -61,17 +69,23 @@ class HistoryImportTest extends TestCase
             self::B => [$this->msg(self::B, 'b1', 'قديم جداً', $t - 400 * $day)],
             self::C => [$this->msg(self::C, 'c1', 'شكراً لكم', $t - 2 * $day)],
         ];
+        $this->chats = [
+            ['id' => self::A, 'name' => 'أبو أحمد', 'isGroup' => false, 'timestamp' => $t - 4 * 86400],
+            ['id' => self::B, 'name' => 'قديم', 'isGroup' => false, 'timestamp' => $t - 400 * 86400],
+            ['id' => self::GROUP, 'name' => 'مجموعة', 'isGroup' => true, 'timestamp' => $t],
+            ['id' => self::C, 'name' => 'عميل', 'isGroup' => false, 'timestamp' => $t - 2 * 86400],
+        ];
         $this->fakeGateway([
-            'nuskjo-openwa:2785/api/sessions/*/chats*' => function ($request) use ($t) {
+            'nuskjo-openwa:2785/api/sessions/*/chats*' => function ($request) {
                 parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $q);
-                $all = [
-                    ['id' => self::A, 'name' => 'أبو أحمد', 'isGroup' => false, 'timestamp' => $t - 4 * 86400],
-                    ['id' => self::B, 'name' => 'قديم', 'isGroup' => false, 'timestamp' => $t - 400 * 86400],
-                    ['id' => self::GROUP, 'name' => 'مجموعة', 'isGroup' => true, 'timestamp' => $t],
-                    ['id' => self::C, 'name' => 'عميل', 'isGroup' => false, 'timestamp' => $t - 2 * 86400],
-                ];
 
-                return Http::response(array_slice($all, (int) ($q['offset'] ?? 0), (int) ($q['limit'] ?? 1000)));
+                return Http::response(array_slice($this->chats, (int) ($q['offset'] ?? 0), (int) ($q['limit'] ?? 1000)));
+            },
+            'nuskjo-openwa:2785/api/sessions/*/contacts/*/phone' => function ($request) {
+                preg_match('#/contacts/([^/]+)/phone#', $request->url(), $m);
+                $id = rawurldecode($m[1]);
+
+                return Http::response(['contactId' => $id, 'phone' => $this->lidPhones[$id] ?? null]);
             },
             'nuskjo-openwa:2785/api/sessions/*/messages/*/history*' => function ($request) {
                 preg_match('#/messages/([^/]+)/history#', $request->url(), $m);
@@ -300,5 +314,82 @@ class HistoryImportTest extends TestCase
         $live = $this->msg('962791110009@c.us', 'e2', 'رد الآن', now()->getTimestamp(), fromMe: true);
         EchoHandler::handleOpenWa($ch, $live, null, retried: true);
         $this->assertTrue($conv->refresh()->bot_paused_until->isFuture());
+    }
+
+    public function test_a_lid_chat_gets_its_phone_from_the_gateway_and_links_to_the_client(): void
+    {
+        $client = \App\Models\Client::factory()->create(['phone' => '0791110077']);
+        $this->chats = [['id' => self::LID, 'name' => '+962 7 9111 0077', 'isGroup' => false, 'timestamp' => now()->getTimestamp()]];
+        $this->lidPhones = [self::LID => '962791110077'];
+        $this->history = [self::LID => [
+            $this->msg(self::LID, 'l1', 'مرحبا، بدي عرض عمرة', now()->subDay()->getTimestamp(), extra: ['senderPhone' => null]),
+        ]];
+
+        HistoryImport::start($this->testChannel(), 'manual');
+        $this->drain();
+
+        $conv = WaConversation::where('lid', self::LID)->sole();
+        $this->assertSame('962791110077', $conv->phone, 'جهة @lid تأخذ رقمها قبل أن تراسل');
+        $this->assertSame($client->id, (int) $conv->client_id);
+    }
+
+    public function test_a_reimport_rebuilds_an_untouched_chat_with_its_older_messages_in_order(): void
+    {
+        // المزامنة الأولى لم تكتمل: البوابة أعادت آخر رسالة وحدها
+        $full = $this->history[self::A];
+        $this->history[self::A] = [$full[2]];
+        $ch = $this->testChannel();
+        HistoryImport::start($ch, 'manual');
+        $this->drain();
+        $a = $this->convFor(self::A);
+        $this->assertSame(1, WaMessage::where('conversation_id', $a->id)->count());
+
+        $this->history[self::A] = $full;
+        HistoryImport::start($ch->refresh(), 'manual');
+        $this->drain(Queue::pushed(ImportChannelHistory::class)->count() - 1);
+
+        $rows = WaMessage::where('conversation_id', $a->id)->orderBy('id')->get();
+        $this->assertSame(['A1', 'A2', 'A3'], $rows->map(fn ($r) => substr($r->wamid, -2))->all(), 'الخيط كاملاً بترتيبه');
+        $this->assertSame(2, HistoryImport::present($ch->refresh())['messages'], 'العدّاد للجديد وحده');
+        $this->assertSame(0, HistoryImport::present($ch)['chats_partial']);
+        $this->assertSame($rows[2]->id, (int) $a->refresh()->bot_answered_in_id);
+        $this->assertSame('closed', $a->status);
+    }
+
+    public function test_a_reimport_never_rebuilds_a_chat_with_live_activity(): void
+    {
+        $full = $this->history[self::A];
+        $this->history[self::A] = [$full[2]];
+        $ch = $this->testChannel();
+        HistoryImport::start($ch, 'manual');
+        $this->drain();
+        $this->postOpenWa('message.received', $this->incoming('962791110001', 'رسالة حية'))->assertOk();
+
+        $this->history[self::A] = $full;
+        HistoryImport::start($ch->refresh(), 'manual');
+        $this->drain(Queue::pushed(ImportChannelHistory::class)->count() - 1);
+
+        $a = $this->convFor(self::A);
+        $this->assertSame(2, WaMessage::where('conversation_id', $a->id)->count(), 'لا حذف لمحادثة فيها حي');
+        $this->assertSame(1, HistoryImport::present($ch->refresh())['chats_partial']);
+    }
+
+    public function test_the_first_link_waits_for_the_phone_sync_and_is_not_taken_for_a_dead_chain(): void
+    {
+        config(['whatsapp.openwa.import.settle_seconds' => 600]);
+        $ch = $this->testChannel();
+        $ch->forceFill(['status' => 'authenticating'])->save();
+        ChannelState::applyStatus($ch, 'ready', ['phone' => self::TEST_CHANNEL_PHONE]);
+
+        Queue::assertPushed(ImportChannelHistory::class, fn ($job) => $job->delay !== null && now()->diffInSeconds($job->delay) >= 590);
+        $this->assertNotNull(HistoryImport::present($ch->refresh())['starts_at']);
+
+        // الرقم متصل طوال الانتظار (فحص حديث)، فالفرق موعد البدء وحده
+        $this->travel(8)->minutes();
+        $ch->forceFill(['last_probe_ok_at' => now()])->save();
+        $this->assertSame(0, HistoryImport::recoverStale(), 'المؤجل قبل موعده ليس ميتاً');
+        $this->travel(10)->minutes();
+        $ch->forceFill(['last_probe_ok_at' => now()])->save();
+        $this->assertSame(1, HistoryImport::recoverStale(), 'بعد موعده بلا نبض: يُستأنف');
     }
 }
