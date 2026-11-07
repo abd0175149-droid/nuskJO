@@ -35,6 +35,8 @@ class WebhookRouteTest extends TestCase
         $admin = User::factory()->admin()->create();
         config(['audit.extended' => true]);
         $raw = (string) file_get_contents($this->fixturePath('text.json'));
+        // العيّنة 10 في الدقيقة بساعة الحائط: الطلبات الـ 25 في دقيقة واحدة، وإلا عبرت حدّها على خادم بطيء فصارت العيّنة 20
+        $this->freezeTime();
 
         for ($i = 0; $i < 25; $i++) {
             $this->postRawWebhook($raw, 'wrong-secret')->assertStatus(403);
