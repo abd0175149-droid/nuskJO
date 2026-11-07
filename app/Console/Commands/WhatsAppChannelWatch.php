@@ -86,7 +86,10 @@ class WhatsAppChannelWatch extends Command
                 "الرقم «{$ch->name}» لم يجتز الفحص {$n} مرات. أُعيد تشغيل جلسته، وإن استمر فافتح صفحة الأرقام وأعد ربطه.");
             event(new ChannelStatusChanged($ch->id, (string) $ch->status));
         }
-        $cooldown = now()->subMinutes((int) config('whatsapp.openwa.restart_cooldown_minutes', 30));
+        // جلسة متوقفة (منقطعة أو فاشلة، كتهيئة انتهت مهلتها بعد إعادة تشغيل البوابة) تُعاد بعد 5 دقائق، والعالقة على
+        // «ready» بلا استجابة بعد 30: إعادة تشغيلها أثقل وقد تقطع إرسالاً جارياً
+        $stopped = str_starts_with($why, 'status:');
+        $cooldown = now()->subMinutes((int) config($stopped ? 'whatsapp.openwa.restart_stopped_cooldown_minutes' : 'whatsapp.openwa.restart_cooldown_minutes', $stopped ? 5 : 30));
         if ($n >= $limit && ($ch->last_restart_at === null || $ch->last_restart_at->lt($cooldown))) {
             SessionManager::restart($ch, 'probe');
         }

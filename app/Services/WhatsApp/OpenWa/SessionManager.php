@@ -164,7 +164,18 @@ final class SessionManager
         }
         $res = OpenWaClient::for($channel)->session('GET', '/qr');
         if (!$res->ok) {
-            // 400: لم يجهز QR بعد أو الجلسة مربوطة
+            // 400: لم يجهز QR بعد أو الجلسة مربوطة أو متوقفة. المتوقفة (تهيئة انتهت مهلتها بعد إعادة تشغيل البوابة) لا
+            // يأتيها رمز أبداً: تُشغَّل في الخلفية مرة كل 90 ثانية، فنافذة الربط لا تنتظر بلا نهاية
+            if ($res->status() === 400 && in_array((string) $channel->status, ['disconnected', 'failed', 'created'], true)
+                && Cache::add('wa:openwa:qr-start:'.$channel->id, 1, 90)) {
+                $id = (int) $channel->id;
+                dispatch(function () use ($id) {
+                    if ($c = WaChannel::find($id)) {
+                        self::start($c);
+                    }
+                })->onQueue('wa-system');
+            }
+
             return $res->status() === 400 ? ['ok' => true, 'qr' => null, 'status' => (string) $channel->status] : self::failed('qr', $res);
         }
         $qr = (string) $res->json('qrCode', '');

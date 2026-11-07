@@ -204,6 +204,8 @@ return [
         // صحة الرقم (whatsapp:channel-watch): الفحص الحقيقي، وإخفاقات قبل إعادة التشغيل، وأقل فاصل بين إعادتين (دقائق)
         'probe_failures_restart' => 3,
         'restart_cooldown_minutes' => 30,
+        // جلسة متوقفة (disconnected/failed) والرقم كان مربوطاً: إعادة أسرع
+        'restart_stopped_cooldown_minutes' => 5,
         // الرقم «جاهز» إن نجح آخر فحص حقيقي خلال هذه المدة (دقائق)
         'ready_probe_minutes' => 5,
         // صلاحية QR في الكاش (ثوانٍ)
