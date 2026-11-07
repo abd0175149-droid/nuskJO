@@ -40,7 +40,7 @@ class OpenWaMappingTest extends TestCase
         $this->assertSame(['chatId' => 'x@c.us', 'messageId' => 'M1', 'emoji' => '👍'], $body);
     }
 
-    public function test_parser_maps_types_and_drops_groups(): void
+    public function test_parser_maps_types_reads_groups_and_drops_statuses(): void
     {
         $ch = new WaChannel(['phone' => '962790000001']);
         $ch->id = 5;
@@ -51,7 +51,11 @@ class OpenWaMappingTest extends TestCase
         $this->assertSame('🎤 رسالة صوتية', $in->body);
         $this->assertSame('A', $in->media['id']);
         $this->assertSame(5, $in->channelId);
-        $this->assertNull(InboundParser::parse(['id' => 'B', 'chatId' => '120363@g.us', 'type' => 'text', 'isGroup' => true], $ch));
+        // المجموعة تُقرأ بهويتها وكاتبها (GroupChats)، لا بهاتف الكاتب
+        $g = InboundParser::parse(['id' => 'B', 'chatId' => '120363@g.us', 'from' => '120363@g.us', 'author' => '962791112233@c.us', 'type' => 'text', 'body' => 'x',
+            'isGroup' => true, 'senderPhone' => '962791112233', 'contact' => ['pushName' => 'أبو خالد']], $ch);
+        $this->assertSame(['120363@g.us', null, null, 'أبو خالد', '962791112233'], [$g->groupJid, $g->fromPhone, $g->lid, $g->author, $g->authorPhone]);
+        $this->assertNull(InboundParser::parse(['id' => 'S', 'chatId' => 'status@broadcast', 'type' => 'text', 'body' => 'x'], $ch));
         $this->assertNull(InboundParser::parse(['id' => 'C', 'chatId' => '962791112233@c.us', 'type' => 'e2e_notification'], $ch));
     }
 

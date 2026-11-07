@@ -28,7 +28,9 @@ class WhatsAppController extends Controller
             'title' => 'محادثات الواتساب',
             'conversations' => $page['items'],
             'listMeta' => ['has_more' => $page['has_more'], 'next_cursor' => $page['next_cursor']],
-            'filters' => $request->only(['filter', 'search', 'topic', 'label']),
+            'filters' => $request->only(['filter', 'search', 'topic', 'label', 'channel', 'since']),
+            // صناديق الأرقام: ما يراه المستخدم منها وغير المقروء في كل منها (المدير يتنقل بينها، والموظف يرى رقمه)
+            'inboxChannels' => self::inboxChannels(),
             'status' => [
                 'channel_ready' => $s->channelReady(),
                 'bot_ready' => $s->botReady(),
@@ -122,6 +124,31 @@ class WhatsAppController extends Controller
         ];
     }
 
+    /**
+     * صناديق الأرقام لشريط الصندوق: الأرقام الفعّالة التي يرى المستخدم محادثاتها، بالترتيب، وغير المقروء في كل منها.
+     *
+     * @return list<array{id: int, name: string, color: ?string, unread: int}>
+     */
+    private static function inboxChannels(): array
+    {
+        $ids = TopicRouter::allowedNumberIds(auth()->user());
+        $unread = self::channelUnread();
+
+        return \App\Models\WaChannel::query()->active()->when($ids !== null, fn ($q) => $q->whereIn('id', $ids))
+            ->orderBy('sort')->orderBy('id')->get(['id', 'name', 'color'])
+            ->map(fn ($c) => ['id' => (int) $c->id, 'name' => (string) $c->name, 'color' => $c->color, 'unread' => $unread[$c->id] ?? 0])
+            ->values()->all();
+    }
+
+    /** @return array<int, int> رقم واتساب => غير المقروء ضمن نطاق المستخدم */
+    private static function channelUnread(): array
+    {
+        return WaConversation::query()->visibleTo(auth()->user())->whereNotNull('wa_conversations.channel_id')
+            ->where('unread_count', '>', 0)->groupBy('wa_conversations.channel_id')
+            ->selectRaw('wa_conversations.channel_id as ch, sum(unread_count) as n')->pluck('n', 'ch')
+            ->mapWithKeys(fn ($n, $ch) => [(int) $ch => (int) $n])->all();
+    }
+
     /** بطاقات أعلى الصندوق (E17.6): أعداد محصورة بالنطاق ومخزّنة 60 ثانية، بلا أسماء ولا أرقام ولا نصوص */
     public function inboxSummary()
     {
@@ -143,6 +170,7 @@ class WhatsAppController extends Controller
             'has_more' => $page['has_more'],
             'next_cursor' => $page['next_cursor'],
             'unread_total' => (int) WaConversation::query()->visibleTo(auth()->user())->sum('unread_count'),
+            'channel_unread' => self::channelUnread(),
             'llm' => \App\Services\WhatsApp\LlmCircuitBreaker::publicStatus(),
         ]);
     }
@@ -222,6 +250,10 @@ class WhatsAppController extends Controller
                 ->from('wa_conversation_labels')->whereColumn('wa_conversation_labels.conversation_id', 'wa_conversations.id')
                 ->where('wa_conversation_labels.label_id', $request->integer('label'))))
             ->when($filter === 'mine', fn ($q) => $q->where('assigned_to', $me->id))
+            // صندوق رقم واحد: بعد السياج، فلا يفتح رقماً خارج نطاق المستخدم
+            ->when($request->integer('channel') > 0, fn ($q) => $q->where('wa_conversations.channel_id', $request->integer('channel')))
+            // نشاط آخر 24 ساعة (وارد أو صادر)
+            ->when($request->get('since') === '24h', fn ($q) => $q->where('wa_conversations.last_message_at', '>=', now()->subDay()))
             ->when($request->search, function ($q, $s) {
                 $q->where(function ($w) use ($s) {
                     $w->where('phone', 'like', "%{$s}%")
@@ -258,6 +290,7 @@ class WhatsAppController extends Controller
             'name' => $c->label(),
             // عميل باسم مستخدم بلا رقم (E11a): المعرّف نفسه لا يُعرض
             'phoneless' => !$c->hasPhone(),
+            'is_group' => $c->isGroup(),
             'username' => $c->wa_username,
             // لقب يضعه العميل بنفسه: غير موثّق
             'profile_name' => $c->wa_profile_name,
@@ -469,10 +502,16 @@ class WhatsAppController extends Controller
             ? $conversation->messages()->whereIn('id', $rows->where('source', 'staff_phone')->pluck('id'))->get(['id', 'payload'])
                 ->mapWithKeys(fn ($m) => [$m->id => array_filter(['edited' => (bool) data_get($m->payload, '_edited_at'), 'revoked' => (bool) data_get($m->payload, '_revoked_at')])])->all()
             : [];
+        // المجموعة: كاتب كل وارد (اسمه في واتساب، وإلا هاتفه)
+        $authors = $conversation->isGroup() && $rows->contains('direction', 'in')
+            ? $conversation->messages()->whereIn('id', $rows->where('direction', 'in')->pluck('id'))->get(['id', 'payload'])
+                ->mapWithKeys(fn ($m) => [$m->id => data_get($m->payload, '_author.name') ?: data_get($m->payload, 'contact.pushName')
+                    ?: (($p = data_get($m->payload, '_author.phone') ?: data_get($m->payload, 'senderPhone')) ? '+'.$p : 'عضو في المجموعة')])->all()
+            : [];
         $sender = fn ($m) => match ($m->source) {
             'staff' => $m->staff?->name ?: 'موظف',
             'staff_phone' => '📱 من هاتف الوكالة'.($m->staff?->name ? ' · '.$m->staff->name : ''),
-            default => null,
+            default => $authors[$m->id] ?? null,
         };
 
         // staff_id كان يُحفظ ولا يُرسل للواجهة، فلم يكن يظهر من أرسل الرسالة
@@ -516,6 +555,7 @@ class WhatsAppController extends Controller
                 'name' => $conversation->label(),
                 'phone' => $conversation->phone,
                 'phoneless' => !$conversation->hasPhone(),
+                'is_group' => $conversation->isGroup(),
                 'username' => $conversation->wa_username,
                 'profile_name' => $conversation->wa_profile_name,
                 'client' => $conversation->client?->name,

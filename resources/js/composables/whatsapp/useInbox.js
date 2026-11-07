@@ -54,6 +54,11 @@ export function useInbox(props, thread) {
         topic: props.filters?.topic || '',
         // تصنيف داخلي (E29)
         label: props.filters?.label ? String(props.filters.label) : '',
+        // صندوق رقم واحد (0 = كل الأرقام) ونشاط آخر 24 ساعة
+        channel: Number(props.filters?.channel) || 0,
+        since: props.filters?.since === '24h' ? '24h' : '',
+        // غير المقروء لكل رقم (شريط الصناديق)، يتحدث مع كل تحميل للقائمة
+        channelUnread: Object.fromEntries((props.inboxChannels || []).map((c) => [c.id, c.unread])),
         activeId: null,
         thread: null,
         messages: [],
@@ -97,8 +102,8 @@ export function useInbox(props, thread) {
     const sendKeys = createSendKeys();
     const draft = computed({ get: () => drafts.get(s.activeId), set: (t) => drafts.set(s.activeId, t) });
     const mode = computed(() => s.thread?.identity_mode || props.identityMode);
-    const cannotReachPhoneless = computed(() => !!s.thread?.phoneless && mode.value === 'store');
-    const canRequestPhone = computed(() => props.canReply && !!s.thread?.phoneless && !!s.thread?.reachable && mode.value !== 'store');
+    const cannotReachPhoneless = computed(() => !!s.thread?.phoneless && !s.thread?.is_group && mode.value === 'store');
+    const canRequestPhone = computed(() => props.canReply && !!s.thread?.phoneless && !s.thread?.is_group && !!s.thread?.reachable && mode.value !== 'store');
 
     // ملفات الموظف (E32): فقاعات متفائلة بمفتاح لكل محاولة، والرفع إلى ميتا في طابور الخادم
     const outbox = createOutbox({
@@ -112,7 +117,8 @@ export function useInbox(props, thread) {
         return { name: s.thread?.name || '', last4: digits ? digits.slice(-4) : null, clientCode: s.thread?.client_code || null };
     });
 
-        const params = () => ({ filter: s.filter, search: s.search || undefined, topic: s.topic || undefined, label: s.label || undefined });
+        const params = () => ({ filter: s.filter, search: s.search || undefined, topic: s.topic || undefined, label: s.label || undefined,
+        channel: s.channel || undefined, since: s.since || undefined });
 
     /** الصفحة الأولى؛ تُدمج مع ما حُمّل بعدها. يعيد false عند الفشل (بعد فشلين متتاليين شريط «تعذّر التحديث») */
     async function load({ reset = false } = {}) {
@@ -132,6 +138,7 @@ export function useInbox(props, thread) {
                 s.list = merged;
             }
             if (data.llm) s.llm = data.llm;
+            if (data.channel_unread) s.channelUnread = data.channel_unread;
             failures = 0;
             s.staleSince = '';
             return true;

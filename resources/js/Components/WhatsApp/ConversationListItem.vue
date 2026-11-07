@@ -6,13 +6,14 @@
     <span aria-hidden="true" class="shrink-0 w-10 h-10 rounded-full grid place-items-center text-sm font-bold text-white" :class="colorFor(c.id)">{{ initials(c.name) }}</span>
     <span class="min-w-0 flex-1 block">
       <span class="flex items-center justify-between gap-2">
-        <bdi dir="auto" class="font-bold text-sm truncate [unicode-bidi:plaintext]">{{ c.name }}</bdi>
+        <bdi dir="auto" class="font-bold text-sm truncate [unicode-bidi:plaintext]"><span v-if="c.is_group" aria-label="مجموعة" title="مجموعة واتساب">👥 </span>{{ c.name }}</bdi>
         <span v-if="c.unread" class="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold grid place-items-center" :aria-label="`${c.unread} غير مقروءة`">{{ c.unread }}</span>
       </span>
       <!-- سطر الهوية (E11): الرقم منسّقاً، أو اسم المستخدم، أو «رقم غير ظاهر» -->
       <span class="block text-[11px] text-gray-400 dark:text-gray-500 truncate">
         <bdi v-if="c.phone" dir="ltr" class="font-mono">{{ formatPhone(c.phone) }}</bdi>
         <bdi v-else-if="c.username" dir="ltr" class="font-mono">@{{ c.username }}</bdi>
+        <span v-else-if="c.is_group">مجموعة</span>
         <span v-else>رقم غير ظاهر</span>
       </span>
       <span class="block text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
@@ -71,7 +72,7 @@ const props = defineProps({
 // شارة رقم المحادثة حين يكون في نُسك أكثر من رقم (HandleInertiaRequests: waChannels)
 const page = usePage();
 const channel = computed(() => {
-  const list = page.props.waChannels || [];
+  const list = page?.props?.waChannels || [];
   return list.length > 1 ? list.find((ch) => ch.id === props.c.channel_id) || null : null;
 });
 defineEmits(['open']);

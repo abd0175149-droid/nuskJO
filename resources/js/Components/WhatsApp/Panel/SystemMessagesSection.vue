@@ -64,7 +64,7 @@ const props = defineProps({
 const emit = defineEmits(['changed']);
 
 const page = usePage();
-const pilotScope = computed(() => page.props.waBotPilot?.scope === 'pilot');
+const pilotScope = computed(() => page?.props?.waBotPilot?.scope === 'pilot');
 const canPilot = computed(() => page.props.auth?.isAdmin || (page.props.auth?.permissions || []).includes('whatsapp.settings'));
 const pilotBusy = ref(false);
 

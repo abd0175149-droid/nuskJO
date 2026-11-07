@@ -7,6 +7,7 @@ use App\Models\WaChannel;
 use App\Models\WaConversation;
 use App\Models\WaMessage;
 use App\Services\WhatsApp\ContactIdentity;
+use App\Services\WhatsApp\GroupChats;
 use App\Services\WhatsApp\InboundMessage;
 use App\Services\WhatsApp\Realtime\InboxBroadcaster;
 use App\Services\WhatsApp\ReplyState;
@@ -228,7 +229,8 @@ final class HistoryImport
         foreach ($page as $chat) {
             $jid = is_array($chat['id'] ?? null) ? (string) ($chat['id']['_serialized'] ?? '') : (string) ($chat['id'] ?? '');
             $ts = (int) ($chat['timestamp'] ?? 0);
-            if (!InboundParser::isPerson($jid) || !empty($chat['isGroup']) || isset($known[$jid]) || ($ts > 0 && $ts < $since)) {
+            // الفردية والمجموعات (GroupChats: عرض ورد موظف وحده)، لا الحالات ولا القنوات ولا البث
+            if ((!InboundParser::isPerson($jid) && !GroupChats::isGroupJid($jid)) || isset($known[$jid]) || ($ts > 0 && $ts < $since)) {
                 continue;
             }
             $known[$jid] = true;
@@ -313,8 +315,10 @@ final class HistoryImport
         $who = $identity[0];
 
         [$conv, $stored, $partial, $rebuilt] = DB::transaction(function () use ($c, $parsed, $who, $chatName, $phone) {
-            $conv = ContactIdentity::resolveIdentity($who->fromPhone ?? $phone ?? (InboundParser::digits((string) $who->jid) ?: null), null,
-                $who->profileName ?? $chatName, null, null, channelId: (int) $c->id, jid: $who->jid, lid: $who->lid);
+            $conv = $who->isGroup()
+                ? GroupChats::resolve((int) $c->id, (string) $who->groupJid, $chatName)
+                : ContactIdentity::resolveIdentity($who->fromPhone ?? $phone ?? (InboundParser::digits((string) $who->jid) ?: null), null,
+                    $who->profileName ?? $chatName, null, null, channelId: (int) $c->id, jid: $who->jid, lid: $who->lid);
 
             $existing = WaMessage::where('conversation_id', $conv->id);
             $hadMessages = (clone $existing)->exists();
@@ -443,7 +447,8 @@ final class HistoryImport
             'source' => $out ? 'staff_phone' : 'customer',
             'msg_type' => $in->type,
             'body' => $in->body,
-            'payload' => EventRouter::storable($m) + ['_import' => true],
+            'payload' => EventRouter::storable($m) + ['_import' => true]
+                + ($in->isGroup() && !$out ? ['_author' => array_filter(['name' => $in->author, 'phone' => $in->authorPhone])] : []),
             'status' => $out ? WaMessage::STATUS_SENT : null,
             'sent_at' => $out ? $at : null,
             'reply_to_wamid' => $in->replyToWamid,

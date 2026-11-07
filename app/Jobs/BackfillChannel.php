@@ -76,7 +76,7 @@ class BackfillChannel implements ShouldQueue, ShouldBeUnique
         foreach ((array) $list as $chat) {
             $jid = (string) (is_array($chat['id'] ?? null) ? ($chat['id']['_serialized'] ?? '') : ($chat['id'] ?? $chat['chatId'] ?? ''));
             $ts = (int) ($chat['timestamp'] ?? data_get($chat, 'lastMessage.timestamp', 0));
-            if (!InboundParser::isPerson($jid) || ($ts > 0 && $ts < $since)) {
+            if ((!InboundParser::isPerson($jid) && !\App\Services\WhatsApp\GroupChats::isGroupJid($jid)) || ($ts > 0 && $ts < $since)) {
                 continue;
             }
             $history = $transport->call($channel, 'GET', '/messages/'.rawurlencode($jid).'/history', null, 'send', [],

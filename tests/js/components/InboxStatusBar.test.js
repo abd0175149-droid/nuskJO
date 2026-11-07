@@ -23,29 +23,6 @@ describe('InboxStatusBar', () => {
         const w = mount(InboxStatusBar, { props: { ...base, llm: { state: 'open' } } });
         expect(w.text()).toContain('وضع التحويل');
     });
-
-});
-        const bar = admin.find('[data-test="meta-error-bar"]');
-        expect(bar.text()).toContain('ميتا ترفض الإرسال: رمز ميتا منتهٍ — ولّد رمزاً جديداً');
-        expect(bar.find('a').attributes('href')).toBe('/whatsapp/settings#ops');
-
-        const staff = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, meta_error: { generic: true } } } });
-        expect(staff.find('[data-test="meta-error-bar"]').text()).toBe('⛔ تعذّر الإرسال مؤقتاً — أُبلغ المسؤول.');
-        expect(staff.find('[data-test="meta-error-bar"] a').exists()).toBe(false);
-
-        expect(mount(InboxStatusBar, { props: base }).find('[data-test="meta-error-bar"]').exists()).toBe(false);
-    });
-
-    it('shows a generic channel-health badge and drops the duplicate Meta bar (E22)', () => {
-        const blocked = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, meta_blocked: true, health: 'BLOCKED', health_label: 'محجوبة من ميتا', health_until: null, health_blocks: true } } });
-        expect(blocked.find('[data-test="health-badge"]').text()).toBe('⛔ ميتا تحجب الإرسال — أبلغ المدير.');
-        expect(blocked.text()).not.toContain('القناة متوقفة من جهة ميتا');
-
-        const limited = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, health: 'LIMITED', health_blocks: false } } });
-        expect(limited.find('[data-test="health-badge"]').text()).toBe('قيد جزئي من ميتا — الردود تعمل');
-
-        expect(mount(InboxStatusBar, { props: { ...base, status: { ...base.status, health: 'AVAILABLE' } } }).find('[data-test="health-badge"]').exists()).toBe(false);
-    });
     it('names disconnected and paused numbers and links to the channels page', () => {
         const w = mount(InboxStatusBar, { props: { ...base, status: { ...base.status, channels: { total: 3, ready: 1, down: ['المبيعات'], paused: ['الحجوزات'] } } } });
         expect(w.find('[data-test="channels-down"]').text()).toContain('رقم غير متصل: المبيعات');

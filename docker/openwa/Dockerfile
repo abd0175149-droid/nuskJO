@@ -19,4 +19,10 @@ RUN node /tmp/apply-votes.cjs /app/dist \
  && node --check /app/dist/modules/webhook/dto/webhook.dto.js \
  && rm /tmp/apply-votes.cjs
 
-LABEL nuskjo.patches="receipts votes"
+# rawtype: نوع whatsapp-web.js الأصلي بجانب type، فيُسقط نُسك الإشعارات الداخلية بدل «رسالة لا يعرضها واتساب ويب». أفضل جهد.
+COPY apply-rawtype.cjs /tmp/apply-rawtype.cjs
+RUN node /tmp/apply-rawtype.cjs /app/dist \
+ && node --check /app/dist/engine/adapters/message-mapper.js \
+ && rm /tmp/apply-rawtype.cjs
+
+LABEL nuskjo.patches="receipts votes rawtype"

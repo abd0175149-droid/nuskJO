@@ -55,8 +55,10 @@ class WhatsAppResolveLids extends Command
             $found++;
         }
         Cache::put(self::MISSES, $misses, now()->addDay());
+        // ومجموعات وصلت حية بلا اسم (GroupChats)
+        $groups = \App\Services\WhatsApp\GroupChats::refreshMissingNames();
         WaLog::info('openwa.lids', ['count' => $found]);
-        $this->info("resolved {$found}");
+        $this->info("resolved {$found}, groups {$groups}");
 
         return self::SUCCESS;
     }

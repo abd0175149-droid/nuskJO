@@ -50,6 +50,7 @@ class WhatsAppChannel
     public const ERR_BLOCKED = 'BLOCKED';
     public const ERR_CHANNEL_BLOCKED = 'CHANNEL_BLOCKED';
     public const ERR_MEDIA_INTEGRITY = 'MEDIA_INTEGRITY';
+    public const ERR_GROUP_STAFF_ONLY = 'GROUP_STAFF_ONLY';
 
     /** نص الزر المعروض في الصندوق (الجسم المرسل للعميل غيره) */
     public const CONTACT_REQUEST_LABEL = '📱 طلب مشاركة رقم الهاتف';
@@ -852,6 +853,10 @@ class WhatsAppChannel
             if (!$staff || !TopicRouter::canSee($conv, $staff)) {
                 return [self::failLocal(self::ERR_OUT_OF_SCOPE, 'هذه المحادثة خارج نطاقك — لا يمكنك مراسلة هذا العميل.'), null, null];
             }
+        }
+        // المجموعة (GroupChats): رد الموظف وحده. لا بوت ولا رسائل نظام ولا إشعار ملفات ولا أي مصدر آلي
+        if ($conv->isGroup() && $source !== 'staff') {
+            return [self::failLocal(self::ERR_GROUP_STAFF_ONLY, 'المجموعات يرد عليها الموظفون وحدهم.'), null, null];
         }
         $ch = self::channelFor($conv);
         if ($ch === null) {

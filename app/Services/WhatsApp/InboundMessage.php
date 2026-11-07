@@ -52,7 +52,16 @@ final class InboundMessage
         public readonly ?string $lid = null,
         /** رسالة صوتية مسجّلة (ptt) لا ملف صوتي مرفق */
         public readonly bool $voice = false,
+        /** مجموعة واتساب (2026-11-07): معرّف المجموعة ‎…@g.us، وكاتب الرسالة فيها (الاسم والهاتف) للعرض وحده */
+        public readonly ?string $groupJid = null,
+        public readonly ?string $author = null,
+        public readonly ?string $authorPhone = null,
     ) {}
+
+    public function isGroup(): bool
+    {
+        return $this->groupJid !== null;
+    }
 
     public function isSystem(): bool
     {

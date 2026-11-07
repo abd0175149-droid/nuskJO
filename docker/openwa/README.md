@@ -12,6 +12,7 @@
 |---|---|---|
 | `apply-receipts.cjs` | المسار `GET /api/sessions/:id/messages/:chatId/:messageId/receipts`: من استلم ومن قرأ | **يفشل البناء** (exit 2)، فتبقى الصورة العاملة كما هي |
 | `apply-votes.cjs` | الحدث `poll.vote` لأصوات الاستطلاعات | تتخطّى الرقعة نفسها (exit 0)، ويعود اختيار الخيارات إلى الرد بالرقم |
+| `apply-rawtype.cjs` | الحقل `rawType` (نوع whatsapp-web.js الأصلي) في كل رسالة: البوابة تسمّي ما لا تعرفه `unknown` | تتخطّى نفسها (exit 0). نُسك يُسقط `unknown` الفارغ إشعاراً داخلياً، ويعرض ما له نص |
 
 إن وجد سكربت receipts مساراً رسمياً للغرض نفسه يتوقف (exit 3). عندها احذف الرقعة واستخدم المسار الرسمي.
 
@@ -22,7 +23,7 @@
 3. جرّب الرقعتين محلياً على نسخة من dist الجديدة:
    ```
    docker run --rm --entrypoint sh ghcr.io/rmyndharis/openwa:<v> -c 'tar -C /app -c dist' | tar -x -C /tmp/owa
-   node docker/openwa/apply-receipts.cjs /tmp/owa/dist && node docker/openwa/apply-votes.cjs /tmp/owa/dist
+   node docker/openwa/apply-receipts.cjs /tmp/owa/dist && node docker/openwa/apply-votes.cjs /tmp/owa/dist && node docker/openwa/apply-rawtype.cjs /tmp/owa/dist
    ```
 4. انشر بـ `bash scripts/deploy.sh`. يكتشف تغيّر هذا المجلد بالبصمة فيبني البوابة ويعيد تشغيلها، وتتوقف الجلسات نحو دقيقة.
 5. شغّل `php artisan whatsapp:doctor` داخل `nuskjo-app` وتأكد أن كل الجلسات جاهزة.

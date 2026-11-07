@@ -68,12 +68,17 @@ class OpenWaWebhookTest extends TestCase
         $this->assertSame(1, WaMessage::count());
     }
 
-    public function test_groups_status_and_system_messages_are_dropped(): void
+    public function test_status_and_system_messages_are_dropped_and_groups_are_kept_apart(): void
     {
-        $this->postOpenWa('message.received', $this->incoming('962791112233', 'x', ['chatId' => '120363000@g.us', 'isGroup' => true]))->assertOk();
         $this->postOpenWa('message.received', $this->incoming('962791112233', 'x', ['chatId' => 'status@broadcast']))->assertOk();
         $this->postOpenWa('message.received', $this->incoming('962791112233', '', ['type' => 'e2e_notification']))->assertOk();
         $this->assertSame(0, WaMessage::count());
+
+        // المجموعة تُخزَّن (GroupChats: عرض ورد موظف) ولا تصير محادثة فردية لكاتبها
+        $this->postOpenWa('message.received', $this->incoming('962791112233', 'x', ['chatId' => '120363000123@g.us', 'from' => '120363000123@g.us',
+            'author' => '962791112233@c.us', 'isGroup' => true]))->assertOk();
+        $this->assertSame(1, WaMessage::count());
+        $this->assertSame([true, null], [(bool) \App\Models\WaConversation::sole()->is_group, \App\Models\WaConversation::sole()->phone]);
     }
 
     public function test_lid_sender_with_phone_is_linked_by_phone_and_lid(): void

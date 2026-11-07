@@ -37,6 +37,8 @@ class WaConversation extends Model
         'bot_enabled' => 'boolean',
         // تجربة البوت (2026-11-06): يرد عليها البوت وهو في نطاق «pilot». يضبطها forceFill من اللوحة وحدها
         'bot_pilot' => 'boolean',
+        // مجموعة واتساب (2026-11-07): عرض ورد موظف وحده (GroupChats)
+        'is_group' => 'boolean',
         'needs_attention' => 'boolean',
         'is_admin_chat' => 'boolean',
         'bot_paused_until' => 'datetime',
@@ -110,6 +112,12 @@ class WaConversation extends Model
 
     public function threadPins(): HasMany { return $this->hasMany(WaThreadPin::class, 'conversation_id'); }
 
+    /** مجموعة واتساب: لا بوت ولا رسائل نظام، والرد من الموظف وحده */
+    public function isGroup(): bool
+    {
+        return (bool) $this->is_group;
+    }
+
     /** الرقم معروف (عميل باسم مستخدم قد يراسلنا بلا رقم) */
     public function hasPhone(): bool
     {
@@ -132,6 +140,7 @@ class WaConversation extends Model
             ?: $this->wa_profile_name
             ?: ($this->wa_username ? '@'.$this->wa_username : null)
             ?: ($this->hasPhone() ? '+'.$this->phone : null)
+            ?: ($this->isGroup() ? 'مجموعة واتساب' : null)
             ?: 'محادثة #'.$this->id;
     }
 

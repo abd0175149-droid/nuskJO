@@ -123,7 +123,7 @@ TXT;
     public static function willReply(WaConversation $conv): bool
     {
         $s = WaBotSetting::current();
-        if ($s->sendingSuspended() || $conv->status === 'merged') {
+        if ($s->sendingSuspended() || $conv->status === 'merged' || $conv->isGroup()) {
             return false;
         }
         if (WaAdminNumber::forPhone($conv->phone)) {
@@ -181,6 +181,10 @@ TXT;
         // محظورة رسمياً (E31): لا رد ولا «تدخّل» — الحظر قرار الشركة، ولا تكلفة نموذج لمحتال
         if ($conv->isBlocked()) {
             return self::skip('المحادثة محظورة');
+        }
+        // المجموعة (GroupChats): لا بوت أبداً ولا «تدخّل»، والموظف يرد من الصندوق
+        if ($conv->isGroup()) {
+            return self::skip('مجموعة');
         }
 
         // ── بوّابات خروج مبكر: وارد ينتظر ولن يرد عليه البوت يصير «تدخّل» بسبب ظاهر، لا صمتاً ──

@@ -41,7 +41,7 @@ class WhatsAppInbox
     {
         $wamid = $in->wamid;
 
-        if (!$wamid || ($in->fromPhone === null && $in->lid === null && $in->fromUserId === null)) {
+        if (!$wamid || ($in->fromPhone === null && $in->lid === null && $in->fromUserId === null && !$in->isGroup())) {
             self::noIdentity($msg);
 
             return null;
@@ -61,6 +61,14 @@ class WhatsAppInbox
             return $existing ? self::pendingDuplicate($existing) : null;
         }
         if ($conv === null) {
+            return null;
+        }
+
+        // المجموعة (GroupChats): عرض ورد موظف وحده. لا بوت ولا طلب حذف ولا «تدخّل» ولا إيقاف تسويق، والعلامة تتقدّم
+        // فلا يلتقطها المُصالِح لاحقاً
+        if ($conv->isGroup()) {
+            ReplyState::advance($conv, (int) $stored?->id);
+
             return null;
         }
 
@@ -183,7 +191,8 @@ class WhatsAppInbox
             'source' => 'customer',
             'msg_type' => $type,
             'body' => $body,
-            'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []) + ($choice ? ['_choice' => $choice] : []),
+            'payload' => $msg + ($buttonId ? ['_button_id' => $buttonId] : []) + ($choice ? ['_choice' => $choice] : [])
+                + ($in->isGroup() ? ['_author' => array_filter(['name' => $in->author, 'phone' => $in->authorPhone])] : []),
         ] + $columns + (self::hasMetaAt() ? ['meta_at' => $metaAt] : []));
         // بعد اعتماد المعاملة وحدها (E21)؛ تكرار wamid يرمي قبل هنا فلا حدث له
         EventBus::emit(new WaMessageStored($message->id, $conv->id, (string) $type));
@@ -207,6 +216,11 @@ class WhatsAppInbox
         $conv->refresh();
         if ($blocked) {
             ReplyState::advance($conv, $message->id);
+        }
+
+        // المجموعة: لا موافقة ملفات ولا إيقاف تسويق (storeInbound يعيد قبل البوت)
+        if ($conv->isGroup()) {
+            return [$conv, false, $message];
         }
 
         // زرّا إشعار حفظ الملفات (E14): اختيار مسجّل لا يصل للبوت، والحذف بعد الاعتماد

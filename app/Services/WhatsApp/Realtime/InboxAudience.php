@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
  * - موظف نشط يملك whatsapp.view (المسارات تفرضها)؛
  * - محادثة الإدارة لمن يملك whatsapp.admin_chats وحده، بالقيد نفسه في SQL (TopicRouter::isAdminChat)؛
  * - أرقام واتساب المسموحة له (allowedNumberIds، wa_channel_users)؛
- * - ثم view_all، أو التوكيل، أو وسم من اختصاصه.
+ * - ثم view_all، أو رقم مسند إليه (ownNumberIds)، أو التوكيل، أو وسم من اختصاصه.
  * صيغة مجمّعة (نحو ثلاثة استعلامات للمحادثة، والمرشحون مرة للدفعة) بدل canSee لكل مستخدم، وبلا كاش: السحب فوري.
  * أي تغيير في السياج يتبعه تغيير هنا، ويفرضه InboxAudienceParityTest مقابل canSee.
  */
@@ -40,7 +40,7 @@ final class InboxAudience
         return $out;
     }
 
-    /** @param list<array{id: int, all: bool, admin: bool, numbers: ?array}> $candidates */
+    /** @param list<array{id: int, all: bool, admin: bool, numbers: ?array, own: list<int>}> $candidates */
     private static function pick(WaConversation $conversation, array $candidates): array
     {
         if ($candidates === []) {
@@ -62,7 +62,7 @@ final class InboxAudience
             if ($u['numbers'] !== null && !in_array((int) $conversation->channel_id, $u['numbers'], true)) {
                 continue;
             }
-            if ($u['all'] || $assignee === $u['id'] || isset($specialists[$u['id']])) {
+            if ($u['all'] || $assignee === $u['id'] || isset($specialists[$u['id']]) || in_array((int) $conversation->channel_id, $u['own'], true)) {
                 $ids[] = $u['id'];
             }
         }
@@ -73,7 +73,7 @@ final class InboxAudience
     /**
      * النشطون الذين يملكون whatsapp.view، بقدراتهم من البوابة نفسها (Gate::before: المعطّل مرفوض والمدير مسموح).
      *
-     * @return list<array{id: int, all: bool, admin: bool, numbers: ?array}>
+     * @return list<array{id: int, all: bool, admin: bool, numbers: ?array, own: list<int>}>
      */
     private static function candidates(): array
     {
@@ -84,6 +84,7 @@ final class InboxAudience
                 'all' => $u->can('whatsapp.view_all'),
                 'admin' => $u->can('whatsapp.admin_chats'),
                 'numbers' => TopicRouter::allowedNumberIds($u),
+                'own' => TopicRouter::ownNumberIds($u),
             ])->values()->all();
     }
 }

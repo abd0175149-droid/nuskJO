@@ -17,6 +17,9 @@
                 :class="filter === f.key ? 'bg-gold-50 dark:bg-gold-900/20 border-gold-400 text-gold-700 dark:text-gold-400'
                                          : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gold-400'">{{ f.label }}</button>
       </div>
+      <button type="button" @click="$emit('update:since', since ? '' : '24h')" :aria-pressed="!!since" data-test="since-24h"
+              class="px-2.5 py-1 rounded-lg text-[11px] font-bold border"
+              :class="since ? 'bg-gold-50 dark:bg-gold-900/20 border-gold-400 text-gold-700 dark:text-gold-400' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gold-400'">🕘 آخر 24 ساعة</button>
       <select :value="topic" @change="$emit('update:topic', $event.target.value)" aria-label="تصفية بحسب الموضوع"
               class="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs dark:text-white">
         <option value="">كل المواضيع</option>
@@ -28,7 +31,7 @@
         <option value="">كل التصنيفات</option>
         <option v-for="l in labels" :key="l.id" :value="String(l.id)">{{ l.name }}</option>
       </select>
-      <p v-if="!seesAll" class="text-[11px] text-gray-500 dark:text-gray-400">تظهر لك المحادثات التي تخصّ مجالاتك فقط</p>
+      <p v-if="!seesAll" class="text-[11px] text-gray-500 dark:text-gray-400">تظهر لك محادثات رقمك، وما يخصّ مجالاتك من الأرقام المفتوحة</p>
     </div>
 
     <div ref="scroller" class="overflow-y-auto flex-1 min-h-0">
@@ -56,6 +59,8 @@ const props = defineProps({
   search: { type: String, default: '' },
   topic: { type: String, default: '' },
   topics: { type: Object, default: () => ({}) },
+  // نشاط آخر 24 ساعة ('24h' أو فارغ)
+  since: { type: String, default: '' },
   seesAll: Boolean,
   hasMore: Boolean,
   loadingMore: Boolean,
@@ -74,7 +79,7 @@ const props = defineProps({
   // E39: فلتر «مكالمات فائتة» مع العلم calls_webhook
   missedCalls: Boolean,
 });
-const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'update:label', 'open', 'loadMore', 'jump']);
+const emit = defineEmits(['update:filter', 'update:search', 'update:topic', 'update:since', 'update:label', 'open', 'loadMore', 'jump']);
 const searching = ref(false);
 
 const BASE_FILTERS = [

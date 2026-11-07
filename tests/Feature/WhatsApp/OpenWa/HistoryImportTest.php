@@ -146,8 +146,9 @@ class HistoryImportTest extends TestCase
 
         $state = HistoryImport::present($ch->refresh());
         $this->assertSame('done', $state['status']);
-        $this->assertSame(2, $state['chats_total'], 'لا المجموعة ولا محادثة آخر نشاطها أقدم من العمق');
-        $this->assertSame(2, $state['chats_done']);
+        // المجموعة تدخل القائمة (GroupChats) ولا سجل لها هنا، والمحادثة الأقدم من العمق لا تدخل
+        $this->assertSame(3, $state['chats_total']);
+        $this->assertSame(3, $state['chats_done']);
         $this->assertSame(0, $this->historyCalls(self::B));
         $this->assertSame(4, $state['messages'], 'رسالة أقدم من العمق لا تُستورد');
         $this->assertNotNull($ch->history_imported_at);
@@ -218,7 +219,7 @@ class HistoryImportTest extends TestCase
         $this->drain(Queue::pushed(ImportChannelHistory::class)->count() - 1);
 
         $state = HistoryImport::present($ch->refresh());
-        $this->assertSame(['done', 2, 4], [$state['status'], $state['chats_done'], $state['messages']]);
+        $this->assertSame(['done', 3, 4], [$state['status'], $state['chats_done'], $state['messages']]);
         $this->assertSame(1, $this->historyCalls(self::A), 'الاستئناف لا يعيد ما استُورد');
         $actions = AuditLog::where('action', 'wa.channel_change')->where('entity_id', $ch->id)->get()->pluck('changes.action')->all();
         $this->assertSame(['import_stop', 'import_start'], $actions);
@@ -391,5 +392,26 @@ class HistoryImportTest extends TestCase
         $this->travel(10)->minutes();
         $ch->forceFill(['last_probe_ok_at' => now()])->save();
         $this->assertSame(1, HistoryImport::recoverStale(), 'بعد موعده بلا نبض: يُستأنف');
+    }
+
+    public function test_groups_are_imported_with_their_name_and_authors(): void
+    {
+        $g = '120363099999999999@g.us';
+        $t = now()->getTimestamp();
+        $this->chats = [['id' => $g, 'name' => 'معتمرو تشرين', 'isGroup' => true, 'timestamp' => $t]];
+        $this->history = [$g => [
+            $this->msg($g, 'g1', 'السلام عليكم', $t - 3600, extra: ['author' => '962791110055@c.us', 'senderPhone' => '962791110055', 'contact' => ['pushName' => 'أبو ماهر']]),
+            $this->msg($g, 'g2', 'وعليكم السلام', $t - 3000, fromMe: true),
+        ]];
+
+        HistoryImport::start($this->testChannel(), 'manual');
+        $this->drain();
+
+        $conv = WaConversation::where('jid', $g)->sole();
+        $this->assertSame([true, 'معتمرو تشرين', false, null], [$conv->isGroup(), $conv->display_name, (bool) $conv->bot_enabled, $conv->phone]);
+        $rows = WaMessage::where('conversation_id', $conv->id)->orderBy('id')->get();
+        $this->assertSame(['in', 'out'], $rows->pluck('direction')->all());
+        $this->assertSame('أبو ماهر', data_get($rows[0]->payload, '_author.name'));
+        $this->assertSame(0, WaConversation::where('phone', '962791110055')->count(), 'كاتب الرسالة ليس محادثة فردية');
     }
 }

@@ -185,6 +185,21 @@ class TopicRouter
         return array_values(array_unique([...$mine, ...$open]));
     }
 
+    /**
+     * الأرقام المسندة إلى المستخدم صراحةً (wa_channel_users): يرى كل محادثاتها بلا قيد الاختصاص. الأرقام المفتوحة
+     * (بلا مسندين) يبقى فيها قيد الاختصاص.
+     *
+     * @return list<int>
+     */
+    public static function ownNumberIds(User $user): array
+    {
+        if (!Schema::hasTable('wa_channel_users')) {
+            return [];
+        }
+
+        return DB::table('wa_channel_users')->where('user_id', $user->id)->pluck('channel_id')->map(fn ($id) => (int) $id)->all();
+    }
+
     private static ?bool $hasAdminFlag = null;
 
     private static ?bool $hasAdminNumbers = null;
@@ -235,7 +250,7 @@ class TopicRouter
         }
     }
 
-    /** من يملك whatsapp.view_all يرى الكل؛ وغيره ما يحمل وسماً من اختصاصه أو ما وُكّل له صراحةً */
+    /** من يملك whatsapp.view_all يرى الكل؛ وغيره كل محادثات رقمه المسند، وما يحمل وسماً من اختصاصه، وما وُكّل له صراحةً */
     private static function fenceTopics($query, User $user): void
     {
         if ($user->can('whatsapp.view_all')) {
@@ -243,9 +258,14 @@ class TopicRouter
         }
 
         $topics = self::topicsForUser($user->id);
+        $own = self::ownNumberIds($user);
 
-        $query->where(function ($q) use ($topics, $user) {
+        $query->where(function ($q) use ($topics, $user, $own) {
             $q->where('wa_conversations.assigned_to', $user->id);
+
+            if ($own) {
+                $q->orWhereIn('wa_conversations.channel_id', $own);
+            }
 
             if ($topics) {
                 $q->orWhereExists(function ($sub) use ($topics) {

@@ -17,6 +17,17 @@ describe('ConversationList', () => {
         expect(w.text()).not.toContain('تحميل المزيد');
     });
 
+    it('toggles the last-24-hours filter', async () => {
+        const w = mount(ConversationList, { props: { items: [], seesAll: true } });
+        await w.find('[data-test="since-24h"]').trigger('click');
+        expect(w.emitted('update:since')[0]).toEqual(['24h']);
+
+        await w.setProps({ since: '24h' });
+        expect(w.find('[data-test="since-24h"]').attributes('aria-pressed')).toBe('true');
+        await w.find('[data-test="since-24h"]').trigger('click');
+        expect(w.emitted('update:since')[1]).toEqual(['']);
+    });
+
     it('disables «load more» while a page is loading', () => {
         const w = mount(ConversationList, { props: { items: [row(1)], hasMore: true, loadingMore: true, seesAll: true } });
         const btn = w.findAll('button').find((b) => b.text().includes('جارٍ التحميل'));
@@ -40,6 +51,6 @@ describe('ConversationList', () => {
         expect(item.find('bdi[dir="ltr"]').text()).toBe('+1 650 555 1234');
         await item.trigger('click');
         expect(w.emitted('open')[0]).toEqual([7]);
-        expect(w.text()).toContain('تظهر لك المحادثات التي تخصّ مجالاتك فقط');
+        expect(w.text()).toContain('تظهر لك محادثات رقمك، وما يخصّ مجالاتك من الأرقام المفتوحة');
     });
 });

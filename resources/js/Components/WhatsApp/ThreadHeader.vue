@@ -8,7 +8,9 @@
         <span aria-hidden="true" class="shrink-0 w-9 h-9 rounded-full grid place-items-center text-xs font-bold text-white" :class="colorFor(thread.id)">{{ initials(thread.name) }}</span>
         <div class="min-w-0">
           <p class="font-bold text-sm truncate"><bdi dir="auto" class="[unicode-bidi:plaintext]">{{ thread.name }}</bdi></p>
-          <p v-if="thread.phone" class="text-xs text-gray-400"><bdi dir="ltr" class="font-mono">{{ formatPhone(thread.phone) }}</bdi><span v-if="thread.client"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
+          <!-- مجموعة واتساب: الموظف وحده يرد، ولا بوت ولا رسائل نظام -->
+          <p v-if="thread.is_group" class="text-xs text-gray-500 dark:text-gray-400" data-test="group-line">👥 مجموعة · يرد عليها الموظفون وحدهم، بلا بوت</p>
+          <p v-else-if="thread.phone" class="text-xs text-gray-400"><bdi dir="ltr" class="font-mono">{{ formatPhone(thread.phone) }}</bdi><span v-if="thread.client"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
           <!-- عميل باسم مستخدم واتساب بلا رقم ظاهر (E11a) -->
           <p v-else class="text-xs text-amber-700 dark:text-amber-400">📵 رقم غير ظاهر<template v-if="thread.username"> · <bdi dir="ltr" class="font-mono">@{{ thread.username }}</bdi></template><span v-if="thread.client" class="text-gray-500 dark:text-gray-400"> · <bdi dir="auto">{{ thread.client }}</bdi></span></p>
           <p v-if="!panel && thread.profile_name && thread.profile_name !== thread.name" class="text-[11px] text-gray-400 dark:text-gray-500"
@@ -18,7 +20,7 @@
       <div class="flex flex-wrap items-center gap-2">
         <!-- ربط بعميل (E11.8) -->
         <!-- مع اللوحة الجانبية (C128) تنتقل الإجراءات والتنظيم إليها، ويبقى هنا ما يُستعمل كل دقيقة -->
-        <template v-if="!panel && canLinkClient && !thread.is_admin">
+        <template v-if="!panel && canLinkClient && !thread.is_admin && !thread.is_group">
           <button type="button" @click="$emit('link')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300">
             {{ thread.client_id ? '🔗 تغيير الربط' : '🔗 ربط بعميل' }}
           </button>
@@ -39,7 +41,7 @@
         <!-- حالة المتابعة (E17) -->
         <span v-if="thread.closed" class="px-2 py-0.5 rounded-lg text-[11px] bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">🗂️ مغلقة</span>
         <span v-if="thread.snoozed_until" class="px-2 py-0.5 rounded-lg text-[11px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">💤 حتى <bdi dir="ltr">{{ hhmm(thread.snoozed_until) }}</bdi></span>
-                <button v-if="canToggleBot" type="button" @click="$emit('toggleBot')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border"
+                <button v-if="canToggleBot && !thread.is_group" type="button" @click="$emit('toggleBot')" class="min-h-11 lg:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold border"
                 :class="thread.bot_enabled ? 'border-gray-300 text-gray-600 dark:text-gray-300' : 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-300'">
           {{ thread.bot_enabled ? '⏸️ إيقاف البوت' : '▶️ تشغيل البوت' }}
         </button>

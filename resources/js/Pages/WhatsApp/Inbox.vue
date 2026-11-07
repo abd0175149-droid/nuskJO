@@ -10,6 +10,23 @@
       <InboxCards v-if="followup && s.summary" :class="s.view === 'thread' ? 'hidden lg:flex' : ''" class="shrink-0"
                   :summary="s.summary" :active="s.filter" @filter="(f) => { s.filter = f; inbox.refilter(); }"/>
 
+      <!-- صناديق الأرقام: كل رقم صندوقه، و«كل الأرقام» لمن يرى أكثر من رقم. يظهر الشريط حين يرى المستخدم رقمين فأكثر -->
+      <div v-if="inboxChannels.length > 1" :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="shrink-0 gap-1.5 overflow-x-auto pb-0.5"
+           role="tablist" aria-label="صناديق الأرقام" data-test="channel-tabs">
+        <button type="button" role="tab" :aria-selected="!s.channel" @click="pickChannel(0)"
+                class="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border"
+                :class="!s.channel ? 'bg-gold-50 dark:bg-gold-900/20 border-gold-400 text-gold-700 dark:text-gold-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gold-400'">
+          📥 كل الأرقام
+        </button>
+        <button v-for="c in inboxChannels" :key="c.id" type="button" role="tab" :aria-selected="s.channel === c.id" @click="pickChannel(c.id)"
+                class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border"
+                :class="s.channel === c.id ? 'bg-gold-50 dark:bg-gold-900/20 border-gold-400 text-gold-700 dark:text-gold-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gold-400'">
+          <span class="w-2.5 h-2.5 rounded-full" :style="{ background: c.color || '#b8800f' }" aria-hidden="true"></span>
+          {{ c.name }}
+          <span v-if="s.channelUnread[c.id]" class="min-w-5 px-1.5 rounded-full bg-gold-500 text-white text-[10px] leading-5">{{ s.channelUnread[c.id] }}</span>
+        </button>
+      </div>
+
       <!-- مع اللوحة الجانبية (C128) تضيق القائمة على الشاشات العريضة فيتسع الخيط واللوحة معاً -->
       <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4" :class="flags.conversation_panel ? 'xl:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]' : ''">
         <ConversationList :class="s.view === 'thread' ? 'hidden lg:flex' : 'flex'" class="lg:col-span-1"
@@ -17,6 +34,7 @@
                           :filter="s.filter" :search="s.search" :topic="s.topic" :topics="topics" :sees-all="seesAll" :attention-reasons="attentionReasons" :followup="followup"
                           :can-block="canBlock" :missed-calls="calls" @update:filter="(v) => { s.filter = v; inbox.refilter(); }" @update:search="(v) => { s.search = v; inbox.refilter(); }"
                           @update:topic="(v) => { s.topic = v; inbox.refilter(); }" @open="inbox.openFromList" @load-more="inbox.loadMore"
+                          :since="s.since" @update:since="(v) => { s.since = v; inbox.refilter(); }"
                           :labels="flags.wa_labels ? labels : []" :label="s.label" @update:label="(v) => { s.label = v; inbox.refilter(); }"
                           :message-search="messageSearch" @jump="(h) => inbox.openFromSearch(h.conversation_id, h.message_id)"/>
 
@@ -88,6 +106,8 @@ const props = defineProps({
   canMedia: Boolean,
   llm: { type: Object, default: () => ({ state: 'closed' }) },
   topics: { type: Object, default: () => ({}) },
+  // صناديق الأرقام التي يراها المستخدم: {id, name, color, unread}
+  inboxChannels: { type: Array, default: () => [] },
   staff: { type: Array, default: () => [] },
   attentionReasons: { type: Object, default: () => ({}) },
   // E17: المتابعة والبطاقات وزر الإعادة والردود الجاهزة
@@ -122,6 +142,14 @@ const props = defineProps({
 const threadView = ref(null);
 const inbox = useInbox(props, () => threadView.value);
 const { s } = inbox;
+// صندوق رقم: القائمة من جديد، والرقم في الرابط فيبقى عند التحديث
+function pickChannel(id) {
+  s.channel = id;
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set('channel', String(id)); else url.searchParams.delete('channel');
+  window.history.replaceState(window.history.state, '', url);
+  inbox.refilter();
+}
 const linkOpen = ref(false);
 const exportOpen = ref(false);
 const blockOpen = ref(false);

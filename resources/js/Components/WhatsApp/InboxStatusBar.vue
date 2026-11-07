@@ -79,7 +79,7 @@ defineEmits(['dismiss']);
 
 const channels = computed(() => ({ down: props.status.channels?.down || [], paused: props.status.channels?.paused || [] }));
 
-const pilot = computed(() => usePage().props.waBotPilot);
+const pilot = computed(() => usePage()?.props?.waBotPilot);
 const pilotText = computed(() => {
   const c = pilot.value?.conversations || 0;
   const p = pilot.value?.phones || 0;

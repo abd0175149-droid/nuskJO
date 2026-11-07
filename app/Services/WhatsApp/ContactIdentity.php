@@ -37,6 +37,11 @@ final class ContactIdentity
     /** محادثة الرسالة على رقمها، تُنشأ إن لم توجد. يُستدعى داخل معاملة التخزين */
     public static function resolve(InboundMessage $in): WaConversation
     {
+        // المجموعة هويتها معرّفها على الرقم، لا هاتف كاتب الرسالة
+        if ($in->isGroup() && $in->channelId !== null) {
+            return GroupChats::resolve($in->channelId, (string) $in->groupJid);
+        }
+
         return self::resolveIdentity($in->fromPhone, $in->fromUserId, $in->profileName, $in->username, $in->phoneNumberId,
             channelId: $in->channelId, jid: $in->jid, lid: $in->lid);
     }
